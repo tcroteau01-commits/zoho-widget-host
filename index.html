@@ -7,75 +7,103 @@
   .ok { background: #d4edda; color: #155724; }
   .fail { background: #f8d7da; color: #721c24; }
   .pending { background: #fff3cd; color: #856404; }
-  .row { display: flex; gap: 8px; margin-bottom: 6px; }
-  .label { width: 140px; font-weight: bold; color: #555; }
+  .row { display: flex; gap: 8px; margin-bottom: 6px; align-items: center; }
+  .label { width: 160px; font-weight: bold; color: #555; }
   .val { flex: 1; padding: 3px 8px; background: #fff; border: 1px solid #ddd; border-radius: 4px; }
-  button { background: #e8a020; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 8px; }
-  #log { margin-top: 10px; font-size: 11px; color: #555; background: #eee; padding: 8px; border-radius: 4px; white-space: pre-wrap; }
+  button { background: #e8a020; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; margin: 4px 4px 4px 0; }
+  #log { margin-top: 10px; font-size: 11px; color: #333; background: #eee; padding: 8px; border-radius: 4px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+  input[type=text] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; width: 200px; }
 </style>
 </head>
 <body>
 
-<div id="status" class="status pending">Initializing ZOHO SDK...</div>
-<div class="row"><div class="label">ZOHO object</div><div class="val" id="chkZoho">checking...</div></div>
-<div class="row"><div class="label">App Name</div><div class="val" id="appName">—</div></div>
-<div class="row"><div class="label">Form Name</div><div class="val" id="formName">—</div></div>
-<div class="row"><div class="label">Customer Name</div><div class="val" id="fCustomer">—</div></div>
-<div class="row"><div class="label">Customer Rate</div><div class="val" id="fCustRate">—</div></div>
-<button onclick="testSetField()">Test: Set Customer Rate to 999</button>
-<div id="log"></div>
+<div id="status" class="status pending">Checking SDK API availability...</div>
+
+<div class="row"><div class="label">ZOHO object</div><div class="val" id="chkZoho">—</div></div>
+<div class="row"><div class="label">ZOHO.Creator.API</div><div class="val" id="chkAPI">—</div></div>
+<div class="row"><div class="label">addRecord available</div><div class="val" id="chkAdd">—</div></div>
+
+<br>
+<div class="row">
+  <div class="label">App Link Name</div>
+  <input type="text" id="appName" placeholder="e.g. operfi-broker-portal" />
+</div>
+<div class="row">
+  <div class="label">Form Link Name</div>
+  <input type="text" id="formName" placeholder="e.g. Load_Details" />
+</div>
+
+<br>
+<button onclick="testAddRecord()">Test: Create a test record</button>
+<button onclick="testGetRecords()">Test: Read records</button>
+
+<div id="log">Waiting...</div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
 function log(msg) {
-  document.getElementById('log').textContent += msg + '\n';
+  var el = document.getElementById('log');
+  el.textContent += '\n' + msg;
+  el.scrollTop = el.scrollHeight;
 }
 
-// Check if ZOHO object loaded at all
 window.addEventListener('load', function() {
-  if (typeof ZOHO === 'undefined') {
-    document.getElementById('chkZoho').textContent = 'MISSING — SDK script failed to load';
-    document.getElementById('status').textContent = 'SDK SCRIPT DID NOT LOAD';
-    document.getElementById('status').className = 'status fail';
-    return;
-  }
-  document.getElementById('chkZoho').textContent = 'present';
-  log('ZOHO object found. Calling init()...');
+  // Check what's available without init()
+  var hasZoho = typeof ZOHO !== 'undefined';
+  var hasAPI = hasZoho && typeof ZOHO.Creator !== 'undefined' && typeof ZOHO.Creator.API !== 'undefined';
+  var hasAdd = hasAPI && typeof ZOHO.Creator.API.addRecord === 'function';
 
-  // Timeout if init never resolves
-  var initTimeout = setTimeout(function() {
-    log('init() timed out after 8 seconds');
-    document.getElementById('status').textContent = 'SDK INIT TIMED OUT — widget may not be in a form context';
-    document.getElementById('status').className = 'status fail';
-  }, 8000);
+  document.getElementById('chkZoho').textContent = hasZoho ? 'present' : 'MISSING';
+  document.getElementById('chkAPI').textContent = hasAPI ? 'present' : 'MISSING';
+  document.getElementById('chkAdd').textContent = hasAdd ? 'present' : 'MISSING';
 
-  ZOHO.Creator.init().then(function(data) {
-    clearTimeout(initTimeout);
-    log('init() resolved: ' + JSON.stringify(data));
-
-    document.getElementById('appName').textContent = data.appName || '(empty)';
-    document.getElementById('formName').textContent = data.formName || '(empty)';
-    document.getElementById('status').textContent = 'SDK CONNECTED';
+  if (hasAdd) {
+    document.getElementById('status').textContent = 'SDK API AVAILABLE — ready to test addRecord()';
     document.getElementById('status').className = 'status ok';
-
-    return ZOHO.Creator.getCurrentRecord();
-  }).then(function(record) {
-    log('getCurrentRecord: ' + JSON.stringify(record));
-    if (!record) return;
-    document.getElementById('fCustomer').textContent = record['Customer_Name'] || '—';
-    document.getElementById('fCustRate').textContent = record['Customer_Rate'] || '—';
-  }).catch(function(err) {
-    clearTimeout(initTimeout);
-    log('ERROR: ' + JSON.stringify(err));
-    document.getElementById('status').textContent = 'SDK ERROR: ' + JSON.stringify(err);
+  } else if (hasZoho) {
+    document.getElementById('status').textContent = 'ZOHO object present but Creator.API missing';
     document.getElementById('status').className = 'status fail';
-  });
+    // Log what IS available
+    try { log('ZOHO keys: ' + Object.keys(ZOHO).join(', ')); } catch(e) {}
+    try { log('ZOHO.Creator keys: ' + Object.keys(ZOHO.Creator).join(', ')); } catch(e) {}
+  } else {
+    document.getElementById('status').textContent = 'ZOHO SDK DID NOT LOAD';
+    document.getElementById('status').className = 'status fail';
+  }
+
+  document.getElementById('log').textContent = 'SDK check complete.';
 });
 
-function testSetField() {
-  ZOHO.Creator.setData({ fieldName: 'Customer_Rate', value: '999' })
-    .then(function(res) { log('setData OK: ' + JSON.stringify(res)); })
-    .catch(function(err) { log('setData FAILED: ' + JSON.stringify(err)); });
+function testGetRecords() {
+  var app = document.getElementById('appName').value.trim();
+  var form = document.getElementById('formName').value.trim();
+  if (!app || !form) { log('Enter app and form name first'); return; }
+
+  log('Calling getRecords(' + app + ', ' + form + ')...');
+  ZOHO.Creator.API.getRecords({ appName: app, reportName: form + '_Report' })
+    .then(function(res) { log('getRecords OK: ' + JSON.stringify(res).substring(0, 300)); })
+    .catch(function(err) { log('getRecords FAILED: ' + JSON.stringify(err)); });
+}
+
+function testAddRecord() {
+  var app = document.getElementById('appName').value.trim();
+  var form = document.getElementById('formName').value.trim();
+  if (!app || !form) { log('Enter app and form name first'); return; }
+
+  log('Calling addRecord(' + app + ', ' + form + ')...');
+  ZOHO.Creator.API.addRecord({
+    appName: app,
+    formName: form,
+    payload: {
+      data: {
+        Load_Comments: 'WIDGET API TEST - safe to delete'
+      }
+    }
+  }).then(function(res) {
+    log('addRecord OK: ' + JSON.stringify(res));
+  }).catch(function(err) {
+    log('addRecord FAILED: ' + JSON.stringify(err));
+  });
 }
 </script>
 </body>

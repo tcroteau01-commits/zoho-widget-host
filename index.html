@@ -8,34 +8,32 @@
   .fail { background: #f8d7da; color: #721c24; }
   .pending { background: #fff3cd; color: #856404; }
   .row { display: flex; gap: 8px; margin-bottom: 6px; align-items: center; }
-  .label { width: 160px; font-weight: bold; color: #555; }
+  .label { width: 200px; font-weight: bold; color: #555; }
   .val { flex: 1; padding: 3px 8px; background: #fff; border: 1px solid #ddd; border-radius: 4px; }
+  input[type=text] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; width: 220px; font-size: 13px; }
   button { background: #e8a020; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; margin: 4px 4px 4px 0; }
-  #log { margin-top: 10px; font-size: 11px; color: #333; background: #eee; padding: 8px; border-radius: 4px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
-  input[type=text] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; width: 200px; }
+  #log { margin-top: 10px; font-size: 11px; color: #333; background: #eee; padding: 8px; border-radius: 4px; white-space: pre-wrap; max-height: 250px; overflow-y: auto; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
 </style>
 </head>
 <body>
 
-<div id="status" class="status pending">Checking SDK API availability...</div>
+<div id="status" class="status pending">Checking SDK...</div>
 
-<div class="row"><div class="label">ZOHO object</div><div class="val" id="chkZoho">—</div></div>
-<div class="row"><div class="label">ZOHO.Creator.API</div><div class="val" id="chkAPI">—</div></div>
-<div class="row"><div class="label">addRecord available</div><div class="val" id="chkAdd">—</div></div>
+<div class="row"><div class="label">ZOHO (object)</div><div class="val" id="chkZoho">—</div></div>
+<div class="row"><div class="label">ZOHO.CREATOR</div><div class="val" id="chkCreator">—</div></div>
+<div class="row"><div class="label">ZOHO.CREATOR.PUBLISH</div><div class="val" id="chkPublish">—</div></div>
+<div class="row"><div class="label">ZOHO.CREATOR.DATA</div><div class="val" id="chkData">—</div></div>
 
-<br>
-<div class="row">
-  <div class="label">App Link Name</div>
-  <input type="text" id="appName" placeholder="e.g. operfi-broker-portal" />
-</div>
-<div class="row">
-  <div class="label">Form Link Name</div>
-  <input type="text" id="formName" placeholder="e.g. Load_Details" />
-</div>
+<hr>
+<p style="margin:4px 0;color:#555;">Find <b>private_link</b>: In Creator → your form → Share → Permalink URL<br>It's the alphanumeric string at the end, e.g. <code>abc123xyz</code></p>
+
+<div class="row"><div class="label">Form Link Name</div><input type="text" id="formName" placeholder="e.g. Load_Details" /></div>
+<div class="row"><div class="label">Private Link Token</div><input type="text" id="privateLink" placeholder="e.g. abc123xyz" /></div>
 
 <br>
-<button onclick="testAddRecord()">Test: Create a test record</button>
-<button onclick="testGetRecords()">Test: Read records</button>
+<button onclick="testPublish()">Test: PUBLISH.addRecords()</button>
+<button onclick="testData()">Test: DATA.addRecords()</button>
 
 <div id="log">Waiting...</div>
 
@@ -48,61 +46,61 @@ function log(msg) {
 }
 
 window.addEventListener('load', function() {
-  // Check what's available without init()
   var hasZoho = typeof ZOHO !== 'undefined';
-  var hasAPI = hasZoho && typeof ZOHO.Creator !== 'undefined' && typeof ZOHO.Creator.API !== 'undefined';
-  var hasAdd = hasAPI && typeof ZOHO.Creator.API.addRecord === 'function';
+  var hasCreator = hasZoho && typeof ZOHO.CREATOR !== 'undefined';
+  var hasPublish = hasCreator && typeof ZOHO.CREATOR.PUBLISH !== 'undefined';
+  var hasData = hasCreator && typeof ZOHO.CREATOR.DATA !== 'undefined';
 
   document.getElementById('chkZoho').textContent = hasZoho ? 'present' : 'MISSING';
-  document.getElementById('chkAPI').textContent = hasAPI ? 'present' : 'MISSING';
-  document.getElementById('chkAdd').textContent = hasAdd ? 'present' : 'MISSING';
+  document.getElementById('chkCreator').textContent = hasCreator ? 'present' : 'MISSING';
+  document.getElementById('chkPublish').textContent = hasPublish ? 'present' : 'MISSING';
+  document.getElementById('chkData').textContent = hasData ? 'present' : 'MISSING';
 
-  if (hasAdd) {
-    document.getElementById('status').textContent = 'SDK API AVAILABLE — ready to test addRecord()';
+  if (hasPublish || hasData) {
+    document.getElementById('status').textContent = 'SDK READY — ' + (hasPublish ? 'PUBLISH available' : '') + (hasData ? ' DATA available' : '');
     document.getElementById('status').className = 'status ok';
-  } else if (hasZoho) {
-    document.getElementById('status').textContent = 'ZOHO object present but Creator.API missing';
+  } else if (hasCreator) {
+    document.getElementById('status').textContent = 'ZOHO.CREATOR present but no PUBLISH or DATA';
     document.getElementById('status').className = 'status fail';
-    // Log what IS available
-    try { log('ZOHO keys: ' + Object.keys(ZOHO).join(', ')); } catch(e) {}
-    try { log('ZOHO.Creator keys: ' + Object.keys(ZOHO.Creator).join(', ')); } catch(e) {}
+    try { log('ZOHO.CREATOR keys: ' + Object.keys(ZOHO.CREATOR).join(', ')); } catch(e) { log('Could not enumerate CREATOR keys: ' + e); }
   } else {
-    document.getElementById('status').textContent = 'ZOHO SDK DID NOT LOAD';
+    document.getElementById('status').textContent = hasZoho ? 'ZOHO present but CREATOR missing' : 'SDK DID NOT LOAD';
     document.getElementById('status').className = 'status fail';
+    try { log('ZOHO keys: ' + Object.keys(ZOHO).join(', ')); } catch(e) {}
   }
 
   document.getElementById('log').textContent = 'SDK check complete.';
 });
 
-function testGetRecords() {
-  var app = document.getElementById('appName').value.trim();
+function testPublish() {
   var form = document.getElementById('formName').value.trim();
-  if (!app || !form) { log('Enter app and form name first'); return; }
+  var pl = document.getElementById('privateLink').value.trim();
+  if (!form || !pl) { log('Enter form link name and private link token first'); return; }
 
-  log('Calling getRecords(' + app + ', ' + form + ')...');
-  ZOHO.Creator.API.getRecords({ appName: app, reportName: form + '_Report' })
-    .then(function(res) { log('getRecords OK: ' + JSON.stringify(res).substring(0, 300)); })
-    .catch(function(err) { log('getRecords FAILED: ' + JSON.stringify(err)); });
+  log('Calling PUBLISH.addRecords...');
+  ZOHO.CREATOR.PUBLISH.addRecords({
+    form_name: form,
+    private_link: pl,
+    payload: { data: { Load_Comments: 'WIDGET TEST - safe to delete' } }
+  }).then(function(res) {
+    log('PUBLISH OK: ' + JSON.stringify(res));
+  }).catch(function(err) {
+    log('PUBLISH FAILED: ' + JSON.stringify(err));
+  });
 }
 
-function testAddRecord() {
-  var app = document.getElementById('appName').value.trim();
+function testData() {
   var form = document.getElementById('formName').value.trim();
-  if (!app || !form) { log('Enter app and form name first'); return; }
+  if (!form) { log('Enter form link name first'); return; }
 
-  log('Calling addRecord(' + app + ', ' + form + ')...');
-  ZOHO.Creator.API.addRecord({
-    appName: app,
-    formName: form,
-    payload: {
-      data: {
-        Load_Comments: 'WIDGET API TEST - safe to delete'
-      }
-    }
+  log('Calling DATA.addRecords...');
+  ZOHO.CREATOR.DATA.addRecords({
+    form_name: form,
+    payload: { data: { Load_Comments: 'WIDGET TEST - safe to delete' } }
   }).then(function(res) {
-    log('addRecord OK: ' + JSON.stringify(res));
+    log('DATA OK: ' + JSON.stringify(res));
   }).catch(function(err) {
-    log('addRecord FAILED: ' + JSON.stringify(err));
+    log('DATA FAILED: ' + JSON.stringify(err));
   });
 }
 </script>

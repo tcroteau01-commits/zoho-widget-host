@@ -2,19 +2,59 @@
 <html>
 <head>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; }
-  .box {
-    background: #e8a020;
-    color: #fff;
-    font-family: sans-serif;
-    font-size: 16px;
-    font-weight: bold;
-    padding: 20px;
-    text-align: center;
-  }
+  html, body { margin: 0; padding: 10px; font-family: sans-serif; font-size: 13px; background: #f9f9f9; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .label { width: 140px; font-weight: bold; color: #333; }
+  .val { flex: 1; padding: 4px 8px; background: #fff; border: 1px solid #ddd; border-radius: 4px; min-height: 20px; }
+  .status { padding: 8px 12px; border-radius: 4px; font-weight: bold; margin-bottom: 10px; }
+  .ok { background: #d4edda; color: #155724; }
+  .fail { background: #f8d7da; color: #721c24; }
+  .pending { background: #fff3cd; color: #856404; }
+  button { background: #e8a020; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
 </style>
 </head>
 <body>
-<div class="box">WIDGET IS ALIVE</div>
+
+<div id="status" class="status pending">Initializing ZOHO SDK...</div>
+
+<div class="row"><div class="label">App Name</div><div class="val" id="appName">—</div></div>
+<div class="row"><div class="label">Form Name</div><div class="val" id="formName">—</div></div>
+<div class="row"><div class="label">Customer Name</div><div class="val" id="fCustomer">—</div></div>
+<div class="row"><div class="label">Customer Rate</div><div class="val" id="fCustRate">—</div></div>
+<div class="row"><div class="label">Carrier Rate</div><div class="val" id="fCarrRate">—</div></div>
+
+<br>
+<button onclick="testSetField()">Test: Set Customer Rate to 999</button>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+var appName, formName;
+
+ZOHO.Creator.init().then(function(data) {
+  appName = data.appName;
+  formName = data.formName;
+
+  document.getElementById('appName').textContent = appName || '(none)';
+  document.getElementById('formName').textContent = formName || '(none)';
+  document.getElementById('status').textContent = 'SDK CONNECTED';
+  document.getElementById('status').className = 'status ok';
+
+  return ZOHO.Creator.getCurrentRecord();
+}).then(function(record) {
+  if (!record) return;
+  document.getElementById('fCustomer').textContent = record['Customer_Name'] || '—';
+  document.getElementById('fCustRate').textContent = record['Customer_Rate'] || '—';
+  document.getElementById('fCarrRate').textContent = record['Carrier_Rate'] || '—';
+}).catch(function(err) {
+  document.getElementById('status').textContent = 'SDK FAILED: ' + JSON.stringify(err);
+  document.getElementById('status').className = 'status fail';
+});
+
+function testSetField() {
+  ZOHO.Creator.setData({ fieldName: 'Customer_Rate', value: '999' })
+    .then(function(res) { alert('Set OK: ' + JSON.stringify(res)); })
+    .catch(function(err) { alert('Set FAILED: ' + JSON.stringify(err)); });
+}
+</script>
 </body>
 </html>

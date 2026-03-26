@@ -3,225 +3,347 @@
 <head>
 <style>
   html, body { margin: 0; padding: 14px; font-family: sans-serif; font-size: 13px; background: #f0efe9; color: #222; }
-  h2 { margin: 0 0 12px; color: #272727; font-size: 15px; }
-  .section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px; margin-bottom: 14px; }
-  .section h3 { margin: 0 0 10px; font-size: 13px; color: #555; text-transform: uppercase; letter-spacing: .5px; }
+  h2 { margin: 0 0 4px; color: #272727; font-size: 15px; }
+  .subtitle { color: #777; font-size: 11px; margin: 0 0 14px; }
+  .section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px; margin-bottom: 12px; }
+  .section h3 { margin: 0 0 8px; font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: .5px; }
+  .note { font-size: 11px; color: #888; margin: 0 0 10px; }
   .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-  label { width: 180px; font-weight: bold; color: #444; flex-shrink: 0; }
-  input[type=text] { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; flex: 1; min-width: 180px; }
-  button { background: #e8a020; color: #fff; border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+  label { width: 170px; font-weight: bold; color: #444; flex-shrink: 0; font-size: 12px; }
+  input[type=text] { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; flex: 1; min-width: 160px; }
+  button { background: #e8a020; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; }
   button:hover { background: #c98a18; }
-  button.secondary { background: #555; }
-  button.secondary:hover { background: #333; }
-  select { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; flex: 1; min-width: 180px; }
-  #log { font-size: 11px; color: #333; background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 4px; white-space: pre-wrap; max-height: 320px; overflow-y: auto; font-family: monospace; }
+  button.sec { background: #555; }
+  button.sec:hover { background: #333; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
   .ok { background: #d4edda; color: #155724; }
   .fail { background: #f8d7da; color: #721c24; }
-  .note { font-size: 11px; color: #777; margin-top: 4px; }
-  hr { border: none; border-top: 1px solid #eee; margin: 10px 0; }
+  .warn { background: #fff3cd; color: #856404; }
+  #log { font-size: 11px; background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 4px; white-space: pre-wrap; max-height: 400px; overflow-y: auto; font-family: monospace; line-height: 1.5; }
+  .result-box { background: #f8f8f2; border: 1px solid #ddd; border-radius: 4px; padding: 8px; font-size: 11px; font-family: monospace; margin-top: 6px; white-space: pre-wrap; max-height: 120px; overflow-y: auto; color: #333; }
+  select { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; min-width: 200px; }
 </style>
 </head>
 <body>
 
-<h2>Zoho Lookup Dropdown Probe</h2>
-<p style="margin:0 0 12px;color:#666;font-size:12px;">
-  Goal: figure out what getRecords() returns for Customer_Submission and Vendors reports so we can wire up lookup dropdowns.
-</p>
+<h2>Lookup Dropdown Probe</h2>
+<p class="subtitle">Replicating FetchRelatedVendors / FetchRelatedAccount inside a widget — step by step</p>
 
-<!-- SDK Status -->
+<!-- SDK -->
 <div class="section">
-  <h3>SDK Status</h3>
+  <h3>SDK</h3>
   <div class="row">
     <label>ZOHO.CREATOR.DATA</label>
-    <span id="sdkStatus" class="badge fail">checking...</span>
+    <span id="sdkBadge" class="badge warn">checking...</span>
   </div>
 </div>
 
-<!-- Step 1: Fetch records from a report -->
+<!-- STEP 1: Current User -->
 <div class="section">
-  <h3>Step 1 — Fetch Records from a Report</h3>
-  <p class="note" style="margin:0 0 10px;">Enter the <b>report link name</b> from Creator → Reports (e.g. <code>All_Customer_Submissions</code>). We'll dump the raw response so we can see field names and structure.</p>
+  <h3>Step 1 — Who is the logged-in user?</h3>
+  <p class="note">Need their email to look up their Contact record. Testing all SDK methods that might expose this.</p>
   <div class="row">
-    <label>Report Link Name</label>
-    <input type="text" id="reportName" placeholder="e.g. All_Customer_Submissions" />
+    <button onclick="probeCurrentUser()">Probe Current User</button>
   </div>
-  <div class="row">
-    <label>Max Records</label>
-    <input type="text" id="maxRecords" value="5" style="max-width:60px;" />
-    <button onclick="fetchRecords()">Fetch Records</button>
-  </div>
+  <div id="userResult" class="result-box" style="display:none;"></div>
 </div>
 
-<!-- Step 2: Test passing a value to addRecords -->
+<!-- STEP 2: Contacts report -->
 <div class="section">
-  <h3>Step 2 — Test Lookup Field Submission</h3>
-  <p class="note" style="margin:0 0 10px;">After fetching records above, paste a value from the response (try record ID or display text) to see which format addRecords() accepts for a lookup field.</p>
+  <h3>Step 2 — Fetch Contacts report (get Account ID)</h3>
+  <p class="note">Once we have an email, we filter the Contacts report by Email == loginuserid to get their Account_Name (Account ID). First, let's see what the Contacts report looks like.</p>
   <div class="row">
-    <label>Form Link Name</label>
-    <input type="text" id="formName" value="Broker_Funding_Portal" />
+    <label>Contacts Report Name</label>
+    <input type="text" id="contactsReport" value="All_Contacts" />
   </div>
   <div class="row">
-    <label>Field Name</label>
-    <input type="text" id="fieldName" placeholder="e.g. Customer_Name" />
+    <label>Filter by Email</label>
+    <input type="text" id="filterEmail" placeholder="paste your portal login email" />
   </div>
   <div class="row">
-    <label>Value to Submit</label>
-    <input type="text" id="fieldValue" placeholder="paste ID or display text" />
+    <button onclick="fetchContacts()">Fetch (no filter, first 3)</button>
+    <button onclick="fetchContactsFiltered()">Fetch filtered by email</button>
   </div>
-  <div class="row">
-    <button onclick="testSubmit()">Test Submit (adds a test record)</button>
-    <span style="font-size:11px;color:#999;margin-left:8px;">Will create a real record — delete it after</span>
-  </div>
+  <div id="contactsResult" class="result-box" style="display:none;"></div>
 </div>
 
-<!-- Step 3: Live dropdown preview -->
+<!-- STEP 3: Customer_Submission records -->
 <div class="section">
-  <h3>Step 3 — Live Dropdown Preview</h3>
-  <p class="note" style="margin:0 0 10px;">After Step 1 works, enter the field names from the response to build a working dropdown preview.</p>
+  <h3>Step 3 — Customer_Submission records</h3>
+  <p class="note">Fetch from All_Customer_Submissions. First unfiltered to see field names, then filtered by Account ID once we have it.</p>
   <div class="row">
-    <label>Display Field Name</label>
-    <input type="text" id="displayField" placeholder="e.g. Customer_Name or Name" />
+    <label>Account ID (from Step 2)</label>
+    <input type="text" id="customerAccountId" placeholder="paste Account ID from Contacts result" />
   </div>
   <div class="row">
-    <label>Value Field (ID?)</label>
-    <input type="text" id="valueField" placeholder="e.g. ID or id or record_id" />
+    <button onclick="fetchCustomers(false)">Fetch unfiltered (first 5)</button>
+    <button onclick="fetchCustomers(true)">Fetch filtered by Account ID</button>
   </div>
-  <div class="row">
-    <button class="secondary" onclick="buildDropdown()">Build Preview Dropdown</button>
-  </div>
+  <div id="customersResult" class="result-box" style="display:none;"></div>
   <div class="row" style="margin-top:8px;">
-    <label>Result</label>
-    <select id="previewDropdown"><option>— fetch records first —</option></select>
+    <label>Preview Dropdown</label>
+    <select id="customerDropdown"><option>— fetch first —</option></select>
   </div>
-  <div id="selectedValue" class="note" style="margin-top:6px;"></div>
+  <div id="customerSelected" class="note" style="margin-top:4px;"></div>
+</div>
+
+<!-- STEP 4: Vendors -->
+<div class="section">
+  <h3>Step 4 — Vendor records</h3>
+  <p class="note">Fetch from All_Vendors, filtered by Accounts.contains(AccountID). Testing criteria syntax options.</p>
+  <div class="row">
+    <label>Account ID (from Step 2)</label>
+    <input type="text" id="vendorAccountId" placeholder="paste Account ID from Contacts result" />
+  </div>
+  <div class="row">
+    <button onclick="fetchVendors(false)">Fetch unfiltered (first 5)</button>
+    <button onclick="fetchVendors(true)">Fetch filtered by Account ID</button>
+  </div>
+  <div id="vendorsResult" class="result-box" style="display:none;"></div>
+  <div class="row" style="margin-top:8px;">
+    <label>Preview Dropdown</label>
+    <select id="vendorDropdown"><option>— fetch first —</option></select>
+  </div>
+  <div id="vendorSelected" class="note" style="margin-top:4px;"></div>
+</div>
+
+<!-- STEP 5: Test submission with lookup value -->
+<div class="section">
+  <h3>Step 5 — Test lookup value in addRecords()</h3>
+  <p class="note">Once dropdowns work, test whether addRecords() accepts the ID or display text for lookup fields.</p>
+  <div class="row">
+    <label>Customer_Name value</label>
+    <input type="text" id="testCustomerVal" placeholder="paste value from customer dropdown" />
+  </div>
+  <div class="row">
+    <label>Carrier_Name_or_MC value</label>
+    <input type="text" id="testVendorVal" placeholder="paste value from vendor dropdown" />
+  </div>
+  <div class="row">
+    <button onclick="testSubmit()">Test addRecords() (creates real record — delete after)</button>
+  </div>
 </div>
 
 <!-- Log -->
-<div class="section" style="padding-bottom:10px;">
-  <h3>Log</h3>
-  <button class="secondary" onclick="clearLog()" style="font-size:11px;padding:3px 8px;margin-bottom:6px;">Clear</button>
+<div class="section">
+  <div class="row" style="margin:0 0 6px;">
+    <h3 style="margin:0;flex:1;">Log</h3>
+    <button class="sec" onclick="clearLog()" style="font-size:11px;padding:2px 8px;">Clear</button>
+  </div>
   <div id="log">Waiting...</div>
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
 
-var lastRecords = [];
-
-function log(msg, isJson) {
+function log(msg, obj) {
   var el = document.getElementById('log');
   if (el.textContent === 'Waiting...') el.textContent = '';
-  var line = isJson ? JSON.stringify(msg, null, 2) : msg;
-  el.textContent += '\n' + line;
+  el.textContent += '\n' + msg + (obj !== undefined ? '\n' + JSON.stringify(obj, null, 2) : '');
   el.scrollTop = el.scrollHeight;
 }
-
-function clearLog() {
-  document.getElementById('log').textContent = '';
+function clearLog() { document.getElementById('log').textContent = ''; }
+function showResult(id, content) {
+  var el = document.getElementById(id);
+  el.style.display = 'block';
+  el.textContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
 }
 
 window.addEventListener('load', function() {
   var ok = typeof ZOHO !== 'undefined' && typeof ZOHO.CREATOR !== 'undefined' && typeof ZOHO.CREATOR.DATA !== 'undefined';
-  var badge = document.getElementById('sdkStatus');
-  badge.textContent = ok ? 'READY' : 'MISSING';
-  badge.className = 'badge ' + (ok ? 'ok' : 'fail');
-  log('SDK check: ZOHO.CREATOR.DATA = ' + (ok ? 'PRESENT' : 'MISSING'));
+  var b = document.getElementById('sdkBadge');
+  b.textContent = ok ? 'READY' : 'MISSING';
+  b.className = 'badge ' + (ok ? 'ok' : 'fail');
+  log('SDK: ZOHO.CREATOR.DATA = ' + (ok ? 'PRESENT' : 'MISSING'));
 });
 
-function fetchRecords() {
-  var report = document.getElementById('reportName').value.trim();
-  var max = parseInt(document.getElementById('maxRecords').value) || 5;
-  if (!report) { log('ERROR: Enter a report link name first'); return; }
+// STEP 1
+function probeCurrentUser() {
+  log('\n=== STEP 1: Probing current user ===');
+  var found = {};
 
-  log('\n--- Fetching from report: ' + report + ' (max ' + max + ') ---');
+  // Try various SDK paths
+  try { found['ZOHO.CREATOR.DATA.getUser'] = typeof ZOHO.CREATOR.DATA.getUser; } catch(e) {}
+  try { found['ZOHO.CREATOR.UTIL'] = typeof ZOHO.CREATOR.UTIL; } catch(e) {}
+  try { found['ZOHO.CREATOR.UTIL.getUser'] = typeof ZOHO.CREATOR.UTIL.getUser; } catch(e) {}
+  try { found['ZOHO.currentUser'] = typeof ZOHO.currentUser; } catch(e) {}
 
-  ZOHO.CREATOR.DATA.getRecords({
-    report_name: report,
-    page: 1,
-    pageSize: max
-  }).then(function(res) {
-    log('RAW RESPONSE:');
-    log(res, true);
+  log('SDK method availability:', found);
+  showResult('userResult', found);
 
-    // Try to extract records array
-    var records = null;
-    if (res && res.data) records = res.data;
-    else if (Array.isArray(res)) records = res;
+  // Try getUser if it exists
+  if (typeof ZOHO.CREATOR.DATA.getUser === 'function') {
+    log('Calling ZOHO.CREATOR.DATA.getUser()...');
+    ZOHO.CREATOR.DATA.getUser().then(function(r) {
+      log('getUser() result:', r);
+      showResult('userResult', r);
+    }).catch(function(e) { log('getUser() error:', e); });
+  }
 
-    if (records && records.length > 0) {
-      lastRecords = records;
-      log('\n--- Field names in first record ---');
-      log(Object.keys(records[0]).join(', '));
-      log('\n--- First record values ---');
-      log(records[0], true);
-      log('\n--- All ' + records.length + ' records (display) ---');
-      records.forEach(function(r, i) {
-        log('  [' + i + '] ' + JSON.stringify(r));
-      });
-    } else {
-      log('No records array found or empty result.');
+  // Try UTIL
+  if (typeof ZOHO.CREATOR.UTIL !== 'undefined') {
+    log('ZOHO.CREATOR.UTIL keys: ' + Object.keys(ZOHO.CREATOR.UTIL).join(', '));
+    if (typeof ZOHO.CREATOR.UTIL.getUser === 'function') {
+      ZOHO.CREATOR.UTIL.getUser().then(function(r) {
+        log('UTIL.getUser() result:', r);
+        showResult('userResult', r);
+      }).catch(function(e) { log('UTIL.getUser() error:', e); });
     }
+  }
 
-  }).catch(function(err) {
-    log('ERROR: ' + JSON.stringify(err, null, 2));
-  });
+  // Enumerate all ZOHO.CREATOR keys
+  try {
+    log('All ZOHO.CREATOR keys: ' + Object.keys(ZOHO.CREATOR).join(', '));
+  } catch(e) {}
 }
 
-function testSubmit() {
-  var form = document.getElementById('formName').value.trim();
-  var field = document.getElementById('fieldName').value.trim();
-  var value = document.getElementById('fieldValue').value.trim();
-  if (!form || !field || !value) { log('ERROR: Fill in form name, field name, and value'); return; }
-
-  var data = { Load_Comments: 'LOOKUP TEST - safe to delete' };
-  data[field] = value;
-
-  log('\n--- Testing addRecords with ' + field + ' = "' + value + '" ---');
-
-  ZOHO.CREATOR.DATA.addRecords({
-    form_name: form,
-    payload: { data: data }
-  }).then(function(res) {
-    log('SUBMIT RESPONSE:');
-    log(res, true);
-    if (res && res.code === 3000) {
-      log('SUCCESS — record created. Check Creator to see how the lookup field saved.');
-    } else if (res && res.code === 3002) {
-      log('Code 3002 = validation error (required fields missing or bad lookup value)');
-      log('Details: ' + JSON.stringify(res.data));
+// STEP 2
+function fetchContacts(criteria) {
+  var report = document.getElementById('contactsReport').value.trim();
+  var params = { report_name: report, page: 1, pageSize: 3 };
+  if (criteria) params.criteria = criteria;
+  log('\n=== STEP 2: getRecords ' + report + (criteria ? ' [' + criteria + ']' : ' [no filter]') + ' ===');
+  ZOHO.CREATOR.DATA.getRecords(params).then(function(res) {
+    log('Response:', res);
+    var records = res && res.data ? res.data : (Array.isArray(res) ? res : null);
+    if (records && records.length) {
+      log('Field names: ' + Object.keys(records[0]).join(', '));
+      showResult('contactsResult', records);
     } else {
-      log('Code ' + (res && res.code) + ' — see full response above');
+      showResult('contactsResult', res);
     }
-  }).catch(function(err) {
-    log('SUBMIT ERROR: ' + JSON.stringify(err, null, 2));
-  });
+  }).catch(function(e) { log('ERROR:', e); showResult('contactsResult', e); });
 }
 
-function buildDropdown() {
-  var displayField = document.getElementById('displayField').value.trim();
-  var valueField = document.getElementById('valueField').value.trim();
-  var sel = document.getElementById('previewDropdown');
+function fetchContactsFiltered() {
+  var email = document.getElementById('filterEmail').value.trim();
+  if (!email) { log('Enter your email first'); return; }
+  fetchContacts('(Email == "' + email + '")');
+}
 
-  if (!lastRecords.length) { log('ERROR: Fetch records first (Step 1)'); return; }
-  if (!displayField) { log('ERROR: Enter a display field name'); return; }
+// STEP 3
+function fetchCustomers(filtered) {
+  var accountId = document.getElementById('customerAccountId').value.trim();
+  var params = { report_name: 'All_Customer_Submissions', page: 1, pageSize: 50 };
+  if (filtered) {
+    if (!accountId) { log('Paste Account ID first'); return; }
+    // Try different criteria syntax options — Zoho Creator DATA API v2
+    params.criteria = '(Accounts == "' + accountId + '")';
+    log('\n=== STEP 3: Customers filtered by Account ID: ' + accountId + ' ===');
+    log('Criteria: ' + params.criteria);
+  } else {
+    params.pageSize = 5;
+    log('\n=== STEP 3: Customers unfiltered (first 5) ===');
+  }
 
+  ZOHO.CREATOR.DATA.getRecords(params).then(function(res) {
+    log('Response:', res);
+    var records = res && res.data ? res.data : (Array.isArray(res) ? res : null);
+    if (records && records.length) {
+      log('Field names: ' + Object.keys(records[0]).join(', '));
+      showResult('customersResult', records);
+      buildDropdown('customerDropdown', 'customerSelected', records);
+    } else {
+      showResult('customersResult', res);
+      log('No records or unexpected format');
+    }
+  }).catch(function(e) { log('ERROR:', e); showResult('customersResult', e); });
+}
+
+// STEP 4
+function fetchVendors(filtered) {
+  var accountId = document.getElementById('vendorAccountId').value.trim();
+  var params = { report_name: 'All_Vendors', page: 1, pageSize: 50 };
+  if (filtered) {
+    if (!accountId) { log('Paste Account ID first'); return; }
+    // FetchRelatedVendors uses Accounts.contains() — try both syntax options
+    params.criteria = '(Accounts == "' + accountId + '")';
+    log('\n=== STEP 4: Vendors filtered, criteria: ' + params.criteria + ' ===');
+    log('NOTE: If this returns 0, will also try "contains" syntax...');
+  } else {
+    params.pageSize = 5;
+    log('\n=== STEP 4: Vendors unfiltered (first 5) ===');
+  }
+
+  ZOHO.CREATOR.DATA.getRecords(params).then(function(res) {
+    log('Response:', res);
+    var records = res && res.data ? res.data : (Array.isArray(res) ? res : null);
+    if (records && records.length) {
+      log('Field names: ' + Object.keys(records[0]).join(', '));
+      showResult('vendorsResult', records);
+      buildDropdown('vendorDropdown', 'vendorSelected', records);
+    } else {
+      showResult('vendorsResult', res);
+      // If filtered and no results, try alternate criteria syntax
+      if (filtered) {
+        var accountId2 = document.getElementById('vendorAccountId').value.trim();
+        var alt = '(Accounts contains "' + accountId2 + '")';
+        log('\nRetrying with alternate criteria: ' + alt);
+        ZOHO.CREATOR.DATA.getRecords({ report_name: 'All_Vendors', page: 1, pageSize: 50, criteria: alt })
+          .then(function(res2) {
+            log('Alternate criteria response:', res2);
+            var records2 = res2 && res2.data ? res2.data : (Array.isArray(res2) ? res2 : null);
+            if (records2 && records2.length) {
+              log('Alternate criteria WORKED');
+              showResult('vendorsResult', records2);
+              buildDropdown('vendorDropdown', 'vendorSelected', records2);
+            }
+          }).catch(function(e2) { log('Alternate also failed:', e2); });
+      }
+    }
+  }).catch(function(e) { log('ERROR:', e); showResult('vendorsResult', e); });
+}
+
+// Build dropdown from records — tries common field name patterns
+function buildDropdown(selectId, labelId, records) {
+  var sel = document.getElementById(selectId);
   sel.innerHTML = '<option value="">— select —</option>';
-  lastRecords.forEach(function(r) {
+
+  // Guess display field: Name, Company_Name, Vendor_Name, Customer_Name, etc.
+  var nameFields = ['Name', 'Company_Name', 'Vendor_Name', 'Customer_Name', 'Display_Name', 'name'];
+  var displayField = null;
+  for (var i = 0; i < nameFields.length; i++) {
+    if (records[0].hasOwnProperty(nameFields[i])) { displayField = nameFields[i]; break; }
+  }
+  if (!displayField) displayField = Object.keys(records[0])[0]; // fallback: first field
+
+  log('Using "' + displayField + '" as dropdown display field. All fields: ' + Object.keys(records[0]).join(', '));
+
+  records.forEach(function(r) {
     var opt = document.createElement('option');
-    var display = r[displayField] || r[displayField.toLowerCase()] || JSON.stringify(r);
-    var val = valueField ? (r[valueField] || r[valueField.toLowerCase()] || '') : display;
-    opt.textContent = display;
-    opt.value = val;
+    opt.textContent = r[displayField] || '(blank)';
+    opt.value = r['ID'] || r['id'] || r[displayField]; // prefer ID, fallback to display
+    opt.dataset.display = r[displayField];
+    opt.dataset.id = r['ID'] || r['id'] || '';
     sel.appendChild(opt);
   });
 
   sel.onchange = function() {
-    document.getElementById('selectedValue').textContent =
-      'Selected value (will be submitted): "' + sel.value + '"  |  Display: "' + sel.options[sel.selectedIndex].text + '"';
+    var o = sel.options[sel.selectedIndex];
+    document.getElementById(labelId).textContent =
+      'Display: "' + o.dataset.display + '"  |  ID: "' + o.dataset.id + '"  |  value attr: "' + o.value + '"';
   };
+}
 
-  log('\nDropdown built with ' + lastRecords.length + ' options. Display field: "' + displayField + '", value field: "' + (valueField || 'same as display') + '"');
+// STEP 5
+function testSubmit() {
+  var cVal = document.getElementById('testCustomerVal').value.trim();
+  var vVal = document.getElementById('testVendorVal').value.trim();
+  var data = { Load_Comments: 'LOOKUP TEST - safe to delete' };
+  if (cVal) data['Customer_Name'] = cVal;
+  if (vVal) data['Carrier_Name_or_MC'] = vVal;
+  if (!cVal && !vVal) { log('Enter at least one lookup value to test'); return; }
+
+  log('\n=== STEP 5: testSubmit with data:', data);
+  ZOHO.CREATOR.DATA.addRecords({
+    form_name: 'Broker_Funding_Portal',
+    payload: { data: data }
+  }).then(function(res) {
+    log('Submit response:', res);
+    if (res && res.code === 3000) log('SUCCESS — record created. Check Creator for how the lookup fields saved.');
+    else if (res && res.code === 3002) log('Code 3002 = validation/lookup error. Details:', res.data);
+    else log('Code: ' + (res && res.code));
+  }).catch(function(e) { log('Submit error:', e); });
 }
 
 </script>

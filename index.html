@@ -77,9 +77,8 @@
   <h3>Step 3 — Fetch All_Vendors directly</h3>
   <div class="callout">Same idea — see if All_Vendors returns only the portal user's vendors without any filtering needed.</div>
   <div class="row">
-    <input type="text" id="vendorReportName" placeholder="client vendor report link name" style="max-width:260px;" />
-    <button onclick="fetchDirect(document.getElementById('vendorReportName').value.trim(), 'vendorResult', 'vendorDropdown', 'vendorSelected')">
-      Fetch client vendor report
+    <button onclick="fetchDirect('Check_All_Vendors', 'vendorResult', 'vendorDropdown', 'vendorSelected')">
+      Fetch Check_All_Vendors (client report)
     </button>
     <button onclick="fetchDirect('All_Vendors', 'vendorResult', 'vendorDropdown', 'vendorSelected')">
       Fetch All_Vendors (admin)

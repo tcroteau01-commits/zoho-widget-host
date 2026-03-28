@@ -151,25 +151,29 @@ window.addEventListener('load', function() {
 });
 
 function probeUtil() {
-  log('\n=== UTIL Probe ===');
+  log('\n=== UTIL Probe — calling ALL methods ===');
   try {
     var util = ZOHO.CREATOR.UTIL;
     var keys = Object.keys(util);
     log('UTIL keys: ' + keys.join(', '));
-    show('utilResult', { keys: keys });
+    show('utilResult', 'Calling all methods — check log...');
 
-    // Try calling anything that sounds user-related
+    // Call every method and log results
     keys.forEach(function(k) {
-      if (/user|current|login|account|profile|email/i.test(k)) {
-        log('Trying UTIL.' + k + '...');
-        try {
-          var r = util[k];
-          if (typeof r === 'function') {
-            util[k]().then(function(res) { log('UTIL.' + k + '() =>', res); }).catch(function(e) { log('UTIL.' + k + '() error:', e); });
-          } else {
-            log('UTIL.' + k + ' = ' + JSON.stringify(r));
-          }
-        } catch(e) { log('UTIL.' + k + ' threw: ' + e); }
+      log('\n--- UTIL.' + k + '() ---');
+      try {
+        var result = util[k]();
+        if (result && typeof result.then === 'function') {
+          result.then(function(res) {
+            log('UTIL.' + k + '() resolved:', res);
+          }).catch(function(e) {
+            log('UTIL.' + k + '() rejected:', e);
+          });
+        } else {
+          log('UTIL.' + k + '() sync result: ' + JSON.stringify(result));
+        }
+      } catch(e) {
+        log('UTIL.' + k + '() threw: ' + e);
       }
     });
   } catch(e) {

@@ -1067,12 +1067,15 @@ function submitForm() {
     form_name: 'Broker_Funding_Portal',
     payload: { data: data }
   }).then(function(res) {
+    console.log('addRecords response:', JSON.stringify(res));
     if (res && res.code === 3000) {
       showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
       btn.textContent = '✓ Submitted';
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      showStatus('Submission error (code ' + (res && res.code) + '). Please try again or contact support.', 'error');
+      var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
+      showStatus('Submission failed' + detail + '. Please try again or contact support.', 'error');
+      console.error('addRecords failed:', JSON.stringify(res));
       btn.disabled = false;
       btn.textContent = 'Submit Load for Funding';
     }

@@ -256,6 +256,19 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .file-area:hover { border-color: #e8a020; color: #e8a020; }
 .file-area input[type=file] { display: none; }
+.file-area.invalid { border-color: #e53935; color: #e53935; }
+
+/* Upload description box */
+.upload-desc {
+  background: #f8f8f8;
+  border-radius: 5px;
+  padding: 9px 12px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #666;
+  line-height: 1.6;
+}
+.upload-desc strong { color: #333; display: block; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
 
 /* Section actions */
 .sec-actions {
@@ -368,13 +381,17 @@ textarea { resize: vertical; min-height: 90px; }
       </div>
 
       <div class="field">
-        <label>Customer Documents</label>
-        <div class="file-area" onclick="document.getElementById('cust_docs').click()">
+        <label>Customer Documents <span class="req">*</span></label>
+        <div class="upload-desc">
+          <strong>What to upload</strong>
+          Rate Confirmation (RC) signed by the customer · Bill of Lading (BOL) · Any other customer-side paperwork related to this load
+        </div>
+        <div class="file-area" id="cust_docs_area" onclick="document.getElementById('cust_docs').click()">
           <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
                  onchange="updateFileLabel('cust_docs','cust_docs_label')" />
-          <span id="cust_docs_label">📎 Attach BOL, rate confirmation, etc.</span>
+          <span id="cust_docs_label">📎 Click to attach documents</span>
         </div>
-        <div class="field-hint">Optional</div>
+        <div class="field-err" id="e_cust_docs">Please attach at least one customer document</div>
       </div>
 
       <div class="sec-actions">
@@ -432,13 +449,17 @@ textarea { resize: vertical; min-height: 90px; }
       </div>
 
       <div class="field">
-        <label>Carrier Documents</label>
-        <div class="file-area" onclick="document.getElementById('carrier_docs').click()">
+        <label>Carrier Documents <span class="req">*</span></label>
+        <div class="upload-desc">
+          <strong>What to upload</strong>
+          Carrier Invoice · Proof of Delivery (POD) · Factoring company invoice (if applicable) · Signed Rate Confirmation from the carrier
+        </div>
+        <div class="file-area" id="carrier_docs_area" onclick="document.getElementById('carrier_docs').click()">
           <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
                  onchange="updateFileLabel('carrier_docs','carrier_docs_label')" />
-          <span id="carrier_docs_label">📎 Attach carrier invoice, POD, etc.</span>
+          <span id="carrier_docs_label">📎 Click to attach documents</span>
         </div>
-        <div class="field-hint">Optional</div>
+        <div class="field-err" id="e_carrier_docs">Please attach at least one carrier document</div>
       </div>
 
       <div class="sec-actions">
@@ -504,13 +525,17 @@ function loadCustomers() {
     page: 1, pageSize: 200
   }).then(function(res) {
     customerRecords = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    customerRecords.sort(function(a, b) {
+      return (a.Customer_Company_Name || '').localeCompare(b.Customer_Company_Name || '');
+    });
     var sel = document.getElementById('Customer_Name');
     sel.innerHTML = '<option value="">— Select Customer —</option>';
     customerRecords.forEach(function(r) {
       var o = document.createElement('option');
       o.value = r.ID;
       o.textContent = r.Customer_Company_Name || '(unnamed)';
-      o.dataset.credit = r.Customer_Credit_Note || '';
+      o.dataset.limit    = r.Credit_Limit    || '';
+      o.dataset.decision = r.Credit_Decision || '';
       sel.appendChild(o);
     });
   }).catch(function() {
@@ -525,6 +550,9 @@ function loadVendors() {
     page: 1, pageSize: 200
   }).then(function(res) {
     vendorRecords = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    vendorRecords.sort(function(a, b) {
+      return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
+    });
     var sel = document.getElementById('Carrier_Name_or_MC');
     sel.innerHTML = '<option value="">— Select Carrier —</option>';
     vendorRecords.forEach(function(r) {
@@ -544,10 +572,15 @@ function loadVendors() {
 function onCustomerChange() {
   var sel = document.getElementById('Customer_Name');
   var opt = sel.options[sel.selectedIndex];
-  var credit = opt && opt.dataset.credit;
   var banner = document.getElementById('creditBanner');
-  if (credit) {
-    document.getElementById('creditValue').textContent = credit;
+  var limit    = opt && opt.dataset.limit;
+  var decision = opt && opt.dataset.decision;
+  if (opt && opt.value && (limit || decision)) {
+    var limitStr = limit ? '$' + parseFloat(limit).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A';
+    var parts = [];
+    if (decision) parts.push(decision);
+    if (limit)    parts.push('Credit Limit: ' + limitStr);
+    document.getElementById('creditValue').textContent = parts.join('  ·  ');
     banner.style.display = 'block';
   } else {
     banner.style.display = 'none';
@@ -615,6 +648,7 @@ function closeAll() {
 function nextSection(from) {
   var required = sectionRequired(from);
   if (!validate(required)) return;
+  if (!validateFiles(from)) return;
 
   done[from - 1] = true;
   markDone(from);
@@ -704,6 +738,29 @@ function validate(fields) {
       ok = false;
     } else {
       el.classList.remove('invalid');
+      if (err) err.classList.remove('show');
+    }
+  });
+  return ok;
+}
+
+function validateFiles(section) {
+  var ok = true;
+  var checks = section === 1
+    ? [{ input: 'cust_docs',    area: 'cust_docs_area',    err: 'e_cust_docs' }]
+    : section === 2
+    ? [{ input: 'carrier_docs', area: 'carrier_docs_area', err: 'e_carrier_docs' }]
+    : [];
+  checks.forEach(function(c) {
+    var files = document.getElementById(c.input).files;
+    var area  = document.getElementById(c.area);
+    var err   = document.getElementById(c.err);
+    if (!files || files.length === 0) {
+      area.classList.add('invalid');
+      if (err) err.classList.add('show');
+      ok = false;
+    } else {
+      area.classList.remove('invalid');
       if (err) err.classList.remove('show');
     }
   });

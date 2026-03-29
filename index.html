@@ -487,7 +487,7 @@ textarea { resize: vertical; min-height: 90px; }
              ondragleave="handleDragLeave(event,'cust_docs_area')"
              ondrop="handleDrop(event,'cust_docs','cust_docs_label','cust_docs_area')">
           <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                 onchange="updateFileLabel('cust_docs','cust_docs_label')" />
+                 onchange="onFileChange('cust_docs','cust_docs_label')" />
           <span id="cust_docs_label">📎 Click or drag files here</span>
         </div>
         <div class="field-err" id="e_cust_docs">Please attach at least one customer document</div>
@@ -566,7 +566,7 @@ textarea { resize: vertical; min-height: 90px; }
              ondragleave="handleDragLeave(event,'carrier_docs_area')"
              ondrop="handleDrop(event,'carrier_docs','carrier_docs_label','carrier_docs_area')">
           <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                 onchange="updateFileLabel('carrier_docs','carrier_docs_label')" />
+                 onchange="onFileChange('carrier_docs','carrier_docs_label')" />
           <span id="carrier_docs_label">📎 Click or drag files here</span>
         </div>
         <div class="field-err" id="e_carrier_docs">Please attach at least one carrier document</div>
@@ -846,13 +846,36 @@ function updateMargin() {
   }
 }
 
+var fileStore = {};
+
+function mergeFiles(inputId, newFiles) {
+  if (!fileStore[inputId]) fileStore[inputId] = [];
+  Array.from(newFiles).forEach(function(f) {
+    if (!/\.(pdf|jpg|jpeg|png|doc|docx)$/i.test(f.name)) return;
+    var exists = fileStore[inputId].some(function(e) { return e.name === f.name && e.size === f.size; });
+    if (!exists) fileStore[inputId].push(f);
+  });
+  var dt = new DataTransfer();
+  fileStore[inputId].forEach(function(f) { dt.items.add(f); });
+  document.getElementById(inputId).files = dt.files;
+}
+
 function updateFileLabel(inputId, labelId) {
-  var files = document.getElementById(inputId).files;
+  var files = fileStore[inputId] || [];
   var lbl = document.getElementById(labelId);
-  if (!files.length) return;
-  lbl.textContent = files.length === 1
-    ? '📄 ' + files[0].name
-    : '📄 ' + files.length + ' files selected';
+  if (!files.length) { lbl.textContent = '📎 Click or drag files here'; return; }
+  if (files.length === 1) {
+    lbl.innerHTML = '📄 ' + files[0].name;
+  } else {
+    lbl.innerHTML = '📄 <strong>' + files.length + ' files:</strong> ' +
+      files.map(function(f) { return f.name; }).join(', ');
+  }
+}
+
+function onFileChange(inputId, labelId) {
+  var input = document.getElementById(inputId);
+  mergeFiles(inputId, input.files);
+  updateFileLabel(inputId, labelId);
 }
 
 function handleDragOver(e, areaId) {
@@ -870,14 +893,8 @@ function handleDrop(e, inputId, labelId, areaId) {
   e.preventDefault();
   e.stopPropagation();
   document.getElementById(areaId).classList.remove('drag-over');
-  var files = e.dataTransfer.files;
-  if (!files.length) return;
-  var dt = new DataTransfer();
-  Array.from(files).forEach(function(f) {
-    if (/\.(pdf|jpg|jpeg|png|doc|docx)$/i.test(f.name)) dt.items.add(f);
-  });
-  if (!dt.files.length) return;
-  document.getElementById(inputId).files = dt.files;
+  if (!e.dataTransfer.files.length) return;
+  mergeFiles(inputId, e.dataTransfer.files);
   updateFileLabel(inputId, labelId);
 }
 

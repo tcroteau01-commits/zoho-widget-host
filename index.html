@@ -1,290 +1,718 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  html, body { margin: 0; padding: 14px; font-family: sans-serif; font-size: 13px; background: #f0efe9; color: #222; }
-  h2 { margin: 0 0 4px; color: #272727; font-size: 15px; }
-  .subtitle { color: #777; font-size: 11px; margin: 0 0 14px; }
-  .section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px; margin-bottom: 12px; }
-  .section h3 { margin: 0 0 8px; font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: .5px; }
-  .note { font-size: 11px; color: #888; margin: 0 0 10px; line-height: 1.5; }
-  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-  label { width: 170px; font-weight: bold; color: #444; flex-shrink: 0; font-size: 12px; }
-  input[type=text] { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; flex: 1; min-width: 160px; }
-  button { background: #e8a020; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; margin: 2px; }
-  button:hover { background: #c98a18; }
-  button.sec { background: #555; }
-  button.sec:hover { background: #333; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
-  .ok { background: #d4edda; color: #155724; }
-  .fail { background: #f8d7da; color: #721c24; }
-  .warn { background: #fff3cd; color: #856404; }
-  #log { font-size: 11px; background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 4px; white-space: pre-wrap; max-height: 400px; overflow-y: auto; font-family: monospace; line-height: 1.5; }
-  .result-box { background: #f8f8f2; border: 1px solid #ddd; border-radius: 4px; padding: 8px; font-size: 11px; font-family: monospace; margin-top: 6px; white-space: pre-wrap; max-height: 150px; overflow-y: auto; color: #333; }
-  select { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; min-width: 220px; }
-  .callout { background: #fff8e1; border-left: 3px solid #e8a020; padding: 8px 10px; font-size: 11px; color: #555; margin-bottom: 10px; border-radius: 0 4px 4px 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #f0efe9;
+  color: #333;
+  min-height: 100vh;
+}
+.widget { max-width: 680px; margin: 0 auto; padding: 16px; }
+
+/* Header */
+.widget-header { margin-bottom: 18px; }
+.widget-title { font-size: 20px; font-weight: 700; color: #272727; }
+.widget-sub { font-size: 12px; color: #999; margin-top: 3px; }
+
+/* Progress bar */
+.progress-bar {
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #ddd;
+  margin-bottom: 16px;
+}
+.prog-step {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  background: #fff;
+  color: #bbb;
+  border-right: 1px solid #ddd;
+  transition: all 0.2s;
+}
+.prog-step:last-child { border-right: none; }
+.prog-step.active { background: #e8a020; color: #fff; }
+.prog-step.done { background: #272727; color: #fff; }
+
+/* Status message */
+.status-msg {
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  display: none;
+}
+.status-msg.show { display: block; }
+.status-msg.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.status-msg.error   { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+.status-msg.loading { background: #fff8e1; color: #856404; border: 1px solid #ffe082; }
+
+/* Accordion */
+.section {
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.section.locked { opacity: 0.45; pointer-events: none; }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  background: #3a3a3a;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.section-header:hover { background: #2a2a2a; }
+
+.sec-num {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: #e8a020;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.section.completed .sec-num { background: #4caf50; }
+
+.sec-title { flex: 1; font-weight: 600; font-size: 14px; }
+.sec-summary {
+  font-size: 11px;
+  color: rgba(255,255,255,0.65);
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sec-chevron {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.section.open .sec-chevron { transform: rotate(180deg); }
+
+.section-body {
+  display: none;
+  padding: 20px 16px 16px;
+  border-top: 2px solid #e8a020;
+}
+.section.open .section-body { display: block; }
+
+/* Fields */
+.field { margin-bottom: 15px; }
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 15px;
+}
+@media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
+
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 5px;
+}
+label .req { color: #e8a020; margin-left: 1px; }
+
+input[type=text], input[type=number], select, textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1.5px solid #ddd;
+  border-radius: 5px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #333;
+  background: #fff;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #e8a020;
+  box-shadow: 0 0 0 3px rgba(232,160,32,0.12);
+}
+input.invalid, select.invalid { border-color: #e53935; }
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23888' d='M5 7L0 2h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  padding-right: 30px;
+  cursor: pointer;
+}
+textarea { resize: vertical; min-height: 90px; }
+
+.field-hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+.field-err { font-size: 11px; color: #e53935; margin-top: 4px; display: none; }
+.field-err.show { display: block; }
+
+/* USD prefix */
+.usd-wrap { position: relative; }
+.usd-wrap::before {
+  content: '$';
+  position: absolute; left: 11px; top: 50%;
+  transform: translateY(-50%);
+  color: #aaa; font-size: 13px; pointer-events: none;
+}
+.usd-wrap input { padding-left: 22px; }
+
+/* Credit note */
+.credit-banner {
+  display: none;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-left: 3px solid #e8a020;
+  border-radius: 5px;
+  padding: 9px 12px;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+.credit-banner .cb-label { color: #aaa; margin-bottom: 2px; font-size: 11px; }
+.credit-banner .cb-value { color: #272727; font-weight: 700; }
+
+/* Margin badge */
+.margin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 6px;
+  visibility: hidden;
+}
+.margin-badge.good { background: #e8f5e9; color: #2e7d32; visibility: visible; }
+.margin-badge.bad  { background: #fff3e0; color: #e65100; visibility: visible; }
+
+/* File upload */
+.file-area {
+  border: 2px dashed #e0e0e0;
+  border-radius: 6px;
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: #bbb;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.file-area:hover { border-color: #e8a020; color: #e8a020; }
+.file-area input[type=file] { display: none; }
+
+/* Section actions */
+.sec-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #f0efe9;
+}
+
+/* Buttons */
+.btn {
+  padding: 9px 20px;
+  border-radius: 5px;
+  border: none;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.btn-primary { background: #e8a020; color: #fff; }
+.btn-primary:hover { background: #c98a18; }
+.btn-primary:disabled { background: #ccc; cursor: default; }
+.btn-ghost { background: transparent; color: #888; border: 1.5px solid #ddd; }
+.btn-ghost:hover { border-color: #aaa; color: #444; }
+
+/* Submit card */
+.submit-card {
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  padding: 20px 16px;
+  margin-bottom: 12px;
+  display: none;
+}
+.submit-card h3 { font-size: 15px; color: #272727; margin-bottom: 4px; }
+.submit-card p  { font-size: 12px; color: #999; margin-bottom: 14px; }
+.submit-btn-full {
+  width: 100%;
+  padding: 13px;
+  font-size: 14px;
+  border-radius: 6px;
+  background: #272727;
+  color: #fff;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.submit-btn-full:hover { background: #111; }
+.submit-btn-full:disabled { background: #ccc; cursor: default; }
+.submit-margin-note { margin-bottom: 12px; }
 </style>
 </head>
 <body>
+<div class="widget">
 
-<h2>Lookup Dropdown Probe — Round 2</h2>
-<p class="subtitle">All_Contacts = 403. New strategy: portal reports may already be user-filtered. Testing direct access.</p>
-
-<!-- SDK -->
-<div class="section">
-  <h3>SDK</h3>
-  <div class="row">
-    <label>ZOHO.CREATOR.DATA</label>
-    <span id="sdkBadge" class="badge warn">checking...</span>
-    <span id="utilKeys" style="font-size:11px;color:#777;"></span>
+  <div class="widget-header">
+    <div class="widget-title">Submit Load</div>
+    <div class="widget-sub">Complete all three sections to submit your load for funding</div>
   </div>
-</div>
 
-<!-- Step 1: UTIL keys -->
-<div class="section">
-  <h3>Step 1 — What's in ZOHO.CREATOR.UTIL?</h3>
-  <p class="note">UTIL exists as an object. Let's enumerate its keys — might have user info or a way to get the current portal user.</p>
-  <div class="row">
-    <button onclick="probeUtil()">Enumerate UTIL Keys</button>
-  </div>
-  <div id="utilResult" class="result-box" style="display:none;"></div>
-</div>
+  <div id="statusMsg" class="status-msg"></div>
 
-<!-- Step 2: Direct customer fetch -->
-<div class="section">
-  <h3>Step 2 — Fetch All_Customer_Submissions directly</h3>
-  <div class="callout">
-    Portal reports in Zoho Creator are often scoped to the logged-in user automatically. If this returns records, we don't need the Account ID chain at all.
+  <div class="progress-bar">
+    <div class="prog-step active" id="prog1">1 · Customer</div>
+    <div class="prog-step" id="prog2">2 · Carrier</div>
+    <div class="prog-step" id="prog3">3 · Notes</div>
   </div>
-  <div class="row">
-    <button onclick="fetchDirect('Customer_Submission_Report', 'customerResult', 'customerDropdown', 'customerSelected')">
-      Fetch Customer_Submission_Report (client report)
+
+  <!-- ── Section 1: Customer ─────────────────────────────────────────── -->
+  <div class="section open" id="sec1">
+    <div class="section-header" onclick="toggleSection(1)">
+      <div class="sec-num" id="num1">1</div>
+      <div class="sec-title">Customer / Shipper</div>
+      <div class="sec-summary" id="sum1"></div>
+      <div class="sec-chevron">▼</div>
+    </div>
+    <div class="section-body">
+
+      <div id="creditBanner" class="credit-banner">
+        <div class="cb-label">Credit Availability</div>
+        <div class="cb-value" id="creditValue"></div>
+      </div>
+
+      <div class="field">
+        <label>Customer Name <span class="req">*</span></label>
+        <select id="Customer_Name" onchange="onCustomerChange()">
+          <option value="">Loading customers…</option>
+        </select>
+        <div class="field-err" id="e_Customer_Name">Please select a customer</div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label>Customer Reference # <span class="req">*</span></label>
+          <input type="text" id="Customer_Reference_Number" placeholder="e.g. REF-2025-001" />
+          <div class="field-err" id="e_Customer_Reference_Number">Required</div>
+        </div>
+        <div>
+          <label>Customer Rate <span class="req">*</span></label>
+          <div class="usd-wrap">
+            <input type="number" id="Customer_Rate" placeholder="0.00" step="0.01" min="0" oninput="updateMargin()" />
+          </div>
+          <div class="field-err" id="e_Customer_Rate">Required</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Customer Documents</label>
+        <div class="file-area" onclick="document.getElementById('cust_docs').click()">
+          <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                 onchange="updateFileLabel('cust_docs','cust_docs_label')" />
+          <span id="cust_docs_label">📎 Attach BOL, rate confirmation, etc.</span>
+        </div>
+        <div class="field-hint">Optional</div>
+      </div>
+
+      <div class="sec-actions">
+        <button class="btn btn-primary" onclick="nextSection(1)">Next: Carrier Info →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section 2: Carrier ──────────────────────────────────────────── -->
+  <div class="section locked" id="sec2">
+    <div class="section-header" onclick="toggleSection(2)">
+      <div class="sec-num" id="num2">2</div>
+      <div class="sec-title">Carrier Information</div>
+      <div class="sec-summary" id="sum2"></div>
+      <div class="sec-chevron">▼</div>
+    </div>
+    <div class="section-body">
+
+      <div class="field">
+        <label>Carrier Name / MC # <span class="req">*</span></label>
+        <select id="Carrier_Name_or_MC" onchange="onCarrierChange()">
+          <option value="">Loading carriers…</option>
+        </select>
+        <div class="field-err" id="e_Carrier_Name_or_MC">Please select a carrier</div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label>Carrier Payment Terms</label>
+          <input type="text" id="Payment_Terms" placeholder="e.g. Factoring Company" />
+        </div>
+        <div>
+          <label>Carrier Rate <span class="req">*</span></label>
+          <div class="usd-wrap">
+            <input type="number" id="Carrier_Rate" placeholder="0.00" step="0.01" min="0" oninput="updateMargin()" />
+          </div>
+          <div class="field-err" id="e_Carrier_Rate">Required</div>
+          <div id="marginBadge" class="margin-badge"></div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label>Carrier / Factoring Invoice # <span class="req">*</span></label>
+          <input type="text" id="Carrier_Factoring_Invoice" placeholder="Invoice number" />
+          <div class="field-err" id="e_Carrier_Factoring_Invoice">Required</div>
+        </div>
+        <div>
+          <label>Load / Rate Confirmation # <span class="req">*</span></label>
+          <input type="text" id="Load_Rate_Confirmation_Number" placeholder="Rate conf. number" />
+          <div class="field-err" id="e_Load_Rate_Confirmation_Number">Required</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Carrier Documents</label>
+        <div class="file-area" onclick="document.getElementById('carrier_docs').click()">
+          <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                 onchange="updateFileLabel('carrier_docs','carrier_docs_label')" />
+          <span id="carrier_docs_label">📎 Attach carrier invoice, POD, etc.</span>
+        </div>
+        <div class="field-hint">Optional</div>
+      </div>
+
+      <div class="sec-actions">
+        <button class="btn btn-ghost" onclick="goTo(1)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(2)">Next: Review →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section 3: Notes ───────────────────────────────────────────── -->
+  <div class="section locked" id="sec3">
+    <div class="section-header" onclick="toggleSection(3)">
+      <div class="sec-num" id="num3">3</div>
+      <div class="sec-title">Additional Notes</div>
+      <div class="sec-summary" id="sum3">Optional</div>
+      <div class="sec-chevron">▼</div>
+    </div>
+    <div class="section-body">
+
+      <div class="field">
+        <label>Load Comments</label>
+        <textarea id="Load_Comments" placeholder="Any additional details about this load…"></textarea>
+      </div>
+
+      <div class="sec-actions">
+        <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(3)">Review & Submit →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Submit card ────────────────────────────────────────────────── -->
+  <div class="submit-card" id="submitCard">
+    <h3>Ready to Submit</h3>
+    <p>Review your entries above, then submit to send this load for funding.</p>
+    <div class="submit-margin-note" id="submitMarginNote"></div>
+    <button class="submit-btn-full" id="submitBtn" onclick="submitForm()">
+      Submit Load for Funding
     </button>
-    <button onclick="fetchDirect('All_Customer_Submissions', 'customerResult', 'customerDropdown', 'customerSelected')">
-      Fetch All_Customer_Submissions (admin)
-    </button>
   </div>
-  <div id="customerResult" class="result-box" style="display:none;"></div>
-  <div class="row" style="margin-top:8px;">
-    <label>Customer Dropdown</label>
-    <select id="customerDropdown"><option>— fetch first —</option></select>
-  </div>
-  <div id="customerSelected" class="note" style="margin-top:4px;font-family:monospace;"></div>
-</div>
 
-<!-- Step 3: Direct vendor fetch -->
-<div class="section">
-  <h3>Step 3 — Fetch All_Vendors directly</h3>
-  <div class="callout">Same idea — see if All_Vendors returns only the portal user's vendors without any filtering needed.</div>
-  <div class="row">
-    <button onclick="fetchDirect('Check_All_Vendors', 'vendorResult', 'vendorDropdown', 'vendorSelected')">
-      Fetch Check_All_Vendors (client report)
-    </button>
-    <button onclick="fetchDirect('All_Vendors', 'vendorResult', 'vendorDropdown', 'vendorSelected')">
-      Fetch All_Vendors (admin)
-    </button>
-  </div>
-  <div id="vendorResult" class="result-box" style="display:none;"></div>
-  <div class="row" style="margin-top:8px;">
-    <label>Vendor Dropdown</label>
-    <select id="vendorDropdown"><option>— fetch first —</option></select>
-  </div>
-  <div id="vendorSelected" class="note" style="margin-top:4px;font-family:monospace;"></div>
-</div>
-
-<!-- Step 4: Test submission -->
-<div class="section">
-  <h3>Step 4 — Test addRecords() with lookup values</h3>
-  <p class="note">Pick values from the dropdowns above, paste them here to test whether Zoho wants the ID or display text for lookup fields. Creates a real record — delete after.</p>
-  <div class="row">
-    <label>Customer_Name value</label>
-    <input type="text" id="testCustomerVal" placeholder="paste from customer dropdown" />
-  </div>
-  <div class="row">
-    <label>Carrier_Name_or_MC value</label>
-    <input type="text" id="testVendorVal" placeholder="paste from vendor dropdown" />
-  </div>
-  <div class="row">
-    <button onclick="testWithId()">Test: submit record ID</button>
-    <button onclick="testWithDisplay()">Test: submit display text</button>
-  </div>
-  <div id="submitResult" class="result-box" style="display:none;"></div>
-</div>
-
-<!-- Log -->
-<div class="section">
-  <div class="row" style="margin:0 0 6px;">
-    <h3 style="margin:0;flex:1;">Log</h3>
-    <button class="sec" onclick="clearLog()" style="font-size:11px;padding:2px 8px;">Clear</button>
-  </div>
-  <div id="log">Waiting...</div>
-</div>
+</div><!-- /widget -->
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
 
-var lastCustomerRecords = [];
-var lastVendorRecords = [];
+// ── State ─────────────────────────────────────────────────────────────────
+var customerRecords = [];
+var vendorRecords   = [];
+var currentSection  = 1;
+var done            = [false, false, false];
 
-function log(msg, obj) {
-  var el = document.getElementById('log');
-  if (el.textContent === 'Waiting...') el.textContent = '';
-  el.textContent += '\n' + msg + (obj !== undefined ? '\n' + JSON.stringify(obj, null, 2) : '');
-  el.scrollTop = el.scrollHeight;
-}
-function clearLog() { document.getElementById('log').textContent = ''; }
-function show(id, content) {
-  var el = document.getElementById(id);
-  el.style.display = 'block';
-  el.textContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-}
-
+// ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
-  var ok = typeof ZOHO !== 'undefined' && typeof ZOHO.CREATOR !== 'undefined' && typeof ZOHO.CREATOR.DATA !== 'undefined';
-  var b = document.getElementById('sdkBadge');
-  b.textContent = ok ? 'READY' : 'MISSING';
-  b.className = 'badge ' + (ok ? 'ok' : 'fail');
-
-  // Check UTIL
-  try {
-    if (typeof ZOHO.CREATOR.UTIL !== 'undefined') {
-      var keys = Object.keys(ZOHO.CREATOR.UTIL);
-      document.getElementById('utilKeys').textContent = 'UTIL keys: ' + (keys.length ? keys.join(', ') : '(empty object)');
-    }
-  } catch(e) {}
-
-  log('SDK ready: ' + ok);
+  loadCustomers();
+  loadVendors();
 });
 
-function probeUtil() {
-  log('\n=== UTIL Probe — calling ALL methods ===');
-  try {
-    var util = ZOHO.CREATOR.UTIL;
-    var keys = Object.keys(util);
-    log('UTIL keys: ' + keys.join(', '));
-    show('utilResult', 'Calling all methods — check log...');
-
-    // Call every method and log results
-    keys.forEach(function(k) {
-      log('\n--- UTIL.' + k + '() ---');
-      try {
-        var result = util[k]();
-        if (result && typeof result.then === 'function') {
-          result.then(function(res) {
-            log('UTIL.' + k + '() resolved:', res);
-          }).catch(function(e) {
-            log('UTIL.' + k + '() rejected:', e);
-          });
-        } else {
-          log('UTIL.' + k + '() sync result: ' + JSON.stringify(result));
-        }
-      } catch(e) {
-        log('UTIL.' + k + '() threw: ' + e);
-      }
-    });
-  } catch(e) {
-    log('UTIL probe error: ' + e);
-    show('utilResult', 'Error: ' + e);
-  }
-}
-
-function fetchDirect(reportName, resultId, dropdownId, labelId) {
-  log('\n=== Fetching ' + reportName + ' (no filter) ===');
+// ── Data ──────────────────────────────────────────────────────────────────
+function loadCustomers() {
   ZOHO.CREATOR.DATA.getRecords({
-    report_name: reportName,
-    page: 1,
-    pageSize: 50
+    report_name: 'Customer_Submission_Report',
+    page: 1, pageSize: 200
   }).then(function(res) {
-    log('Response for ' + reportName + ':', res);
-    var records = res && res.data ? res.data : (Array.isArray(res) ? res : null);
-    if (records && records.length) {
-      log('SUCCESS — ' + records.length + ' record(s) returned');
-      log('Field names: ' + Object.keys(records[0]).join(', '));
-      show(resultId, records);
-      if (reportName === 'All_Customer_Submissions') { lastCustomerRecords = records; }
-      if (reportName === 'All_Vendors') { lastVendorRecords = records; }
-      buildDropdown(dropdownId, labelId, records);
-    } else {
-      log('No records or unexpected format');
-      show(resultId, res);
-    }
-  }).catch(function(e) {
-    log('ERROR for ' + reportName + ':', e);
-    show(resultId, e);
+    customerRecords = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    var sel = document.getElementById('Customer_Name');
+    sel.innerHTML = '<option value="">— Select Customer —</option>';
+    customerRecords.forEach(function(r) {
+      var o = document.createElement('option');
+      o.value = r.ID;
+      o.textContent = r.Customer_Company_Name || '(unnamed)';
+      o.dataset.credit = r.Customer_Credit_Note || '';
+      sel.appendChild(o);
+    });
+  }).catch(function() {
+    document.getElementById('Customer_Name').innerHTML =
+      '<option value="">Unable to load customers</option>';
   });
 }
 
-// Name field candidates in priority order
-var nameGuesses = ['Name', 'Company_Name', 'Vendor_Name', 'Customer_Name', 'Display_Name',
-                   'Business_Name', 'Account_Name', 'Title', 'name', 'MC_Number'];
+function loadVendors() {
+  ZOHO.CREATOR.DATA.getRecords({
+    report_name: 'Check_All_Vendors',
+    page: 1, pageSize: 200
+  }).then(function(res) {
+    vendorRecords = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    var sel = document.getElementById('Carrier_Name_or_MC');
+    sel.innerHTML = '<option value="">— Select Carrier —</option>';
+    vendorRecords.forEach(function(r) {
+      var o = document.createElement('option');
+      o.value = r.ID;
+      o.textContent = r.Vendor_Name || '(unnamed)';
+      o.dataset.terms = r.Payment_Terms || '';
+      sel.appendChild(o);
+    });
+  }).catch(function() {
+    document.getElementById('Carrier_Name_or_MC').innerHTML =
+      '<option value="">Unable to load carriers</option>';
+  });
+}
 
-function buildDropdown(selectId, labelId, records) {
-  var sel = document.getElementById(selectId);
-  sel.innerHTML = '<option value="">— select —</option>';
-
-  var displayField = null;
-  for (var i = 0; i < nameGuesses.length; i++) {
-    if (records[0].hasOwnProperty(nameGuesses[i]) && records[0][nameGuesses[i]]) {
-      displayField = nameGuesses[i]; break;
-    }
+// ── Field handlers ────────────────────────────────────────────────────────
+function onCustomerChange() {
+  var sel = document.getElementById('Customer_Name');
+  var opt = sel.options[sel.selectedIndex];
+  var credit = opt && opt.dataset.credit;
+  var banner = document.getElementById('creditBanner');
+  if (credit) {
+    document.getElementById('creditValue').textContent = credit;
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
   }
-  if (!displayField) displayField = Object.keys(records[0])[0];
+}
 
-  var idField = records[0].hasOwnProperty('ID') ? 'ID' : (records[0].hasOwnProperty('id') ? 'id' : null);
+function onCarrierChange() {
+  var sel = document.getElementById('Carrier_Name_or_MC');
+  var opt = sel.options[sel.selectedIndex];
+  if (opt && opt.dataset.terms) {
+    document.getElementById('Payment_Terms').value = opt.dataset.terms;
+  }
+}
 
-  log('Dropdown: display="' + displayField + '", idField="' + (idField || 'none found') + '"');
-  log('All fields on record: ' + Object.keys(records[0]).join(', '));
+function updateMargin() {
+  var cr = parseFloat(document.getElementById('Customer_Rate').value) || 0;
+  var vr = parseFloat(document.getElementById('Carrier_Rate').value)  || 0;
+  var badge = document.getElementById('marginBadge');
+  if (!cr || !vr) { badge.className = 'margin-badge'; badge.textContent = ''; return; }
+  if (vr <= cr * 0.90) {
+    badge.className = 'margin-badge good';
+    badge.textContent = '✓ Margin OK';
+  } else {
+    badge.className = 'margin-badge bad';
+    badge.textContent = '⚠ 10% Margin Not Met';
+  }
+}
 
-  records.forEach(function(r) {
-    var opt = document.createElement('option');
-    var display = r[displayField] || '(blank)';
-    var id = idField ? r[idField] : '';
-    opt.textContent = display + (id ? '  [ID: ' + id + ']' : '');
-    opt.value = id || display;
-    opt.dataset.display = display;
-    opt.dataset.id = id;
-    sel.appendChild(opt);
+function updateFileLabel(inputId, labelId) {
+  var files = document.getElementById(inputId).files;
+  var lbl = document.getElementById(labelId);
+  if (!files.length) return;
+  lbl.textContent = files.length === 1
+    ? '📄 ' + files[0].name
+    : '📄 ' + files.length + ' files selected';
+}
+
+// ── Accordion ─────────────────────────────────────────────────────────────
+function toggleSection(n) {
+  var sec = document.getElementById('sec' + n);
+  if (sec.classList.contains('locked')) return;
+  sec.classList.toggle('open');
+}
+
+function goTo(n) {
+  closeAll();
+  var sec = document.getElementById('sec' + n);
+  sec.classList.remove('locked');
+  sec.classList.add('open');
+  currentSection = n;
+  document.getElementById('submitCard').style.display = 'none';
+  updateProgress();
+}
+
+function closeAll() {
+  [1,2,3].forEach(function(n) {
+    document.getElementById('sec' + n).classList.remove('open');
   });
+}
 
-  sel.onchange = function() {
-    var o = sel.options[sel.selectedIndex];
-    document.getElementById(labelId).textContent =
-      'display="' + o.dataset.display + '"   id="' + o.dataset.id + '"   value="' + o.value + '"';
+function nextSection(from) {
+  var required = sectionRequired(from);
+  if (!validate(required)) return;
+
+  done[from - 1] = true;
+  markDone(from);
+  closeAll();
+
+  if (from < 3) {
+    var next = document.getElementById('sec' + (from + 1));
+    next.classList.remove('locked');
+    next.classList.add('open');
+    currentSection = from + 1;
+    document.getElementById('submitCard').style.display = 'none';
+  } else {
+    currentSection = 4;
+    showSubmitCard();
+  }
+  updateProgress();
+}
+
+function sectionRequired(n) {
+  if (n === 1) return ['Customer_Name','Customer_Reference_Number','Customer_Rate'];
+  if (n === 2) return ['Carrier_Name_or_MC','Carrier_Rate','Carrier_Factoring_Invoice','Load_Rate_Confirmation_Number'];
+  return [];
+}
+
+function markDone(n) {
+  var sec = document.getElementById('sec' + n);
+  sec.classList.add('completed');
+  document.getElementById('num' + n).textContent = '✓';
+  document.getElementById('sum' + n).textContent = sectionSummary(n);
+}
+
+function sectionSummary(n) {
+  if (n === 1) {
+    var sel = document.getElementById('Customer_Name');
+    var name = sel.selectedIndex > 0 ? sel.options[sel.selectedIndex].text : '';
+    var ref  = document.getElementById('Customer_Reference_Number').value;
+    var rate = document.getElementById('Customer_Rate').value;
+    return [name, ref && 'Ref: ' + ref, rate && '$' + parseFloat(rate).toFixed(2)].filter(Boolean).join(' · ');
+  }
+  if (n === 2) {
+    var sel2   = document.getElementById('Carrier_Name_or_MC');
+    var carrier = sel2.selectedIndex > 0 ? sel2.options[sel2.selectedIndex].text : '';
+    var crate  = document.getElementById('Carrier_Rate').value;
+    return [carrier, crate && '$' + parseFloat(crate).toFixed(2)].filter(Boolean).join(' · ');
+  }
+  var comments = document.getElementById('Load_Comments').value.trim();
+  return comments ? comments.slice(0, 40) + (comments.length > 40 ? '…' : '') : 'No comments';
+}
+
+function showSubmitCard() {
+  var card = document.getElementById('submitCard');
+  card.style.display = 'block';
+  // Margin note
+  var cr = parseFloat(document.getElementById('Customer_Rate').value) || 0;
+  var vr = parseFloat(document.getElementById('Carrier_Rate').value)  || 0;
+  var noteEl = document.getElementById('submitMarginNote');
+  if (cr && vr) {
+    var good = vr <= cr * 0.90;
+    var pct  = cr > 0 ? (((cr - vr) / cr) * 100).toFixed(1) : '0';
+    noteEl.innerHTML = '<div class="margin-badge ' + (good ? 'good' : 'bad') + '" style="margin-bottom:10px;">' +
+      (good ? '✓ Margin OK — ' + pct + '% gross margin' : '⚠ Margin below 10% — ' + pct + '% gross margin') +
+      '</div>';
+  } else {
+    noteEl.innerHTML = '';
+  }
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function updateProgress() {
+  [1,2,3].forEach(function(n) {
+    var el = document.getElementById('prog' + n);
+    el.className = 'prog-step';
+    if (done[n-1]) el.classList.add('done');
+    else if (n === currentSection) el.classList.add('active');
+  });
+}
+
+// ── Validation ────────────────────────────────────────────────────────────
+function validate(fields) {
+  var ok = true;
+  fields.forEach(function(id) {
+    var el  = document.getElementById(id);
+    var err = document.getElementById('e_' + id);
+    if (!el.value.trim()) {
+      el.classList.add('invalid');
+      if (err) err.classList.add('show');
+      ok = false;
+    } else {
+      el.classList.remove('invalid');
+      if (err) err.classList.remove('show');
+    }
+  });
+  return ok;
+}
+
+// ── Submit ────────────────────────────────────────────────────────────────
+function submitForm() {
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  showStatus('Submitting your load…', 'loading');
+
+  var data = {
+    Customer_Name:                 document.getElementById('Customer_Name').value,
+    Customer_Reference_Number:     document.getElementById('Customer_Reference_Number').value.trim(),
+    Customer_Rate:                 document.getElementById('Customer_Rate').value,
+    Carrier_Name_or_MC:            document.getElementById('Carrier_Name_or_MC').value,
+    Payment_Terms:                 document.getElementById('Payment_Terms').value.trim(),
+    Carrier_Factoring_Invoice:     document.getElementById('Carrier_Factoring_Invoice').value.trim(),
+    Load_Rate_Confirmation_Number: document.getElementById('Load_Rate_Confirmation_Number').value.trim(),
+    Carrier_Rate:                  document.getElementById('Carrier_Rate').value,
+    Load_Comments:                 document.getElementById('Load_Comments').value.trim()
   };
-}
-
-function testWithId() {
-  var cVal = document.getElementById('testCustomerVal').value.trim();
-  var vVal = document.getElementById('testVendorVal').value.trim();
-  submitTest(cVal, vVal, 'ID test');
-}
-
-function testWithDisplay() {
-  // For display test, grab just the display portion before "[ID:"
-  var cRaw = document.getElementById('testCustomerVal').value.trim().replace(/\s*\[ID:.*\]$/, '');
-  var vRaw = document.getElementById('testVendorVal').value.trim().replace(/\s*\[ID:.*\]$/, '');
-  submitTest(cRaw, vRaw, 'display text test');
-}
-
-function submitTest(cVal, vVal, label) {
-  if (!cVal && !vVal) { log('Paste at least one value to test'); return; }
-  var data = { Load_Comments: 'LOOKUP TEST (' + label + ') - safe to delete' };
-  if (cVal) data['Customer_Name'] = cVal;
-  if (vVal) data['Carrier_Name_or_MC'] = vVal;
-
-  log('\n=== addRecords test [' + label + '] ===');
-  log('Submitting:', data);
 
   ZOHO.CREATOR.DATA.addRecords({
     form_name: 'Broker_Funding_Portal',
     payload: { data: data }
   }).then(function(res) {
-    log('Response:', res);
-    show('submitResult', res);
-    if (res && res.code === 3000) log('SUCCESS — open Creator and check how the lookup field saved');
-    else if (res && res.code === 3002) log('3002 = validation error. Check errors:', res.data);
-    else log('Code: ' + (res && res.code));
-  }).catch(function(e) { log('Error:', e); show('submitResult', e); });
+    if (res && res.code === 3000) {
+      showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
+      btn.textContent = '✓ Submitted';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      showStatus('Submission error (code ' + (res && res.code) + '). Please try again or contact support.', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Submit Load for Funding';
+    }
+  }).catch(function(e) {
+    showStatus('Network error. Please check your connection and try again.', 'error');
+    btn.disabled = false;
+    btn.textContent = 'Submit Load for Funding';
+    console.error('submit error', e);
+  });
+}
+
+function showStatus(msg, type) {
+  var el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = 'status-msg show ' + type;
 }
 
 </script>

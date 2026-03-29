@@ -614,7 +614,7 @@ textarea { resize: vertical; min-height: 90px; }
     </button>
   </div>
 
-<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.2</div>
+<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.3</div>
 </div><!-- /widget -->
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -1065,7 +1065,8 @@ function submitForm() {
     Carrier_Factoring_Invoice:     document.getElementById('Carrier_Factoring_Invoice').value.trim(),
     Load_Rate_Confirmation_Number: document.getElementById('Load_Rate_Confirmation_Number').value.trim(),
     Carrier_Rate:                  document.getElementById('Carrier_Rate').value,
-    Load_Comments:                 document.getElementById('Load_Comments').value.trim()
+    Load_Comments:                 document.getElementById('Load_Comments').value.trim(),
+    API_Submission:                'widget'
   };
 
   ZOHO.CREATOR.DATA.addRecords({
@@ -1121,7 +1122,7 @@ function fillTestData() {
   document.getElementById('Carrier_Factoring_Invoice').value = 'INV-TEST-001';
   document.getElementById('Load_Rate_Confirmation_Number').value = 'RC-TEST-001';
   document.getElementById('Carrier_Rate').value = '1500';
-  updateMarginBadge();
+  updateMargin();
   // Unlock all sections, mark done, jump to review
   [1,2,3].forEach(function(n) {
     done[n-1] = true;

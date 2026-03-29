@@ -193,6 +193,22 @@ textarea { resize: vertical; min-height: 90px; }
 .credit-banner .cb-label { color: #aaa; margin-bottom: 2px; font-size: 11px; }
 .credit-banner .cb-value { color: #272727; font-weight: 700; }
 
+/* Credit utilization warning */
+.credit-warning {
+  display: none;
+  background: #ffebee;
+  border: 1px solid #ef9a9a;
+  border-left: 4px solid #c62828;
+  border-radius: 5px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b71c1c;
+  line-height: 1.5;
+}
+.credit-warning.show { display: block; }
+
 /* Margin badge */
 .margin-badge {
   display: inline-flex;
@@ -419,6 +435,8 @@ textarea { resize: vertical; min-height: 90px; }
       <div class="sec-chevron">▼</div>
     </div>
     <div class="section-body">
+
+      <div id="creditWarning" class="credit-warning"></div>
 
       <div id="creditBanner" class="credit-banner">
         <div class="cb-label">Credit Availability</div>
@@ -752,6 +770,18 @@ function onCustomerSelect(r) {
 
     function fmt(n) {
       return '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    // Show utilization warning if >= 80%
+    var warningEl = document.getElementById('creditWarning');
+    if (utilPct >= 80 && r) {
+      warningEl.className = 'credit-warning show';
+      warningEl.innerHTML =
+        '⚠️ ALERT: ' + (r.Customer_Company_Name || 'This customer') +
+        ' is at <strong>' + utilPct.toFixed(2) + '%</strong> of their current credit limit (' + fmt(buyLimit) + '). ' +
+        'Please review before submitting.';
+    } else {
+      warningEl.className = 'credit-warning';
     }
 
     valueEl.innerHTML =

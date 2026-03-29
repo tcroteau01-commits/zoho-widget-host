@@ -632,12 +632,9 @@ function loadVendors() {
     initDropdown('carrier', vendorRecords,
       function(r) { return r.Vendor_Name || '(unnamed)'; },
       function(r) {
-        // Show MC and DOT — update field names below once confirmed
         var parts = [];
-        if (r.MC_Number)  parts.push('MC: ' + r.MC_Number);
-        if (r.DOT_Number) parts.push('DOT: ' + r.DOT_Number);
-        if (r.MC)         parts.push('MC: ' + r.MC);
-        if (r.DOT)        parts.push('DOT: ' + r.DOT);
+        if (r.MC)    parts.push('MC# ' + r.MC);
+        if (r.USDOT) parts.push('DOT ' + r.USDOT);
         return parts.length ? parts.join(' · ') : (r.Payment_Terms || null);
       },
       function(r, inputEl) { onCarrierSelect(r, inputEl); }

@@ -208,6 +208,41 @@ textarea { resize: vertical; min-height: 90px; }
 .margin-badge.good { background: #e8f5e9; color: #2e7d32; visibility: visible; }
 .margin-badge.bad  { background: #fff3e0; color: #e65100; visibility: visible; }
 
+/* Payment terms banner */
+.terms-banner {
+  background: #f5f0e8;
+  border: 1px solid #e0d5c0;
+  border-left: 4px solid #e8a020;
+  border-radius: 5px;
+  padding: 11px 14px;
+  margin-bottom: 15px;
+}
+.terms-banner.hidden { display: none; }
+.terms-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.terms-label-text {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #a07828;
+}
+.terms-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #272727;
+  margin-bottom: 5px;
+}
+.terms-warning {
+  font-size: 11px;
+  color: #888;
+}
+.terms-warning strong { color: #e8a020; }
+
 /* File upload */
 .file-area {
   border: 2px dashed #e0e0e0;
@@ -366,19 +401,21 @@ textarea { resize: vertical; min-height: 90px; }
         <div class="field-err" id="e_Carrier_Name_or_MC">Please select a carrier</div>
       </div>
 
-      <div class="field-row">
-        <div>
-          <label>Carrier Payment Terms</label>
-          <input type="text" id="Payment_Terms" placeholder="e.g. Factoring Company" />
+      <div id="termsBanner" class="terms-banner hidden">
+        <div class="terms-top">
+          <span class="terms-label-text">Carrier Payment Terms</span>
         </div>
-        <div>
-          <label>Carrier Rate <span class="req">*</span></label>
-          <div class="usd-wrap">
-            <input type="number" id="Carrier_Rate" placeholder="0.00" step="0.01" min="0" oninput="updateMargin()" />
-          </div>
-          <div class="field-err" id="e_Carrier_Rate">Required</div>
-          <div id="marginBadge" class="margin-badge"></div>
+        <div class="terms-value" id="termsValue">—</div>
+        <div class="terms-warning"><strong>⚠ Verify:</strong> If these terms differ from your agreement, contact your OperFi rep before submitting.</div>
+      </div>
+
+      <div class="field">
+        <label>Carrier Rate <span class="req">*</span></label>
+        <div class="usd-wrap">
+          <input type="number" id="Carrier_Rate" placeholder="0.00" step="0.01" min="0" oninput="updateMargin()" />
         </div>
+        <div class="field-err" id="e_Carrier_Rate">Required</div>
+        <div id="marginBadge" class="margin-badge"></div>
       </div>
 
       <div class="field-row">
@@ -520,8 +557,12 @@ function onCustomerChange() {
 function onCarrierChange() {
   var sel = document.getElementById('Carrier_Name_or_MC');
   var opt = sel.options[sel.selectedIndex];
+  var banner = document.getElementById('termsBanner');
   if (opt && opt.dataset.terms) {
-    document.getElementById('Payment_Terms').value = opt.dataset.terms;
+    document.getElementById('termsValue').textContent = opt.dataset.terms;
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
   }
 }
 
@@ -681,7 +722,7 @@ function submitForm() {
     Customer_Reference_Number:     document.getElementById('Customer_Reference_Number').value.trim(),
     Customer_Rate:                 document.getElementById('Customer_Rate').value,
     Carrier_Name_or_MC:            document.getElementById('Carrier_Name_or_MC').value,
-    Payment_Terms:                 document.getElementById('Payment_Terms').value.trim(),
+    Payment_Terms:                 document.getElementById('termsValue').textContent.trim(),
     Carrier_Factoring_Invoice:     document.getElementById('Carrier_Factoring_Invoice').value.trim(),
     Load_Rate_Confirmation_Number: document.getElementById('Load_Rate_Confirmation_Number').value.trim(),
     Carrier_Rate:                  document.getElementById('Carrier_Rate').value,

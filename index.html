@@ -438,6 +438,7 @@ textarea { resize: vertical; min-height: 90px; }
         </div>
         <input type="hidden" id="Customer_Name" />
         <div class="field-err" id="e_Customer_Name">Please select a customer</div>
+        <div class="field-hint">Only approved customers are shown. If you don't see your customer, add them in your <strong>Customer Submission</strong> section first.</div>
       </div>
 
       <div class="field-row">
@@ -607,12 +608,16 @@ function loadCustomers() {
     page: 1, pageSize: 200
   }).then(function(res) {
     customerRecords = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    // Only show Approved customers (mirrors original form behavior)
+    customerRecords = customerRecords.filter(function(r) {
+      return r.Credit_Decision === 'Approved';
+    });
     customerRecords.sort(function(a, b) {
       return (a.Customer_Company_Name || '').localeCompare(b.Customer_Company_Name || '');
     });
     initDropdown('customer', customerRecords,
       function(r) { return r.Customer_Company_Name || '(unnamed)'; },
-      function()  { return null; }, // no sub-line for customers
+      function()  { return null; },
       function(r, inputEl) { onCustomerSelect(r, inputEl); }
     );
   }).catch(function() {
@@ -715,15 +720,24 @@ function clearDropdown(key) {
 
 // ── Field handlers ────────────────────────────────────────────────────────
 function onCustomerSelect(r) {
-  var banner = document.getElementById('creditBanner');
-  if (r && (r.Credit_Limit || r.Credit_Decision)) {
+  var banner    = document.getElementById('creditBanner');
+  var valueEl   = document.getElementById('creditValue');
+  if (!r) { banner.style.display = 'none'; return; }
+
+  // Prefer the Deluge-generated HTML note (has live Buy Limit, AR, Utilization, Available)
+  if (r.Customer_Credit_Note) {
+    valueEl.innerHTML = r.Customer_Credit_Note;
+    banner.style.display = 'block';
+  } else if (r.Credit_Limit || r.Credit_Decision) {
+    // Fallback: build display from stored fields
     var limitStr = r.Credit_Limit
       ? '$' + parseFloat(r.Credit_Limit).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
       : 'N/A';
-    var parts = [];
-    if (r.Credit_Decision) parts.push(r.Credit_Decision);
-    if (r.Credit_Limit)    parts.push('Credit Limit: ' + limitStr);
-    document.getElementById('creditValue').textContent = parts.join('  ·  ');
+    var html = '<div style="line-height:1.7em;">';
+    if (r.Credit_Decision) html += '<b>Status:</b> ' + r.Credit_Decision + '<br>';
+    if (r.Credit_Limit)    html += '<b>Credit Limit:</b> ' + limitStr;
+    html += '</div>';
+    valueEl.innerHTML = html;
     banner.style.display = 'block';
   } else {
     banner.style.display = 'none';

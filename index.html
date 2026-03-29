@@ -420,6 +420,9 @@ textarea { resize: vertical; min-height: 90px; }
   </div>
 
   <div id="statusMsg" class="status-msg"></div>
+  <div style="text-align:right;margin-bottom:4px;">
+    <button onclick="fillTestData()" style="font-size:10px;padding:3px 8px;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;cursor:pointer;color:#666;">🔧 Fill Test Data</button>
+  </div>
 
   <div class="progress-bar">
     <div class="prog-step active" id="prog1">1 · Customer</div>
@@ -611,6 +614,7 @@ textarea { resize: vertical; min-height: 90px; }
     </button>
   </div>
 
+<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.1</div>
 </div><!-- /widget -->
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -1092,6 +1096,39 @@ function showStatus(msg, type) {
   var el = document.getElementById('statusMsg');
   el.textContent = msg;
   el.className = 'status-msg show ' + type;
+}
+
+// ── Test data fill (dev only) ──────────────────────────────────────────────
+function fillTestData() {
+  // Pick first available customer and carrier
+  if (customerRecords.length) {
+    var c = customerRecords[0];
+    document.getElementById('sd_customer_input').value = c.Customer_Company_Name || '(test)';
+    document.getElementById('Customer_Name').value = c.ID;
+    onCustomerSelect(c);
+  }
+  document.getElementById('Customer_Reference_Number').value = 'TEST-REF-001';
+  document.getElementById('Customer_Rate').value = '2000';
+  if (vendorRecords.length) {
+    var v = vendorRecords[0];
+    document.getElementById('sd_carrier_input').value = v.Vendor_Name || '(test)';
+    document.getElementById('Carrier_Name_or_MC').value = v.ID;
+    onCarrierSelect(v);
+  }
+  document.getElementById('Carrier_Factoring_Invoice').value = 'INV-TEST-001';
+  document.getElementById('Load_Rate_Confirmation_Number').value = 'RC-TEST-001';
+  document.getElementById('Carrier_Rate').value = '1500';
+  updateMarginBadge();
+  // Create dummy files for upload zones
+  ['cust_docs','carrier_docs'].forEach(function(id) {
+    var dummy = new File(['test'], 'test-doc.pdf', { type: 'application/pdf' });
+    mergeFiles(id, [dummy]);
+    updateFileLabel(id, id + '_label');
+  });
+  // Mark all sections done and jump to review
+  done = [true, true, true];
+  [1,2,3].forEach(function(n) { markDone(n); });
+  goTo(3);
 }
 
 </script>

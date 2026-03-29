@@ -614,7 +614,7 @@ textarea { resize: vertical; min-height: 90px; }
     </button>
   </div>
 
-<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.7</div>
+<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.8</div>
 </div><!-- /widget -->
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -1116,26 +1116,10 @@ function uploadFiles(recordId, btn) {
     return;
   }
 
-  ZOHO.CREATOR.UTIL.getInitParams().then(function(params) {
-    console.log('initParams keys:', Object.keys(params));
-    var token = params.accessToken || params.access_token || params.authToken || params.auth_token;
-    if (!token) {
-      console.error('No access token in initParams:', JSON.stringify(params));
-      showStatus('✓ Load submitted. Documents could not be uploaded (no token). Please contact your OperFi rep.', 'error');
-      btn.textContent = '✓ Submitted';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    doUploadSequence(recordId, btn, uploads, token, 0, 0);
-  }).catch(function(e) {
-    console.error('getInitParams error:', e);
-    showStatus('✓ Load submitted. Documents could not be uploaded. Please contact your OperFi rep.', 'error');
-    btn.textContent = '✓ Submitted';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
+  doUploadSequence(recordId, btn, uploads, 0, 0);
 }
 
-function doUploadSequence(recordId, btn, uploads, token, index, errors) {
+function doUploadSequence(recordId, btn, uploads, index, errors) {
   if (index >= uploads.length) {
     if (errors > 0) {
       showStatus('✓ Load submitted. ' + errors + ' document(s) failed to upload — please contact your OperFi rep.', 'error');
@@ -1150,22 +1134,25 @@ function doUploadSequence(recordId, btn, uploads, token, index, errors) {
   showStatus('Uploading document ' + (index + 1) + ' of ' + uploads.length + '…', 'loading');
   var u = uploads[index];
   var formData = new FormData();
-  formData.append(u.subfield, u.file, u.file.name);
+  formData.append('record_id', recordId);
+  formData.append('field_name', u.field);
+  formData.append('subfield_name', u.subfield);
+  formData.append('file', u.file, u.file.name);
 
-  fetch('https://creator.zoho.com/api/v2.1/tcroteau/funding-portal/report/All_Funding_Portals/' + recordId + '/' + u.field, {
+  fetch('https://pryanoperfi.pythonanywhere.com/upload-doc', {
     method: 'POST',
-    headers: { 'Authorization': 'Zoho-oauthtoken ' + token },
+    headers: { 'Authorization': 'Bearer h0dYGKsWGMifxv62k8Ku7chBlKmoaHCQ' },
     body: formData
   })
   .then(function(resp) { return resp.json(); })
   .then(function(data) {
     console.log('upload ' + (index + 1) + ' response:', JSON.stringify(data));
     var err = (data.code !== 3000) ? errors + 1 : errors;
-    doUploadSequence(recordId, btn, uploads, token, index + 1, err);
+    doUploadSequence(recordId, btn, uploads, index + 1, err);
   })
   .catch(function(e) {
     console.error('upload ' + (index + 1) + ' error:', e);
-    doUploadSequence(recordId, btn, uploads, token, index + 1, errors + 1);
+    doUploadSequence(recordId, btn, uploads, index + 1, errors + 1);
   });
 }
 

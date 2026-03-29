@@ -614,7 +614,7 @@ textarea { resize: vertical; min-height: 90px; }
     </button>
   </div>
 
-<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.4</div>
+<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.5</div>
 </div><!-- /widget -->
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -1075,9 +1075,15 @@ function submitForm() {
   }).then(function(res) {
     console.log('addRecords response:', JSON.stringify(res));
     if (res && res.code === 3000) {
-      showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
-      btn.textContent = '✓ Submitted';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      var recordId = res.data && (res.data.ID || (typeof res.data === 'string' ? res.data : null));
+      console.log('Record ID:', recordId);
+      if (recordId && !_testMode) {
+        uploadFiles(recordId, btn);
+      } else {
+        showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
+        btn.textContent = '✓ Submitted';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } else {
       var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
       showStatus('Submission failed' + detail + '. Please try again or contact support.', 'error');
@@ -1092,6 +1098,57 @@ function submitForm() {
     btn.textContent = 'Submit Load for Funding';
     console.error('submit error', e);
   });
+}
+
+function uploadFiles(recordId, btn) {
+  var uploads = [];
+  (fileStore['cust_docs'] || []).forEach(function(f) {
+    uploads.push({ file: f, field: 'Customer_Docs_Upload1' });
+  });
+  (fileStore['carrier_docs'] || []).forEach(function(f) {
+    uploads.push({ file: f, field: 'Carrier_Docs_Upload1' });
+  });
+
+  if (!uploads.length) {
+    showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
+    btn.textContent = '✓ Submitted';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+
+  var errors = 0;
+
+  function uploadNext(index) {
+    if (index >= uploads.length) {
+      if (errors > 0) {
+        showStatus('✓ Load submitted. ' + errors + ' document(s) failed to upload — please contact your OperFi rep.', 'error');
+      } else {
+        showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
+      }
+      btn.textContent = '✓ Submitted';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    showStatus('Uploading document ' + (index + 1) + ' of ' + uploads.length + '…', 'loading');
+    var u = uploads[index];
+
+    ZOHO.CREATOR.DATA.uploadFile({
+      report_name: 'All_Funding_Portals',
+      id: recordId,
+      field_name: u.field,
+      file: u.file
+    }).then(function(res) {
+      console.log('uploadFile ' + (index + 1) + ' response:', JSON.stringify(res));
+      uploadNext(index + 1);
+    }).catch(function(e) {
+      console.error('uploadFile error (' + u.file.name + '):', e);
+      errors++;
+      uploadNext(index + 1);
+    });
+  }
+
+  uploadNext(0);
 }
 
 function showStatus(msg, type) {

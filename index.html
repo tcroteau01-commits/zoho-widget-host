@@ -614,7 +614,7 @@ textarea { resize: vertical; min-height: 90px; }
     </button>
   </div>
 
-<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.1</div>
+<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.2</div>
 </div><!-- /widget -->
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -1026,6 +1026,7 @@ function validate(fields) {
 }
 
 function validateFiles(section) {
+  if (_testMode) return true;
   var ok = true;
   var checks = section === 1
     ? [{ input: 'cust_docs',    area: 'cust_docs_area',    err: 'e_cust_docs' }]
@@ -1099,8 +1100,10 @@ function showStatus(msg, type) {
 }
 
 // ── Test data fill (dev only) ──────────────────────────────────────────────
+var _testMode = false;
+
 function fillTestData() {
-  // Pick first available customer and carrier
+  _testMode = true;
   if (customerRecords.length) {
     var c = customerRecords[0];
     document.getElementById('sd_customer_input').value = c.Customer_Company_Name || '(test)';
@@ -1119,15 +1122,13 @@ function fillTestData() {
   document.getElementById('Load_Rate_Confirmation_Number').value = 'RC-TEST-001';
   document.getElementById('Carrier_Rate').value = '1500';
   updateMarginBadge();
-  // Create dummy files for upload zones
-  ['cust_docs','carrier_docs'].forEach(function(id) {
-    var dummy = new File(['test'], 'test-doc.pdf', { type: 'application/pdf' });
-    mergeFiles(id, [dummy]);
-    updateFileLabel(id, id + '_label');
+  // Unlock all sections, mark done, jump to review
+  [1,2,3].forEach(function(n) {
+    done[n-1] = true;
+    var sec = document.getElementById('sec' + n);
+    sec.classList.remove('locked');
+    markDone(n);
   });
-  // Mark all sections done and jump to review
-  done = [true, true, true];
-  [1,2,3].forEach(function(n) { markDone(n); });
   goTo(3);
 }
 

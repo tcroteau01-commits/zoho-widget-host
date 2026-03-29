@@ -614,7 +614,7 @@ textarea { resize: vertical; min-height: 90px; }
     </button>
   </div>
 
-<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.5</div>
+<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.6</div>
 </div><!-- /widget -->
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -1077,7 +1077,7 @@ function submitForm() {
     if (res && res.code === 3000) {
       var recordId = res.data && (res.data.ID || (typeof res.data === 'string' ? res.data : null));
       console.log('Record ID:', recordId);
-      if (recordId && !_testMode) {
+      if (recordId) {
         uploadFiles(recordId, btn);
       } else {
         showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');

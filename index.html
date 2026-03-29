@@ -243,6 +243,74 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .terms-warning strong { color: #e8a020; }
 
+/* Searchable dropdown */
+.sd-wrap { position: relative; }
+.sd-input-row {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid #ddd;
+  border-radius: 5px;
+  background: #fff;
+  transition: border-color 0.15s;
+  cursor: text;
+}
+.sd-input-row:focus-within {
+  border-color: #e8a020;
+  box-shadow: 0 0 0 3px rgba(232,160,32,0.12);
+}
+.sd-input-row.invalid { border-color: #e53935; }
+.sd-icon { padding: 0 8px 0 11px; color: #bbb; font-size: 13px; flex-shrink: 0; }
+.sd-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 9px 0;
+  font-size: 13px;
+  font-family: inherit;
+  color: #333;
+  background: transparent;
+  min-width: 0;
+}
+.sd-input::placeholder { color: #bbb; }
+.sd-clear {
+  padding: 0 10px;
+  color: #bbb;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: none;
+}
+.sd-clear:hover { color: #888; }
+.sd-arrow { padding: 0 11px; color: #bbb; font-size: 10px; flex-shrink: 0; transition: transform 0.2s; }
+.sd-wrap.open .sd-arrow { transform: rotate(180deg); }
+
+.sd-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0; right: 0;
+  background: #fff;
+  border: 1.5px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+.sd-wrap.open .sd-list { display: block; }
+.sd-item {
+  padding: 9px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f5f5f5;
+  transition: background 0.1s;
+}
+.sd-item:last-child { border-bottom: none; }
+.sd-item:hover, .sd-item.focused { background: #fff8ee; }
+.sd-item.selected { background: #fff3d6; }
+.sd-item-main { font-size: 13px; color: #272727; font-weight: 500; }
+.sd-item-sub { font-size: 11px; color: #999; margin-top: 2px; }
+.sd-empty { padding: 12px; text-align: center; color: #bbb; font-size: 12px; }
+
 /* File upload */
 .file-area {
   border: 2px dashed #e0e0e0;
@@ -359,9 +427,16 @@ textarea { resize: vertical; min-height: 90px; }
 
       <div class="field">
         <label>Customer Name <span class="req">*</span></label>
-        <select id="Customer_Name" onchange="onCustomerChange()">
-          <option value="">Loading customers…</option>
-        </select>
+        <div class="sd-wrap" id="sd_customer">
+          <div class="sd-input-row" id="sd_customer_row">
+            <span class="sd-icon">🔍</span>
+            <input class="sd-input" id="sd_customer_input" placeholder="Search customers…" autocomplete="off" />
+            <span class="sd-clear" id="sd_customer_clear" onclick="clearDropdown('customer')">✕</span>
+            <span class="sd-arrow">▼</span>
+          </div>
+          <div class="sd-list" id="sd_customer_list"></div>
+        </div>
+        <input type="hidden" id="Customer_Name" />
         <div class="field-err" id="e_Customer_Name">Please select a customer</div>
       </div>
 
@@ -412,9 +487,16 @@ textarea { resize: vertical; min-height: 90px; }
 
       <div class="field">
         <label>Carrier Name / MC # <span class="req">*</span></label>
-        <select id="Carrier_Name_or_MC" onchange="onCarrierChange()">
-          <option value="">Loading carriers…</option>
-        </select>
+        <div class="sd-wrap" id="sd_carrier">
+          <div class="sd-input-row" id="sd_carrier_row">
+            <span class="sd-icon">🔍</span>
+            <input class="sd-input" id="sd_carrier_input" placeholder="Search carriers…" autocomplete="off" />
+            <span class="sd-clear" id="sd_carrier_clear" onclick="clearDropdown('carrier')">✕</span>
+            <span class="sd-arrow">▼</span>
+          </div>
+          <div class="sd-list" id="sd_carrier_list"></div>
+        </div>
+        <input type="hidden" id="Carrier_Name_or_MC" />
         <div class="field-err" id="e_Carrier_Name_or_MC">Please select a carrier</div>
       </div>
 
@@ -528,19 +610,13 @@ function loadCustomers() {
     customerRecords.sort(function(a, b) {
       return (a.Customer_Company_Name || '').localeCompare(b.Customer_Company_Name || '');
     });
-    var sel = document.getElementById('Customer_Name');
-    sel.innerHTML = '<option value="">— Select Customer —</option>';
-    customerRecords.forEach(function(r) {
-      var o = document.createElement('option');
-      o.value = r.ID;
-      o.textContent = r.Customer_Company_Name || '(unnamed)';
-      o.dataset.limit    = r.Credit_Limit    || '';
-      o.dataset.decision = r.Credit_Decision || '';
-      sel.appendChild(o);
-    });
+    initDropdown('customer', customerRecords,
+      function(r) { return r.Customer_Company_Name || '(unnamed)'; },
+      function()  { return null; }, // no sub-line for customers
+      function(r, inputEl) { onCustomerSelect(r, inputEl); }
+    );
   }).catch(function() {
-    document.getElementById('Customer_Name').innerHTML =
-      '<option value="">Unable to load customers</option>';
+    document.getElementById('sd_customer_input').placeholder = 'Unable to load customers';
   });
 }
 
@@ -553,33 +629,103 @@ function loadVendors() {
     vendorRecords.sort(function(a, b) {
       return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
     });
-    var sel = document.getElementById('Carrier_Name_or_MC');
-    sel.innerHTML = '<option value="">— Select Carrier —</option>';
-    vendorRecords.forEach(function(r) {
-      var o = document.createElement('option');
-      o.value = r.ID;
-      o.textContent = r.Vendor_Name || '(unnamed)';
-      o.dataset.terms = r.Payment_Terms || '';
-      sel.appendChild(o);
-    });
+    initDropdown('carrier', vendorRecords,
+      function(r) { return r.Vendor_Name || '(unnamed)'; },
+      function(r) {
+        // Show MC and DOT — update field names below once confirmed
+        var parts = [];
+        if (r.MC_Number)  parts.push('MC: ' + r.MC_Number);
+        if (r.DOT_Number) parts.push('DOT: ' + r.DOT_Number);
+        if (r.MC)         parts.push('MC: ' + r.MC);
+        if (r.DOT)        parts.push('DOT: ' + r.DOT);
+        return parts.length ? parts.join(' · ') : (r.Payment_Terms || null);
+      },
+      function(r, inputEl) { onCarrierSelect(r, inputEl); }
+    );
   }).catch(function() {
-    document.getElementById('Carrier_Name_or_MC').innerHTML =
-      '<option value="">Unable to load carriers</option>';
+    document.getElementById('sd_carrier_input').placeholder = 'Unable to load carriers';
   });
 }
 
+// ── Searchable dropdown engine ─────────────────────────────────────────────
+function initDropdown(key, records, mainFn, subFn, onSelect) {
+  var inputEl  = document.getElementById('sd_' + key + '_input');
+  var listEl   = document.getElementById('sd_' + key + '_list');
+  var wrapEl   = document.getElementById('sd_' + key);
+  var clearEl  = document.getElementById('sd_' + key + '_clear');
+  var hiddenEl = document.getElementById(key === 'customer' ? 'Customer_Name' : 'Carrier_Name_or_MC');
+
+  function renderList(filter) {
+    listEl.innerHTML = '';
+    var q = (filter || '').toLowerCase();
+    var filtered = records.filter(function(r) {
+      return mainFn(r).toLowerCase().indexOf(q) !== -1 ||
+             (subFn(r) || '').toLowerCase().indexOf(q) !== -1;
+    });
+    if (!filtered.length) {
+      listEl.innerHTML = '<div class="sd-empty">No results for "' + filter + '"</div>';
+      return;
+    }
+    filtered.forEach(function(r) {
+      var item = document.createElement('div');
+      item.className = 'sd-item';
+      if (hiddenEl.value === r.ID) item.classList.add('selected');
+      var sub = subFn(r);
+      item.innerHTML = '<div class="sd-item-main">' + mainFn(r) + '</div>' +
+        (sub ? '<div class="sd-item-sub">' + sub + '</div>' : '');
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        hiddenEl.value = r.ID;
+        inputEl.value  = mainFn(r);
+        clearEl.style.display = 'inline';
+        closeDropdown(key);
+        onSelect(r, inputEl);
+        // Clear validation error
+        document.getElementById('sd_' + key + '_row').classList.remove('invalid');
+        var err = document.getElementById('e_' + (key === 'customer' ? 'Customer_Name' : 'Carrier_Name_or_MC'));
+        if (err) err.classList.remove('show');
+      });
+      listEl.appendChild(item);
+    });
+  }
+
+  inputEl.addEventListener('focus', function() {
+    wrapEl.classList.add('open');
+    renderList(inputEl.value);
+  });
+  inputEl.addEventListener('input', function() {
+    renderList(inputEl.value);
+    if (!inputEl.value) { hiddenEl.value = ''; clearEl.style.display = 'none'; onSelect(null); }
+  });
+  inputEl.addEventListener('blur', function() {
+    setTimeout(function() { closeDropdown(key); }, 150);
+  });
+}
+
+function closeDropdown(key) {
+  document.getElementById('sd_' + key).classList.remove('open');
+}
+
+function clearDropdown(key) {
+  var inputEl  = document.getElementById('sd_' + key + '_input');
+  var hiddenEl = document.getElementById(key === 'customer' ? 'Customer_Name' : 'Carrier_Name_or_MC');
+  inputEl.value  = '';
+  hiddenEl.value = '';
+  document.getElementById('sd_' + key + '_clear').style.display = 'none';
+  if (key === 'customer') onCustomerSelect(null);
+  if (key === 'carrier')  onCarrierSelect(null);
+}
+
 // ── Field handlers ────────────────────────────────────────────────────────
-function onCustomerChange() {
-  var sel = document.getElementById('Customer_Name');
-  var opt = sel.options[sel.selectedIndex];
+function onCustomerSelect(r) {
   var banner = document.getElementById('creditBanner');
-  var limit    = opt && opt.dataset.limit;
-  var decision = opt && opt.dataset.decision;
-  if (opt && opt.value && (limit || decision)) {
-    var limitStr = limit ? '$' + parseFloat(limit).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A';
+  if (r && (r.Credit_Limit || r.Credit_Decision)) {
+    var limitStr = r.Credit_Limit
+      ? '$' + parseFloat(r.Credit_Limit).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+      : 'N/A';
     var parts = [];
-    if (decision) parts.push(decision);
-    if (limit)    parts.push('Credit Limit: ' + limitStr);
+    if (r.Credit_Decision) parts.push(r.Credit_Decision);
+    if (r.Credit_Limit)    parts.push('Credit Limit: ' + limitStr);
     document.getElementById('creditValue').textContent = parts.join('  ·  ');
     banner.style.display = 'block';
   } else {
@@ -587,12 +733,10 @@ function onCustomerChange() {
   }
 }
 
-function onCarrierChange() {
-  var sel = document.getElementById('Carrier_Name_or_MC');
-  var opt = sel.options[sel.selectedIndex];
+function onCarrierSelect(r) {
   var banner = document.getElementById('termsBanner');
-  if (opt && opt.dataset.terms) {
-    document.getElementById('termsValue').textContent = opt.dataset.terms;
+  if (r && r.Payment_Terms) {
+    document.getElementById('termsValue').textContent = r.Payment_Terms;
     banner.classList.remove('hidden');
   } else {
     banner.classList.add('hidden');
@@ -682,16 +826,14 @@ function markDone(n) {
 
 function sectionSummary(n) {
   if (n === 1) {
-    var sel = document.getElementById('Customer_Name');
-    var name = sel.selectedIndex > 0 ? sel.options[sel.selectedIndex].text : '';
+    var name = document.getElementById('sd_customer_input').value;
     var ref  = document.getElementById('Customer_Reference_Number').value;
     var rate = document.getElementById('Customer_Rate').value;
     return [name, ref && 'Ref: ' + ref, rate && '$' + parseFloat(rate).toFixed(2)].filter(Boolean).join(' · ');
   }
   if (n === 2) {
-    var sel2   = document.getElementById('Carrier_Name_or_MC');
-    var carrier = sel2.selectedIndex > 0 ? sel2.options[sel2.selectedIndex].text : '';
-    var crate  = document.getElementById('Carrier_Rate').value;
+    var carrier = document.getElementById('sd_carrier_input').value;
+    var crate   = document.getElementById('Carrier_Rate').value;
     return [carrier, crate && '$' + parseFloat(crate).toFixed(2)].filter(Boolean).join(' · ');
   }
   var comments = document.getElementById('Load_Comments').value.trim();
@@ -732,12 +874,15 @@ function validate(fields) {
   fields.forEach(function(id) {
     var el  = document.getElementById(id);
     var err = document.getElementById('e_' + id);
+    // For searchable dropdowns, highlight the visible input row
+    var visualEl = id === 'Customer_Name'    ? document.getElementById('sd_customer_row') :
+                   id === 'Carrier_Name_or_MC' ? document.getElementById('sd_carrier_row') : el;
     if (!el.value.trim()) {
-      el.classList.add('invalid');
+      visualEl.classList.add('invalid');
       if (err) err.classList.add('show');
       ok = false;
     } else {
-      el.classList.remove('invalid');
+      visualEl.classList.remove('invalid');
       if (err) err.classList.remove('show');
     }
   });

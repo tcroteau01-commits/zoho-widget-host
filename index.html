@@ -720,27 +720,66 @@ function clearDropdown(key) {
 
 // ── Field handlers ────────────────────────────────────────────────────────
 function onCustomerSelect(r) {
-  var banner    = document.getElementById('creditBanner');
-  var valueEl   = document.getElementById('creditValue');
+  var banner  = document.getElementById('creditBanner');
+  var valueEl = document.getElementById('creditValue');
   if (!r) { banner.style.display = 'none'; return; }
 
-  // Prefer the Deluge-generated HTML note (has live Buy Limit, AR, Utilization, Available)
-  if (r.Customer_Credit_Note) {
-    valueEl.innerHTML = r.Customer_Credit_Note;
-    banner.style.display = 'block';
-  } else if (r.Credit_Limit || r.Credit_Decision) {
-    // Fallback: build display from stored fields
+  // Show banner immediately with loading state
+  valueEl.innerHTML = '<div style="color:#aaa;font-size:12px;">Loading credit info…</div>';
+  banner.style.display = 'block';
+
+  var fvid = r.FV_ID || '';
+  if (!fvid) {
+    showCreditFallback(r, valueEl);
+    return;
+  }
+
+  fetch('https://pryanoperfi.pythonanywhere.com/maxcredit?FVID=' + encodeURIComponent(fvid), {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer h0dYGKsWGMifxv62k8Ku7chBlKmoaHCQ',
+      'Content-Type': 'application/json'
+    }
+  })
+  .then(function(resp) { return resp.json(); })
+  .then(function(data) {
+    var buyLimit   = parseFloat((data.Buy_Limit           || '0').toString().replace(/,/g,'')) || 0;
+    var ar         = parseFloat((data.Sum_Amount_GL_3002  || '0').toString().replace(/,/g,'')) || 0;
+    var available  = parseFloat((data.Remaining_Credit    || '0').toString().replace(/,/g,'')) || 0;
+    var utilPct    = buyLimit > 0 ? (ar / buyLimit * 100) : 0;
+    var utilColor  = utilPct >= 80 ? '#c62828' : utilPct >= 60 ? '#e67e22' : '#2e7d32';
+    var availColor = available > 0 ? '#2e7d32' : '#c62828';
+
+    function fmt(n) {
+      return '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    valueEl.innerHTML =
+      '<div style="line-height:1.9em;font-size:13px;">' +
+      '<b>Buy Limit:</b> ' + fmt(buyLimit) + '<br>' +
+      '<b>AR:</b> ' + fmt(ar) + '<br>' +
+      '<b>Utilization:</b> <span style="color:' + utilColor + ';font-weight:bold;">' + utilPct.toFixed(2) + '%</span><br>' +
+      '<b>Available:</b> <span style="color:' + availColor + ';font-weight:bold;">' + fmt(available) + '</span>' +
+      '</div>';
+  })
+  .catch(function(err) {
+    console.warn('Credit API error (possible CORS):', err);
+    showCreditFallback(r, valueEl);
+  });
+}
+
+function showCreditFallback(r, valueEl) {
+  if (r.Credit_Limit || r.Credit_Decision) {
     var limitStr = r.Credit_Limit
       ? '$' + parseFloat(r.Credit_Limit).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
       : 'N/A';
-    var html = '<div style="line-height:1.7em;">';
+    var html = '<div style="line-height:1.7em;font-size:13px;">';
     if (r.Credit_Decision) html += '<b>Status:</b> ' + r.Credit_Decision + '<br>';
     if (r.Credit_Limit)    html += '<b>Credit Limit:</b> ' + limitStr;
     html += '</div>';
     valueEl.innerHTML = html;
-    banner.style.display = 'block';
   } else {
-    banner.style.display = 'none';
+    document.getElementById('creditBanner').style.display = 'none';
   }
 }
 

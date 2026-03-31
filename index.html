@@ -413,6 +413,7 @@ textarea { resize: vertical; min-height: 90px; }
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js"></script>
 </head>
 <body>
 <div class="widget">
@@ -492,7 +493,7 @@ textarea { resize: vertical; min-height: 90px; }
              ondragover="handleDragOver(event,'cust_docs_area')"
              ondragleave="handleDragLeave(event,'cust_docs_area')"
              ondrop="handleDrop(event,'cust_docs','cust_docs_label','cust_docs_area')">
-          <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx"
+          <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.bmp,.webp,.gif,.svg,.tif,.tiff,.txt,.csv,.doc,.docx"
                  onchange="onFileChange('cust_docs','cust_docs_label')" />
           <span id="cust_docs_label">📎 Click or drag files here</span>
         </div>
@@ -571,7 +572,7 @@ textarea { resize: vertical; min-height: 90px; }
              ondragover="handleDragOver(event,'carrier_docs_area')"
              ondragleave="handleDragLeave(event,'carrier_docs_area')"
              ondrop="handleDrop(event,'carrier_docs','carrier_docs_label','carrier_docs_area')">
-          <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx"
+          <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.bmp,.webp,.gif,.svg,.tif,.tiff,.txt,.csv,.doc,.docx"
                  onchange="onFileChange('carrier_docs','carrier_docs_label')" />
           <span id="carrier_docs_label">📎 Click or drag files here</span>
         </div>
@@ -858,7 +859,7 @@ var fileStore = {};
 function mergeFiles(inputId, newFiles) {
   if (!fileStore[inputId]) fileStore[inputId] = [];
   Array.from(newFiles).forEach(function(f) {
-    if (!/\.(pdf|jpg|jpeg|png|heic|heif|doc|docx)$/i.test(f.name)) return;
+    if (!/\.(pdf|jpg|jpeg|png|heic|heif|bmp|webp|gif|svg|tif|tiff|txt|csv|doc|docx)$/i.test(f.name)) return;
     var exists = fileStore[inputId].some(function(e) { return e.name === f.name && e.size === f.size; });
     if (!exists) fileStore[inputId].push(f);
   });
@@ -1169,9 +1170,14 @@ async function mergeFilesToPDF(files) {
         if (Array.isArray(converted)) converted = converted[0];
         var dataUrl = await blobToDataUrl(converted);
         await addImagePageToPDF(merged, dataUrl);
-      } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
+      } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'bmp' || ext === 'webp' || ext === 'gif' || ext === 'svg') {
         var dataUrl = await fileToDataUrl(file);
         await addImagePageToPDF(merged, dataUrl);
+      } else if (ext === 'tif' || ext === 'tiff') {
+        await addTiffPagesToPDF(merged, file);
+      } else if (ext === 'txt' || ext === 'csv') {
+        var text = await file.text();
+        await addTextPageToPDF(merged, text, file.name);
       } else if (ext === 'docx') {
         var ab = await file.arrayBuffer();
         var result = await mammoth.extractRawText({ arrayBuffer: ab });
@@ -1233,6 +1239,33 @@ async function addTextPageToPDF(pdfDoc, text, filename) {
     chunk.forEach(function(l, idx) {
       page.drawText(l || ' ', { x: margin, y: pageH - margin - idx * lineH, size: size, font: font });
     });
+  }
+}
+
+async function addTiffPagesToPDF(pdfDoc, file) {
+  var ab = await file.arrayBuffer();
+  var ifds = UTIF.decode(ab);
+  for (var i = 0; i < ifds.length; i++) {
+    UTIF.decodeImage(ab, ifds[i]);
+    var ifd = ifds[i];
+    var w = ifd.width, h = ifd.height;
+    var tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    var imageData = tmp.getContext('2d').createImageData(w, h);
+    imageData.data.set(new Uint8ClampedArray(ifd.data.buffer));
+    tmp.getContext('2d').putImageData(imageData, 0, 0);
+    var canvas = document.createElement('canvas');
+    var maxW = 1700, maxH = 2200;
+    var scale = Math.min(maxW / w, maxH / h, 1);
+    canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+    canvas.getContext('2d').drawImage(tmp, 0, 0, canvas.width, canvas.height);
+    var base64 = canvas.toDataURL('image/png').split(',')[1];
+    var binary = atob(base64);
+    var pngBytes = new Uint8Array(binary.length);
+    for (var j = 0; j < binary.length; j++) pngBytes[j] = binary.charCodeAt(j);
+    var pdfImg = await pdfDoc.embedPng(pngBytes);
+    var page = pdfDoc.addPage([pdfImg.width, pdfImg.height]);
+    page.drawImage(pdfImg, { x: 0, y: 0, width: pdfImg.width, height: pdfImg.height });
   }
 }
 

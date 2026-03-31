@@ -410,6 +410,9 @@ textarea { resize: vertical; min-height: 90px; }
 .submit-btn-full:disabled { background: #ccc; cursor: default; }
 .submit-margin-note { margin-bottom: 12px; }
 </style>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
 </head>
 <body>
 <div class="widget">
@@ -489,7 +492,7 @@ textarea { resize: vertical; min-height: 90px; }
              ondragover="handleDragOver(event,'cust_docs_area')"
              ondragleave="handleDragLeave(event,'cust_docs_area')"
              ondrop="handleDrop(event,'cust_docs','cust_docs_label','cust_docs_area')">
-          <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+          <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx"
                  onchange="onFileChange('cust_docs','cust_docs_label')" />
           <span id="cust_docs_label">📎 Click or drag files here</span>
         </div>
@@ -568,7 +571,7 @@ textarea { resize: vertical; min-height: 90px; }
              ondragover="handleDragOver(event,'carrier_docs_area')"
              ondragleave="handleDragLeave(event,'carrier_docs_area')"
              ondrop="handleDrop(event,'carrier_docs','carrier_docs_label','carrier_docs_area')">
-          <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+          <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx"
                  onchange="onFileChange('carrier_docs','carrier_docs_label')" />
           <span id="carrier_docs_label">📎 Click or drag files here</span>
         </div>
@@ -855,7 +858,7 @@ var fileStore = {};
 function mergeFiles(inputId, newFiles) {
   if (!fileStore[inputId]) fileStore[inputId] = [];
   Array.from(newFiles).forEach(function(f) {
-    if (!/\.(pdf|jpg|jpeg|png|doc|docx)$/i.test(f.name)) return;
+    if (!/\.(pdf|jpg|jpeg|png|heic|heif|doc|docx)$/i.test(f.name)) return;
     var exists = fileStore[inputId].some(function(e) { return e.name === f.name && e.size === f.size; });
     if (!exists) fileStore[inputId].push(f);
   });
@@ -1100,59 +1103,154 @@ function submitForm() {
   });
 }
 
-function uploadFiles(recordId, btn) {
-  var uploads = [];
-  (fileStore['cust_docs'] || []).forEach(function(f) {
-    uploads.push({ file: f, field: 'Customer_Docs_Upload1', subfield: 'Cust_Docs_File_upload' });
-  });
-  (fileStore['carrier_docs'] || []).forEach(function(f) {
-    uploads.push({ file: f, field: 'Carrier_Docs_Upload1', subfield: 'Carrier_Docs_File_upload' });
-  });
-
-  if (!uploads.length) {
+async function uploadFiles(recordId, btn) {
+  var sections = [
+    { key: 'cust_docs',    field: 'Customer_Docs_Upload1',   subfield: 'Cust_Docs_File_upload',   label: 'customer' },
+    { key: 'carrier_docs', field: 'Carrier_Docs_Upload1',    subfield: 'Carrier_Docs_File_upload', label: 'carrier'  }
+  ];
+  var hasFiles = sections.some(function(s) { return (fileStore[s.key] || []).length > 0; });
+  if (!hasFiles) {
     showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
     btn.textContent = '✓ Submitted';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-
-  doUploadSequence(recordId, btn, uploads, 0, 0);
+  var errors = 0;
+  for (var i = 0; i < sections.length; i++) {
+    var s = sections[i];
+    var files = fileStore[s.key] || [];
+    if (!files.length) continue;
+    try {
+      showStatus('Merging ' + files.length + ' ' + s.label + ' file(s) into PDF…', 'loading');
+      var pdfBlob = await mergeFilesToPDF(files);
+      var filename = s.label + '_docs_' + recordId + '.pdf';
+      showStatus('Uploading ' + s.label + ' documents…', 'loading');
+      var formData = new FormData();
+      formData.append('record_id', recordId);
+      formData.append('field_name', s.field);
+      formData.append('subfield_name', s.subfield);
+      formData.append('file', pdfBlob, filename);
+      var resp = await fetch('https://pryanoperfi.pythonanywhere.com/upload-doc', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer h0dYGKsWGMifxv62k8Ku7chBlKmoaHCQ' },
+        body: formData
+      });
+      var data = await resp.json();
+      console.log('upload ' + s.label + ' response:', JSON.stringify(data));
+      if (data.code !== 3000) errors++;
+    } catch(e) {
+      console.error('upload ' + s.label + ' error:', e);
+      errors++;
+    }
+  }
+  if (errors > 0) {
+    showStatus('✓ Load submitted. ' + errors + ' document upload(s) failed — please contact your OperFi rep.', 'error');
+  } else {
+    showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
+  }
+  btn.textContent = '✓ Submitted';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function doUploadSequence(recordId, btn, uploads, index, errors) {
-  if (index >= uploads.length) {
-    if (errors > 0) {
-      showStatus('✓ Load submitted. ' + errors + ' document(s) failed to upload — please contact your OperFi rep.', 'error');
-    } else {
-      showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
+// ── PDF Merge ──────────────────────────────────────────────────────────────
+async function mergeFilesToPDF(files) {
+  var merged = await PDFLib.PDFDocument.create();
+  for (var i = 0; i < files.length; i++) {
+    var file = files[i];
+    var ext = file.name.split('.').pop().toLowerCase();
+    try {
+      if (ext === 'pdf') {
+        var bytes = await file.arrayBuffer();
+        var src = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+        var pages = await merged.copyPages(src, src.getPageIndices());
+        pages.forEach(function(p) { merged.addPage(p); });
+      } else if (ext === 'heic' || ext === 'heif') {
+        var converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+        if (Array.isArray(converted)) converted = converted[0];
+        var dataUrl = await blobToDataUrl(converted);
+        await addImagePageToPDF(merged, dataUrl);
+      } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
+        var dataUrl = await fileToDataUrl(file);
+        await addImagePageToPDF(merged, dataUrl);
+      } else if (ext === 'docx') {
+        var ab = await file.arrayBuffer();
+        var result = await mammoth.extractRawText({ arrayBuffer: ab });
+        await addTextPageToPDF(merged, result.value, file.name);
+      } else if (ext === 'doc') {
+        await addTextPageToPDF(merged, '[.doc format cannot be rendered. File: ' + file.name + ' — please re-save as PDF or DOCX.]', file.name);
+      }
+    } catch(e) {
+      console.error('mergeFilesToPDF error on', file.name, e);
+      await addTextPageToPDF(merged, '[Error processing file: ' + file.name + ' — ' + (e.message || e) + ']', file.name);
     }
-    btn.textContent = '✓ Submitted';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    return;
   }
+  var pdfBytes = await merged.save();
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
 
-  showStatus('Uploading document ' + (index + 1) + ' of ' + uploads.length + '…', 'loading');
-  var u = uploads[index];
-  var formData = new FormData();
-  formData.append('record_id', recordId);
-  formData.append('field_name', u.field);
-  formData.append('subfield_name', u.subfield);
-  formData.append('file', u.file, u.file.name);
+async function addImagePageToPDF(pdfDoc, dataUrl) {
+  var img = new Image();
+  img.src = dataUrl;
+  await new Promise(function(resolve) { img.onload = resolve; });
+  var canvas = document.createElement('canvas');
+  var maxW = 1700, maxH = 2200;
+  var w = img.naturalWidth, h = img.naturalHeight;
+  var scale = Math.min(maxW / w, maxH / h, 1);
+  canvas.width  = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  var pngUrl = canvas.toDataURL('image/png');
+  var base64 = pngUrl.split(',')[1];
+  var binary = atob(base64);
+  var pngBytes = new Uint8Array(binary.length);
+  for (var j = 0; j < binary.length; j++) pngBytes[j] = binary.charCodeAt(j);
+  var pdfImg = await pdfDoc.embedPng(pngBytes);
+  var page = pdfDoc.addPage([pdfImg.width, pdfImg.height]);
+  page.drawImage(pdfImg, { x: 0, y: 0, width: pdfImg.width, height: pdfImg.height });
+}
 
-  fetch('https://pryanoperfi.pythonanywhere.com/upload-doc', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer h0dYGKsWGMifxv62k8Ku7chBlKmoaHCQ' },
-    body: formData
-  })
-  .then(function(resp) { return resp.json(); })
-  .then(function(data) {
-    console.log('upload ' + (index + 1) + ' response:', JSON.stringify(data));
-    var err = (data.code !== 3000) ? errors + 1 : errors;
-    doUploadSequence(recordId, btn, uploads, index + 1, err);
-  })
-  .catch(function(e) {
-    console.error('upload ' + (index + 1) + ' error:', e);
-    doUploadSequence(recordId, btn, uploads, index + 1, errors + 1);
+async function addTextPageToPDF(pdfDoc, text, filename) {
+  var font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  var pageW = 612, pageH = 792, margin = 50, size = 10, lineH = 16;
+  var maxW = pageW - margin * 2;
+  var lines = ['File: ' + filename, ''];
+  var words = (text || '').split(/\s+/);
+  var line = '';
+  words.forEach(function(w) {
+    var test = line ? line + ' ' + w : w;
+    if (font.widthOfTextAtSize(test, size) > maxW) {
+      if (line) lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  });
+  if (line) lines.push(line);
+  var perPage = Math.floor((pageH - margin * 2) / lineH);
+  for (var i = 0; i < lines.length; i += perPage) {
+    var page = pdfDoc.addPage([pageW, pageH]);
+    var chunk = lines.slice(i, i + perPage);
+    chunk.forEach(function(l, idx) {
+      page.drawText(l || ' ', { x: margin, y: pageH - margin - idx * lineH, size: size, font: font });
+    });
+  }
+}
+
+function fileToDataUrl(file) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function(e) { resolve(e.target.result); };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function(e) { resolve(e.target.result); };
+    r.onerror = reject;
+    r.readAsDataURL(blob);
   });
 }
 

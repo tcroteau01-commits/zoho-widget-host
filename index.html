@@ -421,7 +421,7 @@ textarea { resize: vertical; min-height: 90px; }
   <div class="widget-header">
     <div class="widget-title">Submit Load</div>
     <div class="widget-sub">Complete all three sections to submit your load for funding</div>
-    <div style="text-align:right;font-size:10px;color:#bbb;padding:2px 0 0;">v2026-03-31.1</div>
+    <div style="text-align:right;font-size:10px;color:#bbb;padding:2px 0 0;">v2026-03-31.2</div>
   </div>
 
   <div id="statusMsg" class="status-msg"></div>
@@ -1117,21 +1117,6 @@ async function uploadFiles(recordId, btn) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-
-  // Get a fresh OAuth token from Pat's server (auth only — no file proxying)
-  var accessToken;
-  try {
-    var tokenResp = await fetch('https://pryanoperfi.pythonanywhere.com/get-token');
-    var tokenData = await tokenResp.json();
-    accessToken = tokenData.access_token;
-  } catch(e) {
-    console.error('Failed to get access token:', e);
-    showStatus('✓ Load submitted. Document upload failed (auth error) — please contact your OperFi rep.', 'error');
-    btn.textContent = '✓ Submitted';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    return;
-  }
-
   var errors = 0;
   for (var i = 0; i < sections.length; i++) {
     var s = sections[i];
@@ -1143,11 +1128,11 @@ async function uploadFiles(recordId, btn) {
       var filename = s.label + '_docs_' + recordId + '.pdf';
       showStatus('Uploading ' + s.label + ' documents…', 'loading');
       var formData = new FormData();
+      formData.append('record_id', recordId);
+      formData.append('field_name', s.field);
       formData.append('file', pdfBlob, filename);
-      var uploadUrl = 'https://creator.zoho.com/api/v2.1/tcroteau/funding-portal/report/All_Funding_Portals/' + recordId + '/' + s.field + '/upload';
-      var resp = await fetch(uploadUrl, {
+      var resp = await fetch('https://pryanoperfi.pythonanywhere.com/upload-doc', {
         method: 'POST',
-        headers: { 'Authorization': 'Zoho-oauthtoken ' + accessToken },
         body: formData
       });
       var data = await resp.json();

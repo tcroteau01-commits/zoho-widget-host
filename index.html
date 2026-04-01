@@ -1106,8 +1106,8 @@ function submitForm() {
 
 async function uploadFiles(recordId, btn) {
   var sections = [
-    { key: 'cust_docs',    field: 'Customer_Docs_Upload1',   subfield: 'Cust_Docs_File_upload',   label: 'customer' },
-    { key: 'carrier_docs', field: 'Carrier_Docs_Upload1',    subfield: 'Carrier_Docs_File_upload', label: 'carrier'  }
+    { key: 'cust_docs',    field: 'Customer_Documents', label: 'customer' },
+    { key: 'carrier_docs', field: 'Carrier_Documents',  label: 'carrier'  }
   ];
   var hasFiles = sections.some(function(s) { return (fileStore[s.key] || []).length > 0; });
   if (!hasFiles) {
@@ -1116,6 +1116,21 @@ async function uploadFiles(recordId, btn) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
+
+  // Get a fresh OAuth token from Pat's server (auth only — no file proxying)
+  var accessToken;
+  try {
+    var tokenResp = await fetch('https://pryanoperfi.pythonanywhere.com/get-token');
+    var tokenData = await tokenResp.json();
+    accessToken = tokenData.access_token;
+  } catch(e) {
+    console.error('Failed to get access token:', e);
+    showStatus('✓ Load submitted. Document upload failed (auth error) — please contact your OperFi rep.', 'error');
+    btn.textContent = '✓ Submitted';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+
   var errors = 0;
   for (var i = 0; i < sections.length; i++) {
     var s = sections[i];
@@ -1127,13 +1142,11 @@ async function uploadFiles(recordId, btn) {
       var filename = s.label + '_docs_' + recordId + '.pdf';
       showStatus('Uploading ' + s.label + ' documents…', 'loading');
       var formData = new FormData();
-      formData.append('record_id', recordId);
-      formData.append('field_name', s.field);
-      formData.append('subfield_name', s.subfield);
       formData.append('file', pdfBlob, filename);
-      var resp = await fetch('https://pryanoperfi.pythonanywhere.com/upload-doc', {
+      var uploadUrl = 'https://creator.zoho.com/api/v2.1/tcroteau/funding-portal/report/All_Funding_Portals/' + recordId + '/' + s.field + '/upload';
+      var resp = await fetch(uploadUrl, {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer h0dYGKsWGMifxv62k8Ku7chBlKmoaHCQ' },
+        headers: { 'Authorization': 'Zoho-oauthtoken ' + accessToken },
         body: formData
       });
       var data = await resp.json();

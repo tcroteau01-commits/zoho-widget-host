@@ -674,22 +674,25 @@ function fetchPage(loadId, page, accumulated, criteria, range) {
   console.log('[SubmissionHistory] Fetching page', page, '(have', accumulated.length, 'so far)');
   setProgress('Loading page ' + page + ' (' + accumulated.length + ' records so far)…');
   var pageStart = Date.now();
+  // Try cursor-style pagination (from + limit). Page-based pagination
+  // (page + pageSize) returns the same first 200 records on every call
+  // in portal SDK context.
   var params = {
     report_name: 'Submission_History',
-    page: page,
-    pageSize: 200
+    from: (page - 1) * 200,
+    limit: 200
   };
-  // NOTE: do not pass criteria/sort_field/sort_order — those break pagination
-  // (SDK silently ignores unknown params and apparently the page param too).
 
   ZOHO.CREATOR.DATA.getRecords(params).then(function(res) {
     if (loadId !== currentLoadId) return;
     var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
     console.log('[SubmissionHistory] Page', page, 'returned', data.length, 'records in', (Date.now() - pageStart) + 'ms');
 
-    // Diagnostic: log first/last record dates so we can see what's coming back
+    // Diagnostic: log first/last record dates AND IDs so we can see what's coming back
     if (data.length > 0) {
       console.log('[SubmissionHistory]   newest in page:', data[0].Added_Time, '| oldest:', data[data.length - 1].Added_Time);
+      var sampleIds = data.slice(0, 3).map(function(r) { return r.ID || r.id || '(no-id)'; });
+      console.log('[SubmissionHistory]   first 3 IDs in page:', sampleIds.join(', '));
     }
 
     // Dedupe by ID. If pagination breaks and the API returns the same records,
@@ -944,7 +947,7 @@ function rowHtml(r, idx) {
       '</div>' +
       '<div>' +
         '<div class="cell-label">Submitted</div>' +
-        '<div class="cell-val">' + (added ? fmtTime(added) : '—') + '</div>' +
+        '<div class="cell-val">' + (added ? (isMidnight(added) ? '—' : fmtTime(added)) : '—') + '</div>' +
         (docCount > 0 ? '<div class="docs-ic">📎 ' + docCount + ' doc' + (docCount === 1 ? '' : 's') + '</div>' : '') +
       '</div>' +
       '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
@@ -1231,8 +1234,13 @@ function fmtTime(d) {
 function fmtDateShort(d) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+function isMidnight(d) {
+  return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
+}
 function fmtDateTime(d) {
-  return fmtDateShort(d) + ' · ' + fmtTime(d);
+  // Bulk-imported records arrive at exactly midnight — no real timestamp.
+  // Show date only in that case so we don't display a meaningless "12:00 AM".
+  return isMidnight(d) ? fmtDateShort(d) : fmtDateShort(d) + ' · ' + fmtTime(d);
 }
 function dayHeaderLabel(d) {
   if (!d) return 'Unknown';

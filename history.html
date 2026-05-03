@@ -677,12 +677,10 @@ function fetchPage(loadId, page, accumulated, criteria, range) {
   var params = {
     report_name: 'Submission_History',
     page: page,
-    pageSize: 200,
-    // Try to force newest-first sort. SDK may or may not honor these — diagnostic.
-    sort_field: 'Added_Time',
-    sort_order: 'desc'
+    pageSize: 200
   };
-  if (criteria) params.criteria = criteria;
+  // NOTE: do not pass criteria/sort_field/sort_order — those break pagination
+  // (SDK silently ignores unknown params and apparently the page param too).
 
   ZOHO.CREATOR.DATA.getRecords(params).then(function(res) {
     if (loadId !== currentLoadId) return;
@@ -694,7 +692,31 @@ function fetchPage(loadId, page, accumulated, criteria, range) {
       console.log('[SubmissionHistory]   newest in page:', data[0].Added_Time, '| oldest:', data[data.length - 1].Added_Time);
     }
 
+    // Dedupe by ID. If pagination breaks and the API returns the same records,
+    // we don't want them piling up.
     var combined = accumulated.concat(data);
+    var seen = {};
+    var deduped = [];
+    for (var i = 0; i < combined.length; i++) {
+      var id = combined[i].ID || combined[i].id;
+      if (!id) { deduped.push(combined[i]); continue; }
+      if (seen[id]) continue;
+      seen[id] = true;
+      deduped.push(combined[i]);
+    }
+    var dupesThisPage = combined.length - deduped.length;
+    if (dupesThisPage > 0) {
+      console.warn('[SubmissionHistory] Page', page, 'contained', dupesThisPage, 'duplicates of records we already had — pagination may be broken');
+    }
+    combined = deduped;
+
+    // If a page returns ZERO new unique records, we're stuck in a loop — bail.
+    if (data.length > 0 && combined.length === accumulated.length) {
+      clearTimeout(loadSafetyTimer);
+      console.warn('[SubmissionHistory] Page', page, 'returned only duplicates — stopping');
+      onRecordsLoaded(combined, false);
+      return;
+    }
 
     // EARLY STOP: records arrive newest-first. If the oldest in this page is past
     // our date floor, we've collected everything we need. Trim and return.

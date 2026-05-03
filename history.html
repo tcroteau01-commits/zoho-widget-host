@@ -643,7 +643,7 @@ function loadAllRecords() {
       'Try a smaller date range. Open DevTools console (F12) for details.');
   }, 60000);
 
-  fetchPage(loadId, 1, [], criteria);
+  fetchPage(loadId, 1, [], criteria, range);
 }
 
 function setProgress(msg) {
@@ -666,7 +666,7 @@ function formatZohoDateTime(d) {
     ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
-function fetchPage(loadId, page, accumulated, criteria) {
+function fetchPage(loadId, page, accumulated, criteria, range) {
   if (loadId !== currentLoadId) {
     console.log('[SubmissionHistory] Load', loadId, 'cancelled');
     return;
@@ -682,10 +682,33 @@ function fetchPage(loadId, page, accumulated, criteria) {
   if (criteria) params.criteria = criteria;
 
   ZOHO.CREATOR.DATA.getRecords(params).then(function(res) {
-    if (loadId !== currentLoadId) return;  // user changed range, abandon
+    if (loadId !== currentLoadId) return;
     var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
     console.log('[SubmissionHistory] Page', page, 'returned', data.length, 'records in', (Date.now() - pageStart) + 'ms');
+
+    // Diagnostic: log first/last record dates so we can see what's coming back
+    if (data.length > 0) {
+      console.log('[SubmissionHistory]   newest in page:', data[0].Added_Time, '| oldest:', data[data.length - 1].Added_Time);
+    }
+
     var combined = accumulated.concat(data);
+
+    // EARLY STOP: records arrive newest-first. If the oldest in this page is past
+    // our date floor, we've collected everything we need. Trim and return.
+    if (range && data.length > 0) {
+      var oldest = parseDate(data[data.length - 1].Added_Time);
+      if (oldest && oldest < range.start) {
+        console.log('[SubmissionHistory] Crossed date floor on page', page, '— stopping');
+        var inRange = combined.filter(function(r) {
+          var t = parseDate(r.Added_Time);
+          return t && t >= range.start && t <= range.end;
+        });
+        clearTimeout(loadSafetyTimer);
+        console.log('[SubmissionHistory] Total in range:', inRange.length, 'records in', (Date.now() - loadStart) + 'ms');
+        onRecordsLoaded(inRange, false);
+        return;
+      }
+    }
 
     // Hard cap so a misconfigured "All Time" can't hang the browser indefinitely
     if (combined.length >= 5000) {
@@ -696,11 +719,19 @@ function fetchPage(loadId, page, accumulated, criteria) {
     }
 
     if (data.length === 200) {
-      fetchPage(loadId, page + 1, combined, criteria);
+      fetchPage(loadId, page + 1, combined, criteria, range);
     } else {
       clearTimeout(loadSafetyTimer);
       console.log('[SubmissionHistory] Total loaded:', combined.length, 'records in', (Date.now() - loadStart) + 'ms');
-      onRecordsLoaded(combined, false);
+      // Apply range filter on the way out (in case criteria ran but we didn't early-stop)
+      var finalRecords = combined;
+      if (range) {
+        finalRecords = combined.filter(function(r) {
+          var t = parseDate(r.Added_Time);
+          return t && t >= range.start && t <= range.end;
+        });
+      }
+      onRecordsLoaded(finalRecords, false);
     }
   }).catch(function(err) {
     if (loadId !== currentLoadId) return;

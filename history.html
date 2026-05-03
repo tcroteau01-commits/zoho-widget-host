@@ -505,14 +505,15 @@ html, body {
 'use strict';
 
 // ── State ─────────────────────────────────────────────────────────────────
-var allRecords = [];          // raw records from API
-var filteredRecords = [];     // after applying filters
+var allRecords = [];          // records currently loaded (always within current date range)
+var filteredRecords = [];     // after applying status + search filters
 var currentStatus = 'all';
 var currentSearch = '';
 var currentRange = '30d';
 var currentRangeStart = null;
 var currentRangeEnd = null;
 var openIndex = -1;           // index in filteredRecords
+var currentLoadId = 0;        // cancels in-flight loads when range changes
 
 // ── Status mapping ────────────────────────────────────────────────────────
 // Maps Purchase_Status field value → { key, label, pillClass }
@@ -569,6 +570,9 @@ function bindGlobalUI() {
   document.getElementById('date-presets').addEventListener('click', function(e) {
     var t = e.target.closest('.preset');
     if (!t) return;
+    if (t.dataset.range === 'all') {
+      if (!confirm('Loading all submissions can take a long time for large accounts. Continue?')) return;
+    }
     document.querySelectorAll('#date-presets .preset').forEach(function(el) { el.classList.remove('active'); });
     t.classList.add('active');
     currentRange = t.dataset.range;
@@ -577,7 +581,7 @@ function bindGlobalUI() {
     document.getElementById('date-label').textContent = t.textContent;
     dp.classList.remove('active');
     dpop.classList.remove('show');
-    applyFilters();
+    loadAllRecords();  // refetch from server with new criteria
   });
   document.getElementById('date-cancel').addEventListener('click', function() {
     dp.classList.remove('active');
@@ -594,7 +598,7 @@ function bindGlobalUI() {
     document.getElementById('date-label').textContent = fmtDateShort(currentRangeStart) + ' – ' + fmtDateShort(currentRangeEnd);
     dp.classList.remove('active');
     dpop.classList.remove('show');
-    applyFilters();
+    loadAllRecords();  // refetch from server with new criteria
   });
 
   // Panel close + keyboard
@@ -607,7 +611,7 @@ function bindGlobalUI() {
   });
 }
 
-// ── Data load (paginated) ─────────────────────────────────────────────────
+// ── Data load (server-side date-filtered, paginated) ─────────────────────
 var loadStart = 0;
 var loadSafetyTimer = null;
 
@@ -616,52 +620,102 @@ function loadAllRecords() {
     showError('SDK unavailable', 'The Zoho Creator widget SDK did not load. Reload the page.');
     return;
   }
+  // Cancel any in-flight load (user may have changed date range mid-load)
+  currentLoadId++;
+  var loadId = currentLoadId;
+
+  // Show loading state
+  document.getElementById('results').innerHTML =
+    '<div class="state"><div class="spinner"></div>' +
+    '<div class="state-title">Loading submissions…</div>' +
+    '<div class="state-msg" id="load-progress">Pulling your submission history</div></div>';
+
   loadStart = Date.now();
-  console.log('[SubmissionHistory] Starting load at', new Date().toISOString());
-  // Safety: if no progress in 60s, surface an error so the page doesn't hang silently.
+  var range = computeDateRange();
+  var criteria = buildCriteria(range);
+  console.log('[SubmissionHistory] Starting load at', new Date().toISOString(), 'criteria:', criteria || '(none)');
+
+  // Safety: if no progress in 60s, surface an error.
+  clearTimeout(loadSafetyTimer);
   loadSafetyTimer = setTimeout(function() {
+    if (loadId !== currentLoadId) return;
     showError('Loading is taking longer than expected',
-      'Open DevTools console (F12) and share what you see. The data fetch did not complete after 60 seconds.');
+      'Try a smaller date range. Open DevTools console (F12) for details.');
   }, 60000);
-  fetchPage(1, []);
+
+  fetchPage(loadId, 1, [], criteria);
 }
+
 function setProgress(msg) {
   var el = document.getElementById('load-progress');
   if (el) el.textContent = msg;
 }
-function fetchPage(page, accumulated) {
+
+function buildCriteria(range) {
+  if (!range) return null;  // "All Time"
+  // Zoho criteria datetime format: "DD-MMM-YYYY HH:MM:SS"
+  var s = formatZohoDateTime(range.start);
+  var e = formatZohoDateTime(range.end);
+  return '(Added_Time >= "' + s + '" && Added_Time <= "' + e + '")';
+}
+
+function formatZohoDateTime(d) {
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+  return pad(d.getDate()) + '-' + months[d.getMonth()] + '-' + d.getFullYear() +
+    ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function fetchPage(loadId, page, accumulated, criteria) {
+  if (loadId !== currentLoadId) {
+    console.log('[SubmissionHistory] Load', loadId, 'cancelled');
+    return;
+  }
   console.log('[SubmissionHistory] Fetching page', page, '(have', accumulated.length, 'so far)');
   setProgress('Loading page ' + page + ' (' + accumulated.length + ' records so far)…');
   var pageStart = Date.now();
-  ZOHO.CREATOR.DATA.getRecords({
+  var params = {
     report_name: 'Submission_History',
     page: page,
     pageSize: 200
-  }).then(function(res) {
+  };
+  if (criteria) params.criteria = criteria;
+
+  ZOHO.CREATOR.DATA.getRecords(params).then(function(res) {
+    if (loadId !== currentLoadId) return;  // user changed range, abandon
     var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
     console.log('[SubmissionHistory] Page', page, 'returned', data.length, 'records in', (Date.now() - pageStart) + 'ms');
     var combined = accumulated.concat(data);
+
+    // Hard cap so a misconfigured "All Time" can't hang the browser indefinitely
+    if (combined.length >= 5000) {
+      clearTimeout(loadSafetyTimer);
+      console.warn('[SubmissionHistory] Hit 5000 record cap — truncating');
+      onRecordsLoaded(combined.slice(0, 5000), true);
+      return;
+    }
+
     if (data.length === 200) {
-      // more pages may exist
-      fetchPage(page + 1, combined);
+      fetchPage(loadId, page + 1, combined, criteria);
     } else {
       clearTimeout(loadSafetyTimer);
       console.log('[SubmissionHistory] Total loaded:', combined.length, 'records in', (Date.now() - loadStart) + 'ms');
-      onRecordsLoaded(combined);
+      onRecordsLoaded(combined, false);
     }
   }).catch(function(err) {
+    if (loadId !== currentLoadId) return;
     clearTimeout(loadSafetyTimer);
     console.error('[SubmissionHistory] getRecords failed on page', page, err);
-    showError('Could not load submissions', 'Page ' + page + ' failed. Open DevTools console (F12) and share the error.');
+    showError('Could not load submissions', 'Page ' + page + ' failed. Open DevTools console (F12) for the error.');
   });
 }
 
-function onRecordsLoaded(records) {
+function onRecordsLoaded(records, truncated) {
   // Sort newest first by Added_Time
   records.sort(function(a, b) { return parseDate(b.Added_Time) - parseDate(a.Added_Time); });
   allRecords = records;
   buildChips();
-  applyFilters();
+  applyFilters(truncated);
 }
 
 // ── Filters & rendering ───────────────────────────────────────────────────
@@ -701,20 +755,12 @@ function countByStatus(records) {
   return c;
 }
 
-function applyFilters() {
-  var range = computeDateRange();
+function applyFilters(truncated) {
+  // Date is already filtered server-side. Only status + search to apply here.
   filteredRecords = allRecords.filter(function(r) {
-    // Status
     if (currentStatus !== 'all') {
       if (statusMeta(r).key !== currentStatus) return false;
     }
-    // Date
-    if (range) {
-      var t = parseDate(r.Added_Time);
-      if (!t) return false;
-      if (t < range.start || t > range.end) return false;
-    }
-    // Search
     if (currentSearch) {
       var hay = [
         displayCustomer(r),
@@ -728,8 +774,8 @@ function applyFilters() {
     return true;
   });
   renderKpis();
-  renderList();
-  renderFooter();
+  renderList(truncated);
+  renderFooter(truncated);
 }
 
 function computeDateRange() {
@@ -750,7 +796,7 @@ function computeDateRange() {
 }
 
 function renderKpis() {
-  // KPIs reflect ALL records (not date-filtered). Easier to keep totals stable as a header.
+  // KPIs reflect the loaded date range. Brokers see "in this range" totals.
   var total = allRecords.length;
   var counts = countByStatus(allRecords);
   var holdRollup = (counts['hold'] || 0) + (counts['verifying-noa'] || 0) + (counts['verifying-inv'] || 0);
@@ -766,7 +812,7 @@ function renderKpis() {
     '<span class="small">.' + String(Math.round((volume % 1) * 100)).padStart(2, '0') + '</span>';
 }
 
-function renderList() {
+function renderList(truncated) {
   var results = document.getElementById('results');
   if (!filteredRecords.length) {
     results.innerHTML = '<div class="state"><div class="state-title">No submissions match your filters</div><div class="state-msg">Try changing the status, date range, or search term.</div></div>';
@@ -783,6 +829,11 @@ function renderList() {
   });
 
   var html = '';
+  if (truncated) {
+    html += '<div style="background:#fff8e1; border:1px solid #ffe082; color:#856404; ' +
+            'padding:10px 14px; border-radius:8px; font-size:12px; font-weight:600; margin-bottom:12px;">' +
+            'Showing first 5,000 records. Narrow your date range to see older submissions.</div>';
+  }
   order.forEach(function(key) {
     var g = groups[key];
     html += '<div class="day-header">' + dayHeaderLabel(g.date) + '</div>';

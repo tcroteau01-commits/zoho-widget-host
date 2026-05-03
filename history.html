@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submission History</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #f0efe9;
+  color: #333;
+  min-height: 100vh;
+}
+.widget { max-width: 1240px; margin: 0 auto; padding: 20px 24px 60px; }
+
+/* Header */
+.widget-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.widget-title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.widget-sub { font-size: 12px; color: #888; margin-top: 4px; }
+.header-actions { display: flex; gap: 8px; }
+.btn {
+  background: #fff;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.btn.primary { background: #272727; color: #fff; border-color: #272727; }
+.btn.primary:hover { background: #1a1a1a; }
+.btn .ic { margin-right: 6px; opacity: 0.7; }
+
+/* KPI strip */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.kpi {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 10px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #e8a020; }
+.kpi.processing::before { background: #f5a623; }
+.kpi.hold::before       { background: #d35400; }
+.kpi.purchased::before  { background: #2e7d32; }
+.kpi.value::before      { background: #272727; }
+.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #888; font-weight: 600; }
+.kpi-value { font-size: 24px; font-weight: 700; color: #272727; margin-top: 4px; letter-spacing: -0.4px; }
+.kpi-value .small { font-size: 14px; color: #888; font-weight: 500; }
+
+/* Toolbar */
+.toolbar {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.search { flex: 1; min-width: 240px; position: relative; }
+.search input {
+  width: 100%;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  padding: 9px 12px 9px 36px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fafafa;
+  outline: none;
+  transition: all 0.15s;
+}
+.search input:focus { border-color: #e8a020; background: #fff; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.search-ic { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #aaa; pointer-events: none; }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid #d8d8d8;
+  background: #fff;
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+.chip:hover { border-color: #b8b8b8; }
+.chip.active { background: #272727; color: #fff; border-color: #272727; }
+.chip .count { background: rgba(0,0,0,0.07); border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
+.chip.active .count { background: rgba(255,255,255,0.18); }
+
+/* Date picker */
+.date-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d8d8d8;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.date-picker:hover { border-color: #b8b8b8; background: #fafafa; }
+.date-picker.active { border-color: #e8a020; background: #fffaf0; }
+.date-ic { font-size: 13px; opacity: 0.7; }
+.date-label { color: #272727; }
+.date-caret { color: #888; font-size: 10px; }
+
+.date-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 10px;
+  padding: 14px 16px;
+  width: 380px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 50;
+  display: none;
+}
+.date-popover.show { display: block; }
+.date-popover-section + .date-popover-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid #f0efe9; }
+.date-popover-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: #999; font-weight: 700; margin-bottom: 8px; }
+.date-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.preset {
+  border: 1px solid #e6e3da;
+  background: #fafafa;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.preset:hover { border-color: #c8c4b6; background: #fff; }
+.preset.active { background: #272727; color: #fff; border-color: #272727; }
+.date-inputs { display: flex; align-items: center; gap: 8px; }
+.date-inputs input {
+  flex: 1;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  background: #fff;
+  outline: none;
+}
+.date-inputs input:focus { border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.date-arrow { color: #999; font-size: 12px; }
+.date-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 6px; }
+.date-actions .btn { padding: 6px 12px; font-size: 12px; }
+
+.toolbar-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.icon-btn {
+  width: 34px; height: 34px;
+  border: 1px solid #d8d8d8;
+  background: #fff;
+  border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #666; transition: all 0.15s;
+}
+.icon-btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.icon-btn.active { background: #272727; color: #fff; border-color: #272727; }
+
+/* List rows */
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 28px;
+  gap: 16px;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.12s;
+  position: relative;
+}
+.row:hover { border-color: #c8c4b6; box-shadow: 0 2px 6px rgba(0,0,0,0.04); transform: translateY(-1px); }
+.row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 10px 0 0 10px; background: #ddd; }
+.row.s-processing::before { background: #f5a623; }
+.row.s-hold::before       { background: #d35400; }
+.row.s-purchased::before  { background: #2e7d32; }
+.row.s-verifying::before  { background: #1976d2; }
+
+.cell-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; font-weight: 600; margin-bottom: 2px; }
+.cell-val { font-size: 13px; color: #272727; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-sub { font-size: 11px; color: #888; margin-top: 1px; font-weight: 500; }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.2px; text-transform: uppercase; white-space: nowrap;
+}
+.status-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-pill.processing { background: #fff4e0; color: #b86e00; }
+.status-pill.hold       { background: #ffe9d9; color: #a13e00; }
+.status-pill.purchased  { background: #e3f4e3; color: #1f6321; }
+.status-pill.verifying  { background: #e3f0fb; color: #0d4a8a; }
+
+.margin-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.margin-pill.good { background: #e3f4e3; color: #1f6321; }
+.margin-pill.bad  { background: #fde4e4; color: #a31818; }
+
+.docs-ic { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #888; font-weight: 600; margin-top: 3px; }
+
+.chev { color: #ccc; transition: color 0.12s, transform 0.12s; }
+.row:hover .chev { color: #888; transform: translateX(2px); }
+
+.day-header { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: #999; font-weight: 700; padding: 14px 4px 6px; }
+
+/* States */
+.state {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 10px;
+  padding: 60px 24px;
+  text-align: center;
+  color: #888;
+}
+.state-title { font-size: 16px; font-weight: 600; color: #555; margin-bottom: 6px; }
+.state-msg { font-size: 13px; }
+.state .spinner {
+  width: 28px; height: 28px;
+  border: 3px solid #e6e3da;
+  border-top-color: #e8a020;
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Footer */
+.footer {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 18px; padding: 0 4px;
+  font-size: 12px; color: #888;
+}
+
+@media (max-width: 900px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row .cell-chev { display: none; }
+}
+
+/* ===== Slide-in detail panel ===== */
+.scrim {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.32);
+  z-index: 90;
+  backdrop-filter: blur(2px);
+  display: none;
+  animation: fadeIn 0.18s ease-out;
+}
+.scrim.show { display: block; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 540px; max-width: 100vw;
+  background: #f7f6f1;
+  z-index: 100;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.12);
+  display: none;
+  flex-direction: column;
+  animation: slideIn 0.22s ease-out;
+}
+.panel.show { display: flex; }
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.panel-top { background: #272727; color: #fff; padding: 14px 18px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.panel-top .nav-btn {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #fff; font-size: 14px; transition: background 0.12s;
+}
+.panel-top .nav-btn:hover { background: rgba(255,255,255,0.16); }
+.panel-top .nav-btn.disabled { opacity: 0.35; cursor: not-allowed; }
+.panel-top .position { font-size: 11px; color: rgba(255,255,255,0.55); font-weight: 600; letter-spacing: 0.3px; }
+.panel-top .spacer { flex: 1; }
+.panel-top .close-btn {
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #fff; font-size: 16px; transition: background 0.12s;
+}
+.panel-top .close-btn:hover { background: rgba(255,255,255,0.18); }
+
+.panel-header { background: #272727; color: #fff; padding: 0 22px 22px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.panel-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.5); font-weight: 700; margin-bottom: 4px; }
+.panel-customer { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 8px; }
+.panel-meta { display: flex; gap: 14px; align-items: center; font-size: 13px; color: rgba(255,255,255,0.7); flex-wrap: wrap; }
+.panel-meta .dot { color: rgba(255,255,255,0.3); }
+.panel-meta .ref { color: #e8a020; font-weight: 600; }
+
+.panel-status-row { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+.panel-status-row .status-pill { font-size: 11px; padding: 5px 11px; }
+
+.panel-body { flex: 1; overflow-y: auto; padding: 18px 22px 24px; }
+
+.panel-section { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+.panel-section-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+  color: #888; font-weight: 700; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-section-title::after { content: ''; flex: 1; height: 1px; background: #f0efe9; }
+
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.field-grid.full > .field { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field-label { font-size: 11px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.field-val { font-size: 14px; color: #272727; font-weight: 600; word-break: break-word; }
+.field-val.muted { color: #888; font-weight: 500; }
+.field-val.lg { font-size: 18px; letter-spacing: -0.2px; }
+.field-val.empty { color: #bbb; font-weight: 500; font-style: italic; }
+
+.rate-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 4px; }
+.rate-card { background: #fafafa; border: 1px solid #f0efe9; border-radius: 8px; padding: 10px 12px; }
+.rate-card .field-label { margin-bottom: 4px; }
+.rate-card.margin.good { background: #f1f9f1; border-color: #c8e3c8; }
+.rate-card.margin.bad  { background: #fdf2f2; border-color: #f0c6c6; }
+
+.docs-list { display: flex; flex-direction: column; gap: 8px; }
+.doc-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  background: #fafafa;
+  border: 1px solid #f0efe9;
+  border-radius: 8px;
+  transition: all 0.12s;
+}
+.doc-item.clickable { cursor: pointer; }
+.doc-item.clickable:hover { border-color: #c8c4b6; background: #fff; }
+.doc-icon {
+  width: 32px; height: 32px;
+  background: #fff4e0; color: #b86e00;
+  border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 11px; flex-shrink: 0;
+}
+.doc-info { flex: 1; min-width: 0; }
+.doc-name { font-size: 13px; font-weight: 600; color: #272727; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-meta { font-size: 11px; color: #999; }
+.doc-empty { font-size: 12px; color: #aaa; font-style: italic; padding: 6px 2px; }
+
+.doc-group + .doc-group { margin-top: 14px; }
+.doc-group-label { font-size: 11px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
+
+.timeline { display: flex; flex-direction: column; gap: 0; position: relative; }
+.timeline::before { content: ''; position: absolute; left: 9px; top: 8px; bottom: 8px; width: 2px; background: #e6e3da; }
+.timeline-item { display: flex; gap: 14px; padding: 6px 0; position: relative; }
+.timeline-dot { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid #ccc; flex-shrink: 0; z-index: 1; }
+.timeline-item.done .timeline-dot { background: #2e7d32; border-color: #2e7d32; }
+.timeline-item.current .timeline-dot { background: #fff; border-color: #f5a623; box-shadow: 0 0 0 3px rgba(245,166,35,0.18); }
+.timeline-item.problem .timeline-dot { background: #fff; border-color: #1976d2; box-shadow: 0 0 0 3px rgba(25,118,210,0.18); }
+.timeline-content { flex: 1; padding-top: 1px; }
+.timeline-title { font-size: 13px; font-weight: 600; color: #272727; }
+.timeline-time { font-size: 11px; color: #999; margin-top: 1px; }
+.timeline-item.upcoming .timeline-title { color: #aaa; }
+
+.panel-footer {
+  border-top: 1px solid #e6e3da;
+  background: #fff;
+  padding: 12px 22px;
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0; gap: 10px;
+}
+.kbd {
+  display: inline-block; background: #f0efe9;
+  border: 1px solid #e0ddd2; border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 10px; font-weight: 700;
+  color: #555;
+  margin: 0 2px;
+}
+.kbd-hints { font-size: 11px; color: #888; }
+</style>
+</head>
+<body>
+
+<div class="widget">
+
+  <!-- Header -->
+  <div class="widget-header">
+    <div>
+      <div class="widget-title">Submission History</div>
+      <div class="widget-sub">Track the status of every load you've submitted</div>
+    </div>
+    <div class="header-actions">
+      <button class="btn" id="btn-export"><span class="ic">⤓</span>Export CSV</button>
+      <button class="btn primary" id="btn-new"><span class="ic">＋</span>New Submission</button>
+    </div>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="kpi-row" id="kpi-row">
+    <div class="kpi"><div class="kpi-label">Total Submissions</div><div class="kpi-value" id="kpi-total">—</div></div>
+    <div class="kpi processing"><div class="kpi-label">Processing</div><div class="kpi-value" id="kpi-processing">—</div></div>
+    <div class="kpi hold"><div class="kpi-label">On Hold</div><div class="kpi-value" id="kpi-hold">—</div></div>
+    <div class="kpi purchased"><div class="kpi-label">Purchased</div><div class="kpi-value" id="kpi-purchased">—</div></div>
+    <div class="kpi value"><div class="kpi-label">Total Volume</div><div class="kpi-value" id="kpi-volume">—</div></div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="search">
+      <span class="search-ic">⌕</span>
+      <input type="text" id="search-input" placeholder="Search by customer, reference #, carrier, or load #...">
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="date-picker" id="date-picker">
+      <span class="date-ic">📅</span>
+      <span class="date-label" id="date-label">Last 30 days</span>
+      <span class="date-caret">▾</span>
+      <div class="date-popover" id="date-popover" onclick="event.stopPropagation()">
+        <div class="date-popover-section">
+          <div class="date-popover-label">Quick Range</div>
+          <div class="date-presets" id="date-presets">
+            <span class="preset" data-range="today">Today</span>
+            <span class="preset" data-range="yesterday">Yesterday</span>
+            <span class="preset" data-range="7d">Last 7 Days</span>
+            <span class="preset active" data-range="30d">Last 30 Days</span>
+            <span class="preset" data-range="90d">Last 90 Days</span>
+            <span class="preset" data-range="ytd">This Year</span>
+            <span class="preset" data-range="all">All Time</span>
+          </div>
+        </div>
+        <div class="date-popover-section">
+          <div class="date-popover-label">Custom Range</div>
+          <div class="date-inputs">
+            <input type="date" id="date-start">
+            <span class="date-arrow">→</span>
+            <input type="date" id="date-end">
+          </div>
+          <div class="date-actions">
+            <button class="btn" id="date-cancel">Cancel</button>
+            <button class="btn primary" id="date-apply">Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="state">
+      <div class="spinner"></div>
+      <div class="state-title">Loading submissions…</div>
+      <div class="state-msg">Pulling your submission history</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer" id="footer" style="display:none;">
+    <div id="footer-count">—</div>
+  </div>
+
+</div>
+
+<!-- Slide-in detail panel -->
+<div class="scrim" id="scrim"></div>
+<aside class="panel" id="panel"></aside>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+(function() {
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────────
+var allRecords = [];          // raw records from API
+var filteredRecords = [];     // after applying filters
+var currentStatus = 'all';
+var currentSearch = '';
+var currentRange = '30d';
+var currentRangeStart = null;
+var currentRangeEnd = null;
+var openIndex = -1;           // index in filteredRecords
+
+// ── Status mapping ────────────────────────────────────────────────────────
+// Maps Purchase_Status field value → { key, label, pillClass }
+var STATUS_MAP = {
+  'Processing':                          { key: 'processing',  label: 'Processing',        pill: 'processing' },
+  'On Hold':                             { key: 'hold',        label: 'On Hold',           pill: 'hold' },
+  'On Hold - Need NOA Verification':     { key: 'verifying-noa', label: 'Verifying NOA',   pill: 'verifying' },
+  'On Hold - Need Invoice Verification': { key: 'verifying-inv', label: 'Verifying Invoice', pill: 'verifying' },
+  'Purchased':                           { key: 'purchased',   label: 'Purchased',         pill: 'purchased' }
+};
+function statusMeta(rec) {
+  var raw = rec.Purchase_Status || '';
+  return STATUS_MAP[raw] || { key: 'unknown', label: raw || '—', pill: '' };
+}
+function isHoldRollup(rec) {
+  var k = statusMeta(rec).key;
+  return k === 'hold' || k === 'verifying-noa' || k === 'verifying-inv';
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  bindGlobalUI();
+  loadAllRecords();
+});
+
+function bindGlobalUI() {
+  document.getElementById('search-input').addEventListener('input', function(e) {
+    currentSearch = e.target.value.toLowerCase().trim();
+    applyFilters();
+  });
+  document.getElementById('btn-new').addEventListener('click', function() {
+    // Tries to navigate to the Load Details form page in the same Creator app.
+    // Adjust if the page link differs.
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'navigate-to', target: 'Load_Details_NEW' }, '*');
+    }
+  });
+  document.getElementById('btn-export').addEventListener('click', exportCsv);
+
+  // Date picker
+  var dp = document.getElementById('date-picker');
+  var dpop = document.getElementById('date-popover');
+  dp.addEventListener('click', function(e) {
+    if (e.target.closest('#date-popover')) return;
+    dp.classList.toggle('active');
+    dpop.classList.toggle('show');
+  });
+  document.addEventListener('click', function(e) {
+    if (!dp.contains(e.target)) {
+      dp.classList.remove('active');
+      dpop.classList.remove('show');
+    }
+  });
+  document.getElementById('date-presets').addEventListener('click', function(e) {
+    var t = e.target.closest('.preset');
+    if (!t) return;
+    document.querySelectorAll('#date-presets .preset').forEach(function(el) { el.classList.remove('active'); });
+    t.classList.add('active');
+    currentRange = t.dataset.range;
+    currentRangeStart = null;
+    currentRangeEnd = null;
+    document.getElementById('date-label').textContent = t.textContent;
+    dp.classList.remove('active');
+    dpop.classList.remove('show');
+    applyFilters();
+  });
+  document.getElementById('date-cancel').addEventListener('click', function() {
+    dp.classList.remove('active');
+    dpop.classList.remove('show');
+  });
+  document.getElementById('date-apply').addEventListener('click', function() {
+    var s = document.getElementById('date-start').value;
+    var e = document.getElementById('date-end').value;
+    if (!s || !e) return;
+    currentRange = 'custom';
+    currentRangeStart = new Date(s + 'T00:00:00');
+    currentRangeEnd = new Date(e + 'T23:59:59');
+    document.querySelectorAll('#date-presets .preset').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById('date-label').textContent = fmtDateShort(currentRangeStart) + ' – ' + fmtDateShort(currentRangeEnd);
+    dp.classList.remove('active');
+    dpop.classList.remove('show');
+    applyFilters();
+  });
+
+  // Panel close + keyboard
+  document.getElementById('scrim').addEventListener('click', closePanel);
+  document.addEventListener('keydown', function(e) {
+    if (!document.getElementById('panel').classList.contains('show')) return;
+    if (e.key === 'Escape') closePanel();
+    else if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navPanel(1); }
+    else if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); navPanel(-1); }
+  });
+}
+
+// ── Data load (paginated) ─────────────────────────────────────────────────
+function loadAllRecords() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+    showError('SDK unavailable', 'The Zoho Creator widget SDK did not load. Reload the page.');
+    return;
+  }
+  fetchPage(1, []);
+}
+function fetchPage(page, accumulated) {
+  ZOHO.CREATOR.DATA.getRecords({
+    report_name: 'Submission_History',
+    page: page,
+    pageSize: 200
+  }).then(function(res) {
+    var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    var combined = accumulated.concat(data);
+    if (data.length === 200) {
+      // more pages may exist
+      fetchPage(page + 1, combined);
+    } else {
+      onRecordsLoaded(combined);
+    }
+  }).catch(function(err) {
+    console.error('getRecords failed:', err);
+    showError('Could not load submissions', 'Try refreshing the page. If this keeps happening, contact support.');
+  });
+}
+
+function onRecordsLoaded(records) {
+  // Sort newest first by Added_Time
+  records.sort(function(a, b) { return parseDate(b.Added_Time) - parseDate(a.Added_Time); });
+  allRecords = records;
+  buildChips();
+  applyFilters();
+}
+
+// ── Filters & rendering ───────────────────────────────────────────────────
+function buildChips() {
+  var chips = document.getElementById('chips');
+  var counts = countByStatus(allRecords);
+  var def = [
+    { key: 'all',           label: 'All' },
+    { key: 'processing',    label: 'Processing' },
+    { key: 'hold',          label: 'On Hold' },
+    { key: 'verifying-noa', label: 'Verifying NOA' },
+    { key: 'verifying-inv', label: 'Verifying Invoice' },
+    { key: 'purchased',     label: 'Purchased' }
+  ];
+  chips.innerHTML = '';
+  def.forEach(function(c) {
+    var n = c.key === 'all' ? allRecords.length : (counts[c.key] || 0);
+    var el = document.createElement('span');
+    el.className = 'chip' + (c.key === currentStatus ? ' active' : '');
+    el.dataset.key = c.key;
+    el.innerHTML = c.label + ' <span class="count">' + n + '</span>';
+    el.addEventListener('click', function() {
+      currentStatus = c.key;
+      document.querySelectorAll('#chips .chip').forEach(function(x) { x.classList.remove('active'); });
+      el.classList.add('active');
+      applyFilters();
+    });
+    chips.appendChild(el);
+  });
+}
+function countByStatus(records) {
+  var c = {};
+  records.forEach(function(r) {
+    var k = statusMeta(r).key;
+    c[k] = (c[k] || 0) + 1;
+  });
+  return c;
+}
+
+function applyFilters() {
+  var range = computeDateRange();
+  filteredRecords = allRecords.filter(function(r) {
+    // Status
+    if (currentStatus !== 'all') {
+      if (statusMeta(r).key !== currentStatus) return false;
+    }
+    // Date
+    if (range) {
+      var t = parseDate(r.Added_Time);
+      if (!t) return false;
+      if (t < range.start || t > range.end) return false;
+    }
+    // Search
+    if (currentSearch) {
+      var hay = [
+        displayCustomer(r),
+        r.Customer_Reference_Number,
+        displayCarrier(r),
+        r.Load_Rate_Confirmation_Number,
+        r.Carrier_Factoring_Invoice
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (hay.indexOf(currentSearch) === -1) return false;
+    }
+    return true;
+  });
+  renderKpis();
+  renderList();
+  renderFooter();
+}
+
+function computeDateRange() {
+  var now = new Date();
+  var start, end = endOfDay(now);
+  switch (currentRange) {
+    case 'today':     start = startOfDay(now); break;
+    case 'yesterday': start = startOfDay(addDays(now, -1)); end = endOfDay(addDays(now, -1)); break;
+    case '7d':        start = startOfDay(addDays(now, -6)); break;
+    case '30d':       start = startOfDay(addDays(now, -29)); break;
+    case '90d':       start = startOfDay(addDays(now, -89)); break;
+    case 'ytd':       start = new Date(now.getFullYear(), 0, 1); break;
+    case 'all':       return null;
+    case 'custom':    return { start: currentRangeStart, end: currentRangeEnd };
+    default:          start = startOfDay(addDays(now, -29));
+  }
+  return { start: start, end: end };
+}
+
+function renderKpis() {
+  // KPIs reflect ALL records (not date-filtered). Easier to keep totals stable as a header.
+  var total = allRecords.length;
+  var counts = countByStatus(allRecords);
+  var holdRollup = (counts['hold'] || 0) + (counts['verifying-noa'] || 0) + (counts['verifying-inv'] || 0);
+  var purchased = counts['purchased'] || 0;
+  var processing = counts['processing'] || 0;
+  var volume = allRecords.reduce(function(sum, r) { return sum + parseMoney(r.Customer_Rate); }, 0);
+
+  document.getElementById('kpi-total').textContent = total.toLocaleString();
+  document.getElementById('kpi-processing').textContent = processing.toLocaleString();
+  document.getElementById('kpi-hold').textContent = holdRollup.toLocaleString();
+  document.getElementById('kpi-purchased').textContent = purchased.toLocaleString();
+  document.getElementById('kpi-volume').innerHTML = '$' + Math.floor(volume).toLocaleString() +
+    '<span class="small">.' + String(Math.round((volume % 1) * 100)).padStart(2, '0') + '</span>';
+}
+
+function renderList() {
+  var results = document.getElementById('results');
+  if (!filteredRecords.length) {
+    results.innerHTML = '<div class="state"><div class="state-title">No submissions match your filters</div><div class="state-msg">Try changing the status, date range, or search term.</div></div>';
+    return;
+  }
+  // Group by day
+  var groups = {};
+  var order = [];
+  filteredRecords.forEach(function(r) {
+    var t = parseDate(r.Added_Time);
+    var key = t ? startOfDay(t).toISOString() : 'unknown';
+    if (!groups[key]) { groups[key] = { date: t, records: [] }; order.push(key); }
+    groups[key].records.push(r);
+  });
+
+  var html = '';
+  order.forEach(function(key) {
+    var g = groups[key];
+    html += '<div class="day-header">' + dayHeaderLabel(g.date) + '</div>';
+    html += '<div class="list">';
+    g.records.forEach(function(r) {
+      html += rowHtml(r, allRecords.indexOf(r));
+    });
+    html += '</div>';
+  });
+  results.innerHTML = html;
+
+  // Bind row clicks
+  results.querySelectorAll('.row').forEach(function(rowEl) {
+    rowEl.addEventListener('click', function() {
+      var idx = parseInt(rowEl.dataset.idx, 10);
+      openPanel(idx);
+    });
+  });
+}
+
+function rowHtml(r, idx) {
+  var s = statusMeta(r);
+  var carrier = displayCarrier(r);
+  var carrierSub = carrierSubLine(r);
+  var custRate = parseMoney(r.Customer_Rate);
+  var carrRate = parseMoney(r.Carrier_Rate);
+  var marginPct = custRate > 0 ? ((custRate - carrRate) / custRate * 100) : 0;
+  var marginGood = marginPct >= 10;
+  var added = parseDate(r.Added_Time);
+  var docCount = totalDocCount(r);
+
+  return '' +
+    '<div class="row s-' + s.key + '" data-idx="' + idx + '">' +
+      '<div>' +
+        '<div class="cell-label">Customer</div>' +
+        '<div class="cell-val">' + esc(displayCustomer(r)) + '</div>' +
+        '<div class="cell-sub">Ref# ' + esc(r.Customer_Reference_Number || '—') + '</div>' +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Carrier</div>' +
+        '<div class="cell-val">' + esc(carrier) + '</div>' +
+        (carrierSub ? '<div class="cell-sub">' + esc(carrierSub) + '</div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Customer Rate</div>' +
+        '<div class="cell-val">' + fmtMoney(custRate) + '</div>' +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Carrier Rate</div>' +
+        '<div class="cell-val">' + fmtMoney(carrRate) + '</div>' +
+        (custRate > 0 ? '<div class="cell-sub"><span class="margin-pill ' + (marginGood ? 'good' : 'bad') + '">' + marginPct.toFixed(1) + '% ' + (marginGood ? 'GOOD' : 'LOW') + '</span></div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Submitted</div>' +
+        '<div class="cell-val">' + (added ? fmtTime(added) : '—') + '</div>' +
+        (docCount > 0 ? '<div class="docs-ic">📎 ' + docCount + ' doc' + (docCount === 1 ? '' : 's') + '</div>' : '') +
+      '</div>' +
+      '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
+      '<div class="chev cell-chev">›</div>' +
+    '</div>';
+}
+
+function renderFooter() {
+  var f = document.getElementById('footer');
+  if (!filteredRecords.length) { f.style.display = 'none'; return; }
+  f.style.display = 'flex';
+  document.getElementById('footer-count').textContent = 'Showing ' + filteredRecords.length + ' of ' + allRecords.length + ' submissions';
+}
+
+function showError(title, msg) {
+  document.getElementById('results').innerHTML = '<div class="state"><div class="state-title">' + esc(title) + '</div><div class="state-msg">' + esc(msg) + '</div></div>';
+}
+
+// ── Panel ─────────────────────────────────────────────────────────────────
+function openPanel(allRecordsIdx) {
+  // Find the record's position in filteredRecords for nav
+  var rec = allRecords[allRecordsIdx];
+  var idx = filteredRecords.indexOf(rec);
+  if (idx === -1) return;
+  openIndex = idx;
+  renderPanel();
+  document.getElementById('scrim').classList.add('show');
+  document.getElementById('panel').classList.add('show');
+}
+function closePanel() {
+  document.getElementById('scrim').classList.remove('show');
+  document.getElementById('panel').classList.remove('show');
+  openIndex = -1;
+}
+function navPanel(dir) {
+  var next = openIndex + dir;
+  if (next < 0 || next >= filteredRecords.length) return;
+  openIndex = next;
+  renderPanel();
+}
+
+function renderPanel() {
+  var r = filteredRecords[openIndex];
+  if (!r) return;
+  var s = statusMeta(r);
+  var custRate = parseMoney(r.Customer_Rate);
+  var carrRate = parseMoney(r.Carrier_Rate);
+  var marginPct = custRate > 0 ? ((custRate - carrRate) / custRate * 100) : 0;
+  var marginGood = marginPct >= 10;
+  var added = parseDate(r.Added_Time);
+  var purchased = parseDate(r.Purchase_Date);
+
+  var prevDis = (openIndex <= 0) ? ' disabled' : '';
+  var nextDis = (openIndex >= filteredRecords.length - 1) ? ' disabled' : '';
+
+  var html = '' +
+    '<div class="panel-top">' +
+      '<span class="nav-btn' + prevDis + '" id="p-prev" title="Previous (k)">‹</span>' +
+      '<span class="nav-btn' + nextDis + '" id="p-next" title="Next (j)">›</span>' +
+      '<span class="position">' + (openIndex + 1) + ' of ' + filteredRecords.length + '</span>' +
+      '<div class="spacer"></div>' +
+      '<span class="close-btn" id="p-close" title="Close (Esc)">✕</span>' +
+    '</div>' +
+    '<div class="panel-header">' +
+      '<div class="panel-eyebrow">Load Submission</div>' +
+      '<div class="panel-customer">' + esc(displayCustomer(r)) + '</div>' +
+      '<div class="panel-meta">' +
+        '<span>Submitted ' + (added ? fmtDateTime(added) : '—') + '</span>' +
+        '<span class="dot">·</span>' +
+        '<span class="ref">Ref# ' + esc(r.Customer_Reference_Number || '—') + '</span>' +
+      '</div>' +
+      '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
+    '</div>' +
+    '<div class="panel-body">' +
+      // Rates
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Rates &amp; Margin</div>' +
+        '<div class="rate-summary">' +
+          '<div class="rate-card"><div class="field-label">Customer Rate</div><div class="field-val lg">' + fmtMoney(custRate) + '</div></div>' +
+          '<div class="rate-card"><div class="field-label">Carrier Rate</div><div class="field-val lg">' + fmtMoney(carrRate) + '</div></div>' +
+          (custRate > 0
+            ? '<div class="rate-card margin ' + (marginGood ? 'good' : 'bad') + '"><div class="field-label">Margin</div><div class="field-val lg">' + marginPct.toFixed(1) + '%</div></div>'
+            : '<div class="rate-card"><div class="field-label">Margin</div><div class="field-val lg">—</div></div>') +
+        '</div>' +
+      '</div>' +
+
+      // Customer
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Customer</div>' +
+        '<div class="field-grid">' +
+          field('Customer Name', displayCustomer(r)) +
+          field('Customer Reference #', r.Customer_Reference_Number) +
+        '</div>' +
+      '</div>' +
+
+      // Carrier
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Carrier &amp; Load</div>' +
+        '<div class="field-grid">' +
+          field('Carrier', displayCarrier(r)) +
+          field('MC / DOT', carrierSubLine(r)) +
+          field('Load / Rate Conf #', r.Load_Rate_Confirmation_Number) +
+          field('Carrier Factoring Invoice #', r.Carrier_Factoring_Invoice) +
+          field('Payment Terms', r.Payment_Terms) +
+          field('Submitted', added ? fmtDateTime(added) : null) +
+          (purchased ? field('Purchased', fmtDateTime(purchased)) : '') +
+        '</div>' +
+      '</div>' +
+
+      // Comments
+      (r.Load_Comments
+        ? '<div class="panel-section">' +
+            '<div class="panel-section-title">Load Comments</div>' +
+            '<div class="field-val muted" style="font-weight:500; line-height:1.5;">' + esc(r.Load_Comments) + '</div>' +
+          '</div>'
+        : '') +
+
+      // Documents
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Documents</div>' +
+        docsGroupHtml('Customer Documents', collectFiles(r.Customer_Documents)) +
+        docsGroupHtml('Carrier Documents',  collectFiles(r.Carrier_Documents)) +
+      '</div>' +
+
+      // Timeline
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Status Timeline</div>' +
+        timelineHtml(r) +
+      '</div>' +
+
+    '</div>' +
+
+    '<div class="panel-footer">' +
+      '<div class="kbd-hints"><span class="kbd">↑↓</span> Navigate <span class="kbd">Esc</span> Close</div>' +
+    '</div>';
+
+  var panel = document.getElementById('panel');
+  panel.innerHTML = html;
+
+  // Bind controls
+  var prev = document.getElementById('p-prev');
+  var next = document.getElementById('p-next');
+  if (!prev.classList.contains('disabled')) prev.addEventListener('click', function() { navPanel(-1); });
+  if (!next.classList.contains('disabled')) next.addEventListener('click', function() { navPanel(1); });
+  document.getElementById('p-close').addEventListener('click', closePanel);
+}
+
+function field(label, val) {
+  var has = val !== null && val !== undefined && String(val).trim() !== '';
+  return '<div class="field"><div class="field-label">' + esc(label) + '</div>' +
+    '<div class="field-val' + (has ? '' : ' empty') + '">' + (has ? esc(String(val)) : '—') + '</div></div>';
+}
+
+function docsGroupHtml(label, files) {
+  var html = '<div class="doc-group"><div class="doc-group-label">' + esc(label) + '</div>';
+  if (!files.length) {
+    html += '<div class="doc-empty">No files uploaded.</div>';
+  } else {
+    html += '<div class="docs-list">';
+    files.forEach(function(f) {
+      var ext = (f.name.split('.').pop() || '').toUpperCase().slice(0, 4);
+      html += '<div class="doc-item">' +
+        '<div class="doc-icon">' + esc(ext || 'FILE') + '</div>' +
+        '<div class="doc-info">' +
+          '<div class="doc-name">' + esc(f.name) + '</div>' +
+          '<div class="doc-meta">' + (f.size ? esc(f.size) : 'Uploaded file') + '</div>' +
+        '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function timelineHtml(r) {
+  var s = statusMeta(r);
+  var added = parseDate(r.Added_Time);
+  var purchased = parseDate(r.Purchase_Date);
+  var items = [];
+  items.push({ state: 'done', title: 'Submitted by broker', time: added ? fmtDateTime(added) : '—' });
+  items.push({ state: 'done', title: 'Documents received',  time: added ? fmtDateTime(added) : '—' });
+  if (s.key === 'verifying-noa') {
+    items.push({ state: 'problem', title: 'Verifying NOA with customer', time: 'In progress' });
+  } else if (s.key === 'verifying-inv') {
+    items.push({ state: 'problem', title: 'Verifying invoice with customer', time: 'In progress' });
+  } else if (s.key === 'hold') {
+    items.push({ state: 'problem', title: 'On hold', time: 'In progress' });
+  } else if (s.key === 'processing') {
+    items.push({ state: 'current', title: 'Under review', time: 'In progress' });
+  } else if (s.key === 'purchased') {
+    items.push({ state: 'done', title: 'Under review', time: 'Complete' });
+  }
+  if (s.key === 'purchased') {
+    items.push({ state: 'done', title: 'Purchased', time: purchased ? fmtDateTime(purchased) : '—' });
+  } else {
+    items.push({ state: 'upcoming', title: 'Purchase decision', time: 'Pending' });
+  }
+
+  return '<div class="timeline">' + items.map(function(it) {
+    return '<div class="timeline-item ' + it.state + '"><div class="timeline-dot"></div>' +
+      '<div class="timeline-content"><div class="timeline-title">' + esc(it.title) + '</div>' +
+      '<div class="timeline-time">' + esc(it.time) + '</div></div></div>';
+  }).join('') + '</div>';
+}
+
+// ── Field accessors ───────────────────────────────────────────────────────
+// Customer_Name is a lookup. Zoho returns either a string display or { ID, display_value }.
+function displayCustomer(r) {
+  var v = r.Customer_Name;
+  if (!v) return '—';
+  if (typeof v === 'string') return v;
+  return v.display_value || v.zc_display_value || v.Customer_Company_Name || '—';
+}
+// Carrier_Name_or_MC has displayformat Vendor_Name_MC_DOT. May arrive as combined string.
+function displayCarrier(r) {
+  var v = r.Carrier_Name_or_MC;
+  if (!v) return '—';
+  var raw = (typeof v === 'string') ? v : (v.display_value || v.zc_display_value || v.Vendor_Name || '');
+  // If formatted "Name - MC# X - DOT Y", show just the carrier name in the main slot.
+  return raw.split(' - ')[0] || raw || '—';
+}
+function carrierSubLine(r) {
+  var v = r.Carrier_Name_or_MC;
+  var raw = (!v) ? '' : ((typeof v === 'string') ? v : (v.display_value || v.zc_display_value || ''));
+  // If display included MC/DOT segments, keep them
+  if (raw.indexOf(' - ') !== -1) {
+    var parts = raw.split(' - ');
+    parts.shift();
+    return parts.join(' · ');
+  }
+  return null;
+}
+function collectFiles(field) {
+  if (!field) return [];
+  var arr = Array.isArray(field) ? field : [field];
+  var out = [];
+  arr.forEach(function(f) {
+    if (!f) return;
+    if (typeof f === 'string') {
+      out.push({ name: f.split('/').pop().split('?')[0], size: null });
+    } else {
+      out.push({
+        name: f.filename || f.fileName || f.name || (f.filepath || '').split('/').pop() || 'Uploaded file',
+        size: null
+      });
+    }
+  });
+  return out;
+}
+function totalDocCount(r) {
+  return collectFiles(r.Customer_Documents).length + collectFiles(r.Carrier_Documents).length;
+}
+
+// ── Format helpers ────────────────────────────────────────────────────────
+function parseMoney(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  return parseFloat(String(v).replace(/[^0-9.\-]/g, '')) || 0;
+}
+function fmtMoney(n) {
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function parseDate(v) {
+  if (!v) return null;
+  // Zoho often returns "DD-MMM-YYYY HH:MM:SS"
+  if (typeof v === 'string') {
+    var m = v.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+    if (m) {
+      var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+      return new Date(parseInt(m[3], 10), months[m[2]], parseInt(m[1], 10),
+        m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0, m[6] ? parseInt(m[6], 10) : 0);
+    }
+  }
+  var d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function startOfDay(d) { var x = new Date(d); x.setHours(0,0,0,0); return x; }
+function endOfDay(d)   { var x = new Date(d); x.setHours(23,59,59,999); return x; }
+function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function fmtTime(d) {
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function fmtDateShort(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtDateTime(d) {
+  return fmtDateShort(d) + ' · ' + fmtTime(d);
+}
+function dayHeaderLabel(d) {
+  if (!d) return 'Unknown';
+  var today = startOfDay(new Date());
+  var ds = startOfDay(d);
+  var diff = Math.round((today - ds) / 86400000);
+  if (diff === 0) return 'Today · ' + fmtDateShort(d);
+  if (diff === 1) return 'Yesterday · ' + fmtDateShort(d);
+  return fmtDateShort(d);
+}
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function(ch) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+  });
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────
+function exportCsv() {
+  if (!filteredRecords.length) return;
+  var headers = ['Submitted','Status','Customer','Reference #','Carrier','MC/DOT','Customer Rate','Carrier Rate','Margin %','Load Conf #','Carrier Invoice #','Payment Terms'];
+  var rows = filteredRecords.map(function(r) {
+    var custRate = parseMoney(r.Customer_Rate);
+    var carrRate = parseMoney(r.Carrier_Rate);
+    var marginPct = custRate > 0 ? ((custRate - carrRate) / custRate * 100).toFixed(1) : '';
+    var added = parseDate(r.Added_Time);
+    return [
+      added ? fmtDateTime(added) : '',
+      statusMeta(r).label,
+      displayCustomer(r),
+      r.Customer_Reference_Number || '',
+      displayCarrier(r),
+      carrierSubLine(r) || '',
+      custRate.toFixed(2),
+      carrRate.toFixed(2),
+      marginPct,
+      r.Load_Rate_Confirmation_Number || '',
+      r.Carrier_Factoring_Invoice || '',
+      r.Payment_Terms || ''
+    ];
+  });
+  var csv = [headers].concat(rows).map(function(row) {
+    return row.map(function(cell) {
+      var s = String(cell);
+      if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }).join(',');
+  }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'submission_history_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+})();
+</script>
+</body>
+</html>

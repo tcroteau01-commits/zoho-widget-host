@@ -484,7 +484,7 @@ html, body {
     <div class="state">
       <div class="spinner"></div>
       <div class="state-title">Loading submissions…</div>
-      <div class="state-msg">Pulling your submission history</div>
+      <div class="state-msg" id="load-progress">Pulling your submission history</div>
     </div>
   </div>
 
@@ -608,30 +608,51 @@ function bindGlobalUI() {
 }
 
 // ── Data load (paginated) ─────────────────────────────────────────────────
+var loadStart = 0;
+var loadSafetyTimer = null;
+
 function loadAllRecords() {
   if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
     showError('SDK unavailable', 'The Zoho Creator widget SDK did not load. Reload the page.');
     return;
   }
+  loadStart = Date.now();
+  console.log('[SubmissionHistory] Starting load at', new Date().toISOString());
+  // Safety: if no progress in 60s, surface an error so the page doesn't hang silently.
+  loadSafetyTimer = setTimeout(function() {
+    showError('Loading is taking longer than expected',
+      'Open DevTools console (F12) and share what you see. The data fetch did not complete after 60 seconds.');
+  }, 60000);
   fetchPage(1, []);
 }
+function setProgress(msg) {
+  var el = document.getElementById('load-progress');
+  if (el) el.textContent = msg;
+}
 function fetchPage(page, accumulated) {
+  console.log('[SubmissionHistory] Fetching page', page, '(have', accumulated.length, 'so far)');
+  setProgress('Loading page ' + page + ' (' + accumulated.length + ' records so far)…');
+  var pageStart = Date.now();
   ZOHO.CREATOR.DATA.getRecords({
     report_name: 'Submission_History',
     page: page,
     pageSize: 200
   }).then(function(res) {
     var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    console.log('[SubmissionHistory] Page', page, 'returned', data.length, 'records in', (Date.now() - pageStart) + 'ms');
     var combined = accumulated.concat(data);
     if (data.length === 200) {
       // more pages may exist
       fetchPage(page + 1, combined);
     } else {
+      clearTimeout(loadSafetyTimer);
+      console.log('[SubmissionHistory] Total loaded:', combined.length, 'records in', (Date.now() - loadStart) + 'ms');
       onRecordsLoaded(combined);
     }
   }).catch(function(err) {
-    console.error('getRecords failed:', err);
-    showError('Could not load submissions', 'Try refreshing the page. If this keeps happening, contact support.');
+    clearTimeout(loadSafetyTimer);
+    console.error('[SubmissionHistory] getRecords failed on page', page, err);
+    showError('Could not load submissions', 'Page ' + page + ' failed. Open DevTools console (F12) and share the error.');
   });
 }
 

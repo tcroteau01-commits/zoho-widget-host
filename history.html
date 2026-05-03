@@ -677,7 +677,10 @@ function fetchPage(loadId, page, accumulated, criteria, range) {
   var params = {
     report_name: 'Submission_History',
     page: page,
-    pageSize: 200
+    pageSize: 200,
+    // Try to force newest-first sort. SDK may or may not honor these — diagnostic.
+    sort_field: 'Added_Time',
+    sort_order: 'desc'
   };
   if (criteria) params.criteria = criteria;
 

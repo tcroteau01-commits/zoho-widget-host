@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resources & FAQs</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #f0efe9;
+  color: #333;
+}
+
+.page { max-width: 1320px; margin: 0 auto; padding: 20px 24px 40px; }
+
+/* Page section header */
+.section-head {
+  margin: 8px 4px 16px;
+}
+.section-head h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #272727;
+  letter-spacing: -0.2px;
+}
+.section-head .sub {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+.section-head + .section-head {
+  margin-top: 32px;
+}
+
+/* ===== Resources grid ===== */
+.res-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 36px;
+}
+.res-card {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 10px;
+  padding: 18px 20px 14px;
+  display: flex;
+  flex-direction: column;
+}
+.res-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #272727;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 2px solid #e8a020;
+}
+.res-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.res-list li a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  font-size: 13px;
+  color: #444;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.12s;
+  margin-left: -8px;
+  margin-right: -8px;
+}
+.res-list li a::before {
+  content: '›';
+  color: #ccc;
+  font-weight: 700;
+  transition: color 0.12s, transform 0.12s;
+  flex-shrink: 0;
+}
+.res-list li a:hover {
+  background: #fafaf6;
+  color: #272727;
+}
+.res-list li a:hover::before {
+  color: #e8a020;
+  transform: translateX(2px);
+}
+
+/* ===== FAQ grid ===== */
+.faq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 14px;
+}
+.faq-card {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.faq-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #272727;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  padding-bottom: 10px;
+  margin-bottom: 6px;
+  border-bottom: 2px solid #e8a020;
+}
+.faq-card details {
+  border-top: 1px solid #f0efe9;
+  padding: 4px 0;
+}
+.faq-card details:first-of-type { border-top: none; }
+.faq-card summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 28px 10px 4px;
+  position: relative;
+  font-size: 13px;
+  font-weight: 600;
+  color: #272727;
+  border-radius: 6px;
+  transition: all 0.12s;
+}
+.faq-card summary::-webkit-details-marker { display: none; }
+.faq-card summary::after {
+  content: '+';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  font-weight: 400;
+  color: #aaa;
+  transition: all 0.18s;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+}
+.faq-card details[open] summary::after {
+  content: '+';
+  transform: translateY(-50%) rotate(45deg);
+  color: #e8a020;
+}
+.faq-card summary:hover {
+  color: #e8a020;
+}
+.faq-card details[open] summary {
+  color: #e8a020;
+}
+.faq-answer {
+  padding: 4px 8px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #555;
+  border-left: 3px solid #e8a020;
+  margin-left: 4px;
+  padding-left: 14px;
+}
+.faq-answer ul,
+.faq-answer ol {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+.faq-answer li {
+  margin: 3px 0;
+}
+.faq-answer p { margin: 6px 0; }
+.faq-answer strong { color: #272727; }
+.faq-answer a { color: #b86e00; font-weight: 600; text-decoration: none; }
+.faq-answer a:hover { text-decoration: underline; }
+
+/* ===== Support contact strip ===== */
+.support-strip {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-left: 4px solid #e8a020;
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.support-strip-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #272727;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  flex-shrink: 0;
+}
+.support-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  flex: 1;
+}
+.support-pill {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  background: #fafaf6;
+  border: 1px solid #f0efe9;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: all 0.12s;
+  min-width: 0;
+}
+.support-pill:hover {
+  background: #fff;
+  border-color: #e8a020;
+  transform: translateY(-1px);
+}
+.support-pill-role {
+  font-size: 11px;
+  font-weight: 700;
+  color: #272727;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.support-pill-email {
+  font-size: 12px;
+  color: #b86e00;
+  font-weight: 600;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== FAQ search ===== */
+.faq-search-wrap {
+  position: relative;
+  margin-bottom: 6px;
+}
+.faq-search {
+  width: 100%;
+  border: 1px solid #d8d8d8;
+  border-radius: 8px;
+  padding: 11px 38px 11px 38px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  outline: none;
+  transition: all 0.15s;
+}
+.faq-search:focus {
+  border-color: #e8a020;
+  box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.12);
+}
+.faq-search-ic {
+  position: absolute;
+  left: 14px; top: 50%;
+  transform: translateY(-50%);
+  color: #aaa;
+  pointer-events: none;
+  font-size: 16px;
+}
+.faq-search-clear {
+  position: absolute;
+  right: 14px; top: 50%;
+  transform: translateY(-50%);
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  display: none;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.faq-search-clear:hover { color: #272727; background: #f0efe9; }
+.faq-search-clear.show { display: inline-block; }
+.faq-search-status {
+  font-size: 12px;
+  color: #888;
+  padding: 0 4px 10px;
+  min-height: 16px;
+}
+
+/* ===== FAQ anchor / copy-link ===== */
+.faq-card summary { padding-right: 50px !important; }
+.faq-anchor {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: 4px;
+  opacity: 0;
+  transition: all 0.12s;
+}
+.faq-card summary:hover .faq-anchor,
+.faq-card details[open] .faq-anchor {
+  opacity: 1;
+}
+.faq-anchor:hover { color: #e8a020; background: #fafaf6; }
+.faq-anchor.copied { color: #2e7d32; }
+
+/* Highlight target FAQ when arrived via deep link */
+.faq-card details:target {
+  background: #fffaf0;
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+}
+
+/* Hidden during search */
+.faq-card.faq-hidden,
+.faq-card details.faq-hidden { display: none; }
+
+@media (max-width: 900px) {
+  .support-strip-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .page { padding: 16px 14px 60px; }
+  .res-grid, .faq-grid { grid-template-columns: 1fr; }
+  .support-strip { padding: 12px 14px; gap: 10px; }
+  .support-strip-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ===================== DOWNLOADS & LINKS ===================== -->
+  <div class="section-head">
+    <h2>Downloads &amp; Links</h2>
+    <div class="sub">Templates, agreements, generators, and training resources</div>
+  </div>
+
+  <div class="res-grid">
+
+    <div class="res-card">
+      <div class="res-card-title">General Resources</div>
+      <ul class="res-list">
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Logistics-Policy-Manual.pdf" target="_blank">Logistics Policy Manual</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Logistics-Workflow.pdf" target="_blank">Logistics Workflow</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Standard-Operating-Procedures-Broker-SOPs.pdf" target="_blank">Standard Operating Procedures</a></li>
+      </ul>
+    </div>
+
+    <div class="res-card">
+      <div class="res-card-title">Customer Resources</div>
+      <ul class="res-list">
+        <li><a href="https://zfrmz.com/1Nm6Gwo6AeTFkrEJbmvQ" target="_blank">Credit Application for Shipper Customer</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/CUSTOMER-PACKET-TEMPLATE.pdf" target="_blank">Customer Packet Template</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Broker-Shipper-Agreement.docx" target="_blank">Broker Shipper Agreement</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Broker-Shipper-Agreement-1-Page-MSA.docx" target="_blank">Broker Shipper Agreement &mdash; 1 Page MSA</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Co-Broker-Agreement-Template.pdf" target="_blank">Co-Broker Agreement</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Co-Broker-Agreement-1-Page.docx" target="_blank">Co-Broker Agreement &mdash; 1 Page</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Purchase-Order-Template.pdf" target="_blank">Purchase Order Template</a></li>
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Project-Planning-Evaluation-Form.pdf" target="_blank">Project Planning Evaluation Form</a></li>
+      </ul>
+    </div>
+
+    <div class="res-card">
+      <div class="res-card-title">Operational Resources</div>
+      <ul class="res-list">
+        <li><a href="https://operfi.com/wp-content/uploads/2025/03/Broker-Packet-Setup-Example.docx" target="_blank">Broker / Carrier Packet Setup Example</a></li>
+        <li><a href="https://zfrmz.com/xNar8we2ISM0pYX4heVd" target="_blank">Broker / Carrier Agreement Generator</a></li>
+        <li><a href="https://zfrmz.com/OEwgPQXu7kn7ZpvYsC8n" target="_blank">Rate Confirmation &amp; BOL Generator</a></li>
+        <li><a href="https://zfrmz.com/FUBBhYAUxNFugku3akDC" target="_blank">BOL Generator</a></li>
+        <li><a href="https://zfrmz.com/OeqKbKDq2PcJVi8V2dUl" target="_blank">PO Generator</a></li>
+      </ul>
+    </div>
+
+    <div class="res-card">
+      <div class="res-card-title">Training &amp; Other Resources</div>
+      <ul class="res-list">
+        <li><a href="https://operfi.trainercentralsite.com/course/mastering-broker-credit" target="_blank">OperFi Carrier Academy &mdash; Broker Credit Training</a></li>
+        <li><a href="https://operfi.trainercentralsite.com/course/operfi-broker-academy-mission-ready-training" target="_blank">OperFi Carrier Academy &mdash; Freight Broker Training</a></li>
+        <li><a href="https://operfi.trainercentralsite.com/course/operfi-boot-camp" target="_blank">OperFi Carrier Academy &mdash; Trucking Boot Camp</a></li>
+        <li><a href="https://www.thefreetms.com/special-offer/operfi" target="_blank">AscendTMS 90 Day Free Trial</a></li>
+        <li><a href="https://sales.operfi.com/carrier-ok/" target="_blank">CarrierOK 30 Day Free Trial</a></li>
+        <li><a href="https://www.whatsmydns.net/domain-age" target="_blank">Domain Age Verification</a></li>
+        <li><a href="https://phonevalidator.com/index.aspx" target="_blank">VOIP Phone Validator</a></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- ===================== FREQUENTLY ASKED QUESTIONS ===================== -->
+  <div class="section-head">
+    <h2>Frequently Asked Questions</h2>
+    <div class="sub">Common questions about credit, fraud, compliance, and OperFi support</div>
+  </div>
+
+  <!-- Support contact strip -->
+  <div class="support-strip">
+    <div class="support-strip-label">Need help fast?</div>
+    <div class="support-strip-grid">
+      <a href="mailto:credit@operfi.com" class="support-pill">
+        <div class="support-pill-role">Credit Approvals</div>
+        <div class="support-pill-email">credit@operfi.com</div>
+      </a>
+      <a href="mailto:vendors@operfi.com" class="support-pill">
+        <div class="support-pill-role">Vendor Payments</div>
+        <div class="support-pill-email">vendors@operfi.com</div>
+      </a>
+      <a href="mailto:billing@operfi.com" class="support-pill">
+        <div class="support-pill-role">Invoice Submissions</div>
+        <div class="support-pill-email">billing@operfi.com</div>
+      </a>
+      <a href="mailto:support@operfi.com" class="support-pill">
+        <div class="support-pill-role">Fraud / Other</div>
+        <div class="support-pill-email">support@operfi.com</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Search bar -->
+  <div class="faq-search-wrap">
+    <span class="faq-search-ic">⌕</span>
+    <input type="text" id="faq-search" class="faq-search" placeholder="Search FAQs by question or keyword...">
+    <span class="faq-search-clear" id="faq-search-clear" title="Clear">✕</span>
+  </div>
+  <div class="faq-search-status" id="faq-search-status"></div>
+
+  <div class="faq-grid" id="faq-grid">
+
+    <div class="faq-card">
+      <div class="faq-card-title">General Questions</div>
+      <details>
+        <summary>What is the Logistics Policy Manual?</summary>
+        <div class="faq-answer">The Logistics Policy Manual provides guidelines for managing logistics operations, sales procedures, and customer evaluations. It ensures that brokers follow best practices for carrier setup, customer approvals, and invoicing.</div>
+      </details>
+      <details>
+        <summary>What is factoring, and how does it benefit my brokerage?</summary>
+        <div class="faq-answer">Factoring is a financial service where a third party (OperFi) purchases your invoices, providing immediate cash flow instead of waiting for customer payments. This helps cover operating expenses, pay carriers faster, and maintain business liquidity.</div>
+      </details>
+    </div>
+
+    <div class="faq-card">
+      <div class="faq-card-title">Customer &amp; Credit Approval</div>
+      <details>
+        <summary>Why is a Customer Setup Packet important?</summary>
+        <div class="faq-answer">
+          Before doing business with a customer, it&rsquo;s critical to protect yourself contractually. You should always have one of the following in place:
+          <ul>
+            <li><strong>Master Service Agreement (MSA)</strong> &mdash; A legally binding contract that outlines responsibilities and terms.</li>
+            <li><strong>Broker / Shipper Agreement</strong> &mdash; Defines the relationship and expectations between you and the shipper.</li>
+            <li><strong>Customer Setup Packet</strong> &mdash; Covers key details such as payment terms, dispute resolution, and liability.</li>
+            <li><strong>Purchase Orders (POs)</strong> &mdash; Used to solidify contractual rights on a project basis.</li>
+          </ul>
+          <p><strong>Tip:</strong> OperFi provides free Customer Setup Packet templates to help safeguard your brokerage. Use these resources to prevent disputes and ensure enforceable contracts.</p>
+        </div>
+      </details>
+      <details>
+        <summary>When should I submit a customer for a credit check?</summary>
+        <div class="faq-answer">Submit a credit check request for any new customer before booking a load with them. This ensures the customer has been evaluated for creditworthiness and reduces the risk of non-payment.</div>
+      </details>
+      <details>
+        <summary>What if my customer is not approved for credit?</summary>
+        <div class="faq-answer">If a customer is not approved, they may be asked to complete a credit application to provide more details about their financial stability. In some cases, a lower credit limit may be assigned instead of outright denial.</div>
+      </details>
+      <details>
+        <summary>How do I submit a customer for factoring approval?</summary>
+        <div class="faq-answer">
+          <ol>
+            <li>Log in to the OperFi Portal and complete a Customer Credit Submission.</li>
+            <li>Submit all necessary details, including Accounts Payable contacts, billing information, and expected load volume.</li>
+            <li>Wait for OperFi&rsquo;s response regarding approval or further documentation.</li>
+          </ol>
+        </div>
+      </details>
+    </div>
+
+    <div class="faq-card">
+      <div class="faq-card-title">Fraud Prevention &amp; Risk Management</div>
+      <details>
+        <summary>What types of fraud should brokers be aware of?</summary>
+        <div class="faq-answer">
+          Fraud is a growing problem in the logistics industry. Brokers should be cautious of:
+          <ul>
+            <li><strong>Customer Fraud</strong> &mdash; Scammers posing as legitimate shippers to steal freight.</li>
+            <li><strong>Agent Fraud</strong> &mdash; Fake "freight agents" applying for jobs via broker websites, only to scam them.</li>
+            <li><strong>Carrier Fraud</strong> &mdash; Double brokering, identity theft, and unauthorized carrier substitutions.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>How do I prevent Customer Fraud?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>Verify domain age (new domains may indicate a fake company).</li>
+            <li>Cross-check shipper information against known industry databases.</li>
+            <li>Call the shipper using an official, publicly listed phone number.</li>
+            <li>Confirm pickup and delivery addresses &mdash; fraudsters often use remote locations or fake warehouses.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>How do I prevent Agent Fraud?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>Screen applicants carefully &mdash; if they&rsquo;re eager to move freight immediately without onboarding, be suspicious.</li>
+            <li>Verify work history &mdash; contact previous employers directly.</li>
+            <li>Check email domains &mdash; legitimate agents should not be using Gmail / Yahoo addresses.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>How do I prevent Carrier Fraud?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>Verify MC / DOT number history &mdash; look for red flags like frequent address changes.</li>
+            <li>Check IP addresses &mdash; VPN use may indicate fraudulent carriers.</li>
+            <li>Confirm carrier identity directly with FMCSA and CarrierOK.</li>
+            <li>Strictly enforce compliance &mdash; no Rate Confirmations until verification is complete.</li>
+          </ul>
+          <p><strong>Best Practice:</strong> Follow strict customer setup protocols to avoid fraud before onboarding any new clients.</p>
+        </div>
+      </details>
+    </div>
+
+    <div class="faq-card">
+      <div class="faq-card-title">Carmack Amendment: Broker Liability &amp; Cargo Claims</div>
+      <details>
+        <summary>What is the Carmack Amendment?</summary>
+        <div class="faq-answer">The Carmack Amendment (49 U.S.C. &sect; 14706) governs liability for freight loss or damage in interstate commerce. While carriers bear the primary responsibility, brokers have obligations in the event of a claim.</div>
+      </details>
+      <details>
+        <summary>What are a broker&rsquo;s responsibilities under Carmack?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>Ensure a Broker-Carrier Agreement is signed &mdash; this protects your brokerage from undue liability.</li>
+            <li>Do not pay a carrier without investigating the claim &mdash; work with the shipper and the carrier to determine the proper resolution.</li>
+            <li>Assist in claims processing &mdash; collect necessary documentation and coordinate with insurers if needed.</li>
+            <li>Maintain thorough records &mdash; including rate confirmations, BOLs, and any carrier communications.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>What should I do if a carrier damages freight or there&rsquo;s a loss?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>Ensure the carrier&rsquo;s insurance is active.</li>
+            <li>Do not pay the carrier until the claim is resolved.</li>
+            <li>Assist your customer in submitting a claim.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>What if I find out after the fact that my load was hauled by a double-brokered carrier?</summary>
+        <div class="faq-answer">
+          <strong>DO NOT</strong> pay any carriers until the rightful one is identified.
+          <ul>
+            <li>Confirm who actually moved the load.</li>
+            <li>Wait for the legitimate carrier to surface.</li>
+            <li>Update payment details and contract terms accordingly.</li>
+          </ul>
+          <p><strong>Tip:</strong> This is why it&rsquo;s critical to have a signed Broker-Carrier Agreement &mdash; without it, your brokerage is at serious risk.</p>
+        </div>
+      </details>
+    </div>
+
+    <div class="faq-card">
+      <div class="faq-card-title">Carrier Setup &amp; Compliance</div>
+      <details>
+        <summary>What is the process for setting up a new carrier?</summary>
+        <div class="faq-answer">
+          <ol>
+            <li>Send the carrier the Vendor Setup Link (Carrier Onboarding).</li>
+            <li>The carrier must complete:
+              <ul>
+                <li>Broker-Carrier Agreement</li>
+                <li>Carrier Profile Submission</li>
+                <li>Compliance Check (FMCSA, CarrierOK, IP Address review)</li>
+                <li>Insurance Certificate submission (COI listing OperFi as a certificate holder)</li>
+                <li>Factoring Company Information (if applicable)</li>
+              </ul>
+            </li>
+            <li>Once approved, the carrier can be booked for loads.</li>
+          </ol>
+        </div>
+      </details>
+      <details>
+        <summary>What should I do if a carrier does not show a factoring company in the system but submits an invoice with a Notice of Assignment (NOA)?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>Do not pay the carrier directly.</li>
+            <li>Verify the NOA with OperFi to ensure the correct factoring company is recorded.</li>
+            <li>If an incorrect NOA is received, ask the carrier to provide a valid NOA from the correct factoring company.</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+
+    <div class="faq-card">
+      <div class="faq-card-title">Load Booking &amp; Invoice Processing</div>
+      <details>
+        <summary>How do I book a load once my customer and carrier are approved?</summary>
+        <div class="faq-answer">
+          <ol>
+            <li>Enter the load details into your TMS system.</li>
+            <li>Post loads to load boards (if applicable) or assign them to a carrier.</li>
+            <li>Confirm the carrier has completed onboarding and compliance checks.</li>
+            <li>Send Rate Confirmation and obtain carrier approval before dispatch.</li>
+          </ol>
+        </div>
+      </details>
+      <details>
+        <summary>When should I submit an invoice for factoring?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>After the load is delivered, and you have received all supporting documents (Rate Confirmation, BOL, POD, and Carrier Invoice).</li>
+            <li>Ensure that customer information and invoicing details are accurate before submission.</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+
+    <div class="faq-card">
+      <div class="faq-card-title">Payment &amp; Vendor Management</div>
+      <details>
+        <summary>When will my carrier or factoring company get paid?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>Payments are made based on the payment terms agreed upon during onboarding.</li>
+            <li>If a carrier is set up for Quick Pay, they receive funds faster but at a discounted rate.</li>
+            <li>If on Net 30 terms, payments are processed accordingly.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>What should I do if a carrier&rsquo;s payment information changes?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li>If the carrier updates payment terms to a factoring company, submit the new NOA for verification.</li>
+            <li>If the factor denies the carrier, the vendor payment setup must be updated in the system.</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+
+    <div class="faq-card">
+      <div class="faq-card-title">Troubleshooting &amp; Support</div>
+      <details>
+        <summary>Who do I contact for help with my factoring account?</summary>
+        <div class="faq-answer">
+          <ul>
+            <li><strong>For credit approvals &amp; customer setup:</strong> <a href="mailto:credit@operfi.com">credit@operfi.com</a></li>
+            <li><strong>For vendor payments &amp; carrier issues:</strong> <a href="mailto:vendors@operfi.com">vendors@operfi.com</a></li>
+            <li><strong>For invoice submissions &amp; processing:</strong> <a href="mailto:billing@operfi.com">billing@operfi.com</a></li>
+            <li><strong>For fraud concerns or red flags:</strong> <a href="mailto:support@operfi.com">support@operfi.com</a></li>
+          </ul>
+          <p><strong>Still have questions?</strong> Contact OperFi Support at <a href="mailto:support@operfi.com">support@operfi.com</a>.</p>
+        </div>
+      </details>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+(function() {
+  // ── Slugify question text → stable id ───────────────────────────────
+  function slugify(s) {
+    return ('faq-' + s.toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')).slice(0, 80);
+  }
+
+  // ── Wire anchor IDs + copy-link buttons on every <details> ──────────
+  var detailsList = document.querySelectorAll('.faq-card details');
+  detailsList.forEach(function(d) {
+    var summary = d.querySelector('summary');
+    if (!summary) return;
+    var qText = summary.childNodes[0] ? summary.childNodes[0].textContent.trim() : summary.textContent.trim();
+    var id = slugify(qText);
+    d.id = id;
+
+    var anchor = document.createElement('span');
+    anchor.className = 'faq-anchor';
+    anchor.title = 'Copy link to this question';
+    anchor.textContent = '#';
+    anchor.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var url = window.location.origin + window.location.pathname + '#' + id;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(function() {
+          anchor.textContent = '✓';
+          anchor.classList.add('copied');
+          setTimeout(function() {
+            anchor.textContent = '#';
+            anchor.classList.remove('copied');
+          }, 1400);
+        });
+      }
+    });
+    summary.appendChild(anchor);
+  });
+
+  // ── Open + scroll to deep-linked FAQ on load ────────────────────────
+  if (window.location.hash) {
+    var target = document.getElementById(window.location.hash.slice(1));
+    if (target && target.tagName === 'DETAILS') {
+      target.open = true;
+      setTimeout(function() {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }
+
+  // ── FAQ search ──────────────────────────────────────────────────────
+  var searchInput = document.getElementById('faq-search');
+  var clearBtn = document.getElementById('faq-search-clear');
+  var status = document.getElementById('faq-search-status');
+  var allCards = document.querySelectorAll('.faq-card');
+  var allDetails = document.querySelectorAll('.faq-card details');
+
+  function applySearch(q) {
+    q = q.trim().toLowerCase();
+    clearBtn.classList.toggle('show', q.length > 0);
+
+    if (!q) {
+      allCards.forEach(function(c) { c.classList.remove('faq-hidden'); });
+      allDetails.forEach(function(d) { d.classList.remove('faq-hidden'); d.open = false; });
+      status.textContent = '';
+      return;
+    }
+
+    var matchCount = 0;
+    allCards.forEach(function(card) {
+      var cardMatches = 0;
+      card.querySelectorAll('details').forEach(function(d) {
+        var text = d.textContent.toLowerCase();
+        var hit = text.indexOf(q) !== -1;
+        d.classList.toggle('faq-hidden', !hit);
+        if (hit) {
+          d.open = true;
+          cardMatches++;
+          matchCount++;
+        } else {
+          d.open = false;
+        }
+      });
+      card.classList.toggle('faq-hidden', cardMatches === 0);
+    });
+
+    status.textContent = matchCount === 0
+      ? 'No FAQs match "' + q + '". Try different keywords or contact support above.'
+      : matchCount + ' result' + (matchCount === 1 ? '' : 's') + ' for "' + q + '"';
+  }
+
+  searchInput.addEventListener('input', function(e) { applySearch(e.target.value); });
+  clearBtn.addEventListener('click', function() {
+    searchInput.value = '';
+    applySearch('');
+    searchInput.focus();
+  });
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { searchInput.value = ''; applySearch(''); }
+  });
+})();
+</script>
+
+</body>
+</html>

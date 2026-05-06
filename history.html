@@ -504,7 +504,11 @@ html, body {
 (function() {
 'use strict';
 
+// ── Config ────────────────────────────────────────────────────────────────
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+
 // ── State ─────────────────────────────────────────────────────────────────
+var brokerEmail = '';         // populated from getInitParams on boot
 var allRecords = [];          // records currently loaded (always within current date range)
 var filteredRecords = [];     // after applying status + search filters
 var currentStatus = 'all';
@@ -536,8 +540,28 @@ function isHoldRollup(rec) {
 // ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
   bindGlobalUI();
-  loadAllRecords();
+  bootApp();
 });
+
+function bootApp() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+    showError('SDK unavailable', 'The Zoho Creator widget SDK did not load. Reload the page.');
+    return;
+  }
+  ZOHO.CREATOR.init().then(function() {
+    var params = ZOHO.CREATOR.UTIL.getInitParams();
+    brokerEmail = (params && params.loginUser) || '';
+    if (!brokerEmail) {
+      showError('Could not identify broker', 'No login email returned from Creator. Reload the page.');
+      return;
+    }
+    console.log('[SubmissionHistory] Booted as', brokerEmail);
+    loadAllRecords();
+  }).catch(function(err) {
+    console.error('[SubmissionHistory] Init failed', err);
+    showError('Initialization failed', 'Could not initialize widget. Open DevTools console (F12) for details.');
+  });
+}
 
 function bindGlobalUI() {
   document.getElementById('search-input').addEventListener('input', function(e) {
@@ -611,20 +635,16 @@ function bindGlobalUI() {
   });
 }
 
-// ── Data load (server-side date-filtered, paginated) ─────────────────────
+// ── Data load (via /broker-report on Render — server filters by Account_Name + date) ──
 var loadStart = 0;
 var loadSafetyTimer = null;
 
 function loadAllRecords() {
-  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
-    showError('SDK unavailable', 'The Zoho Creator widget SDK did not load. Reload the page.');
-    return;
-  }
-  // Cancel any in-flight load (user may have changed date range mid-load)
+  if (!brokerEmail) return;  // not yet booted
+
   currentLoadId++;
   var loadId = currentLoadId;
 
-  // Show loading state
   document.getElementById('results').innerHTML =
     '<div class="state"><div class="spinner"></div>' +
     '<div class="state-title">Loading submissions…</div>' +
@@ -632,10 +652,9 @@ function loadAllRecords() {
 
   loadStart = Date.now();
   var range = computeDateRange();
-  var criteria = buildCriteria(range);
-  console.log('[SubmissionHistory] Starting load at', new Date().toISOString(), 'criteria:', criteria || '(none)');
+  console.log('[SubmissionHistory] Starting load at', new Date().toISOString(), 'range:',
+    range ? formatZohoDateTime(range.start) + ' → ' + formatZohoDateTime(range.end) : 'All Time');
 
-  // Safety: if no progress in 60s, surface an error.
   clearTimeout(loadSafetyTimer);
   loadSafetyTimer = setTimeout(function() {
     if (loadId !== currentLoadId) return;
@@ -643,20 +662,12 @@ function loadAllRecords() {
       'Try a smaller date range. Open DevTools console (F12) for details.');
   }, 60000);
 
-  fetchPage(loadId, 1, [], criteria, range);
+  fetchPage(loadId, 1, [], range);
 }
 
 function setProgress(msg) {
   var el = document.getElementById('load-progress');
   if (el) el.textContent = msg;
-}
-
-function buildCriteria(range) {
-  if (!range) return null;  // "All Time"
-  // Zoho criteria datetime format: "DD-MMM-YYYY HH:MM:SS"
-  var s = formatZohoDateTime(range.start);
-  var e = formatZohoDateTime(range.end);
-  return '(Added_Time >= "' + s + '" && Added_Time <= "' + e + '")';
 }
 
 function formatZohoDateTime(d) {
@@ -666,37 +677,47 @@ function formatZohoDateTime(d) {
     ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
-function fetchPage(loadId, page, accumulated, criteria, range) {
+function fetchPage(loadId, fromIdx, accumulated, range) {
   if (loadId !== currentLoadId) {
     console.log('[SubmissionHistory] Load', loadId, 'cancelled');
     return;
   }
-  console.log('[SubmissionHistory] Fetching page', page, '(have', accumulated.length, 'so far)');
-  setProgress('Loading page ' + page + ' (' + accumulated.length + ' records so far)…');
+  console.log('[SubmissionHistory] Fetching from idx', fromIdx, '(have', accumulated.length, 'so far)');
+  setProgress('Loading (' + accumulated.length + ' records so far)…');
   var pageStart = Date.now();
-  // Try cursor-style pagination (from + limit). Page-based pagination
-  // (page + pageSize) returns the same first 200 records on every call
-  // in portal SDK context.
-  var params = {
-    report_name: 'Submission_History',
-    from: (page - 1) * 200,
-    limit: 200
-  };
 
-  ZOHO.CREATOR.DATA.getRecords(params).then(function(res) {
+  var qs = new URLSearchParams({
+    email: brokerEmail,
+    report: 'Submission_History',
+    from_idx: String(fromIdx),
+    limit: '200'
+  });
+  if (range) {
+    qs.set('from', formatZohoDateTime(range.start));
+    qs.set('to', formatZohoDateTime(range.end));
+  }
+  var url = BROKER_API_BASE + '/broker-report?' + qs.toString();
+
+  fetch(url).then(function(res) {
+    if (!res.ok) {
+      return res.text().then(function(body) {
+        throw new Error('HTTP ' + res.status + ' ' + body);
+      });
+    }
+    return res.json();
+  }).then(function(payload) {
     if (loadId !== currentLoadId) return;
-    var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
-    console.log('[SubmissionHistory] Page', page, 'returned', data.length, 'records in', (Date.now() - pageStart) + 'ms');
 
-    // Diagnostic: log first/last record dates AND IDs so we can see what's coming back
+    var data = payload.records || [];
+    console.log('[SubmissionHistory] Got', data.length, 'records in', (Date.now() - pageStart) + 'ms (hasMore:', !!payload.hasMore, ', next_idx:', payload.next_idx + ')');
+
     if (data.length > 0) {
-      console.log('[SubmissionHistory]   newest in page:', data[0].Added_Time, '| oldest:', data[data.length - 1].Added_Time);
+      console.log('[SubmissionHistory]   newest:', data[0].Added_Time, '| oldest:', data[data.length - 1].Added_Time);
       var sampleIds = data.slice(0, 3).map(function(r) { return r.ID || r.id || '(no-id)'; });
-      console.log('[SubmissionHistory]   first 3 IDs in page:', sampleIds.join(', '));
+      console.log('[SubmissionHistory]   first 3 IDs:', sampleIds.join(', '));
     }
 
-    // Dedupe by ID. If pagination breaks and the API returns the same records,
-    // we don't want them piling up.
+    // Dedup safety — if server pagination ever returns overlap, drop the dups
     var combined = accumulated.concat(data);
     var seen = {};
     var deduped = [];
@@ -709,36 +730,17 @@ function fetchPage(loadId, page, accumulated, criteria, range) {
     }
     var dupesThisPage = combined.length - deduped.length;
     if (dupesThisPage > 0) {
-      console.warn('[SubmissionHistory] Page', page, 'contained', dupesThisPage, 'duplicates of records we already had — pagination may be broken');
+      console.warn('[SubmissionHistory] Got', dupesThisPage, 'duplicates of records we already had — pagination may be broken');
     }
     combined = deduped;
 
-    // If a page returns ZERO new unique records, we're stuck in a loop — bail.
     if (data.length > 0 && combined.length === accumulated.length) {
       clearTimeout(loadSafetyTimer);
-      console.warn('[SubmissionHistory] Page', page, 'returned only duplicates — stopping');
+      console.warn('[SubmissionHistory] Only duplicates returned — stopping');
       onRecordsLoaded(combined, false);
       return;
     }
 
-    // EARLY STOP: records arrive newest-first. If the oldest in this page is past
-    // our date floor, we've collected everything we need. Trim and return.
-    if (range && data.length > 0) {
-      var oldest = parseDate(data[data.length - 1].Added_Time);
-      if (oldest && oldest < range.start) {
-        console.log('[SubmissionHistory] Crossed date floor on page', page, '— stopping');
-        var inRange = combined.filter(function(r) {
-          var t = parseDate(r.Added_Time);
-          return t && t >= range.start && t <= range.end;
-        });
-        clearTimeout(loadSafetyTimer);
-        console.log('[SubmissionHistory] Total in range:', inRange.length, 'records in', (Date.now() - loadStart) + 'ms');
-        onRecordsLoaded(inRange, false);
-        return;
-      }
-    }
-
-    // Hard cap so a misconfigured "All Time" can't hang the browser indefinitely
     if (combined.length >= 5000) {
       clearTimeout(loadSafetyTimer);
       console.warn('[SubmissionHistory] Hit 5000 record cap — truncating');
@@ -746,26 +748,18 @@ function fetchPage(loadId, page, accumulated, criteria, range) {
       return;
     }
 
-    if (data.length === 200) {
-      fetchPage(loadId, page + 1, combined, criteria, range);
+    if (payload.hasMore && payload.next_idx) {
+      fetchPage(loadId, payload.next_idx, combined, range);
     } else {
       clearTimeout(loadSafetyTimer);
       console.log('[SubmissionHistory] Total loaded:', combined.length, 'records in', (Date.now() - loadStart) + 'ms');
-      // Apply range filter on the way out (in case criteria ran but we didn't early-stop)
-      var finalRecords = combined;
-      if (range) {
-        finalRecords = combined.filter(function(r) {
-          var t = parseDate(r.Added_Time);
-          return t && t >= range.start && t <= range.end;
-        });
-      }
-      onRecordsLoaded(finalRecords, false);
+      onRecordsLoaded(combined, false);
     }
   }).catch(function(err) {
     if (loadId !== currentLoadId) return;
     clearTimeout(loadSafetyTimer);
-    console.error('[SubmissionHistory] getRecords failed on page', page, err);
-    showError('Could not load submissions', 'Page ' + page + ' failed. Open DevTools console (F12) for the error.');
+    console.error('[SubmissionHistory] /broker-report failed at idx', fromIdx, err);
+    showError('Could not load submissions', 'Open DevTools console (F12) for the error.');
   });
 }
 

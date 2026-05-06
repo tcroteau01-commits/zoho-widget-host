@@ -548,19 +548,41 @@ function bootApp() {
     showError('SDK unavailable', 'The Zoho Creator widget SDK did not load. Reload the page.');
     return;
   }
-  ZOHO.CREATOR.init().then(function() {
-    var params = ZOHO.CREATOR.UTIL.getInitParams();
-    brokerEmail = (params && params.loginUser) || '';
+
+  function gotParams(params) {
+    console.log('[SubmissionHistory] init params:', params);
+    brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) {
-      showError('Could not identify broker', 'No login email returned from Creator. Reload the page.');
+      showError('Could not identify broker',
+        'No login email returned from Creator. Open DevTools console (F12) — the init params object is logged there.');
       return;
     }
     console.log('[SubmissionHistory] Booted as', brokerEmail);
     loadAllRecords();
-  }).catch(function(err) {
-    console.error('[SubmissionHistory] Init failed', err);
-    showError('Initialization failed', 'Could not initialize widget. Open DevTools console (F12) for details.');
-  });
+  }
+
+  if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+    console.error('[SubmissionHistory] ZOHO.CREATOR.UTIL.getInitParams is not available. ZOHO.CREATOR keys:',
+      Object.keys(ZOHO.CREATOR || {}));
+    showError('SDK shape unexpected',
+      'getInitParams is not available on this SDK build. Open DevTools console (F12) for details.');
+    return;
+  }
+
+  try {
+    var result = ZOHO.CREATOR.UTIL.getInitParams();
+    if (result && typeof result.then === 'function') {
+      result.then(gotParams).catch(function(err) {
+        console.error('[SubmissionHistory] getInitParams rejected', err);
+        showError('Initialization failed', 'Could not read init params. Open DevTools console (F12) for details.');
+      });
+    } else {
+      gotParams(result);
+    }
+  } catch (err) {
+    console.error('[SubmissionHistory] getInitParams threw', err);
+    showError('Initialization failed', 'Could not read init params. Open DevTools console (F12) for details.');
+  }
 }
 
 function bindGlobalUI() {

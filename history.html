@@ -592,26 +592,38 @@ function bindGlobalUI() {
   });
   document.getElementById('btn-new').addEventListener('click', function() {
     var hash = '#Page:Load_Details_NEW';
-
-    // Prefer the SDK helper if present (handles cross-origin cleanly)
-    try {
-      if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.UTIL &&
-          typeof ZOHO.CREATOR.UTIL.navigateParentURL === 'function') {
-        ZOHO.CREATOR.UTIL.navigateParentURL(hash);
-        return;
-      }
-    } catch (e) { /* fall through */ }
-
-    // Fallback: navigate the top frame directly. Read the portal origin
-    // from our own URL's serviceOrigin param so we don't hardcode it.
     var sp = new URLSearchParams(window.location.search);
     var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
     var url = origin.replace(/\/$/, '') + '/' + hash;
+    console.log('[NewSubmission] click — origin:', origin, 'url:', url);
+
+    // Try top-frame navigation first. Cross-origin writes to location.href
+    // are allowed for navigation under user activation.
     try {
+      console.log('[NewSubmission] trying window.top.location.href');
       window.top.location.href = url;
+      return;
     } catch (e) {
-      window.open(url, '_top');
+      console.warn('[NewSubmission] window.top blocked:', e);
     }
+
+    try {
+      console.log('[NewSubmission] trying window.parent.location.href');
+      window.parent.location.href = url;
+      return;
+    } catch (e) {
+      console.warn('[NewSubmission] window.parent blocked:', e);
+    }
+
+    try {
+      console.log('[NewSubmission] trying window.open _top');
+      window.open(url, '_top');
+      return;
+    } catch (e) {
+      console.warn('[NewSubmission] window.open blocked:', e);
+    }
+
+    console.error('[NewSubmission] all navigation attempts failed');
   });
   document.getElementById('btn-export').addEventListener('click', exportCsv);
 

@@ -240,10 +240,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   font-weight: 600; font-size: 13px; color: #555;
 }
 .flag {
-  width: 18px; height: 12px;
-  background: linear-gradient(180deg, #b22234 0 33%, #fff 33% 66%, #b22234 66%);
-  border: 1px solid rgba(0,0,0,0.1);
+  width: 22px; height: 14px;
+  background:
+    linear-gradient(#3c3b6e, #3c3b6e) no-repeat 0 0 / 9px 7px,
+    repeating-linear-gradient(to bottom, #b22234 0 2px, #fff 2px 4px);
+  border: 1px solid rgba(0,0,0,0.15);
   border-radius: 1px;
+  flex-shrink: 0;
 }
 
 .field-err { font-size: 11px; color: #c62828; margin-top: 2px; display: none; }
@@ -414,7 +417,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   </div>
 
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.1</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.2</div>
 </div>
 
 <!-- Add Trusted Contact modal -->

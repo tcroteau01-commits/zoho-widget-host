@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customer Approvals</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #f0efe9;
+  color: #333;
+  min-height: 100vh;
+}
+.widget { max-width: 1320px; margin: 0 auto; padding: 20px 24px 60px; }
+
+/* Header */
+.widget-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.widget-title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.widget-sub { font-size: 12px; color: #888; margin-top: 4px; }
+.header-actions { display: flex; gap: 8px; }
+.btn {
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; color: #444;
+  cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.btn.primary { background: #272727; color: #fff; border-color: #272727; }
+.btn.primary:hover { background: #1a1a1a; }
+.btn .ic { margin-right: 6px; opacity: 0.7; }
+
+/* KPI strip */
+.kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+.kpi {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
+  padding: 14px 16px; position: relative; overflow: hidden;
+}
+.kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #e8a020; }
+.kpi.approved::before { background: #2e7d32; }
+.kpi.awaiting::before { background: #f5a623; }
+.kpi.denied::before { background: #c62828; }
+.kpi.value::before { background: #272727; }
+.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #888; font-weight: 600; }
+.kpi-value { font-size: 24px; font-weight: 700; color: #272727; margin-top: 4px; letter-spacing: -0.4px; }
+.kpi-value .small { font-size: 14px; color: #888; font-weight: 500; }
+
+/* Toolbar */
+.toolbar {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
+  padding: 10px 12px; display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px; flex-wrap: wrap;
+}
+.search { flex: 1; min-width: 240px; position: relative; }
+.search input {
+  width: 100%; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 9px 12px 9px 36px; font-size: 13px; font-family: inherit;
+  background: #fafafa; outline: none; transition: all 0.15s;
+}
+.search input:focus { border-color: #e8a020; background: #fff; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.search-ic { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #aaa; pointer-events: none; }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid #d8d8d8; background: #fff; border-radius: 999px;
+  padding: 7px 13px; font-size: 12px; font-weight: 600; color: #555;
+  cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
+  user-select: none;
+}
+.chip:hover { border-color: #b8b8b8; }
+.chip.active { background: #272727; color: #fff; border-color: #272727; }
+.chip .count { background: rgba(0,0,0,0.07); border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
+.chip.active .count { background: rgba(255,255,255,0.18); }
+
+/* List rows */
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1.6fr 1.4fr 0.9fr 1.1fr 1.1fr 28px;
+  gap: 14px; align-items: center;
+  cursor: pointer; transition: all 0.12s; position: relative;
+}
+.row:hover { border-color: #c8c4b6; box-shadow: 0 2px 6px rgba(0,0,0,0.04); transform: translateY(-1px); }
+.row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 10px 0 0 10px; background: #ddd; }
+.row.s-approved::before  { background: #2e7d32; }
+.row.s-awaiting::before  { background: #f5a623; }
+.row.s-pending-app::before { background: #f5a623; }
+.row.s-app-sent::before  { background: #d35400; }
+.row.s-app-rcvd::before  { background: #1976d2; }
+.row.s-boost::before     { background: #1976d2; }
+.row.s-denied::before    { background: #c62828; }
+.row.s-expired::before   { background: #888; }
+
+.cell-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; font-weight: 600; margin-bottom: 2px; }
+.cell-val { font-size: 13px; color: #272727; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-sub { font-size: 11px; color: #888; margin-top: 1px; font-weight: 500; }
+.cell-val.lg { font-size: 14px; }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.2px; text-transform: uppercase; white-space: nowrap;
+}
+.status-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-pill.approved { background: #e3f4e3; color: #1f6321; }
+.status-pill.awaiting { background: #fff4e0; color: #b86e00; }
+.status-pill.pending-app { background: #fff4e0; color: #b86e00; }
+.status-pill.app-sent { background: #ffe9d9; color: #a13e00; }
+.status-pill.app-rcvd { background: #e3f0fb; color: #0d4a8a; }
+.status-pill.boost { background: #e3f0fb; color: #0d4a8a; }
+.status-pill.denied { background: #fde4e4; color: #a31818; }
+.status-pill.expired { background: #ececec; color: #555; }
+
+.row-action {
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 7px 12px; font-size: 11px; font-weight: 700; color: #444;
+  cursor: pointer; transition: all 0.12s;
+  text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap;
+  font-family: inherit;
+}
+.row-action:hover { border-color: #e8a020; color: #e8a020; }
+.row-action.primary { background: #e8a020; color: #fff; border-color: #e8a020; }
+.row-action.primary:hover { background: #d49018; border-color: #d49018; color: #fff; }
+.row-action-placeholder { font-size: 11px; color: #aaa; font-style: italic; }
+
+.chev { color: #ccc; transition: color 0.12s, transform 0.12s; text-align: right; }
+.row:hover .chev { color: #888; transform: translateX(2px); }
+
+/* States */
+.state {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
+  padding: 60px 24px; text-align: center; color: #888;
+}
+.state-title { font-size: 16px; font-weight: 600; color: #555; margin-bottom: 6px; }
+.state-msg { font-size: 13px; }
+.state .spinner {
+  width: 28px; height: 28px;
+  border: 3px solid #e6e3da;
+  border-top-color: #e8a020;
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Footer */
+.footer {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 18px; padding: 0 4px;
+  font-size: 12px; color: #888;
+}
+
+@media (max-width: 900px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row .cell-chev { display: none; }
+}
+
+/* ===== Slide-in detail panel ===== */
+.scrim {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.32);
+  z-index: 90;
+  backdrop-filter: blur(2px);
+  display: none;
+  animation: fadeIn 0.18s ease-out;
+}
+.scrim.show { display: block; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 580px; max-width: 100vw;
+  background: #f7f6f1;
+  z-index: 100;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.12);
+  display: none;
+  flex-direction: column;
+  animation: slideIn 0.22s ease-out;
+}
+.panel.show { display: flex; }
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.panel-top { background: #272727; color: #fff; padding: 14px 18px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.panel-top .nav-btn {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #fff; font-size: 14px; transition: background 0.12s;
+}
+.panel-top .nav-btn:hover { background: rgba(255,255,255,0.16); }
+.panel-top .nav-btn.disabled { opacity: 0.35; cursor: not-allowed; }
+.panel-top .position { font-size: 11px; color: rgba(255,255,255,0.55); font-weight: 600; letter-spacing: 0.3px; }
+.panel-top .spacer { flex: 1; }
+.panel-top .close-btn {
+  width: 30px; height: 30px; border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #fff; font-size: 16px; transition: background 0.12s;
+}
+.panel-top .close-btn:hover { background: rgba(255,255,255,0.18); }
+
+.panel-header { background: #272727; color: #fff; padding: 0 22px 22px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.panel-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.5); font-weight: 700; margin-bottom: 4px; }
+.panel-customer { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 8px; }
+.panel-meta { display: flex; gap: 14px; align-items: center; font-size: 13px; color: rgba(255,255,255,0.7); flex-wrap: wrap; }
+.panel-meta .dot { color: rgba(255,255,255,0.3); }
+
+.panel-status-row { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+.panel-status-row .status-pill { font-size: 11px; padding: 5px 11px; }
+
+.panel-body { flex: 1; overflow-y: auto; padding: 18px 22px 24px; }
+.panel-section { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+.panel-section-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+  color: #888; font-weight: 700; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-section-title::after { content: ''; flex: 1; height: 1px; background: #f0efe9; }
+
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.field-grid.full > .field { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field-label { font-size: 11px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.field-val { font-size: 14px; color: #272727; font-weight: 600; word-break: break-word; }
+.field-val.muted { color: #888; font-weight: 500; }
+.field-val.lg { font-size: 18px; letter-spacing: -0.2px; }
+.field-val.empty { color: #bbb; font-weight: 500; font-style: italic; }
+.field-val a { color: #b86e00; text-decoration: none; }
+.field-val a:hover { text-decoration: underline; }
+
+.credit-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+.credit-card { background: #fafafa; border: 1px solid #f0efe9; border-radius: 8px; padding: 10px 12px; }
+.credit-card.approved { background: #f1f9f1; border-color: #c8e3c8; }
+.credit-card.denied { background: #fdf2f2; border-color: #f0c6c6; }
+.credit-card .field-label { margin-bottom: 4px; }
+
+.note-block {
+  background: #fafaf6; border: 1px solid #f0efe9; border-radius: 8px;
+  padding: 12px 14px; font-size: 13px; line-height: 1.5; color: #444;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+.docs-list { display: flex; flex-direction: column; gap: 8px; }
+.doc-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; background: #fafafa;
+  border: 1px solid #f0efe9; border-radius: 8px;
+  transition: all 0.12s;
+}
+.doc-icon {
+  width: 32px; height: 32px;
+  background: #fff4e0; color: #b86e00;
+  border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 11px; flex-shrink: 0;
+}
+.doc-info { flex: 1; min-width: 0; }
+.doc-name { font-size: 13px; font-weight: 600; color: #272727; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-meta { font-size: 11px; color: #999; }
+.doc-empty { font-size: 12px; color: #aaa; font-style: italic; padding: 6px 2px; }
+
+.panel-footer {
+  border-top: 1px solid #e6e3da;
+  background: #fff;
+  padding: 12px 22px;
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0; gap: 10px;
+}
+.panel-footer .actions { display: flex; gap: 8px; }
+.kbd {
+  display: inline-block; background: #f0efe9;
+  border: 1px solid #e0ddd2; border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 10px; font-weight: 700;
+  color: #555;
+  margin: 0 2px;
+}
+.kbd-hints { font-size: 11px; color: #888; }
+</style>
+</head>
+<body>
+
+<div class="widget">
+
+  <div class="widget-header">
+    <div>
+      <div class="widget-title">Customer Approvals</div>
+      <div class="widget-sub">Status of every customer you've submitted for credit review</div>
+    </div>
+    <div class="header-actions">
+      <button class="btn" id="btn-export"><span class="ic">⤓</span>Export CSV</button>
+      <button class="btn primary" id="btn-new"><span class="ic">＋</span>New Credit Check</button>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">Total Customers</div><div class="kpi-value" id="kpi-total">—</div></div>
+    <div class="kpi approved"><div class="kpi-label">Approved</div><div class="kpi-value" id="kpi-approved">—</div></div>
+    <div class="kpi awaiting"><div class="kpi-label">Awaiting Decision</div><div class="kpi-value" id="kpi-awaiting">—</div></div>
+    <div class="kpi denied"><div class="kpi-label">Denied</div><div class="kpi-value" id="kpi-denied">—</div></div>
+    <div class="kpi value"><div class="kpi-label">Total Credit Limit</div><div class="kpi-value" id="kpi-limit">—</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search">
+      <span class="search-ic">⌕</span>
+      <input type="text" id="search-input" placeholder="Search by company, email, or phone...">
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div id="results">
+    <div class="state">
+      <div class="spinner"></div>
+      <div class="state-title">Loading customer approvals…</div>
+      <div class="state-msg" id="load-progress">Pulling your customer submissions</div>
+    </div>
+  </div>
+
+  <div class="footer" id="footer" style="display:none;">
+    <div id="footer-count">—</div>
+  </div>
+
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.1</div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="panel" id="panel"></aside>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+(function() {
+'use strict';
+
+// ── Config ────────────────────────────────────────────────────────────────
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+
+// ── State ─────────────────────────────────────────────────────────────────
+var brokerEmail = '';
+var allRecords = [];
+var filteredRecords = [];
+var currentStatus = 'all';
+var currentSearch = '';
+var openIndex = -1;
+var currentLoadId = 0;
+
+// ── Status mapping ────────────────────────────────────────────────────────
+// Maps Credit_Decision → { key, label, pill }
+var STATUS_MAP = {
+  'Approved':                          { key: 'approved',    label: 'Approved',          pill: 'approved' },
+  'Awaiting Credit Decision':          { key: 'awaiting',    label: 'Awaiting Decision', pill: 'awaiting' },
+  'Pending Credit Application':        { key: 'pending-app', label: 'Pending Credit App', pill: 'pending-app' },
+  'Credit App Sent - Awaiting Customer': { key: 'app-sent',  label: 'App Sent',          pill: 'app-sent' },
+  "Credit App Rec'd - Pending Review": { key: 'app-rcvd',    label: "App Rec'd",          pill: 'app-rcvd' },
+  'Credit Boost Requested':            { key: 'boost',       label: 'Boost Requested',   pill: 'boost' },
+  'Denied':                            { key: 'denied',      label: 'Denied',            pill: 'denied' },
+  'Expired':                           { key: 'expired',     label: 'Expired',           pill: 'expired' }
+};
+function statusMeta(rec) {
+  var raw = rec.Credit_Decision || '';
+  return STATUS_MAP[raw] || { key: 'unknown', label: raw || '—', pill: '' };
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  bindGlobalUI();
+  bootApp();
+});
+
+function bootApp() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+    showError('SDK unavailable', 'The Zoho Creator widget SDK did not load. Reload the page.');
+    return;
+  }
+
+  function gotParams(params) {
+    console.log('[CustomerApprovals] init params:', params);
+    brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+    if (!brokerEmail) {
+      showError('Could not identify broker',
+        'No login email returned from Creator. Open DevTools console (F12) — the init params object is logged there.');
+      return;
+    }
+    console.log('[CustomerApprovals] Booted as', brokerEmail);
+    loadAllRecords();
+  }
+
+  if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+    console.error('[CustomerApprovals] getInitParams not available. ZOHO.CREATOR keys:', Object.keys(ZOHO.CREATOR || {}));
+    showError('SDK shape unexpected', 'getInitParams is not available on this SDK build. Open DevTools console (F12).');
+    return;
+  }
+
+  try {
+    var result = ZOHO.CREATOR.UTIL.getInitParams();
+    if (result && typeof result.then === 'function') {
+      result.then(gotParams).catch(function(err) {
+        console.error('[CustomerApprovals] getInitParams rejected', err);
+        showError('Initialization failed', 'Could not read init params. Open DevTools console (F12).');
+      });
+    } else {
+      gotParams(result);
+    }
+  } catch (err) {
+    console.error('[CustomerApprovals] getInitParams threw', err);
+    showError('Initialization failed', 'Could not read init params. Open DevTools console (F12).');
+  }
+}
+
+function bindGlobalUI() {
+  document.getElementById('search-input').addEventListener('input', function(e) {
+    currentSearch = e.target.value.toLowerCase().trim();
+    applyFilters();
+  });
+  document.getElementById('btn-new').addEventListener('click', function() { navigateParent('#Page:Credit_Check_NEW'); });
+  document.getElementById('btn-export').addEventListener('click', exportCsv);
+
+  // Panel close + keyboard
+  document.getElementById('scrim').addEventListener('click', closePanel);
+  document.addEventListener('keydown', function(e) {
+    if (!document.getElementById('panel').classList.contains('show')) return;
+    if (e.key === 'Escape') closePanel();
+    else if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navPanel(1); }
+    else if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); navPanel(-1); }
+  });
+}
+
+// Cross-origin portal navigation. ZOHO.CREATOR.UTIL.navigateParentURL throws
+// "Improper Configuration" in the v2.0 widget SDK, so we set window.top.location directly.
+function navigateParent(hash) {
+  var sp = new URLSearchParams(window.location.search);
+  var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+  var url = origin.replace(/\/$/, '') + '/' + hash;
+  try { window.top.location.href = url; return; } catch (e) {}
+  try { window.parent.location.href = url; return; } catch (e) {}
+  try { window.open(url, '_top'); } catch (e) {}
+}
+
+// ── Data load ─────────────────────────────────────────────────────────────
+var loadStart = 0;
+var loadSafetyTimer = null;
+
+function loadAllRecords() {
+  if (!brokerEmail) return;
+
+  currentLoadId++;
+  var loadId = currentLoadId;
+
+  document.getElementById('results').innerHTML =
+    '<div class="state"><div class="spinner"></div>' +
+    '<div class="state-title">Loading customer approvals…</div>' +
+    '<div class="state-msg" id="load-progress">Pulling your customer submissions</div></div>';
+
+  loadStart = Date.now();
+  clearTimeout(loadSafetyTimer);
+  loadSafetyTimer = setTimeout(function() {
+    if (loadId !== currentLoadId) return;
+    showError('Loading is taking longer than expected', 'Open DevTools console (F12) for details.');
+  }, 60000);
+
+  fetchAll(loadId);
+}
+
+function setProgress(msg) {
+  var el = document.getElementById('load-progress');
+  if (el) el.textContent = msg;
+}
+
+function fetchAll(loadId) {
+  setProgress('Fetching from server…');
+  var pageStart = Date.now();
+  var qs = new URLSearchParams({
+    email: brokerEmail,
+    report: 'Customer_Submission_Report',
+    from_idx: '1',
+    limit: '200'
+  });
+  var url = BROKER_API_BASE + '/broker-report?' + qs.toString();
+
+  fetch(url).then(function(res) {
+    if (!res.ok) {
+      return res.text().then(function(body) { throw new Error('HTTP ' + res.status + ' ' + body); });
+    }
+    return res.json();
+  }).then(function(payload) {
+    if (loadId !== currentLoadId) return;
+    clearTimeout(loadSafetyTimer);
+    var data = payload.records || [];
+    console.log('[CustomerApprovals] Got', data.length, 'records in', (Date.now() - pageStart) + 'ms');
+    onRecordsLoaded(data);
+  }).catch(function(err) {
+    if (loadId !== currentLoadId) return;
+    clearTimeout(loadSafetyTimer);
+    console.error('[CustomerApprovals] /broker-report failed', err);
+    showError('Could not load customer approvals', 'Open DevTools console (F12) for the error.');
+  });
+}
+
+function onRecordsLoaded(records) {
+  records.sort(function(a, b) { return parseDate(b.Added_Time) - parseDate(a.Added_Time); });
+  allRecords = records;
+  buildChips();
+  applyFilters();
+}
+
+// ── Filters & rendering ───────────────────────────────────────────────────
+function buildChips() {
+  var chips = document.getElementById('chips');
+  var counts = countByStatus(allRecords);
+  var awaitingCount = (counts['awaiting'] || 0) + (counts['pending-app'] || 0);
+  var def = [
+    { key: 'all',        label: 'All',          count: allRecords.length },
+    { key: 'approved',   label: 'Approved',     count: counts['approved'] || 0 },
+    { key: 'awaiting',   label: 'Awaiting',     count: awaitingCount },
+    { key: 'app-sent',   label: 'App Sent',     count: counts['app-sent'] || 0 },
+    { key: 'app-rcvd',   label: "App Rec'd",     count: counts['app-rcvd'] || 0 },
+    { key: 'boost',      label: 'Boost Pending', count: counts['boost'] || 0 },
+    { key: 'denied',     label: 'Denied',       count: counts['denied'] || 0 },
+    { key: 'expired',    label: 'Expired',      count: counts['expired'] || 0 }
+  ];
+  chips.innerHTML = '';
+  def.forEach(function(c) {
+    if (c.key === 'expired' && c.count === 0) return;  // hide rare chip when empty
+    var el = document.createElement('span');
+    el.className = 'chip' + (c.key === currentStatus ? ' active' : '');
+    el.dataset.key = c.key;
+    el.innerHTML = esc(c.label) + ' <span class="count">' + c.count + '</span>';
+    el.addEventListener('click', function() {
+      currentStatus = c.key;
+      document.querySelectorAll('#chips .chip').forEach(function(x) { x.classList.remove('active'); });
+      el.classList.add('active');
+      applyFilters();
+    });
+    chips.appendChild(el);
+  });
+}
+
+function countByStatus(records) {
+  var c = {};
+  records.forEach(function(r) {
+    var k = statusMeta(r).key;
+    c[k] = (c[k] || 0) + 1;
+  });
+  return c;
+}
+
+function applyFilters() {
+  filteredRecords = allRecords.filter(function(r) {
+    if (currentStatus !== 'all') {
+      var k = statusMeta(r).key;
+      // "Awaiting" chip groups awaiting + pending-app
+      if (currentStatus === 'awaiting') {
+        if (k !== 'awaiting' && k !== 'pending-app') return false;
+      } else if (k !== currentStatus) {
+        return false;
+      }
+    }
+    if (currentSearch) {
+      var hay = [
+        r.Customer_Company_Name,
+        r.Email,
+        r.Customer_Point_of_Contact,
+        r.Billing_Point_of_Contact,
+        r.Phone_Number,
+        r.Phone_Number1
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (hay.indexOf(currentSearch) === -1) return false;
+    }
+    return true;
+  });
+  renderKpis();
+  renderList();
+  renderFooter();
+}
+
+function renderKpis() {
+  var counts = countByStatus(allRecords);
+  var awaitingCount = (counts['awaiting'] || 0) + (counts['pending-app'] || 0) + (counts['app-sent'] || 0) + (counts['app-rcvd'] || 0);
+  var totalLimit = allRecords.reduce(function(sum, r) {
+    return sum + (statusMeta(r).key === 'approved' || statusMeta(r).key === 'boost' ? parseMoney(r.Credit_Limit) : 0);
+  }, 0);
+
+  document.getElementById('kpi-total').textContent = allRecords.length.toLocaleString();
+  document.getElementById('kpi-approved').textContent = (counts['approved'] || 0).toLocaleString();
+  document.getElementById('kpi-awaiting').textContent = awaitingCount.toLocaleString();
+  document.getElementById('kpi-denied').textContent = (counts['denied'] || 0).toLocaleString();
+  document.getElementById('kpi-limit').innerHTML = '$' + Math.floor(totalLimit).toLocaleString() +
+    '<span class="small">.' + String(Math.round((totalLimit % 1) * 100)).padStart(2, '0') + '</span>';
+}
+
+function renderList() {
+  var results = document.getElementById('results');
+  if (!filteredRecords.length) {
+    results.innerHTML = '<div class="state"><div class="state-title">No customers match your filters</div>' +
+      '<div class="state-msg">Try changing the status filter or search term.</div></div>';
+    return;
+  }
+
+  var html = '<div class="list">';
+  filteredRecords.forEach(function(r) {
+    html += rowHtml(r, allRecords.indexOf(r));
+  });
+  html += '</div>';
+  results.innerHTML = html;
+
+  results.querySelectorAll('.row').forEach(function(rowEl) {
+    rowEl.addEventListener('click', function(e) {
+      // Don't open panel when clicking on a row action button
+      if (e.target.closest('.row-action')) return;
+      var idx = parseInt(rowEl.dataset.idx, 10);
+      openPanel(idx);
+    });
+  });
+
+  // Bind row action buttons
+  results.querySelectorAll('.row-action[data-action]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var action = btn.dataset.action;
+      if (action === 'boost') navigateParent('#Form:Credit_Boost_Request');
+      else if (action === 'resubmit') navigateParent('#Page:Credit_Check_NEW');
+    });
+  });
+}
+
+function rowHtml(r, idx) {
+  var s = statusMeta(r);
+  var limit = parseMoney(r.Credit_Limit);
+  var hasLimit = (s.key === 'approved' || s.key === 'boost') && limit > 0;
+  var limitColor = s.key === 'approved' ? '#1f6321' : (s.key === 'boost' ? '#0d4a8a' : '#999');
+  var poc = r.Customer_Point_of_Contact || '—';
+  var email = r.Email || '';
+  var phone = r.Phone_Number1 || r.Phone_Number || '';
+  var addr = formatAddress(r);
+
+  var actionCell = '';
+  if (s.key === 'approved') {
+    actionCell = '<button class="row-action" data-action="boost">Request Credit Boost</button>';
+  } else if (s.key === 'denied') {
+    actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
+  } else if (s.key === 'boost') {
+    actionCell = '<span class="row-action-placeholder">Boost under review</span>';
+  } else if (s.key === 'app-sent') {
+    actionCell = '<span class="row-action-placeholder">Pending customer reply</span>';
+  } else if (s.key === 'app-rcvd') {
+    actionCell = '<span class="row-action-placeholder">In credit review</span>';
+  } else if (s.key === 'awaiting' || s.key === 'pending-app') {
+    actionCell = '<span class="row-action-placeholder">Awaiting OperFi review</span>';
+  } else if (s.key === 'expired') {
+    actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
+  }
+
+  var boostSub = (s.key === 'boost' && r.Credit_Boost_Amount)
+    ? '<div class="cell-sub">Boost requested: ' + esc(formatMoneyShort(r.Credit_Boost_Amount)) + '</div>'
+    : '';
+
+  return '' +
+    '<div class="row s-' + s.key + '" data-idx="' + idx + '">' +
+      '<div>' +
+        '<div class="cell-label">Customer</div>' +
+        '<div class="cell-val lg">' + esc(r.Customer_Company_Name || '—') + '</div>' +
+        (addr ? '<div class="cell-sub">' + esc(addr) + '</div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Contact</div>' +
+        '<div class="cell-val">' + esc(email || poc) + '</div>' +
+        (phone ? '<div class="cell-sub">' + esc(formatPhone(phone)) + '</div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Credit Limit</div>' +
+        (hasLimit
+          ? '<div class="cell-val lg" style="color:' + limitColor + ';">' + esc(formatMoneyShort(limit)) + '</div>' + boostSub
+          : '<div class="cell-val" style="color:#999;">' + (s.key === 'app-rcvd' ? 'Pending review' : '—') + '</div>') +
+      '</div>' +
+      '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
+      '<div>' + actionCell + '</div>' +
+      '<div class="chev cell-chev">›</div>' +
+    '</div>';
+}
+
+function renderFooter() {
+  var f = document.getElementById('footer');
+  if (!filteredRecords.length) { f.style.display = 'none'; return; }
+  f.style.display = 'flex';
+  document.getElementById('footer-count').textContent =
+    'Showing ' + filteredRecords.length + ' of ' + allRecords.length + ' customers';
+}
+
+function showError(title, msg) {
+  document.getElementById('results').innerHTML =
+    '<div class="state"><div class="state-title">' + esc(title) + '</div><div class="state-msg">' + esc(msg) + '</div></div>';
+}
+
+// ── Panel ─────────────────────────────────────────────────────────────────
+function openPanel(allRecordsIdx) {
+  var rec = allRecords[allRecordsIdx];
+  var idx = filteredRecords.indexOf(rec);
+  if (idx === -1) return;
+  openIndex = idx;
+  renderPanel();
+  document.getElementById('scrim').classList.add('show');
+  document.getElementById('panel').classList.add('show');
+}
+function closePanel() {
+  document.getElementById('scrim').classList.remove('show');
+  document.getElementById('panel').classList.remove('show');
+  openIndex = -1;
+}
+function navPanel(dir) {
+  var next = openIndex + dir;
+  if (next < 0 || next >= filteredRecords.length) return;
+  openIndex = next;
+  renderPanel();
+}
+
+function renderPanel() {
+  var r = filteredRecords[openIndex];
+  if (!r) return;
+  var s = statusMeta(r);
+  var limit = parseMoney(r.Credit_Limit);
+  var hasLimit = (s.key === 'approved' || s.key === 'boost') && limit > 0;
+  var added = parseDate(r.Added_Time);
+  var prevDis = (openIndex <= 0) ? ' disabled' : '';
+  var nextDis = (openIndex >= filteredRecords.length - 1) ? ' disabled' : '';
+
+  var footerActionsHtml = '';
+  if (s.key === 'approved') {
+    footerActionsHtml = '<button class="btn primary" id="p-boost">Request Credit Boost</button>';
+  } else if (s.key === 'denied' || s.key === 'expired') {
+    footerActionsHtml = '<button class="btn primary" id="p-resubmit">Resubmit</button>';
+  }
+
+  var html = '' +
+    '<div class="panel-top">' +
+      '<span class="nav-btn' + prevDis + '" id="p-prev" title="Previous (k)">‹</span>' +
+      '<span class="nav-btn' + nextDis + '" id="p-next" title="Next (j)">›</span>' +
+      '<span class="position">' + (openIndex + 1) + ' of ' + filteredRecords.length + '</span>' +
+      '<div class="spacer"></div>' +
+      '<span class="close-btn" id="p-close" title="Close (Esc)">✕</span>' +
+    '</div>' +
+    '<div class="panel-header">' +
+      '<div class="panel-eyebrow">Credit Submission</div>' +
+      '<div class="panel-customer">' + esc(r.Customer_Company_Name || '—') + '</div>' +
+      '<div class="panel-meta">' +
+        '<span>Submitted ' + (added ? fmtDateTime(added) : '—') + '</span>' +
+      '</div>' +
+      '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
+    '</div>' +
+    '<div class="panel-body">' +
+
+      // Credit Decision
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Credit Decision</div>' +
+        '<div class="credit-summary">' +
+          '<div class="credit-card' + (s.key === 'approved' ? ' approved' : (s.key === 'denied' ? ' denied' : '')) + '">' +
+            '<div class="field-label">Credit Limit</div>' +
+            '<div class="field-val lg">' + (hasLimit ? esc(fmtMoney(limit)) : '<span class="empty">—</span>') + '</div>' +
+          '</div>' +
+          '<div class="credit-card">' +
+            '<div class="field-label">Decision</div>' +
+            '<div class="field-val lg">' + esc(s.label) + '</div>' +
+          '</div>' +
+        '</div>' +
+        (r.Credit_Notes
+          ? '<div style="margin-top: 14px;"><div class="field-label" style="margin-bottom: 6px;">Credit Notes</div>' +
+            '<div class="note-block">' + esc(r.Credit_Notes) + '</div></div>'
+          : '') +
+      '</div>' +
+
+      // Customer Company
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Customer Company</div>' +
+        '<div class="field-grid">' +
+          field('Company Name', r.Customer_Company_Name) +
+          field('Phone', formatPhone(r.Phone_Number)) +
+          fieldLink('Website', r.Company_Website) +
+          fieldLink('LinkedIn', r.LinkedIn_Profile) +
+        '</div>' +
+        (formatAddress(r) ? '<div style="margin-top: 14px;">' + field('Address', formatAddress(r)) + '</div>' : '') +
+        (r.Other_Social_Media_Links ? '<div style="margin-top: 14px;">' + fieldLink('Other Social Media', r.Other_Social_Media_Links) + '</div>' : '') +
+      '</div>' +
+
+      // Customer Contacts
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Customer Contacts</div>' +
+        '<div class="field-grid">' +
+          field('Point of Contact', r.Customer_Point_of_Contact) +
+          field('Phone', formatPhone(r.Phone_Number1)) +
+          field('Email', r.Email) +
+          (r.Billing_Point_of_Contact ? field('Billing POC', r.Billing_Point_of_Contact) : '') +
+          (r.Billing_AP_Contact_Number ? field('Billing Phone', formatPhone(r.Billing_AP_Contact_Number)) : '') +
+          (r.Billing_Email ? field('Billing Email', r.Billing_Email) : '') +
+        '</div>' +
+      '</div>' +
+
+      // Broker Comments
+      (r.Comments
+        ? '<div class="panel-section">' +
+            '<div class="panel-section-title">Broker Comments</div>' +
+            '<div class="note-block">' + esc(r.Comments) + '</div>' +
+          '</div>'
+        : '') +
+
+      // Supporting Documents
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Supporting Documents</div>' +
+        docsListHtml(collectFiles(r.Additional_Supporting_Documents)) +
+      '</div>' +
+
+    '</div>' +
+
+    '<div class="panel-footer">' +
+      '<div class="kbd-hints"><span class="kbd">↑↓</span> Navigate <span class="kbd">Esc</span> Close</div>' +
+      '<div class="actions">' + footerActionsHtml + '</div>' +
+    '</div>';
+
+  var panel = document.getElementById('panel');
+  panel.innerHTML = html;
+
+  var prev = document.getElementById('p-prev');
+  var next = document.getElementById('p-next');
+  if (!prev.classList.contains('disabled')) prev.addEventListener('click', function() { navPanel(-1); });
+  if (!next.classList.contains('disabled')) next.addEventListener('click', function() { navPanel(1); });
+  document.getElementById('p-close').addEventListener('click', closePanel);
+  var b = document.getElementById('p-boost');
+  if (b) b.addEventListener('click', function() { navigateParent('#Form:Credit_Boost_Request'); });
+  var rs = document.getElementById('p-resubmit');
+  if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check_NEW'); });
+}
+
+function field(label, val) {
+  var has = val !== null && val !== undefined && String(val).trim() !== '';
+  return '<div class="field"><div class="field-label">' + esc(label) + '</div>' +
+    '<div class="field-val' + (has ? '' : ' empty') + '">' + (has ? esc(String(val)) : '—') + '</div></div>';
+}
+function fieldLink(label, val) {
+  var has = val !== null && val !== undefined && String(val).trim() !== '';
+  if (!has) return '<div class="field"><div class="field-label">' + esc(label) + '</div><div class="field-val empty">—</div></div>';
+  var url = String(val).trim();
+  var display = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  return '<div class="field"><div class="field-label">' + esc(label) + '</div>' +
+    '<div class="field-val"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(display) + '</a></div></div>';
+}
+
+function docsListHtml(files) {
+  if (!files.length) return '<div class="doc-empty">No supporting documents uploaded.</div>';
+  var html = '<div class="docs-list">';
+  files.forEach(function(f) {
+    var ext = (f.name.split('.').pop() || '').toUpperCase().slice(0, 4);
+    html += '<div class="doc-item">' +
+      '<div class="doc-icon">' + esc(ext || 'FILE') + '</div>' +
+      '<div class="doc-info">' +
+        '<div class="doc-name">' + esc(f.name) + '</div>' +
+        '<div class="doc-meta">Uploaded file</div>' +
+      '</div>' +
+    '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function collectFiles(field) {
+  if (!field) return [];
+  var arr = Array.isArray(field) ? field : [field];
+  var out = [];
+  arr.forEach(function(f) {
+    if (!f) return;
+    if (typeof f === 'string') {
+      out.push({ name: f.split('/').pop().split('?')[0] });
+    } else {
+      out.push({ name: f.filename || f.fileName || f.name || (f.filepath || '').split('/').pop() || 'Uploaded file' });
+    }
+  });
+  return out;
+}
+
+// ── Format helpers ────────────────────────────────────────────────────────
+function parseMoney(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  return parseFloat(String(v).replace(/[^0-9.\-]/g, '')) || 0;
+}
+function fmtMoney(n) {
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function formatMoneyShort(v) {
+  var n = parseMoney(v);
+  return '$' + Math.floor(n).toLocaleString('en-US');
+}
+function formatAddress(r) {
+  var addr = r.Address;
+  if (!addr) return '';
+  if (typeof addr === 'string') return addr;
+  var parts = [];
+  if (addr.address_line_1) parts.push(addr.address_line_1);
+  var cityState = [];
+  if (addr.district_city)  cityState.push(addr.district_city);
+  if (addr.state_province) cityState.push(addr.state_province);
+  var cityStateStr = cityState.join(', ');
+  if (addr.postal_Code) cityStateStr += (cityStateStr ? ' ' : '') + addr.postal_Code;
+  if (cityStateStr) parts.push(cityStateStr);
+  return parts.join(', ');
+}
+function formatPhone(v) {
+  if (!v) return '';
+  var s = String(v).trim();
+  // Don't double-prefix
+  if (/^\+/.test(s)) return s;
+  var digits = s.replace(/[^\d]/g, '');
+  if (digits.length === 10) return '+1 ' + s;
+  if (digits.length === 11 && digits[0] === '1') return '+' + digits[0] + ' ' + s.replace(/^1[\s-]?/, '');
+  return s;
+}
+function parseDate(v) {
+  if (!v) return null;
+  if (typeof v === 'string') {
+    var m = v.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+    if (m) {
+      var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+      return new Date(parseInt(m[3], 10), months[m[2]], parseInt(m[1], 10),
+        m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0, m[6] ? parseInt(m[6], 10) : 0);
+    }
+  }
+  var d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function fmtTime(d) {
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function fmtDateShort(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtDateTime(d) {
+  var midnight = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
+  return midnight ? fmtDateShort(d) : fmtDateShort(d) + ' · ' + fmtTime(d);
+}
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function(ch) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+  });
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────
+function exportCsv() {
+  if (!filteredRecords.length) return;
+  var headers = ['Submitted','Status','Customer','Address','POC','Email','Phone','Website','Credit Limit','Credit Notes'];
+  var rows = filteredRecords.map(function(r) {
+    var added = parseDate(r.Added_Time);
+    return [
+      added ? fmtDateTime(added) : '',
+      statusMeta(r).label,
+      r.Customer_Company_Name || '',
+      formatAddress(r),
+      r.Customer_Point_of_Contact || '',
+      r.Email || '',
+      r.Phone_Number1 || r.Phone_Number || '',
+      r.Company_Website || '',
+      parseMoney(r.Credit_Limit).toFixed(2),
+      (r.Credit_Notes || '').replace(/\s+/g, ' ')
+    ];
+  });
+  var csv = [headers].concat(rows).map(function(row) {
+    return row.map(function(cell) {
+      var s = String(cell);
+      if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }).join(',');
+  }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'customer_approvals_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+})();
+</script>
+</body>
+</html>

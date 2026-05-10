@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company Profile</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
+.page { max-width: 1320px; margin: 0 auto; padding: 20px 24px 60px; }
+
+.head { margin-bottom: 18px; }
+.title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.sub { font-size: 12px; color: #888; margin-top: 4px; }
+
+.btn {
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; color: #444;
+  cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn.primary { background: #e8a020; color: #fff; border-color: #e8a020; }
+.btn.primary:hover:not(:disabled) { background: #d49018; border-color: #d49018; }
+.btn .ic { margin-right: 6px; opacity: 0.85; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 18px;
+  align-items: start;
+}
+
+/* Card base */
+.card {
+  background: #fff; border: 1px solid #e6e3da;
+  border-radius: 12px; padding: 22px 24px;
+}
+.card-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding-bottom: 14px; margin-bottom: 18px;
+  border-bottom: 1px solid #f0efe9; gap: 10px;
+}
+.card-title { font-size: 15px; font-weight: 700; color: #272727; letter-spacing: -0.1px; }
+.card-sub { font-size: 12px; color: #888; margin-top: 3px; }
+
+/* Company info */
+.company-name {
+  font-size: 22px; font-weight: 700; color: #272727;
+  letter-spacing: -0.3px; margin-bottom: 14px;
+}
+.company-meta {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px;
+}
+.meta-pill {
+  background: #f0efe9; color: #555;
+  border-radius: 999px; padding: 4px 10px;
+  font-size: 11px; font-weight: 600;
+}
+.meta-pill.status-active   { background: #e3f4e3; color: #1f6321; }
+.meta-pill.status-inactive { background: #ffe9d9; color: #a13e00; }
+.meta-pill.status-warn     { background: #fff4e0; color: #b86e00; }
+.meta-pill.status-bad      { background: #fde4e4; color: #a31818; }
+
+.detail-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
+}
+.detail-grid.full > .detail { grid-column: 1 / -1; }
+.detail { display: flex; flex-direction: column; gap: 3px; }
+.detail-label { font-size: 11px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.detail-val { font-size: 14px; color: #272727; font-weight: 600; word-break: break-word; }
+.detail-val.muted { color: #888; font-weight: 500; }
+.detail-val.empty { color: #bbb; font-weight: 500; font-style: italic; }
+
+.section-divider {
+  margin: 22px 0 16px;
+  padding-top: 18px;
+  border-top: 1px solid #f0efe9;
+  font-size: 11px; font-weight: 700; color: #888;
+  text-transform: uppercase; letter-spacing: 0.7px;
+}
+
+/* Email purpose rows */
+.email-roles { display: flex; flex-direction: column; gap: 10px; }
+.email-row {
+  display: grid; grid-template-columns: 110px 1fr;
+  gap: 14px; align-items: start;
+  padding: 12px 14px;
+  background: #fafaf6;
+  border: 1px solid #f0efe9;
+  border-radius: 8px;
+}
+.email-purpose {
+  font-size: 12px; font-weight: 700; color: #272727;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.email-addr { font-size: 13px; font-weight: 600; color: #b86e00; word-break: break-all; }
+.email-empty { font-size: 13px; font-weight: 600; color: #bbb; font-style: italic; }
+.email-note { font-size: 11px; color: #c62828; margin-top: 3px; font-weight: 500; }
+
+/* Authorized users */
+.users-toolbar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; }
+.users-search { flex: 1; position: relative; }
+.users-search input {
+  width: 100%; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 9px 12px 9px 36px; font-size: 13px;
+  font-family: inherit; background: #fafafa; outline: none;
+  transition: all 0.15s;
+}
+.users-search input:focus { border-color: #e8a020; background: #fff; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.users-search-ic { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #aaa; pointer-events: none; }
+
+.user-list { display: flex; flex-direction: column; gap: 6px; max-height: 540px; overflow-y: auto; padding-right: 4px; }
+.user-row {
+  display: grid;
+  grid-template-columns: 36px 1.6fr 1.4fr 110px 90px;
+  gap: 12px; align-items: center;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #f0efe9;
+  border-radius: 8px;
+  transition: all 0.12s;
+}
+.user-row:hover { border-color: #c8c4b6; background: #fafaf6; }
+.user-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #fff4e0; color: #b86e00;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px; flex-shrink: 0;
+}
+.user-name { font-size: 13px; font-weight: 600; color: #272727; }
+.user-email { font-size: 11px; color: #888; word-break: break-all; }
+.user-phone { font-size: 12px; color: #555; }
+.user-perm {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.2px; text-transform: uppercase; white-space: nowrap;
+}
+.user-perm.full   { background: #e3f0fb; color: #0d4a8a; }
+.user-perm.vendor { background: #f0efe9; color: #555; }
+.user-added { font-size: 11px; color: #999; text-align: right; font-weight: 500; }
+
+.users-summary {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; margin-top: 6px;
+  font-size: 11px; color: #888;
+}
+
+/* States */
+.state {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
+  padding: 40px 24px; text-align: center; color: #888;
+}
+.state-title { font-size: 14px; font-weight: 600; color: #555; margin-bottom: 4px; }
+.state-msg { font-size: 12px; }
+.state .spinner {
+  width: 24px; height: 24px;
+  border: 3px solid #e6e3da;
+  border-top-color: #e8a020;
+  border-radius: 50%;
+  margin: 0 auto 12px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 1fr; }
+  .detail-grid { grid-template-columns: 1fr; }
+  .user-row { grid-template-columns: 32px 1fr; }
+  .user-row > *:nth-child(n+3) { grid-column: 2; }
+}
+
+/* ===== Add Trusted Contact modal ===== */
+.modal-scrim {
+  position: fixed; inset: 0;
+  background: rgba(20, 20, 20, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 100;
+  display: none;
+  overflow-y: auto;
+  animation: fadeIn 0.18s ease-out;
+}
+.modal-scrim.show { display: block; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.modal {
+  position: relative;
+  max-width: 720px;
+  margin: 48px auto;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  overflow: hidden;
+  animation: slideUp 0.22s ease-out;
+}
+@keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px 26px;
+  background: #272727; color: #fff;
+}
+.modal-head .m-title { font-size: 16px; font-weight: 700; letter-spacing: -0.1px; }
+.modal-head .m-sub { font-size: 12px; color: #b8b8b8; margin-top: 3px; }
+.modal-close {
+  background: transparent; border: 0; color: #b8b8b8;
+  width: 32px; height: 32px; border-radius: 6px;
+  cursor: pointer; font-size: 18px; line-height: 1;
+  transition: all 0.15s;
+}
+.modal-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
+
+.modal-body { padding: 24px 26px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; }
+.form-grid .field.full { grid-column: 1 / -1; }
+.form-grid .field { display: flex; flex-direction: column; gap: 6px; }
+.form-grid .label {
+  font-size: 11px; font-weight: 700; color: #555;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  display: flex; align-items: center; gap: 4px;
+}
+.req { color: #e8a020; font-weight: 700; }
+.input {
+  width: 100%; padding: 10px 12px;
+  background: #fff;
+  border: 1.5px solid #e0ddd2;
+  border-radius: 8px;
+  font-size: 14px; font-family: inherit; color: #272727;
+  transition: all 0.15s;
+}
+.input:focus { outline: 0; border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.12); }
+.input.invalid { border-color: #c62828; }
+.input::placeholder { color: #b8b8b8; }
+.phone-wrap { display: grid; grid-template-columns: 90px 1fr; gap: 8px; }
+.country-code {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  background: #fafaf6; border: 1.5px solid #e0ddd2; border-radius: 8px;
+  font-weight: 600; font-size: 13px; color: #555;
+}
+.flag {
+  width: 18px; height: 12px;
+  background: linear-gradient(180deg, #b22234 0 33%, #fff 33% 66%, #b22234 66%);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 1px;
+}
+
+.field-err { font-size: 11px; color: #c62828; margin-top: 2px; display: none; }
+.field-err.show { display: block; }
+
+.perm-section {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid #f0efe9;
+}
+.perm-title { font-size: 14px; font-weight: 700; color: #272727; }
+.perm-help { font-size: 12px; color: #888; margin-top: 2px; margin-bottom: 14px; line-height: 1.5; }
+.perm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.perm-card {
+  position: relative;
+  border: 1.5px solid #e0ddd2;
+  background: #fafaf6;
+  border-radius: 10px;
+  padding: 12px 14px 12px 42px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.perm-card:hover { border-color: #c8c4b6; background: #fff; }
+.perm-card.selected {
+  border-color: #e8a020;
+  background: #fffaf0;
+  box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.08);
+}
+.perm-card.full {
+  grid-column: 1 / -1;
+  background: #272727; color: #fff;
+  border-color: #272727;
+}
+.perm-card.full:hover { background: #1f1f1f; }
+.perm-card.full.selected {
+  background: #272727;
+  border-color: #e8a020;
+  box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.25);
+}
+.perm-card.full .perm-name { color: #e8a020; }
+.perm-card.full .perm-desc { color: #b8b8b8; }
+.check {
+  position: absolute; top: 14px; left: 14px;
+  width: 18px; height: 18px;
+  border: 1.5px solid #c8c4b6;
+  border-radius: 4px;
+  background: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.perm-card.full .check { background: rgba(255,255,255,0.08); border-color: #555; }
+.perm-card.selected .check {
+  background: #e8a020; border-color: #e8a020;
+}
+.check svg { width: 12px; height: 12px; opacity: 0; }
+.perm-card.selected .check svg { opacity: 1; }
+.perm-name { font-size: 13px; font-weight: 700; color: #272727; margin-bottom: 2px; }
+.perm-desc { font-size: 12px; color: #777; line-height: 1.45; }
+
+.full-warn {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #fff8ec;
+  border: 1px solid #f5d99a;
+  border-radius: 8px;
+  font-size: 12px; color: #7a5b1a;
+  display: none; gap: 8px; align-items: flex-start;
+}
+.full-warn.show { display: flex; }
+.full-warn .warn-icon { color: #e8a020; flex-shrink: 0; margin-top: 1px; }
+
+.modal-msg {
+  margin: 14px 26px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 600;
+  display: none;
+}
+.modal-msg.show { display: block; }
+.modal-msg.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.modal-msg.error   { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+.modal-msg.loading { background: #fff8e1; color: #856404; border: 1px solid #ffe082; }
+
+.modal-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 26px;
+  background: #fafaf6;
+  border-top: 1px solid #f0efe9;
+}
+.foot-note { font-size: 12px; color: #888; }
+.foot-actions { display: flex; gap: 10px; }
+
+.modal-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: all 0.15s;
+  border: 1.5px solid transparent;
+}
+.modal-btn.ghost { background: transparent; color: #555; border-color: #e0ddd2; }
+.modal-btn.ghost:hover { background: #f0efe9; }
+.modal-btn.primary { background: #e8a020; color: #fff; border-color: #e8a020; }
+.modal-btn.primary:hover:not(:disabled) { background: #d49018; border-color: #d49018; }
+.modal-btn:disabled { background: #d8d4c8; border-color: #d8d4c8; color: #fff; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="head">
+    <div class="title">Company Profile</div>
+    <div class="sub">Your account information and authorized users</div>
+  </div>
+
+  <div class="layout">
+
+    <!-- Left: Company details -->
+    <div>
+      <div class="card" id="company-card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Company Information</div>
+            <div class="card-sub">Read-only. To update, click "Request Update" below.</div>
+          </div>
+        </div>
+        <div id="company-body">
+          <div class="state">
+            <div class="spinner"></div>
+            <div class="state-title">Loading account…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Authorized Users -->
+    <div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">Authorized Users</div>
+            <div class="card-sub" id="users-sub">Loading…</div>
+          </div>
+          <button class="btn primary" id="btn-add-contact"><span class="ic">＋</span>Add Trusted Contact</button>
+        </div>
+
+        <div class="users-toolbar">
+          <div class="users-search">
+            <span class="users-search-ic">⌕</span>
+            <input type="text" id="users-search-input" placeholder="Search users by name or email...">
+          </div>
+        </div>
+
+        <div id="users-body">
+          <div class="state">
+            <div class="spinner"></div>
+            <div class="state-title">Loading users…</div>
+          </div>
+        </div>
+
+        <div class="users-summary" id="users-summary" style="display:none;">
+          <span id="users-summary-left">—</span>
+          <span id="users-summary-right">—</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.1</div>
+</div>
+
+<!-- Add Trusted Contact modal -->
+<div class="modal-scrim" id="modal-scrim">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="m-title">Add Trusted Contact</div>
+        <div class="m-sub">Grant a team member access to the broker portal</div>
+      </div>
+      <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+    </div>
+
+    <div id="modal-msg" class="modal-msg"></div>
+
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field">
+          <label class="label">First Name <span class="req">*</span></label>
+          <input class="input" id="m-first" type="text" placeholder="Jane" autocomplete="off">
+          <div class="field-err" data-err-for="m-first">First name is required.</div>
+        </div>
+        <div class="field">
+          <label class="label">Last Name <span class="req">*</span></label>
+          <input class="input" id="m-last" type="text" placeholder="Smith" autocomplete="off">
+          <div class="field-err" data-err-for="m-last">Last name is required.</div>
+        </div>
+        <div class="field full">
+          <label class="label">Email <span class="req">*</span></label>
+          <input class="input" id="m-email" type="email" placeholder="jane@company.com" autocomplete="off">
+          <div class="field-err" data-err-for="m-email">A valid email is required.</div>
+        </div>
+        <div class="field full">
+          <label class="label">Phone <span class="req">*</span></label>
+          <div class="phone-wrap">
+            <div class="country-code"><span class="flag"></span>+1</div>
+            <input class="input" id="m-phone" type="tel" placeholder="(555) 123-4567" autocomplete="off">
+          </div>
+          <div class="field-err" data-err-for="m-phone">Phone is required.</div>
+        </div>
+      </div>
+
+      <div class="perm-section">
+        <div class="perm-title">Permissions <span class="req">*</span></div>
+        <div class="perm-help">Select one or more roles. Each role grants access to a specific area of the portal. Choose <b>Full Access</b> to grant admin privileges across all areas.</div>
+
+        <div class="perm-grid" id="perm-grid">
+          <label class="perm-card" data-role="Funding Submissions">
+            <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L5 9.5L10 3.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="perm-name">Funding Submissions</div>
+            <div class="perm-desc">Upload funding documents only</div>
+          </label>
+          <label class="perm-card" data-role="Credit Checks">
+            <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L5 9.5L10 3.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="perm-name">Credit Checks</div>
+            <div class="perm-desc">Submit credit checks and view decision statuses</div>
+          </label>
+          <label class="perm-card" data-role="Vendor Access">
+            <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L5 9.5L10 3.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="perm-name">Vendor Access</div>
+            <div class="perm-desc">Vendor setups, vendor lists, vendor payments</div>
+          </label>
+          <label class="perm-card" data-role="Account Management">
+            <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L5 9.5L10 3.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="perm-name">Account Management</div>
+            <div class="perm-desc">Reports, payments, agings, disputes, customer lists</div>
+          </label>
+          <label class="perm-card full" data-role="Full Access" data-full="true">
+            <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6.5L5 9.5L10 3.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="perm-name">Full Access — Admin Privileges</div>
+            <div class="perm-desc">Complete access to all portal features and trusted-contact management</div>
+          </label>
+        </div>
+
+        <div class="full-warn" id="full-warn">
+          <span class="warn-icon">⚠</span>
+          <span>Full Access grants admin privileges including the ability to add and remove other users. Selecting this will deselect all other roles.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <div class="foot-note">An invitation email will be sent after submission.</div>
+      <div class="foot-actions">
+        <button class="modal-btn ghost" id="modal-cancel">Cancel</button>
+        <button class="modal-btn primary" id="modal-submit" disabled>Submit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+(function() {
+'use strict';
+
+// ── Config ────────────────────────────────────────────────────────────────
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var REQUEST_UPDATE_FORM_URL = 'https://forms.operfi.com/operationfinance/form/OperFiPrimaryContact/formperma/DXj0pRMZ64CyhbtIcCP9jk5Elxk-DLAPSsIaX5aNTis';
+
+// ── State ─────────────────────────────────────────────────────────────────
+var brokerEmail = '';
+var account = null;
+var allUsers = [];
+var filteredUsers = [];
+var currentSearch = '';
+var selectedRoles = [];
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  bindGlobalUI();
+  bootApp();
+});
+
+function bootApp() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+    showCardError('SDK unavailable. Reload the page.');
+    return;
+  }
+  function gotParams(params) {
+    console.log('[CompanyProfile] init params:', params);
+    brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+    if (!brokerEmail) {
+      showCardError('Could not identify broker. Open DevTools console (F12) for details.');
+      return;
+    }
+    console.log('[CompanyProfile] Booted as', brokerEmail);
+    loadAccount();
+    loadUsers();
+  }
+  if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+    showCardError('getInitParams not available on this SDK build.');
+    return;
+  }
+  try {
+    var result = ZOHO.CREATOR.UTIL.getInitParams();
+    if (result && typeof result.then === 'function') {
+      result.then(gotParams).catch(function(err) {
+        console.error('[CompanyProfile] getInitParams rejected', err);
+        showCardError('Initialization failed. Open DevTools console (F12) for details.');
+      });
+    } else {
+      gotParams(result);
+    }
+  } catch (err) {
+    console.error('[CompanyProfile] getInitParams threw', err);
+    showCardError('Initialization failed. Open DevTools console (F12) for details.');
+  }
+}
+
+function bindGlobalUI() {
+  document.getElementById('users-search-input').addEventListener('input', function(e) {
+    currentSearch = e.target.value.toLowerCase().trim();
+    applyUserFilter();
+  });
+  document.getElementById('btn-add-contact').addEventListener('click', openModal);
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('modal-scrim').addEventListener('click', function(e) {
+    if (e.target.id === 'modal-scrim') closeModal();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('modal-scrim').classList.contains('show')) closeModal();
+  });
+
+  // Permission card behavior
+  document.querySelectorAll('.perm-card').forEach(function(card) {
+    card.addEventListener('click', function(e) {
+      e.preventDefault();
+      togglePermCard(card);
+    });
+  });
+
+  document.getElementById('modal-submit').addEventListener('click', submitContact);
+
+  // Inline error clearing
+  ['m-first','m-last','m-email','m-phone'].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.addEventListener('input', function() {
+      el.classList.remove('invalid');
+      var err = document.querySelector('[data-err-for="' + id + '"]');
+      if (err) err.classList.remove('show');
+    });
+  });
+}
+
+function showCardError(msg) {
+  document.getElementById('company-body').innerHTML =
+    '<div class="state"><div class="state-title">Error</div><div class="state-msg">' + esc(msg) + '</div></div>';
+  document.getElementById('users-body').innerHTML =
+    '<div class="state"><div class="state-title">Error</div><div class="state-msg">' + esc(msg) + '</div></div>';
+}
+
+// ── Data load: Account ────────────────────────────────────────────────────
+function loadAccount() {
+  var url = BROKER_API_BASE + '/broker-account?email=' + encodeURIComponent(brokerEmail);
+  fetch(url).then(function(res) {
+    if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
+    return res.json();
+  }).then(function(payload) {
+    account = payload.account || null;
+    console.log('[CompanyProfile] account:', account);
+    renderAccount();
+  }).catch(function(err) {
+    console.error('[CompanyProfile] /broker-account failed', err);
+    document.getElementById('company-body').innerHTML =
+      '<div class="state"><div class="state-title">Could not load account</div>' +
+      '<div class="state-msg">Open DevTools console (F12) for details.</div></div>';
+  });
+}
+
+function renderAccount() {
+  if (!account) {
+    document.getElementById('company-body').innerHTML =
+      '<div class="state"><div class="state-title">No account found</div></div>';
+    return;
+  }
+  var statusRaw = account.Account_Status || '';
+  var statusClass = statusClassFor(statusRaw);
+  var statusLabel = statusRaw || 'Unknown';
+
+  var html = '' +
+    '<div class="company-name">' + esc(account.Account_Name || '—') + '</div>' +
+    '<div class="company-meta">' +
+      (account.USDOT ? '<span class="meta-pill">USDOT ' + esc(account.USDOT) + '</span>' : '') +
+      (account.MC_Number ? '<span class="meta-pill">MC ' + esc(account.MC_Number) + '</span>' : '') +
+      '<span class="meta-pill ' + statusClass + '">' + esc(statusLabel) + '</span>' +
+    '</div>' +
+
+    '<div class="detail-grid full">' +
+      detailHtml('Address', formatAddress(account.Address)) +
+    '</div>' +
+
+    '<div class="detail-grid" style="margin-top: 14px;">' +
+      detailHtml('Phone', formatPhone(account.Phone)) +
+      detailHtml('SMS Admin Phone', formatPhone(account.SMS_Admin_Phone)) +
+      detailHtml('Quick Pay Fee', formatPct(account.Quick_Pay_Fee)) +
+      detailHtml('Account Status', statusLabel) +
+    '</div>' +
+
+    '<div class="section-divider">Notification Emails</div>' +
+    '<div class="email-roles">' +
+      emailRowHtml('Admin', account.Admin_Email, 'Required for all account changes') +
+      emailRowHtml('Operations', account.Operations_Email, 'Vendor setup confirmations') +
+      emailRowHtml('Accounting', account.Accounting_Email, 'Payment remittance emails') +
+    '</div>' +
+
+    '<div style="display: flex; gap: 8px; margin-top: 22px;">' +
+      '<button class="btn primary" style="flex: 1;" id="btn-request-update">Request Update</button>' +
+    '</div>' +
+    '<div style="font-size: 11px; color: #888; margin-top: 10px; line-height: 1.5;">' +
+      'Updates require Admin approval and email verification. Opens a secure update form in a new tab.' +
+    '</div>';
+
+  document.getElementById('company-body').innerHTML = html;
+  document.getElementById('btn-request-update').addEventListener('click', function() {
+    window.open(REQUEST_UPDATE_FORM_URL, '_blank', 'noopener,noreferrer');
+  });
+}
+
+function statusClassFor(raw) {
+  var v = String(raw || '').toUpperCase();
+  if (v.indexOf('ACTIVE') !== -1)        return 'status-active';
+  if (v.indexOf('APPROVED') !== -1)      return 'status-active';
+  if (v === 'INACTIVE' || v === 'CLOSED' || v === 'DENIED') return 'status-bad';
+  if (v === 'UNDERWRITING' || v === 'IN UNDERWRITING' || v === 'DOCS NEEDED') return 'status-warn';
+  return '';
+}
+
+function detailHtml(label, val) {
+  var has = val !== null && val !== undefined && String(val).trim() !== '';
+  return '<div class="detail"><div class="detail-label">' + esc(label) + '</div>' +
+    '<div class="detail-val' + (has ? '' : ' empty') + '">' + (has ? esc(String(val)) : '—') + '</div></div>';
+}
+function emailRowHtml(purpose, addr, note) {
+  var has = addr && String(addr).trim() !== '';
+  return '<div class="email-row">' +
+    '<div class="email-purpose">' + esc(purpose) + '</div>' +
+    '<div>' +
+      (has ? '<div class="email-addr">' + esc(addr) + '</div>' : '<div class="email-empty">— not set —</div>') +
+      (note ? '<div class="email-note">' + esc(note) + '</div>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+// ── Data load: Authorized Users ───────────────────────────────────────────
+function loadUsers() {
+  // SDK respects the report's in-app row filter (Account scope) when called from
+  // the broker's session, so we get scoped data automatically. Up to 200 records;
+  // brokers typically have <30.
+  ZOHO.CREATOR.DATA.getRecords({
+    report_name: 'Authorized_Users',
+    page: 1,
+    pageSize: 200
+  }).then(function(res) {
+    var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    console.log('[CompanyProfile] users:', data.length);
+    allUsers = data.slice().sort(function(a, b) {
+      return parseDate(b.Added_Time) - parseDate(a.Added_Time);
+    });
+    applyUserFilter();
+  }).catch(function(err) {
+    console.error('[CompanyProfile] getRecords(Authorized_Users) failed', err);
+    document.getElementById('users-body').innerHTML =
+      '<div class="state"><div class="state-title">Could not load users</div>' +
+      '<div class="state-msg">Open DevTools console (F12) for details.</div></div>';
+  });
+}
+
+function applyUserFilter() {
+  filteredUsers = allUsers.filter(function(u) {
+    if (!currentSearch) return true;
+    var hay = [
+      displayContactName(u),
+      u.Email,
+      u.Phone_Number
+    ].filter(Boolean).join(' ').toLowerCase();
+    return hay.indexOf(currentSearch) !== -1;
+  });
+  renderUsers();
+}
+
+function renderUsers() {
+  var body = document.getElementById('users-body');
+  var summary = document.getElementById('users-summary');
+  var sub = document.getElementById('users-sub');
+
+  if (!filteredUsers.length) {
+    body.innerHTML = '<div class="state">' +
+      '<div class="state-title">' + (allUsers.length === 0 ? 'No authorized users yet' : 'No users match your search') + '</div>' +
+      (allUsers.length === 0 ? '<div class="state-msg">Click "Add Trusted Contact" to grant a team member access.</div>' : '') +
+      '</div>';
+    summary.style.display = 'none';
+    sub.textContent = allUsers.length === 0
+      ? 'No team members have portal access yet'
+      : (allUsers.length === 1 ? '1 user has access to your OperFi portal' : allUsers.length + ' users have access to your OperFi portal');
+    return;
+  }
+
+  var html = '<div class="user-list">';
+  filteredUsers.forEach(function(u) {
+    html += userRowHtml(u);
+  });
+  html += '</div>';
+  body.innerHTML = html;
+
+  // Summary counts based on full list, not filtered
+  var fullCount = 0, vendorCount = 0;
+  allUsers.forEach(function(u) {
+    if (hasFullAccess(u)) fullCount++; else vendorCount++;
+  });
+  summary.style.display = 'flex';
+  document.getElementById('users-summary-left').textContent =
+    'Showing ' + filteredUsers.length + ' of ' + allUsers.length + ' users';
+  document.getElementById('users-summary-right').innerHTML =
+    '<strong style="color:#272727;">' + fullCount + '</strong> Full Access &middot; ' +
+    '<strong style="color:#272727;">' + vendorCount + '</strong> Vendor Access';
+
+  sub.textContent = (allUsers.length === 1 ? '1 user has' : allUsers.length + ' users have') + ' access to your OperFi portal';
+}
+
+function userRowHtml(u) {
+  var name = displayContactName(u);
+  var initials = nameInitials(name);
+  var full = hasFullAccess(u);
+  var permLabel = full ? 'Full Access' : 'Vendor Access';
+  var permClass = full ? 'full' : 'vendor';
+  var added = parseDate(u.Added_Time);
+  var addedLabel = added ? fmtDateShort(added) : '—';
+
+  return '<div class="user-row">' +
+    '<div class="user-avatar">' + esc(initials) + '</div>' +
+    '<div>' +
+      '<div class="user-name">' + esc(name) + '</div>' +
+      '<div class="user-email">' + esc(u.Email || '') + '</div>' +
+    '</div>' +
+    '<div class="user-phone">' + esc(formatPhone(u.Phone_Number)) + '</div>' +
+    '<div><span class="user-perm ' + permClass + '">' + permLabel + '</span></div>' +
+    '<div class="user-added">' + esc(addedLabel) + '</div>' +
+  '</div>';
+}
+
+function hasFullAccess(u) {
+  var p = u.User_Permissions;
+  if (!p) return false;
+  if (Array.isArray(p)) return p.indexOf('Full Access') !== -1;
+  return String(p).indexOf('Full Access') !== -1;
+}
+
+function displayContactName(u) {
+  var c = u.Contact_Name;
+  if (!c) return '—';
+  if (typeof c === 'string') return c.trim() || '—';
+  // Compound name field { first_name, last_name, prefix, suffix, display_value }
+  if (c.display_value) return c.display_value;
+  var parts = [];
+  if (c.first_name) parts.push(c.first_name);
+  if (c.last_name)  parts.push(c.last_name);
+  return parts.join(' ') || '—';
+}
+function nameInitials(name) {
+  if (!name || name === '—') return '?';
+  var parts = name.split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// ── Add Trusted Contact modal ─────────────────────────────────────────────
+function openModal() {
+  resetModal();
+  document.getElementById('modal-scrim').classList.add('show');
+  document.getElementById('m-first').focus();
+}
+function closeModal() {
+  document.getElementById('modal-scrim').classList.remove('show');
+}
+function resetModal() {
+  ['m-first','m-last','m-email','m-phone'].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.value = '';
+    el.classList.remove('invalid');
+  });
+  document.querySelectorAll('.field-err.show').forEach(function(e) { e.classList.remove('show'); });
+  document.querySelectorAll('.perm-card.selected').forEach(function(e) { e.classList.remove('selected'); });
+  document.getElementById('full-warn').classList.remove('show');
+  selectedRoles = [];
+  syncModalSubmit();
+  hideModalMsg();
+  document.getElementById('modal-submit').textContent = 'Submit';
+}
+
+function togglePermCard(card) {
+  var role = card.dataset.role;
+  var isFull = card.dataset.full === 'true';
+  var wasSelected = card.classList.contains('selected');
+
+  if (isFull) {
+    // Selecting Full Access clears all others; toggling off clears warn
+    document.querySelectorAll('.perm-card').forEach(function(c) { c.classList.remove('selected'); });
+    if (!wasSelected) {
+      card.classList.add('selected');
+      document.getElementById('full-warn').classList.add('show');
+      selectedRoles = ['Full Access'];
+    } else {
+      document.getElementById('full-warn').classList.remove('show');
+      selectedRoles = [];
+    }
+  } else {
+    // Selecting any non-full clears Full Access selection
+    var fullCard = document.querySelector('.perm-card[data-full="true"]');
+    if (fullCard && fullCard.classList.contains('selected')) {
+      fullCard.classList.remove('selected');
+      document.getElementById('full-warn').classList.remove('show');
+    }
+    card.classList.toggle('selected');
+    // Rebuild selectedRoles
+    selectedRoles = [];
+    document.querySelectorAll('.perm-card.selected').forEach(function(c) {
+      selectedRoles.push(c.dataset.role);
+    });
+  }
+  syncModalSubmit();
+}
+
+function syncModalSubmit() {
+  document.getElementById('modal-submit').disabled = selectedRoles.length === 0;
+}
+
+function showModalMsg(text, type) {
+  var el = document.getElementById('modal-msg');
+  el.textContent = text;
+  el.className = 'modal-msg show ' + type;
+}
+function hideModalMsg() {
+  document.getElementById('modal-msg').className = 'modal-msg';
+}
+
+function validateModal() {
+  document.querySelectorAll('.field-err.show').forEach(function(e) { e.classList.remove('show'); });
+  document.querySelectorAll('.input.invalid').forEach(function(e) { e.classList.remove('invalid'); });
+  var ok = true;
+  var firstBad = null;
+
+  function check(id, validator) {
+    var el = document.getElementById(id);
+    var v = el.value.trim();
+    if (!validator(v)) {
+      el.classList.add('invalid');
+      var err = document.querySelector('[data-err-for="' + id + '"]');
+      if (err) err.classList.add('show');
+      ok = false;
+      if (!firstBad) firstBad = el;
+    }
+  }
+  check('m-first', function(v) { return v.length > 0; });
+  check('m-last',  function(v) { return v.length > 0; });
+  check('m-email', function(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); });
+  check('m-phone', function(v) { return v.length > 0; });
+
+  if (firstBad) firstBad.focus();
+  return ok;
+}
+
+function submitContact() {
+  if (!validateModal()) return;
+  if (!selectedRoles.length) return;
+
+  var btn = document.getElementById('modal-submit');
+  var cancel = document.getElementById('modal-cancel');
+  btn.disabled = true;
+  cancel.disabled = true;
+  btn.textContent = 'Submitting…';
+  showModalMsg('Adding contact…', 'loading');
+
+  var payload = {
+    Contact_Name: {
+      first_name: document.getElementById('m-first').value.trim(),
+      last_name:  document.getElementById('m-last').value.trim()
+    },
+    Email:        document.getElementById('m-email').value.trim(),
+    Phone_Number: document.getElementById('m-phone').value.trim(),
+    User_Permissions: selectedRoles
+    // Private fields (Account_Name, Freight_Broker, Contact_CRM_ID,
+    // User_Invited_to_Portal, Last_Login) are stripped from portal submissions
+    // anyway — the form's on-add workflow populates them from zoho.loginuser.
+  };
+
+  ZOHO.CREATOR.DATA.addRecords({
+    form_name: 'Contacts',
+    payload: { data: payload }
+  }).then(function(res) {
+    console.log('[CompanyProfile] addRecords response:', JSON.stringify(res));
+    if (res && res.code === 3000) {
+      showModalMsg('✓ Contact added. An invitation email will be sent to ' + payload.Email + '.', 'success');
+      btn.textContent = '✓ Added';
+      // Refresh the user list to include the new contact
+      setTimeout(function() {
+        loadUsers();
+        closeModal();
+      }, 1400);
+    } else {
+      var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
+      showModalMsg('Could not add contact' + detail + '. Please try again.', 'error');
+      btn.disabled = false;
+      cancel.disabled = false;
+      btn.textContent = 'Submit';
+    }
+  }).catch(function(err) {
+    console.error('[CompanyProfile] addRecords failed', err);
+    var msg = (err && (err.message || err.toString())) ? ': ' + (err.message || err.toString()) : '';
+    showModalMsg('Could not add contact' + msg + '. Please try again.', 'error');
+    btn.disabled = false;
+    cancel.disabled = false;
+    btn.textContent = 'Submit';
+  });
+}
+
+// ── Format helpers ────────────────────────────────────────────────────────
+function formatAddress(addr) {
+  if (!addr) return '';
+  if (typeof addr === 'string') return addr;
+  var parts = [];
+  if (addr.address_line_1) parts.push(addr.address_line_1);
+  if (addr.address_line_2) parts.push(addr.address_line_2);
+  var cityState = [];
+  if (addr.district_city)  cityState.push(addr.district_city);
+  if (addr.state_province) cityState.push(addr.state_province);
+  var cs = cityState.join(', ');
+  if (addr.postal_Code) cs += (cs ? ' ' : '') + addr.postal_Code;
+  if (cs) parts.push(cs);
+  return parts.join(', ');
+}
+function formatPhone(v) {
+  if (!v) return '';
+  var s = String(v).trim();
+  if (/^\+/.test(s)) return s;
+  var digits = s.replace(/[^\d]/g, '');
+  if (digits.length === 10) return '+1 ' + s;
+  if (digits.length === 11 && digits[0] === '1') return '+' + digits[0] + ' ' + s.replace(/^1[\s-]?/, '');
+  return s;
+}
+function formatPct(v) {
+  if (v === null || v === undefined || v === '') return '';
+  var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+  if (isNaN(n)) return '';
+  return n.toFixed(2) + '%';
+}
+function parseDate(v) {
+  if (!v) return null;
+  if (typeof v === 'string') {
+    var m = v.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+    if (m) {
+      var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+      return new Date(parseInt(m[3], 10), months[m[2]], parseInt(m[1], 10),
+        m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0, m[6] ? parseInt(m[6], 10) : 0);
+    }
+  }
+  var d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function fmtDateShort(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function(ch) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+  });
+}
+
+})();
+</script>
+</body>
+</html>

@@ -329,7 +329,7 @@ html, body {
     <div id="footer-count">—</div>
   </div>
 
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.1</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.2</div>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -625,7 +625,8 @@ function renderList() {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
       var action = btn.dataset.action;
-      if (action === 'boost') navigateParent('#Form:Credit_Boost_Request');
+      var recId = btn.dataset.recid;
+      if (action === 'boost') navigateParent('#Form:Credit_Boost_Request' + (recId ? '?Company_Name_ID=' + encodeURIComponent(recId) : ''));
       else if (action === 'resubmit') navigateParent('#Page:Credit_Check_NEW');
     });
   });
@@ -641,9 +642,10 @@ function rowHtml(r, idx) {
   var phone = r.Phone_Number1 || r.Phone_Number || '';
   var addr = formatAddress(r);
 
+  var recId = r.ID || '';
   var actionCell = '';
   if (s.key === 'approved') {
-    actionCell = '<button class="row-action" data-action="boost">Request Credit Boost</button>';
+    actionCell = '<button class="row-action" data-action="boost" data-recid="' + esc(recId) + '">Request Credit Boost</button>';
   } else if (s.key === 'denied') {
     actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
   } else if (s.key === 'boost') {
@@ -657,10 +659,6 @@ function rowHtml(r, idx) {
   } else if (s.key === 'expired') {
     actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
   }
-
-  var boostSub = (s.key === 'boost' && r.Credit_Boost_Amount)
-    ? '<div class="cell-sub">Boost requested: ' + esc(formatMoneyShort(r.Credit_Boost_Amount)) + '</div>'
-    : '';
 
   return '' +
     '<div class="row s-' + s.key + '" data-idx="' + idx + '">' +
@@ -677,7 +675,7 @@ function rowHtml(r, idx) {
       '<div>' +
         '<div class="cell-label">Credit Limit</div>' +
         (hasLimit
-          ? '<div class="cell-val lg" style="color:' + limitColor + ';">' + esc(formatMoneyShort(limit)) + '</div>' + boostSub
+          ? '<div class="cell-val lg" style="color:' + limitColor + ';">' + esc(formatMoneyShort(limit)) + '</div>'
           : '<div class="cell-val" style="color:#999;">' + (s.key === 'app-rcvd' ? 'Pending review' : '—') + '</div>') +
       '</div>' +
       '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
@@ -831,7 +829,10 @@ function renderPanel() {
   if (!next.classList.contains('disabled')) next.addEventListener('click', function() { navPanel(1); });
   document.getElementById('p-close').addEventListener('click', closePanel);
   var b = document.getElementById('p-boost');
-  if (b) b.addEventListener('click', function() { navigateParent('#Form:Credit_Boost_Request'); });
+  if (b) b.addEventListener('click', function() {
+    var recId = r.ID || '';
+    navigateParent('#Form:Credit_Boost_Request' + (recId ? '?Company_Name_ID=' + encodeURIComponent(recId) : ''));
+  });
   var rs = document.getElementById('p-resubmit');
   if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check_NEW'); });
 }

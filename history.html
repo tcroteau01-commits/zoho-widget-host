@@ -591,10 +591,26 @@ function bindGlobalUI() {
     applyFilters();
   });
   document.getElementById('btn-new').addEventListener('click', function() {
-    // Tries to navigate to the Load Details form page in the same Creator app.
-    // Adjust if the page link differs.
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'navigate-to', target: 'Load_Details_NEW' }, '*');
+    var hash = '#Page:Load_Details_NEW';
+
+    // Prefer the SDK helper if present (handles cross-origin cleanly)
+    try {
+      if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.UTIL &&
+          typeof ZOHO.CREATOR.UTIL.navigateParentURL === 'function') {
+        ZOHO.CREATOR.UTIL.navigateParentURL(hash);
+        return;
+      }
+    } catch (e) { /* fall through */ }
+
+    // Fallback: navigate the top frame directly. Read the portal origin
+    // from our own URL's serviceOrigin param so we don't hardcode it.
+    var sp = new URLSearchParams(window.location.search);
+    var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+    var url = origin.replace(/\/$/, '') + '/' + hash;
+    try {
+      window.top.location.href = url;
+    } catch (e) {
+      window.open(url, '_top');
     }
   });
   document.getElementById('btn-export').addEventListener('click', exportCsv);

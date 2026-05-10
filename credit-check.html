@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Credit Check</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #f0efe9;
+  color: #333;
+  min-height: 100vh;
+}
+
+.page { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+
+.page-head { margin-bottom: 18px; }
+.page-title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.page-sub { font-size: 12px; color: #888; margin-top: 4px; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 18px;
+  align-items: start;
+}
+
+/* Status banner (loading / success / error) */
+.status-msg {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  display: none;
+}
+.status-msg.show { display: block; }
+.status-msg.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.status-msg.error   { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+.status-msg.loading { background: #fff8e1; color: #856404; border: 1px solid #ffe082; }
+
+/* Notice banner */
+.notice {
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-left: 4px solid #f5a623;
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.notice-icon { font-size: 20px; line-height: 1; flex-shrink: 0; margin-top: 1px; color: #856404; }
+.notice-text { flex: 1; }
+.notice-head { font-size: 13px; font-weight: 700; color: #856404; letter-spacing: -0.1px; }
+.notice-detail { font-size: 12px; color: #856404; opacity: 0.9; margin-top: 2px; line-height: 1.5; }
+
+/* Form card */
+.form-card {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 12px;
+  padding: 24px 28px 28px;
+}
+.section-block + .section-block {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid #f0efe9;
+}
+.section-title { font-size: 14px; font-weight: 700; color: #272727; letter-spacing: -0.1px; margin-bottom: 4px; }
+.section-sub { font-size: 12px; color: #888; margin-bottom: 18px; }
+
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.field-grid.full > .field { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label {
+  font-size: 11px; color: #555; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.field-label .req { color: #c62828; margin-left: 2px; }
+.field-help { font-size: 11px; color: #888; margin-top: -2px; }
+.field-err { font-size: 11px; color: #c62828; margin-top: -2px; display: none; }
+.field-err.show { display: block; }
+
+.field-input, .field-textarea {
+  border: 1px solid #d8d8d8;
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  outline: none;
+  transition: all 0.15s;
+  width: 100%;
+}
+.field-input:focus, .field-textarea:focus {
+  border-color: #e8a020;
+  box-shadow: 0 0 0 3px rgba(232,160,32,0.12);
+}
+.field-input.invalid, .field-textarea.invalid { border-color: #c62828; }
+.field-textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+
+.field-prefix-wrap { position: relative; }
+.field-prefix-wrap input { padding-left: 40px; }
+.field-prefix-wrap::before {
+  content: attr(data-prefix);
+  position: absolute; left: 14px; top: 50%;
+  transform: translateY(-50%);
+  color: #888; font-weight: 600;
+  pointer-events: none; font-size: 13px;
+}
+
+.address-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+/* Doc upload */
+.dropzone {
+  border: 2px dashed #d8d8d8;
+  background: #fafaf6;
+  border-radius: 10px;
+  padding: 22px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dropzone:hover { border-color: #e8a020; background: #fff8e6; }
+.dropzone.drag-over { border-color: #e8a020; background: #fff8e6; }
+.dropzone-text { font-size: 13px; color: #555; font-weight: 600; }
+.dropzone-sub { font-size: 11px; color: #888; margin-top: 4px; }
+.dropzone-icon { font-size: 24px; color: #aaa; margin-bottom: 6px; }
+.dropzone input[type=file] { display: none; }
+
+.file-chip-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.file-chip {
+  display: flex; align-items: center; gap: 8px;
+  background: #fafaf6; border: 1px solid #e6e3da;
+  border-radius: 6px; padding: 7px 10px;
+  font-size: 12px;
+}
+.file-chip-icon { color: #b86e00; }
+.file-chip-name { flex: 1; color: #444; word-break: break-all; }
+.file-chip-size { color: #888; font-size: 11px; flex-shrink: 0; }
+.file-chip-remove {
+  background: none; border: none; cursor: pointer;
+  color: #c62828; font-size: 16px; padding: 0 4px; line-height: 1;
+}
+
+/* Footer with submit */
+.form-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid #f0efe9;
+}
+.form-footer .helper { font-size: 11px; color: #888; }
+.btn {
+  background: #fff; border: 1px solid #d8d8d8;
+  border-radius: 8px; padding: 11px 22px;
+  font-size: 13px; font-weight: 600; color: #444;
+  cursor: pointer; transition: all 0.15s;
+  font-family: inherit;
+}
+.btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn.primary { background: #e8a020; color: #fff; border-color: #e8a020; }
+.btn.primary:hover:not(:disabled) { background: #d49018; border-color: #d49018; }
+.btn-group { display: flex; gap: 8px; }
+
+/* Side info column */
+.side-card {
+  background: #fff; border: 1px solid #e6e3da;
+  border-radius: 12px; padding: 20px 22px;
+  position: sticky; top: 20px;
+}
+.side-card + .side-card { margin-top: 14px; position: static; }
+.side-card-title {
+  font-size: 11px; font-weight: 700; color: #272727;
+  text-transform: uppercase; letter-spacing: 0.7px;
+  padding-bottom: 10px; margin-bottom: 14px;
+  border-bottom: 2px solid #e8a020;
+}
+
+.timeline-li { display: flex; gap: 12px; position: relative; padding-bottom: 16px; }
+.timeline-li:last-child { padding-bottom: 0; }
+.timeline-li:not(:last-child)::before {
+  content: ''; position: absolute;
+  left: 11px; top: 22px; bottom: 0;
+  width: 2px; background: #f0efe9;
+}
+.timeline-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #fff4e0; color: #b86e00;
+  font-weight: 700; font-size: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; z-index: 1;
+}
+.timeline-text { font-size: 12px; color: #555; line-height: 1.5; flex: 1; padding-top: 3px; }
+.timeline-text strong { color: #272727; }
+
+.tip-list { display: flex; flex-direction: column; gap: 10px; }
+.tip {
+  font-size: 12px; color: #555; line-height: 1.5;
+  padding-left: 18px; position: relative;
+}
+.tip::before {
+  content: '✓'; position: absolute; left: 0;
+  color: #2e7d32; font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .side-card { position: static; }
+  .field-grid { grid-template-columns: 1fr; }
+  .address-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="page-head">
+    <div class="page-title">New Credit Check</div>
+    <div class="page-sub">Submit a new customer for credit review by the OperFi team</div>
+  </div>
+
+  <div id="statusMsg" class="status-msg"></div>
+
+  <div class="layout">
+
+    <!-- Main form column -->
+    <div>
+
+      <div class="notice">
+        <div class="notice-icon">⏱</div>
+        <div class="notice-text">
+          <div class="notice-head">Average response time: up to 24 hours</div>
+          <div class="notice-detail">More information means faster turnaround. If we need to send a credit application directly to the customer, response times can be longer.</div>
+        </div>
+      </div>
+
+      <div class="form-card">
+
+        <!-- Section 1: Company info -->
+        <div class="section-block">
+          <div class="section-title">Customer Company</div>
+          <div class="section-sub">Tell us about the customer you'd like to extend credit to</div>
+
+          <div class="field-grid full">
+            <div class="field">
+              <label class="field-label" for="Customer_Company_Name">Company Name <span class="req">*</span></label>
+              <input class="field-input" id="Customer_Company_Name" type="text" placeholder="ABC Shipping &amp; Logistics" data-required>
+              <div class="field-err" data-err-for="Customer_Company_Name">Company name is required.</div>
+            </div>
+          </div>
+
+          <div class="field-grid full" style="margin-top: 16px;">
+            <div class="field">
+              <label class="field-label" for="address_line_1">Address <span class="req">*</span></label>
+              <input class="field-input" id="address_line_1" type="text" placeholder="Street address" style="margin-bottom: 8px;" data-required>
+              <div class="address-grid">
+                <input class="field-input" id="district_city" type="text" placeholder="City" data-required>
+                <input class="field-input" id="state_province" type="text" placeholder="State" data-required>
+                <input class="field-input" id="postal_Code" type="text" placeholder="Postal code" data-required>
+              </div>
+              <div class="field-err" data-err-for="address">Complete address is required.</div>
+            </div>
+          </div>
+
+          <div class="field-grid" style="margin-top: 16px;">
+            <div class="field">
+              <label class="field-label" for="Phone_Number">Phone <span class="req">*</span></label>
+              <div class="field-prefix-wrap" data-prefix="+1">
+                <input class="field-input" id="Phone_Number" type="text" placeholder="555-555-0123" data-required>
+              </div>
+              <div class="field-err" data-err-for="Phone_Number">Phone is required.</div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="Company_Website">Company Website <span class="req">*</span></label>
+              <div class="field-prefix-wrap" data-prefix="🔗">
+                <input class="field-input" id="Company_Website" type="text" placeholder="https://abcshipping.com" data-required>
+              </div>
+              <div class="field-err" data-err-for="Company_Website">Website is required.</div>
+            </div>
+          </div>
+
+          <div class="field-grid" style="margin-top: 16px;">
+            <div class="field">
+              <label class="field-label" for="LinkedIn_Profile">LinkedIn Profile</label>
+              <input class="field-input" id="LinkedIn_Profile" type="text" placeholder="https://linkedin.com/company/...">
+            </div>
+            <div class="field">
+              <label class="field-label" for="Other_Social_Media_Links">Other Social Media</label>
+              <input class="field-input" id="Other_Social_Media_Links" type="text" placeholder="https://...">
+            </div>
+          </div>
+
+          <div class="field-grid full" style="margin-top: 16px;">
+            <div class="field">
+              <label class="field-label" for="Comments">Comments</label>
+              <textarea class="field-textarea" id="Comments" placeholder="Any context you'd like to share — load volume, business relationship, urgency, special considerations..."></textarea>
+              <div class="field-help">More context = faster, more accurate credit decisions.</div>
+            </div>
+          </div>
+
+          <div class="field-grid full" style="margin-top: 16px;">
+            <div class="field">
+              <label class="field-label">Supporting Documents</label>
+              <label class="dropzone" id="dropzone" for="fileInput">
+                <input type="file" id="fileInput" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.bmp,.webp,.gif,.tif,.tiff,.txt,.csv,.doc,.docx,.xls,.xlsx">
+                <div class="dropzone-icon">📎</div>
+                <div class="dropzone-text">Drag files here or click to browse</div>
+                <div class="dropzone-sub">Agreements, contracts, or any docs that help us evaluate. Up to 10 files.</div>
+              </label>
+              <div class="file-chip-list" id="fileChipList"></div>
+              <div class="field-err" data-err-for="files">Maximum 10 files.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Customer contacts -->
+        <div class="section-block">
+          <div class="section-title">Customer Contacts</div>
+          <div class="section-sub">Who at the customer should we reach out to if we need more info or to send a credit application?</div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label class="field-label" for="Customer_Point_of_Contact">Customer Point of Contact <span class="req">*</span></label>
+              <input class="field-input" id="Customer_Point_of_Contact" type="text" placeholder="Jane Smith" data-required>
+              <div class="field-err" data-err-for="Customer_Point_of_Contact">Point of contact is required.</div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="Phone_Number1">Phone <span class="req">*</span></label>
+              <div class="field-prefix-wrap" data-prefix="+1">
+                <input class="field-input" id="Phone_Number1" type="text" placeholder="555-555-0123" data-required>
+              </div>
+              <div class="field-err" data-err-for="Phone_Number1">Phone is required.</div>
+            </div>
+          </div>
+
+          <div class="field-grid full" style="margin-top: 16px;">
+            <div class="field">
+              <label class="field-label" for="Email">Email <span class="req">*</span></label>
+              <input class="field-input" id="Email" type="email" placeholder="jane.smith@abcshipping.com" data-required>
+              <div class="field-err" data-err-for="Email">A valid email is required.</div>
+            </div>
+          </div>
+
+          <div class="section-sub" style="margin-top: 24px; margin-bottom: 14px;">
+            Optional: separate billing contact if different from above
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label class="field-label" for="Billing_Point_of_Contact">Billing Point of Contact</label>
+              <input class="field-input" id="Billing_Point_of_Contact" type="text" placeholder="Optional">
+            </div>
+            <div class="field">
+              <label class="field-label" for="Billing_AP_Contact_Number">Billing Phone</label>
+              <div class="field-prefix-wrap" data-prefix="+1">
+                <input class="field-input" id="Billing_AP_Contact_Number" type="text" placeholder="Optional">
+              </div>
+            </div>
+          </div>
+
+          <div class="field-grid full" style="margin-top: 16px;">
+            <div class="field">
+              <label class="field-label" for="Billing_Email">Billing Email</label>
+              <input class="field-input" id="Billing_Email" type="email" placeholder="ap@abcshipping.com">
+              <div class="field-err" data-err-for="Billing_Email">Billing email format is invalid.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-footer">
+          <div class="helper">Required fields marked with <span style="color:#c62828; font-weight:700;">*</span></div>
+          <div class="btn-group">
+            <button type="button" class="btn" id="resetBtn">Reset</button>
+            <button type="button" class="btn primary" id="submitBtn">Submit for Credit Review</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Side info column -->
+    <div>
+      <div class="side-card">
+        <div class="side-card-title">What Happens Next</div>
+        <div>
+          <div class="timeline-li">
+            <div class="timeline-num">1</div>
+            <div class="timeline-text"><strong>You submit</strong> &mdash; takes a couple minutes with the right info on hand.</div>
+          </div>
+          <div class="timeline-li">
+            <div class="timeline-num">2</div>
+            <div class="timeline-text"><strong>OperFi credit team reviews</strong> &mdash; usually within 24 hours.</div>
+          </div>
+          <div class="timeline-li">
+            <div class="timeline-num">3</div>
+            <div class="timeline-text"><strong>Decision posts to Customer Approvals</strong> &mdash; you'll see Approved, Denied, or a request for more info.</div>
+          </div>
+          <div class="timeline-li">
+            <div class="timeline-num">4</div>
+            <div class="timeline-text"><strong>If approved</strong>, you can submit loads against this customer immediately.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-card">
+        <div class="side-card-title">Tips for Faster Approval</div>
+        <div class="tip-list">
+          <div class="tip">Verify the customer's website resolves and looks legitimate.</div>
+          <div class="tip">Use a publicly listed phone number, not one given by the contact alone.</div>
+          <div class="tip">Attach any signed agreements (MSA, broker-shipper) you already have.</div>
+          <div class="tip">Provide approximate monthly load volume in the Comments.</div>
+        </div>
+      </div>
+
+      <div class="side-card">
+        <div class="side-card-title">Questions?</div>
+        <div style="font-size: 12px; color: #555; line-height: 1.5;">
+          The Credit team is at <a href="mailto:credit@operfi.com" style="color: #b86e00; font-weight: 600; text-decoration: none;">credit@operfi.com</a>.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.1</div>
+</div>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+(function() {
+'use strict';
+
+var UPLOAD_ENDPOINT = 'https://operfi-broker-api.onrender.com/upload-doc';
+var FORM_NAME       = 'Customer_Submission';
+var UPLOAD_REPORT   = 'All_Customer_Submissions';
+var UPLOAD_FIELD    = 'Additional_Supporting_Documents';
+var MAX_FILES       = 10;
+
+var selectedFiles = [];
+
+// ── Required-field inputs (id list) ───────────────────────────────────────
+var REQUIRED_IDS = [
+  'Customer_Company_Name',
+  'address_line_1', 'district_city', 'state_province', 'postal_Code',
+  'Phone_Number', 'Company_Website',
+  'Customer_Point_of_Contact', 'Phone_Number1', 'Email'
+];
+
+// ── Status ────────────────────────────────────────────────────────────────
+function showStatus(msg, type) {
+  var el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = 'status-msg show ' + type;
+  if (type !== 'success') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+function clearStatus() {
+  document.getElementById('statusMsg').className = 'status-msg';
+}
+
+function showErr(id) {
+  var err = document.querySelector('[data-err-for="' + id + '"]');
+  if (err) err.classList.add('show');
+}
+function clearErr(id) {
+  var err = document.querySelector('[data-err-for="' + id + '"]');
+  if (err) err.classList.remove('show');
+}
+function clearAllErrors() {
+  document.querySelectorAll('.field-err.show').forEach(function(e) { e.classList.remove('show'); });
+  document.querySelectorAll('.field-input.invalid').forEach(function(e) { e.classList.remove('invalid'); });
+}
+
+// ── Validation ────────────────────────────────────────────────────────────
+function isValidEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+function validate() {
+  clearAllErrors();
+  var ok = true;
+  var firstInvalid = null;
+
+  REQUIRED_IDS.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el.value.trim()) {
+      el.classList.add('invalid');
+      // address fields share one error message
+      if (['address_line_1','district_city','state_province','postal_Code'].indexOf(id) !== -1) {
+        showErr('address');
+      } else {
+        showErr(id);
+      }
+      ok = false;
+      if (!firstInvalid) firstInvalid = el;
+    }
+  });
+
+  var email = document.getElementById('Email');
+  if (email.value.trim() && !isValidEmail(email.value.trim())) {
+    email.classList.add('invalid');
+    showErr('Email');
+    ok = false;
+    if (!firstInvalid) firstInvalid = email;
+  }
+
+  var billingEmail = document.getElementById('Billing_Email');
+  if (billingEmail.value.trim() && !isValidEmail(billingEmail.value.trim())) {
+    billingEmail.classList.add('invalid');
+    showErr('Billing_Email');
+    ok = false;
+    if (!firstInvalid) firstInvalid = billingEmail;
+  }
+
+  if (firstInvalid) {
+    firstInvalid.focus();
+    firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  return ok;
+}
+
+// ── File handling ─────────────────────────────────────────────────────────
+function renderFileChips() {
+  var list = document.getElementById('fileChipList');
+  list.innerHTML = '';
+  selectedFiles.forEach(function(f, idx) {
+    var chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.innerHTML =
+      '<span class="file-chip-icon">📄</span>' +
+      '<span class="file-chip-name"></span>' +
+      '<span class="file-chip-size"></span>' +
+      '<button type="button" class="file-chip-remove" aria-label="Remove">×</button>';
+    chip.querySelector('.file-chip-name').textContent = f.name;
+    chip.querySelector('.file-chip-size').textContent = formatBytes(f.size);
+    chip.querySelector('.file-chip-remove').addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      selectedFiles.splice(idx, 1);
+      renderFileChips();
+    });
+    list.appendChild(chip);
+  });
+}
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+function addFiles(files) {
+  Array.from(files).forEach(function(f) {
+    var dup = selectedFiles.some(function(e) { return e.name === f.name && e.size === f.size; });
+    if (dup) return;
+    if (selectedFiles.length >= MAX_FILES) return;
+    selectedFiles.push(f);
+  });
+  if (selectedFiles.length > MAX_FILES) {
+    selectedFiles = selectedFiles.slice(0, MAX_FILES);
+    showErr('files');
+  } else {
+    clearErr('files');
+  }
+  renderFileChips();
+}
+
+// ── Build payload for addRecords ──────────────────────────────────────────
+function buildPayload() {
+  function v(id) { return document.getElementById(id).value.trim(); }
+  return {
+    Customer_Company_Name:     v('Customer_Company_Name'),
+    Address: {
+      address_line_1: v('address_line_1'),
+      district_city:  v('district_city'),
+      state_province: v('state_province'),
+      postal_Code:    v('postal_Code')
+    },
+    Phone_Number:              v('Phone_Number'),
+    Company_Website:           v('Company_Website'),
+    LinkedIn_Profile:          v('LinkedIn_Profile'),
+    Other_Social_Media_Links:  v('Other_Social_Media_Links'),
+    Comments:                  v('Comments'),
+    Customer_Point_of_Contact: v('Customer_Point_of_Contact'),
+    Phone_Number1:             v('Phone_Number1'),
+    Email:                     v('Email'),
+    Billing_Point_of_Contact:  v('Billing_Point_of_Contact'),
+    Billing_AP_Contact_Number: v('Billing_AP_Contact_Number'),
+    Billing_Email:             v('Billing_Email')
+    // Submission_Type is private (stripped from portal addRecords) but the form
+    // sets initial value = "Credit Check", so the record will have that automatically.
+  };
+}
+
+// ── Submit flow ───────────────────────────────────────────────────────────
+function submitForm() {
+  clearStatus();
+  if (!validate()) {
+    showStatus('Please fix the highlighted fields and try again.', 'error');
+    return;
+  }
+
+  var btn = document.getElementById('submitBtn');
+  var resetBtn = document.getElementById('resetBtn');
+  btn.disabled = true;
+  resetBtn.disabled = true;
+  btn.textContent = 'Submitting…';
+  showStatus('Submitting your credit check request…', 'loading');
+
+  ZOHO.CREATOR.DATA.addRecords({
+    form_name: FORM_NAME,
+    payload: { data: buildPayload() }
+  }).then(function(res) {
+    console.log('addRecords response:', JSON.stringify(res));
+    if (res && res.code === 3000) {
+      var recordId = res.data && (res.data.ID || (typeof res.data === 'string' ? res.data : null));
+      console.log('Record ID:', recordId);
+      if (recordId && selectedFiles.length > 0) {
+        uploadFiles(recordId);
+      } else {
+        onSuccess();
+      }
+    } else {
+      var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
+      showStatus('Submission failed' + detail + '. Please try again or contact credit@operfi.com.', 'error');
+      console.error('addRecords failed:', JSON.stringify(res));
+      resetButtons();
+    }
+  }).catch(function(e) {
+    var msg = (e && (e.message || e.toString())) ? ': ' + (e.message || e.toString()) : '';
+    showStatus('Submission failed' + msg + '. Please try again or contact credit@operfi.com.', 'error');
+    console.error('submit error', e);
+    resetButtons();
+  });
+}
+
+function uploadFiles(recordId) {
+  showStatus('Uploading ' + selectedFiles.length + ' file(s)…', 'loading');
+  var errors = 0;
+  var idx = 0;
+
+  function next() {
+    if (idx >= selectedFiles.length) {
+      if (errors > 0) {
+        showStatus('✓ Credit check submitted. ' + errors + ' file upload(s) failed — please email any missing docs to credit@operfi.com.', 'error');
+      } else {
+        onSuccess();
+      }
+      return;
+    }
+    var file = selectedFiles[idx++];
+    var fd = new FormData();
+    fd.append('record_id', recordId);
+    fd.append('field_name', UPLOAD_FIELD);
+    fd.append('report_name', UPLOAD_REPORT);
+    fd.append('file', file, file.name);
+
+    fetch(UPLOAD_ENDPOINT, { method: 'POST', body: fd })
+      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, body: j }; }); })
+      .then(function(r) {
+        if (!r.ok || r.body.code !== 3000) {
+          console.error('upload failed for ' + file.name, r.body);
+          errors++;
+        }
+        next();
+      })
+      .catch(function(e) {
+        console.error('upload error for ' + file.name, e);
+        errors++;
+        next();
+      });
+  }
+  next();
+}
+
+function onSuccess() {
+  showStatus('✓ Credit check submitted. Our team will review and post a decision to Customer Approvals (usually within 24 hours).', 'success');
+  var btn = document.getElementById('submitBtn');
+  btn.textContent = '✓ Submitted';
+  document.getElementById('resetBtn').disabled = false;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetButtons() {
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = false;
+  btn.textContent = 'Submit for Credit Review';
+  document.getElementById('resetBtn').disabled = false;
+}
+
+function resetForm() {
+  document.querySelectorAll('.field-input, .field-textarea').forEach(function(el) {
+    el.value = '';
+    el.classList.remove('invalid');
+  });
+  selectedFiles = [];
+  renderFileChips();
+  clearAllErrors();
+  clearStatus();
+  resetButtons();
+  document.getElementById('Customer_Company_Name').focus();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Wire up ───────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  document.getElementById('submitBtn').addEventListener('click', submitForm);
+  document.getElementById('resetBtn').addEventListener('click', resetForm);
+
+  var fileInput = document.getElementById('fileInput');
+  fileInput.addEventListener('change', function() {
+    addFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  var dz = document.getElementById('dropzone');
+  ['dragenter','dragover'].forEach(function(ev) {
+    dz.addEventListener(ev, function(e) {
+      e.preventDefault(); e.stopPropagation();
+      dz.classList.add('drag-over');
+    });
+  });
+  ['dragleave','drop'].forEach(function(ev) {
+    dz.addEventListener(ev, function(e) {
+      e.preventDefault(); e.stopPropagation();
+      dz.classList.remove('drag-over');
+    });
+  });
+  dz.addEventListener('drop', function(e) {
+    if (e.dataTransfer && e.dataTransfer.files.length) {
+      addFiles(e.dataTransfer.files);
+    }
+  });
+
+  // Clear inline errors on input
+  REQUIRED_IDS.concat(['Email','Billing_Email']).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', function() {
+      el.classList.remove('invalid');
+      if (['address_line_1','district_city','state_province','postal_Code'].indexOf(id) !== -1) {
+        var anyEmpty = ['address_line_1','district_city','state_province','postal_Code'].some(function(aid) {
+          return !document.getElementById(aid).value.trim();
+        });
+        if (!anyEmpty) clearErr('address');
+      } else {
+        clearErr(id);
+      }
+    });
+  });
+});
+
+})();
+</script>
+</body>
+</html>

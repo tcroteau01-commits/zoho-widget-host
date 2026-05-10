@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendors</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
+.widget { max-width: 1320px; margin: 0 auto; padding: 20px 24px 60px; }
+
+.widget-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.widget-title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.widget-sub { font-size: 12px; color: #888; margin-top: 4px; }
+.header-actions { display: flex; gap: 8px; }
+.btn { background: #fff; border: 1px solid #d8d8d8; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; color: #444; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+.btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.btn.primary { background: #272727; color: #fff; border-color: #272727; }
+.btn.primary:hover { background: #1a1a1a; }
+.btn .ic { margin-right: 6px; opacity: 0.7; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+.kpi { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
+.kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #e8a020; }
+.kpi.approved::before { background: #2e7d32; }
+.kpi.factor::before { background: #1976d2; }
+.kpi.quickpay::before { background: #f5a623; }
+.kpi.dnu::before { background: #c62828; }
+.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #888; font-weight: 600; }
+.kpi-value { font-size: 24px; font-weight: 700; color: #272727; margin-top: 4px; letter-spacing: -0.4px; }
+
+.toolbar { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.search { flex: 1; min-width: 240px; position: relative; }
+.search input { width: 100%; border: 1px solid #d8d8d8; border-radius: 6px; padding: 9px 12px 9px 36px; font-size: 13px; font-family: inherit; background: #fafafa; outline: none; transition: all 0.15s; }
+.search input:focus { border-color: #e8a020; background: #fff; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.search-ic { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #aaa; pointer-events: none; }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid #d8d8d8; background: #fff; border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 600; color: #555; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; user-select: none; }
+.chip:hover { border-color: #b8b8b8; }
+.chip.active { background: #272727; color: #fff; border-color: #272727; }
+.chip .count { background: rgba(0,0,0,0.07); border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
+.chip.active .count { background: rgba(255,255,255,0.18); }
+
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1.2fr 1fr 1.2fr 1fr 28px;
+  gap: 14px; align-items: center;
+  cursor: pointer; transition: all 0.12s; position: relative;
+}
+.row:hover { border-color: #c8c4b6; box-shadow: 0 2px 6px rgba(0,0,0,0.04); transform: translateY(-1px); }
+.row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 10px 0 0 10px; background: #ddd; }
+.row.s-approved::before { background: #2e7d32; }
+.row.s-pending::before  { background: #f5a623; }
+.row.s-denied::before   { background: #c62828; }
+.row.s-dnu::before      { background: #c62828; }
+.row.s-payment-change::before { background: #1976d2; }
+.row.s-dnu { background: #fafaf6; }
+.row.s-dnu .cell-val { color: #888; }
+
+.cell-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; font-weight: 600; margin-bottom: 2px; }
+.cell-val { font-size: 13px; color: #272727; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-val.lg { font-size: 14px; }
+.cell-sub { font-size: 11px; color: #888; margin-top: 1px; font-weight: 500; }
+
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.2px; text-transform: uppercase; white-space: nowrap;
+}
+.tag.factor   { background: #e3f0fb; color: #0d4a8a; }
+.tag.quickpay { background: #fff4e0; color: #b86e00; }
+.tag.net30    { background: #f0efe9; color: #555; }
+.tag.dnu      { background: #fde4e4; color: #a31818; }
+.tag.approved { background: #e3f4e3; color: #1f6321; }
+.tag.pending  { background: #fff4e0; color: #b86e00; }
+.tag.denied   { background: #fde4e4; color: #a31818; }
+.tag.payment-change { background: #e3f0fb; color: #0d4a8a; }
+
+.row-action {
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 7px 12px; font-size: 11px; font-weight: 700; color: #444;
+  cursor: pointer; transition: all 0.12s;
+  text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap;
+  font-family: inherit;
+}
+.row-action:hover:not(.disabled) { border-color: #e8a020; color: #e8a020; }
+.row-action.disabled { opacity: 0.45; cursor: not-allowed; }
+
+.chev { color: #ccc; transition: color 0.12s, transform 0.12s; text-align: right; }
+.row:hover .chev { color: #888; transform: translateX(2px); }
+
+/* States */
+.state { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 60px 24px; text-align: center; color: #888; }
+.state-title { font-size: 16px; font-weight: 600; color: #555; margin-bottom: 6px; }
+.state-msg { font-size: 13px; }
+.state .spinner { width: 28px; height: 28px; border: 3px solid #e6e3da; border-top-color: #e8a020; border-radius: 50%; margin: 0 auto 16px; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.footer { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding: 0 4px; font-size: 12px; color: #888; }
+
+@media (max-width: 1100px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row .cell-chev { display: none; }
+}
+
+/* ===== Side panel ===== */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.32); z-index: 90; backdrop-filter: blur(2px); display: none; animation: fadeIn 0.18s ease-out; }
+.scrim.show { display: block; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.panel { position: fixed; top: 0; right: 0; bottom: 0; width: 580px; max-width: 100vw; background: #f7f6f1; z-index: 100; box-shadow: -8px 0 32px rgba(0,0,0,0.12); display: none; flex-direction: column; animation: slideIn 0.22s ease-out; }
+.panel.show { display: flex; }
+@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.panel-top { background: #272727; color: #fff; padding: 14px 18px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.panel-top .nav-btn { width: 28px; height: 28px; border-radius: 6px; background: rgba(255,255,255,0.08); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; font-size: 14px; transition: background 0.12s; }
+.panel-top .nav-btn:hover { background: rgba(255,255,255,0.16); }
+.panel-top .nav-btn.disabled { opacity: 0.35; cursor: not-allowed; }
+.panel-top .position { font-size: 11px; color: rgba(255,255,255,0.55); font-weight: 600; letter-spacing: 0.3px; }
+.panel-top .spacer { flex: 1; }
+.panel-top .close-btn { width: 30px; height: 30px; border-radius: 6px; background: rgba(255,255,255,0.08); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; font-size: 16px; transition: background 0.12s; }
+.panel-top .close-btn:hover { background: rgba(255,255,255,0.18); }
+
+.panel-header { background: #272727; color: #fff; padding: 0 22px 22px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.panel-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.5); font-weight: 700; margin-bottom: 4px; }
+.panel-vendor { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 8px; }
+.panel-meta { display: flex; gap: 14px; align-items: center; font-size: 13px; color: rgba(255,255,255,0.7); flex-wrap: wrap; }
+.panel-meta .dot { color: rgba(255,255,255,0.3); }
+.panel-status-row { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+
+.panel-body { flex: 1; overflow-y: auto; padding: 18px 22px 24px; }
+.panel-section { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+.panel-section-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+  color: #888; font-weight: 700; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-section-title::after { content: ''; flex: 1; height: 1px; background: #f0efe9; }
+
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.field-grid.full > .field { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field-label { font-size: 11px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.field-val { font-size: 14px; color: #272727; font-weight: 600; word-break: break-word; }
+.field-val.empty { color: #bbb; font-weight: 500; font-style: italic; }
+
+.panel-footer { border-top: 1px solid #e6e3da; background: #fff; padding: 12px 22px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; gap: 10px; }
+.panel-footer .actions { display: flex; gap: 8px; }
+.kbd { display: inline-block; background: #f0efe9; border: 1px solid #e0ddd2; border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10px; font-weight: 700; color: #555; margin: 0 2px; }
+.kbd-hints { font-size: 11px; color: #888; }
+</style>
+</head>
+<body>
+
+<div class="widget">
+
+  <div class="widget-header">
+    <div>
+      <div class="widget-title">Vendors</div>
+      <div class="widget-sub">All carriers and vendors connected to your account</div>
+    </div>
+    <div class="header-actions">
+      <button class="btn" id="btn-export"><span class="ic">⤓</span>Export CSV</button>
+      <button class="btn primary" id="btn-new"><span class="ic">＋</span>Add New Carrier</button>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">Total Vendors</div><div class="kpi-value" id="kpi-total">—</div></div>
+    <div class="kpi approved"><div class="kpi-label">Active / Approved</div><div class="kpi-value" id="kpi-approved">—</div></div>
+    <div class="kpi factor"><div class="kpi-label">With Factoring</div><div class="kpi-value" id="kpi-factor">—</div></div>
+    <div class="kpi quickpay"><div class="kpi-label">Quick Pay</div><div class="kpi-value" id="kpi-quickpay">—</div></div>
+    <div class="kpi dnu"><div class="kpi-label">Do Not Use</div><div class="kpi-value" id="kpi-dnu">—</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search">
+      <span class="search-ic">⌕</span>
+      <input type="text" id="search-input" placeholder="Search by vendor name, MC#, DOT, or email...">
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div id="results">
+    <div class="state">
+      <div class="spinner"></div>
+      <div class="state-title">Loading vendors…</div>
+      <div class="state-msg" id="load-progress">Pulling your vendor list</div>
+    </div>
+  </div>
+
+  <div class="footer" id="footer" style="display:none;">
+    <div id="footer-count">—</div>
+  </div>
+
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.1</div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="panel" id="panel"></aside>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+(function() {
+'use strict';
+
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+
+var brokerEmail = '';
+var allRecords = [];
+var filteredRecords = [];
+var currentFilter = 'all';
+var currentSearch = '';
+var openIndex = -1;
+var currentLoadId = 0;
+
+// ── Status / payment classification ───────────────────────────────────────
+// Status priority: DO_NOT_USE overrides everything.
+function statusMeta(r) {
+  if (r.DO_NOT_USE === true || r.DO_NOT_USE === 'true') {
+    return { key: 'dnu', label: 'Do Not Use', tag: 'dnu' };
+  }
+  var raw = r.Vendor_Status || '';
+  switch (raw) {
+    case 'Approved':       return { key: 'approved',       label: 'Approved',       tag: 'approved' };
+    case 'Pending':        return { key: 'pending',        label: 'Pending',        tag: 'pending' };
+    case 'DENIED':         return { key: 'denied',         label: 'Denied',         tag: 'denied' };
+    case 'Payment Change': return { key: 'payment-change', label: 'Payment Change', tag: 'payment-change' };
+    default:               return { key: 'unknown',        label: raw || '—',       tag: '' };
+  }
+}
+
+// Payment method: Factoring > Quick Pay > Net terms
+function paymentMeta(r) {
+  var factoring = (r.Factoring_Company || '').trim();
+  var terms     = (r.Payment_Terms || '').trim();
+  if (factoring) return { key: 'factor', label: 'Factoring', tag: 'factor', sub: factoring };
+  if (/quick\s*pay/i.test(terms)) return { key: 'quickpay', label: 'Quick Pay', tag: 'quickpay', sub: terms };
+  if (terms) return { key: 'net30', label: terms, tag: 'net30', sub: '' };
+  return { key: 'unknown', label: '—', tag: '', sub: '' };
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  bindGlobalUI();
+  bootApp();
+});
+
+function bootApp() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+    showError('SDK unavailable', 'Reload the page.');
+    return;
+  }
+  function gotParams(params) {
+    console.log('[ViewVendors] init params:', params);
+    brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+    if (!brokerEmail) {
+      showError('Could not identify broker', 'Open DevTools console (F12) for details.');
+      return;
+    }
+    console.log('[ViewVendors] Booted as', brokerEmail);
+    loadAllRecords();
+  }
+  if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+    showError('SDK shape unexpected', 'getInitParams is not available.');
+    return;
+  }
+  try {
+    var result = ZOHO.CREATOR.UTIL.getInitParams();
+    if (result && typeof result.then === 'function') {
+      result.then(gotParams).catch(function(err) {
+        console.error('[ViewVendors] getInitParams rejected', err);
+        showError('Initialization failed', 'Could not read init params.');
+      });
+    } else {
+      gotParams(result);
+    }
+  } catch (err) {
+    console.error('[ViewVendors] getInitParams threw', err);
+    showError('Initialization failed', 'Could not read init params.');
+  }
+}
+
+function bindGlobalUI() {
+  document.getElementById('search-input').addEventListener('input', function(e) {
+    currentSearch = e.target.value.toLowerCase().trim();
+    applyFilters();
+  });
+  document.getElementById('btn-new').addEventListener('click', function() {
+    navigateParent('#Page:Onboarding_Submissions');
+  });
+  document.getElementById('btn-export').addEventListener('click', exportCsv);
+
+  document.getElementById('scrim').addEventListener('click', closePanel);
+  document.addEventListener('keydown', function(e) {
+    if (!document.getElementById('panel').classList.contains('show')) return;
+    if (e.key === 'Escape') closePanel();
+    else if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navPanel(1); }
+    else if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); navPanel(-1); }
+  });
+}
+
+function navigateParent(hash) {
+  var sp = new URLSearchParams(window.location.search);
+  var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+  var url = origin.replace(/\/$/, '') + '/' + hash;
+  try { window.top.location.href = url; return; } catch (e) {}
+  try { window.parent.location.href = url; return; } catch (e) {}
+  try { window.open(url, '_top'); } catch (e) {}
+}
+
+// ── Data load ─────────────────────────────────────────────────────────────
+function loadAllRecords() {
+  if (!brokerEmail) return;
+  currentLoadId++;
+  var loadId = currentLoadId;
+
+  document.getElementById('results').innerHTML =
+    '<div class="state"><div class="spinner"></div>' +
+    '<div class="state-title">Loading vendors…</div>' +
+    '<div class="state-msg">Pulling your vendor list</div></div>';
+
+  var qs = new URLSearchParams({
+    email: brokerEmail,
+    report: 'Check_All_Vendors',
+    from_idx: '1',
+    limit: '200'
+  });
+  var url = BROKER_API_BASE + '/broker-report?' + qs.toString();
+
+  fetch(url).then(function(res) {
+    if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
+    return res.json();
+  }).then(function(payload) {
+    if (loadId !== currentLoadId) return;
+    var data = payload.records || [];
+    console.log('[ViewVendors] Got', data.length, 'vendors');
+    onRecordsLoaded(data);
+  }).catch(function(err) {
+    if (loadId !== currentLoadId) return;
+    console.error('[ViewVendors] /broker-report failed', err);
+    showError('Could not load vendors', 'Open DevTools console (F12) for the error.');
+  });
+}
+
+function onRecordsLoaded(records) {
+  // Sort: Approved first by name, then Pending/PaymentChange/Denied by name, DNU last
+  records.sort(function(a, b) {
+    var sa = statusMeta(a), sb = statusMeta(b);
+    var rank = { approved: 0, pending: 1, 'payment-change': 1, denied: 2, dnu: 3, unknown: 4 };
+    var diff = (rank[sa.key] || 9) - (rank[sb.key] || 9);
+    if (diff !== 0) return diff;
+    return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
+  });
+  allRecords = records;
+  buildChips();
+  applyFilters();
+}
+
+// ── Chips / filters ───────────────────────────────────────────────────────
+function buildChips() {
+  var chips = document.getElementById('chips');
+  var counts = countBy(allRecords);
+  var def = [
+    { key: 'all',       label: 'All',        count: allRecords.length },
+    { key: 'approved',  label: 'Approved',   count: counts.status.approved || 0 },
+    { key: 'pending',   label: 'Pending',    count: (counts.status.pending || 0) + (counts.status['payment-change'] || 0) },
+    { key: 'factor',    label: 'Factoring',  count: counts.payment.factor || 0 },
+    { key: 'quickpay',  label: 'Quick Pay',  count: counts.payment.quickpay || 0 },
+    { key: 'net30',     label: 'Net Terms',  count: counts.payment.net30 || 0 },
+    { key: 'dnu',       label: 'Do Not Use', count: counts.status.dnu || 0 }
+  ];
+  chips.innerHTML = '';
+  def.forEach(function(c) {
+    if (c.key === 'dnu' && c.count === 0) return;
+    var el = document.createElement('span');
+    el.className = 'chip' + (c.key === currentFilter ? ' active' : '');
+    el.dataset.key = c.key;
+    el.innerHTML = esc(c.label) + ' <span class="count">' + c.count + '</span>';
+    el.addEventListener('click', function() {
+      currentFilter = c.key;
+      document.querySelectorAll('#chips .chip').forEach(function(x) { x.classList.remove('active'); });
+      el.classList.add('active');
+      applyFilters();
+    });
+    chips.appendChild(el);
+  });
+}
+
+function countBy(records) {
+  var status = {}, payment = {};
+  records.forEach(function(r) {
+    var sk = statusMeta(r).key;
+    var pk = paymentMeta(r).key;
+    status[sk]  = (status[sk] || 0) + 1;
+    // Don't count payment for DNU rows
+    if (sk !== 'dnu') payment[pk] = (payment[pk] || 0) + 1;
+  });
+  return { status: status, payment: payment };
+}
+
+function applyFilters() {
+  filteredRecords = allRecords.filter(function(r) {
+    if (currentFilter !== 'all') {
+      var sm = statusMeta(r), pm = paymentMeta(r);
+      if (currentFilter === 'approved' && sm.key !== 'approved') return false;
+      if (currentFilter === 'pending'  && sm.key !== 'pending' && sm.key !== 'payment-change') return false;
+      if (currentFilter === 'dnu'      && sm.key !== 'dnu')      return false;
+      if (currentFilter === 'factor'   && pm.key !== 'factor')   return false;
+      if (currentFilter === 'quickpay' && pm.key !== 'quickpay') return false;
+      if (currentFilter === 'net30'    && pm.key !== 'net30')    return false;
+    }
+    if (currentSearch) {
+      var hay = [
+        r.Vendor_Name,
+        r.Email,
+        r.Phone_Number,
+        r.MC ? 'mc# ' + r.MC : '',
+        r.USDOT ? 'dot ' + r.USDOT : '',
+        r.Factoring_Company
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (hay.indexOf(currentSearch) === -1) return false;
+    }
+    return true;
+  });
+  renderKpis();
+  renderList();
+  renderFooter();
+}
+
+function renderKpis() {
+  var counts = countBy(allRecords);
+  document.getElementById('kpi-total').textContent    = allRecords.length.toLocaleString();
+  document.getElementById('kpi-approved').textContent = (counts.status.approved || 0).toLocaleString();
+  document.getElementById('kpi-factor').textContent   = (counts.payment.factor || 0).toLocaleString();
+  document.getElementById('kpi-quickpay').textContent = (counts.payment.quickpay || 0).toLocaleString();
+  document.getElementById('kpi-dnu').textContent      = (counts.status.dnu || 0).toLocaleString();
+}
+
+function renderList() {
+  var results = document.getElementById('results');
+  if (!filteredRecords.length) {
+    results.innerHTML = '<div class="state"><div class="state-title">No vendors match your filters</div>' +
+      '<div class="state-msg">Try changing the filter or search term.</div></div>';
+    return;
+  }
+  var html = '<div class="list">';
+  filteredRecords.forEach(function(r) { html += rowHtml(r, allRecords.indexOf(r)); });
+  html += '</div>';
+  results.innerHTML = html;
+
+  results.querySelectorAll('.row').forEach(function(rowEl) {
+    rowEl.addEventListener('click', function(e) {
+      if (e.target.closest('.row-action')) return;
+      var idx = parseInt(rowEl.dataset.idx, 10);
+      openPanel(idx);
+    });
+  });
+  results.querySelectorAll('.row-action[data-action]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (btn.classList.contains('disabled')) return;
+      var action = btn.dataset.action;
+      if (action === 'invoice') navigateParent('#Page:Load_Details_NEW');
+    });
+  });
+}
+
+function rowHtml(r, idx) {
+  var s = statusMeta(r);
+  var p = paymentMeta(r);
+  var addr = formatAddress(r.Address);
+  var isDnu = s.key === 'dnu';
+  var canInvoice = s.key === 'approved';
+  var actionLabel = isDnu ? 'Blocked' : 'Submit Invoice';
+  var actionDisabled = !canInvoice;
+  var actionTitle = canInvoice ? '' :
+    (isDnu ? 'Vendor is marked Do Not Use.' :
+     s.key === 'pending' ? 'Vendor must be Approved before invoicing.' :
+     s.key === 'denied'  ? 'Vendor has been denied.' :
+     'Vendor not approved for invoicing.');
+
+  return '' +
+    '<div class="row s-' + s.key + '" data-idx="' + idx + '">' +
+      '<div>' +
+        '<div class="cell-label">Vendor</div>' +
+        '<div class="cell-val lg">' + esc(r.Vendor_Name || '—') + '</div>' +
+        (addr ? '<div class="cell-sub">' + esc(addr) + '</div>' :
+                (isDnu ? '<div class="cell-sub" style="color:#a31818;">— do not use —</div>' : '')) +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">MC / DOT</div>' +
+        (r.MC    ? '<div class="cell-val">MC# ' + esc(r.MC) + '</div>'   : '<div class="cell-val" style="color:#999;">—</div>') +
+        (r.USDOT ? '<div class="cell-sub">DOT ' + esc(r.USDOT) + '</div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Contact</div>' +
+        (r.Email ? '<div class="cell-val">' + esc(r.Email) + '</div>' : '<div class="cell-val" style="color:#999;">—</div>') +
+        (r.Phone_Number ? '<div class="cell-sub">' + esc(formatPhone(r.Phone_Number)) + '</div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Payment</div>' +
+        (p.tag ? '<span class="tag ' + p.tag + '">' + esc(p.label) + '</span>' :
+                 '<div class="cell-val" style="color:#999;">—</div>') +
+        (p.sub ? '<div class="cell-sub" style="margin-top:4px;">' + esc(p.sub) + '</div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Status</div>' +
+        '<span class="tag ' + s.tag + '">' + esc(s.label) + '</span>' +
+      '</div>' +
+      '<div>' +
+        '<button class="row-action' + (actionDisabled ? ' disabled' : '') + '" data-action="invoice"' +
+        (actionTitle ? ' title="' + esc(actionTitle) + '"' : '') + '>' + esc(actionLabel) + '</button>' +
+      '</div>' +
+      '<div class="chev cell-chev">›</div>' +
+    '</div>';
+}
+
+function renderFooter() {
+  var f = document.getElementById('footer');
+  if (!filteredRecords.length) { f.style.display = 'none'; return; }
+  f.style.display = 'flex';
+  document.getElementById('footer-count').textContent =
+    'Showing ' + filteredRecords.length + ' of ' + allRecords.length + ' vendors';
+}
+
+function showError(title, msg) {
+  document.getElementById('results').innerHTML =
+    '<div class="state"><div class="state-title">' + esc(title) + '</div><div class="state-msg">' + esc(msg) + '</div></div>';
+}
+
+// ── Side panel ────────────────────────────────────────────────────────────
+function openPanel(allRecordsIdx) {
+  var rec = allRecords[allRecordsIdx];
+  var idx = filteredRecords.indexOf(rec);
+  if (idx === -1) return;
+  openIndex = idx;
+  renderPanel();
+  document.getElementById('scrim').classList.add('show');
+  document.getElementById('panel').classList.add('show');
+}
+function closePanel() {
+  document.getElementById('scrim').classList.remove('show');
+  document.getElementById('panel').classList.remove('show');
+  openIndex = -1;
+}
+function navPanel(dir) {
+  var next = openIndex + dir;
+  if (next < 0 || next >= filteredRecords.length) return;
+  openIndex = next;
+  renderPanel();
+}
+
+function renderPanel() {
+  var r = filteredRecords[openIndex];
+  if (!r) return;
+  var s = statusMeta(r);
+  var p = paymentMeta(r);
+  var addr = formatAddress(r.Address);
+  var prevDis = (openIndex <= 0) ? ' disabled' : '';
+  var nextDis = (openIndex >= filteredRecords.length - 1) ? ' disabled' : '';
+  var canInvoice = s.key === 'approved';
+
+  var footerActions = canInvoice
+    ? '<button class="btn primary" id="p-invoice">Submit Invoice</button>'
+    : '';
+
+  var html = '' +
+    '<div class="panel-top">' +
+      '<span class="nav-btn' + prevDis + '" id="p-prev" title="Previous (k)">‹</span>' +
+      '<span class="nav-btn' + nextDis + '" id="p-next" title="Next (j)">›</span>' +
+      '<span class="position">' + (openIndex + 1) + ' of ' + filteredRecords.length + '</span>' +
+      '<div class="spacer"></div>' +
+      '<span class="close-btn" id="p-close" title="Close (Esc)">✕</span>' +
+    '</div>' +
+    '<div class="panel-header">' +
+      '<div class="panel-eyebrow">Vendor</div>' +
+      '<div class="panel-vendor">' + esc(r.Vendor_Name || '—') + '</div>' +
+      '<div class="panel-meta">' +
+        (r.MC    ? '<span>MC# ' + esc(r.MC) + '</span>' : '') +
+        (r.MC && r.USDOT ? '<span class="dot">·</span>' : '') +
+        (r.USDOT ? '<span>DOT ' + esc(r.USDOT) + '</span>' : '') +
+      '</div>' +
+      '<div class="panel-status-row"><span class="tag ' + s.tag + '">' + esc(s.label) + '</span></div>' +
+    '</div>' +
+    '<div class="panel-body">' +
+
+      // Contact
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Contact</div>' +
+        '<div class="field-grid">' +
+          field('Email', r.Email) +
+          field('Phone', formatPhone(r.Phone_Number)) +
+        '</div>' +
+        (addr ? '<div style="margin-top: 14px;">' + field('Address', addr) + '</div>' : '') +
+      '</div>' +
+
+      // Payment
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Payment</div>' +
+        '<div class="field-grid">' +
+          '<div class="field">' +
+            '<div class="field-label">Method</div>' +
+            '<div class="field-val">' + (p.tag ? '<span class="tag ' + p.tag + '" style="font-size:11px;">' + esc(p.label) + '</span>' : '<span class="empty">—</span>') + '</div>' +
+          '</div>' +
+          field('Payment Terms', r.Payment_Terms) +
+          (r.Factoring_Company ? '<div class="field field-grid-full" style="grid-column: 1 / -1;">' +
+            '<div class="field-label">Factoring Company</div>' +
+            '<div class="field-val">' + esc(r.Factoring_Company) + '</div></div>' : '') +
+        '</div>' +
+      '</div>' +
+
+      // Identifiers
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Identifiers</div>' +
+        '<div class="field-grid">' +
+          field('MC Number', r.MC) +
+          field('USDOT', r.USDOT) +
+        '</div>' +
+      '</div>' +
+
+    '</div>' +
+    '<div class="panel-footer">' +
+      '<div class="kbd-hints"><span class="kbd">↑↓</span> Navigate <span class="kbd">Esc</span> Close</div>' +
+      '<div class="actions">' + footerActions + '</div>' +
+    '</div>';
+
+  var panel = document.getElementById('panel');
+  panel.innerHTML = html;
+
+  var prev = document.getElementById('p-prev');
+  var next = document.getElementById('p-next');
+  if (!prev.classList.contains('disabled')) prev.addEventListener('click', function() { navPanel(-1); });
+  if (!next.classList.contains('disabled')) next.addEventListener('click', function() { navPanel(1); });
+  document.getElementById('p-close').addEventListener('click', closePanel);
+  var inv = document.getElementById('p-invoice');
+  if (inv) inv.addEventListener('click', function() { navigateParent('#Page:Load_Details_NEW'); });
+}
+
+function field(label, val) {
+  var has = val !== null && val !== undefined && String(val).trim() !== '';
+  return '<div class="field"><div class="field-label">' + esc(label) + '</div>' +
+    '<div class="field-val' + (has ? '' : ' empty') + '">' + (has ? esc(String(val)) : '—') + '</div></div>';
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function formatAddress(addr) {
+  if (!addr) return '';
+  if (typeof addr === 'string') return addr;
+  var parts = [];
+  if (addr.address_line_1) parts.push(addr.address_line_1);
+  var cs = [];
+  if (addr.district_city)  cs.push(addr.district_city);
+  if (addr.state_province) cs.push(addr.state_province);
+  var csStr = cs.join(', ');
+  if (addr.postal_Code) csStr += (csStr ? ' ' : '') + addr.postal_Code;
+  if (csStr) parts.push(csStr);
+  return parts.join(', ');
+}
+function formatPhone(v) {
+  if (!v) return '';
+  var s = String(v).trim();
+  if (/^\+/.test(s)) return s;
+  var digits = s.replace(/[^\d]/g, '');
+  if (digits.length === 10) return '+1 ' + s;
+  if (digits.length === 11 && digits[0] === '1') return '+' + digits[0] + ' ' + s.replace(/^1[\s-]?/, '');
+  return s;
+}
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function(ch) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+  });
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────
+function exportCsv() {
+  if (!filteredRecords.length) return;
+  var headers = ['Vendor','MC','DOT','Email','Phone','Address','Payment Method','Payment Terms','Factoring Company','Status'];
+  var rows = filteredRecords.map(function(r) {
+    var s = statusMeta(r);
+    var p = paymentMeta(r);
+    return [
+      r.Vendor_Name || '',
+      r.MC || '',
+      r.USDOT || '',
+      r.Email || '',
+      r.Phone_Number || '',
+      formatAddress(r.Address),
+      p.label,
+      r.Payment_Terms || '',
+      r.Factoring_Company || '',
+      s.label
+    ];
+  });
+  var csv = [headers].concat(rows).map(function(row) {
+    return row.map(function(cell) {
+      var s = String(cell);
+      if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }).join(',');
+  }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'vendors_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+})();
+</script>
+</body>
+</html>

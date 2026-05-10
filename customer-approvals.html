@@ -329,7 +329,7 @@ html, body {
     <div id="footer-count">—</div>
   </div>
 
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.2</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.3</div>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -641,6 +641,15 @@ function rowHtml(r, idx) {
   var email = r.Email || '';
   var phone = r.Phone_Number1 || r.Phone_Number || '';
   var addr = formatAddress(r);
+  var submittedAt = parseDate(r.Added_Time);
+  var decidedAt = parseDate(r.Credit_Decision_Date);
+  var dateLine = '';
+  if (decidedAt && (s.key === 'approved' || s.key === 'denied' || s.key === 'expired' || s.key === 'boost')) {
+    var verb = s.key === 'denied' ? 'Denied' : (s.key === 'expired' ? 'Expired' : (s.key === 'boost' ? 'Boost decision' : 'Approved'));
+    dateLine = verb + ' ' + fmtRelative(decidedAt);
+  } else if (submittedAt) {
+    dateLine = 'Submitted ' + fmtRelative(submittedAt);
+  }
 
   var recId = r.ID || '';
   var actionCell = '';
@@ -666,6 +675,7 @@ function rowHtml(r, idx) {
         '<div class="cell-label">Customer</div>' +
         '<div class="cell-val lg">' + esc(r.Customer_Company_Name || '—') + '</div>' +
         (addr ? '<div class="cell-sub">' + esc(addr) + '</div>' : '') +
+        (dateLine ? '<div class="cell-sub" style="color:#aaa;">' + esc(dateLine) + '</div>' : '') +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Contact</div>' +
@@ -767,6 +777,9 @@ function renderPanel() {
             '<div class="field-val lg">' + esc(s.label) + '</div>' +
           '</div>' +
         '</div>' +
+        (parseDate(r.Credit_Decision_Date)
+          ? '<div style="margin-top: 14px;">' + field('Decision Date', fmtDateTime(parseDate(r.Credit_Decision_Date))) + '</div>'
+          : '') +
         (r.Credit_Notes
           ? '<div style="margin-top: 14px;"><div class="field-label" style="margin-bottom: 6px;">Credit Notes</div>' +
             '<div class="note-block">' + esc(r.Credit_Notes) + '</div></div>'
@@ -944,6 +957,20 @@ function fmtDateTime(d) {
   var midnight = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
   return midnight ? fmtDateShort(d) : fmtDateShort(d) + ' · ' + fmtTime(d);
 }
+function fmtRelative(d) {
+  if (!d) return '';
+  var diffMs = Date.now() - d.getTime();
+  var diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1)  return 'just now';
+  if (diffMin < 60) return diffMin + 'm ago';
+  var diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24)  return diffHr + 'h ago';
+  var diffD = Math.floor(diffHr / 24);
+  if (diffD === 1)  return 'yesterday';
+  if (diffD < 7)    return diffD + 'd ago';
+  if (diffD < 30)   return Math.floor(diffD / 7) + 'w ago';
+  return 'on ' + fmtDateShort(d);
+}
 function esc(s) {
   if (s === null || s === undefined) return '';
   return String(s).replace(/[&<>"']/g, function(ch) {
@@ -954,11 +981,13 @@ function esc(s) {
 // ── CSV export ────────────────────────────────────────────────────────────
 function exportCsv() {
   if (!filteredRecords.length) return;
-  var headers = ['Submitted','Status','Customer','Address','POC','Email','Phone','Website','Credit Limit','Credit Notes'];
+  var headers = ['Submitted','Decision Date','Status','Customer','Address','POC','Email','Phone','Website','Credit Limit','Credit Notes'];
   var rows = filteredRecords.map(function(r) {
     var added = parseDate(r.Added_Time);
+    var decided = parseDate(r.Credit_Decision_Date);
     return [
       added ? fmtDateTime(added) : '',
+      decided ? fmtDateTime(decided) : '',
       statusMeta(r).label,
       r.Customer_Company_Name || '',
       formatAddress(r),

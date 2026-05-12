@@ -82,6 +82,18 @@ html, body {
 .flag-explanation { color: #555; font-size: 13px; margin-top: 2px; }
 .flag-data { color: #999; font-size: 11px; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
+.section h2 { font-size: 16px; margin-bottom: 12px; color: #272727; letter-spacing: -0.1px; }
+.section .empty { color: #999; font-size: 13px; }
+.timeline-row {
+  padding: 10px 0; border-top: 1px solid #f0efe9;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.timeline-row:first-child { border-top: none; padding-top: 0; }
+.timeline-row .title { font-weight: 600; color: #272727; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.timeline-row .sub { color: #666; font-size: 13px; }
+.auth-revoked { color: #b00020; font-weight: 600; }
+.auth-active  { color: #0a7a2a; font-weight: 600; }
+
 .footer-version {
   text-align: right; font-size: 10px; color: #bbb; padding: 10px 8px 0;
 }
@@ -95,7 +107,7 @@ html, body {
   </div>
   <div id="risk-strip" class="card"><span class="placeholder">Risk summary</span></div>
   <div id="risk-flags" class="card"><span class="placeholder">Risk flags</span></div>
-  <div id="authority-history" class="card"><span class="placeholder">Authority history</span></div>
+  <div id="authority-history" class="card section"><span class="placeholder">Authority history</span></div>
   <div id="insurance-history" class="card"><span class="placeholder">Insurance history</span></div>
   <div id="crash-history" class="card"><span class="placeholder">Crash history</span></div>
   <div id="operations" class="card"><span class="placeholder">Operations and safety</span></div>
@@ -106,7 +118,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.3</div>
+  <div class="footer-version">v2026-05-11.4</div>
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -188,7 +200,35 @@ function renderProfile(payload) {
   renderHero(payload);
   renderRiskStrip(payload);
   renderRiskFlags(payload);
+  renderAuthorityHistory(payload);
   // Other section renderers called from subsequent tasks
+}
+
+function renderAuthorityHistory(p) {
+  var container = document.getElementById('authority-history');
+  container.classList.add('section');
+  var hist = (p.carrierok || {}).authority_history || [];
+  if (!hist.length) {
+    container.innerHTML = '<h2>Authority History</h2><div class="empty">No authority history available.</div>';
+    return;
+  }
+  var sorted = hist.slice().sort(function(a, b) {
+    return (a.original_served_date || '') < (b.original_served_date || '') ? 1 : -1;
+  });
+  var html = '<h2>Authority History</h2>';
+  sorted.forEach(function(a) {
+    var dispo = a.dispensation_action_desc
+      ? '<span class="auth-revoked">' + esc(a.dispensation_action_desc) +
+        ' on ' + esc(a.dispensation_served_date || '—') + '</span>'
+      : '<span class="auth-active">Active</span>';
+    html += '<div class="timeline-row">' +
+      '<div class="title">' + esc(a.authority_type_desc || 'Authority') + '</div>' +
+      '<div class="sub">' +
+        esc(a.original_action_desc || 'Granted') + ' on ' +
+        esc(a.original_served_date || '—') + ' · ' + dispo +
+      '</div></div>';
+  });
+  container.innerHTML = html;
 }
 
 function renderRiskStrip(p) {

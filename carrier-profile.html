@@ -45,6 +45,43 @@ html, body {
 .pill-info    { background: #d8eaff; color: #0a4a93; }
 .pill-neutral { background: #eee; color: #444; }
 
+.risk-strip-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.tier {
+  padding: 6px 14px; border-radius: 6px; font-weight: 700;
+  font-size: 13px; letter-spacing: 0.3px; text-transform: uppercase;
+}
+.tier-critical { background: #b00020; color: #fff; }
+.tier-high     { background: #e58200; color: #fff; }
+.tier-medium   { background: #c69500; color: #fff; }
+.tier-low      { background: #0a7a2a; color: #fff; }
+.risk-counts { color: #666; font-size: 13px; }
+
+.risk-flags h2 { font-size: 16px; margin-bottom: 12px; color: #272727; letter-spacing: -0.1px; }
+.risk-flags h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+  color: #888; margin: 18px 0 6px; font-weight: 700;
+}
+.risk-flags h3:first-of-type { margin-top: 0; }
+.risk-flags .no-flags { color: #0a7a2a; font-weight: 600; }
+
+.flag-row {
+  display: flex; gap: 12px; padding: 12px 0;
+  border-top: 1px solid #f0efe9;
+}
+.flag-row:first-of-type { border-top: none; padding-top: 4px; }
+.flag-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+.flag-critical .flag-dot { background: #b00020; }
+.flag-high     .flag-dot { background: #e58200; }
+.flag-medium   .flag-dot { background: #c69500; }
+.flag-low      .flag-dot { background: #0a7a2a; }
+.flag-label { font-weight: 600; color: #272727; }
+.flag-sev {
+  font-size: 11px; color: #666; margin-left: 8px;
+  text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600;
+}
+.flag-explanation { color: #555; font-size: 13px; margin-top: 2px; }
+.flag-data { color: #999; font-size: 11px; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
 .footer-version {
   text-align: right; font-size: 10px; color: #bbb; padding: 10px 8px 0;
 }
@@ -56,7 +93,7 @@ html, body {
   <div id="hero" class="card hero">
     <div class="state"><span class="spinner"></span>Loading carrier profile…</div>
   </div>
-  <div id="risk-strip" class="card"><span class="placeholder">Risk summary — populated in later tasks</span></div>
+  <div id="risk-strip" class="card"><span class="placeholder">Risk summary</span></div>
   <div id="risk-flags" class="card"><span class="placeholder">Risk flags</span></div>
   <div id="authority-history" class="card"><span class="placeholder">Authority history</span></div>
   <div id="insurance-history" class="card"><span class="placeholder">Insurance history</span></div>
@@ -69,7 +106,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.2</div>
+  <div class="footer-version">v2026-05-11.3</div>
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -149,7 +186,65 @@ function loadProfile() {
 
 function renderProfile(payload) {
   renderHero(payload);
+  renderRiskStrip(payload);
+  renderRiskFlags(payload);
   // Other section renderers called from subsequent tasks
+}
+
+function renderRiskStrip(p) {
+  var r = p.risk || { tier: 'Low', flags: [] };
+  var counts = countBySeverity(r.flags);
+  document.getElementById('risk-strip').innerHTML =
+    '<div class="risk-strip-row">' +
+      '<span class="tier tier-' + esc((r.tier || 'low').toLowerCase()) + '">' + esc(r.tier || 'Low') + '</span>' +
+      '<span class="risk-counts">' +
+        counts.Critical + ' Critical · ' +
+        counts.High + ' High · ' +
+        counts.Medium + ' Medium' +
+      '</span>' +
+    '</div>';
+}
+
+function renderRiskFlags(p) {
+  var flags = ((p.risk || {}).flags) || [];
+  var container = document.getElementById('risk-flags');
+  container.classList.add('risk-flags');
+  if (!flags.length) {
+    container.innerHTML = '<div class="no-flags">No risk flags detected.</div>';
+    return;
+  }
+  var grouped = {};
+  var order = [];
+  flags.forEach(function(f) {
+    if (!grouped[f.category]) { grouped[f.category] = []; order.push(f.category); }
+    grouped[f.category].push(f);
+  });
+  var html = '<h2>Risk Flags</h2>';
+  order.forEach(function(cat) {
+    html += '<h3>' + esc(cat) + '</h3>';
+    grouped[cat].forEach(function(f) { html += renderFlagRow(f); });
+  });
+  container.innerHTML = html;
+}
+
+function renderFlagRow(f) {
+  var sev = (f.severity || 'low').toLowerCase();
+  return '<div class="flag-row flag-' + esc(sev) + '">' +
+    '<span class="flag-dot"></span>' +
+    '<div style="flex:1;">' +
+      '<span class="flag-label">' + esc(f.label) + '</span>' +
+      '<span class="flag-sev">' + esc(f.severity) + '</span>' +
+      (f.explanation ? '<div class="flag-explanation">' + esc(f.explanation) + '</div>' : '') +
+      (f.data_point ? '<div class="flag-data">' + esc(f.data_point) + '</div>' : '') +
+    '</div></div>';
+}
+
+function countBySeverity(flags) {
+  var c = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  (flags || []).forEach(function(f) {
+    if (c[f.severity] !== undefined) c[f.severity] += 1;
+  });
+  return c;
 }
 
 function renderHero(p) {

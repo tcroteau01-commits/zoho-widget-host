@@ -240,7 +240,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.11</div>
+  <div class="footer-version">v2026-05-11.12</div>
 </div>
 
 <!-- NOA / LOR Management Modal -->
@@ -281,6 +281,24 @@ window.addEventListener('load', function() {
   var u = new URL(window.location.href);
   vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
   profileAction = u.searchParams.get('Modal') || u.searchParams.get('action') || '';
+  // localStorage bridge - both widgets are same origin, so View Vendors /
+  // Carrier Onboarding can stash the target here just before navigating,
+  // and we read it here on load. Works around Creator not forwarding hash
+  // params into widget iframes.
+  if (!vendorId) {
+    try {
+      var stored = localStorage.getItem('carrierProfileTarget');
+      if (stored) {
+        var t = JSON.parse(stored);
+        if (t && t.ts && (Date.now() - t.ts) < 30000) {
+          vendorId = t.Vendor_ID || vendorId;
+          profileAction = t.Modal || profileAction;
+          console.log('[CarrierProfile] Loaded target from localStorage:', t);
+        }
+        localStorage.removeItem('carrierProfileTarget');
+      }
+    } catch (e) { console.warn('[CarrierProfile] localStorage read failed', e); }
+  }
   bootApp();
 });
 

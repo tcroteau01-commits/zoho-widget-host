@@ -137,6 +137,85 @@ html, body {
 .oos-carrier.below { color: #0a7a2a; }
 .oos-natl { color: #888; font-size: 12px; }
 
+.signal-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-top: 1px solid #f0efe9; font-size: 13px;
+}
+.signal-row:first-of-type { border-top: none; padding-top: 0; }
+.signal-label { color: #444; }
+.signal-value { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.signal-icon { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.signal-good { color: #0a7a2a; }
+.signal-good .signal-icon { background: #ddf7e3; color: #0a7a2a; }
+.signal-bad  { color: #b00020; }
+.signal-bad .signal-icon { background: #fde2e1; color: #b00020; }
+.signal-neutral { color: #888; }
+.signal-neutral .signal-icon { background: #eee; color: #888; }
+
+.kv-row {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 9px 0; border-top: 1px solid #f0efe9; font-size: 13px;
+}
+.kv-row:first-of-type { border-top: none; padding-top: 0; }
+.kv-label { color: #888; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+.kv-value { color: #272727; font-weight: 600; text-align: right; }
+.kv-value .pill { margin-left: 4px; }
+.kv-notes { color: #555; font-style: italic; }
+
+.action-bar {
+  display: flex; gap: 10px; justify-content: flex-end; align-items: center;
+  flex-wrap: wrap;
+}
+.btn {
+  padding: 10px 18px; border-radius: 8px; border: 1px solid transparent;
+  font-weight: 600; font-size: 14px; cursor: pointer; font-family: inherit;
+  transition: all 0.15s;
+}
+.btn-primary { background: #272727; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #1a1a1a; }
+.btn-secondary { background: #fff; color: #272727; border-color: #d8d8d8; }
+.btn-secondary:hover:not(:disabled) { background: #fafaf6; border-color: #b8b8b8; }
+.btn:disabled, .btn-disabled { background: #f5f3eb; color: #aaa; cursor: not-allowed; border-color: transparent; }
+.btn-gate-msg { font-size: 12px; color: #888; margin-right: 4px; }
+
+.modal { position: fixed; inset: 0; z-index: 1000; display: none; }
+.modal.show { display: block; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.4); }
+.modal-body {
+  position: relative; max-width: 560px; margin: 60px auto;
+  background: #fff; padding: 24px; border-radius: 12px;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+}
+.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.modal-head h2 { margin: 0; font-size: 18px; color: #272727; }
+.modal-close { background: none; border: none; font-size: 28px; cursor: pointer; color: #888; line-height: 1; padding: 0 4px; }
+.modal-close:hover { color: #272727; }
+.modal-sub { color: #666; font-size: 13px; margin-bottom: 16px; }
+
+.noa-picker { display: flex; gap: 8px; margin-bottom: 16px; }
+.noa-pick {
+  flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #d8d8d8;
+  background: #fff; cursor: pointer; text-align: center; font-weight: 600;
+  font-family: inherit; font-size: 14px; transition: all 0.15s;
+}
+.noa-pick:hover { border-color: #b8b8b8; }
+.noa-pick.active { background: #272727; color: #fff; border-color: #272727; }
+
+.noa-fields label { display: block; margin: 10px 0; font-size: 13px; color: #444; font-weight: 600; }
+.noa-fields input, .noa-fields textarea, .noa-fields select {
+  display: block; width: 100%; padding: 9px 11px; margin-top: 4px;
+  border: 1px solid #d8d8d8; border-radius: 6px; font-size: 13px;
+  font-family: inherit; background: #fafaf6;
+}
+.noa-fields textarea { min-height: 80px; resize: vertical; }
+.noa-fields input:focus, .noa-fields textarea:focus, .noa-fields select:focus {
+  border-color: #272727; background: #fff; outline: none;
+}
+.noa-submit-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.noa-error { color: #b00020; font-size: 13px; margin-top: 8px; }
+.noa-success { color: #0a7a2a; font-size: 13px; margin-top: 8px; font-weight: 600; }
+
 .footer-version {
   text-align: right; font-size: 10px; color: #bbb; padding: 10px 8px 0;
 }
@@ -154,14 +233,36 @@ html, body {
   <div id="insurance-history" class="card section"><span class="placeholder">Insurance history</span></div>
   <div id="crash-history" class="card section"><span class="placeholder">Crash history</span></div>
   <div id="operations" class="card section"><span class="placeholder">Operations and safety</span></div>
-  <div id="identity-signals" class="card"><span class="placeholder">Identity and signup signals</span></div>
-  <div id="vendor-internal" class="card"><span class="placeholder">Internal vendor data</span></div>
-  <div id="noa-history" class="card"><span class="placeholder">NOA / LOR history</span></div>
-  <div id="recent-submissions" class="card"><span class="placeholder">Recent submissions</span></div>
+  <div id="identity-signals" class="card section"><span class="placeholder">Identity and signup signals</span></div>
+  <div id="vendor-internal" class="card section"><span class="placeholder">Internal vendor data</span></div>
+  <div id="noa-history" class="card section"><span class="placeholder">NOA / LOR history</span></div>
+  <div id="recent-submissions" class="card section"><span class="placeholder">Recent submissions</span></div>
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.7</div>
+  <div class="footer-version">v2026-05-11.8</div>
+</div>
+
+<!-- NOA / LOR Management Modal -->
+<div class="modal" id="noa-modal" aria-hidden="true">
+  <div class="modal-backdrop" id="noa-backdrop"></div>
+  <div class="modal-body" role="dialog" aria-modal="true" aria-labelledby="noa-title">
+    <div class="modal-head">
+      <h2 id="noa-title">NOA / LOR Management</h2>
+      <button class="modal-close" id="noa-close" aria-label="Close">×</button>
+    </div>
+    <div class="modal-sub">Submit a Notice of Assignment update or request a Letter of Release. OperFi will review.</div>
+    <div class="noa-picker">
+      <button class="noa-pick" id="noa-pick-update" type="button">Update NOA</button>
+      <button class="noa-pick" id="noa-pick-lor" type="button">Request LOR</button>
+    </div>
+    <div id="noa-fields" class="noa-fields"></div>
+    <div id="noa-feedback"></div>
+    <div class="noa-submit-row">
+      <button class="btn btn-secondary" id="noa-cancel" type="button">Cancel</button>
+      <button class="btn btn-primary" id="noa-submit" type="button">Submit</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -247,7 +348,324 @@ function renderProfile(payload) {
   renderInsuranceHistory(payload);
   renderCrashHistory(payload);
   renderOperations(payload);
-  // Other section renderers called from subsequent tasks
+  renderIdentitySignals(payload);
+  renderVendorInternal(payload);
+  renderNoaHistory(payload);
+  renderRecentSubmissions(payload);
+  renderActionBar(payload);
+  if (profileAction === 'noa') openNoaModal();
+}
+
+function renderIdentitySignals(p) {
+  var container = document.getElementById('identity-signals');
+  container.classList.add('section');
+  var c = p.carrierok || {};
+  var ipqs = p.ipqs || {};
+  var rfList = c.risk_factors || [];
+  var rf = rfList.length ? rfList[0] : {};
+
+  var rows = [
+    signalRow('VPN at Signup', ipqs.vpn_detected, true),
+    signalRow('VOIP Phone', ipqs.voip_number, true),
+    signalRow('Tor Detected', ipqs.tor_detected, true),
+    signalRow('Disposable Email', ipqs.email_disposable, true),
+    signalRow('Spam Trap Email', ipqs.spam_trap_flag && ipqs.spam_trap_flag !== 'none', true),
+    signalRow('Phone Shared With Other Carriers', rf.indicator_network_graph_phone, true),
+    signalRow('Address Shared With Other Carriers', rf.indicator_network_graph_address, true),
+    signalRow('Virtual Mailing Address', rf.virtual_physical_mailing_address, true),
+    signalRow('Primary Contact Info Missing', rf.primary_contact_info_missing, true),
+    signalRow('Phone Area Code Matches State', rf.phone_number_area_codes_match_address_state, false),
+  ];
+  var ipLoc = ipqs.ip_location;
+  var ipBad = ipLoc && !String(ipLoc).rstrip ? !/US$/.test(String(ipLoc).trim()) : false;
+  if (ipLoc) {
+    rows.push(
+      '<div class="signal-row">' +
+        '<span class="signal-label">Signup IP Location</span>' +
+        '<span class="signal-value ' + (ipBad ? 'signal-bad' : 'signal-good') + '">' +
+          '<span class="signal-icon">' + (ipBad ? '×' : '✓') + '</span>' + esc(ipLoc) +
+        '</span>' +
+      '</div>'
+    );
+  }
+  container.innerHTML = '<h2>Identity Signals</h2>' + rows.join('');
+}
+
+function renderVendorInternal(p) {
+  var container = document.getElementById('vendor-internal');
+  container.classList.add('section');
+  var v = p.vendor || {};
+  var fc = v.Factoring_Company;
+  var fcName = fc && typeof fc === 'object' ? (fc.display_value || fc.zc_display_value || fc.ID) : fc;
+  var fcId = fc && typeof fc === 'object' ? fc.ID : null;
+  var factorBadge = '';
+  if (fc) {
+    var fs = (v.Factor_Status || '').toLowerCase();
+    if (fs === 'denied') factorBadge = '<span class="pill pill-danger">Not Approved</span>';
+    else if (fs === 'pending') factorBadge = '<span class="pill pill-warning">Pending</span>';
+    else if (fs === 'approved') factorBadge = '<span class="pill pill-success">Approved</span>';
+  }
+  var dnu = v.DO_NOT_USE === true || v.DO_NOT_USE === 'true';
+  var rows = [
+    kvRow('Vendor Status', '<span class="pill pill-' + vendorStatusClass(v) + '">' + esc(vendorStatusLabel(v)) + '</span>'),
+    kvRow('Do Not Use', dnu ? '<span class="pill pill-danger">Yes</span>' : '<span style="color:#0a7a2a;">No</span>'),
+    kvRow('Payment Terms', esc(v.Payment_Terms || '—')),
+    kvRow('Factoring Company', fc ? (esc(fcName || '—') + ' ' + factorBadge) : '<span style="color:#999;">None</span>'),
+  ];
+  if (v.Internal_Notes) {
+    rows.push('<div class="kv-row"><span class="kv-label">Internal Notes</span><span class="kv-value kv-notes">' + esc(v.Internal_Notes) + '</span></div>');
+  }
+  container.innerHTML = '<h2>Internal Vendor Data</h2>' + rows.join('');
+}
+
+function kvRow(label, valueHtml) {
+  return '<div class="kv-row">' +
+    '<span class="kv-label">' + esc(label) + '</span>' +
+    '<span class="kv-value">' + valueHtml + '</span>' +
+  '</div>';
+}
+
+function renderNoaHistory(p) {
+  var container = document.getElementById('noa-history');
+  container.classList.add('section');
+  var hist = (p.noa_history || []).slice().sort(function(a, b) {
+    return (a.Added_Time || '') < (b.Added_Time || '') ? 1 : -1;
+  });
+  if (!hist.length) {
+    container.innerHTML = '<h2>NOA / LOR History</h2><div class="empty">No NOA or LOR updates on record.</div>';
+    return;
+  }
+  var rows = hist.map(function(r) {
+    var date = (r.Added_Time || '').slice(0, 10) || '—';
+    var type = r.Update_Type || r.display_value || '—';
+    var status = r.Status || r.Approval_Status || '';
+    var statusPill = '';
+    var sl = status.toLowerCase();
+    if (sl === 'approved' || sl === 'completed') statusPill = '<span class="pill pill-success">' + esc(status) + '</span>';
+    else if (sl === 'denied' || sl === 'rejected') statusPill = '<span class="pill pill-danger">' + esc(status) + '</span>';
+    else if (sl === 'pending') statusPill = '<span class="pill pill-warning">Pending</span>';
+    else if (status) statusPill = '<span class="pill pill-neutral">' + esc(status) + '</span>';
+    return '<tr><td>' + esc(date) + '</td><td>' + esc(type) + '</td><td>' + statusPill + '</td></tr>';
+  }).join('');
+  container.innerHTML =
+    '<h2>NOA / LOR History (' + hist.length + ')</h2>' +
+    '<table class="data-table">' +
+      '<thead><tr><th>Date</th><th>Type</th><th>Status</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>';
+}
+
+function renderRecentSubmissions(p) {
+  var container = document.getElementById('recent-submissions');
+  container.classList.add('section');
+  var subs = (p.submissions || []).slice(0, 15);
+  if (!subs.length) {
+    container.innerHTML = '<h2>Recent Submissions</h2><div class="empty">No invoice submissions for this carrier yet.</div>';
+    return;
+  }
+  var rows = subs.map(function(s) {
+    var date = (s.Added_Time || '').slice(0, 10) || '—';
+    var loadRef = s.Customer_Load_No || s.Load_Number || s.Reference_Number || s.ID || '—';
+    var amount = s.Invoice_Amount || s.Amount || '';
+    var amountText = amount ? '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+    var status = s.Status || s.Approval_Status || '—';
+    var statusPill;
+    var sl = status.toLowerCase();
+    if (sl.indexOf('approved') !== -1 || sl.indexOf('purchased') !== -1) statusPill = '<span class="pill pill-success">' + esc(status) + '</span>';
+    else if (sl.indexOf('denied') !== -1 || sl.indexOf('rejected') !== -1) statusPill = '<span class="pill pill-danger">' + esc(status) + '</span>';
+    else if (sl.indexOf('pending') !== -1 || sl.indexOf('processing') !== -1) statusPill = '<span class="pill pill-warning">' + esc(status) + '</span>';
+    else statusPill = '<span class="pill pill-neutral">' + esc(status) + '</span>';
+    return '<tr><td>' + esc(date) + '</td><td>' + esc(loadRef) + '</td><td>' + esc(amountText) + '</td><td>' + statusPill + '</td></tr>';
+  }).join('');
+  var title = (p.submissions || []).length > 15
+    ? 'Recent Submissions (showing 15 of ' + p.submissions.length + ')'
+    : 'Recent Submissions (' + subs.length + ')';
+  container.innerHTML =
+    '<h2>' + esc(title) + '</h2>' +
+    '<table class="data-table">' +
+      '<thead><tr><th>Date</th><th>Load Ref</th><th>Amount</th><th>Status</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>';
+}
+
+function renderActionBar(p) {
+  var v = p.vendor || {};
+  var dnu = v.DO_NOT_USE === true || v.DO_NOT_USE === 'true';
+  var approved = v.Vendor_Status === 'Approved';
+  var canInvoice = approved && !dnu;
+  var gateMsg = '';
+  if (!canInvoice) {
+    gateMsg = dnu ? 'Vendor is Do Not Use'
+                 : (v.Vendor_Status ? 'Vendor must be Approved (currently ' + v.Vendor_Status + ')'
+                                    : 'Vendor must be Approved');
+  }
+  var invoiceBtn = canInvoice
+    ? '<button class="btn btn-primary" id="btn-invoice">Submit Invoice</button>'
+    : '<button class="btn btn-disabled" disabled title="' + esc(gateMsg) + '">Submit Invoice</button>';
+  var html =
+    '<div class="card action-bar">' +
+      (gateMsg ? '<span class="btn-gate-msg">' + esc(gateMsg) + '</span>' : '') +
+      '<button class="btn btn-secondary" id="btn-noa">NOA / LOR Management</button>' +
+      invoiceBtn +
+    '</div>';
+  document.getElementById('action-bar').innerHTML = html;
+  var noaBtn = document.getElementById('btn-noa');
+  if (noaBtn) noaBtn.addEventListener('click', function() { openNoaModal(); });
+  if (canInvoice) {
+    var invBtn = document.getElementById('btn-invoice');
+    if (invBtn) invBtn.addEventListener('click', function() {
+      navigateParent('#Page:Load_Details_NEW?vendor_id=' + encodeURIComponent(vendorId));
+    });
+  }
+}
+
+var noaAction = 'update_noa';
+var noaBound = false;
+var noaSubmitting = false;
+
+function bindNoaModalOnce() {
+  if (noaBound) return;
+  noaBound = true;
+  document.getElementById('noa-close').addEventListener('click', closeNoaModal);
+  document.getElementById('noa-backdrop').addEventListener('click', closeNoaModal);
+  document.getElementById('noa-cancel').addEventListener('click', closeNoaModal);
+  document.getElementById('noa-pick-update').addEventListener('click', function() { setNoaAction('update_noa'); });
+  document.getElementById('noa-pick-lor').addEventListener('click', function() { setNoaAction('request_lor'); });
+  document.getElementById('noa-submit').addEventListener('click', submitNoaForm);
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('noa-modal').classList.contains('show')) {
+      closeNoaModal();
+    }
+  });
+}
+
+function openNoaModal() {
+  bindNoaModalOnce();
+  document.getElementById('noa-modal').classList.add('show');
+  document.getElementById('noa-modal').setAttribute('aria-hidden', 'false');
+  setNoaAction(noaAction || 'update_noa');
+  document.getElementById('noa-feedback').innerHTML = '';
+}
+
+function closeNoaModal() {
+  document.getElementById('noa-modal').classList.remove('show');
+  document.getElementById('noa-modal').setAttribute('aria-hidden', 'true');
+}
+
+function setNoaAction(action) {
+  noaAction = action;
+  document.getElementById('noa-pick-update').classList.toggle('active', action === 'update_noa');
+  document.getElementById('noa-pick-lor').classList.toggle('active', action === 'request_lor');
+  var fields = document.getElementById('noa-fields');
+  if (action === 'update_noa') {
+    fields.innerHTML =
+      '<label>New Factor Name<input id="noa-new-factor" type="text" placeholder="e.g. Apex Capital" /></label>' +
+      '<label>New Factor Email<input id="noa-new-factor-email" type="email" placeholder="factor@example.com" /></label>' +
+      '<label>Effective Date<input id="noa-effective-date" type="date" /></label>' +
+      '<label>Notes<textarea id="noa-notes" placeholder="Anything OperFi should know about this NOA update"></textarea></label>';
+  } else {
+    var currentFactor = '';
+    var fc = profilePayload && profilePayload.vendor && profilePayload.vendor.Factoring_Company;
+    if (fc) {
+      currentFactor = (typeof fc === 'object') ? (fc.display_value || fc.zc_display_value || '') : String(fc);
+    }
+    fields.innerHTML =
+      '<label>Current Factor<input id="lor-current-factor" type="text" value="' + esc(currentFactor) + '" /></label>' +
+      '<label>Reason for Request<textarea id="lor-reason" placeholder="Why is the carrier requesting a Letter of Release?"></textarea></label>';
+  }
+}
+
+function submitNoaForm() {
+  if (noaSubmitting) return;
+  var feedback = document.getElementById('noa-feedback');
+  feedback.innerHTML = '';
+  var data = {
+    Vendor: vendorId,
+    Update_Type: (noaAction === 'update_noa') ? 'Update NOA' : 'Request LOR'
+  };
+  if (noaAction === 'update_noa') {
+    var nf = (document.getElementById('noa-new-factor') || {}).value || '';
+    var nfe = (document.getElementById('noa-new-factor-email') || {}).value || '';
+    if (!nf.trim()) { feedback.innerHTML = '<div class="noa-error">New Factor Name is required.</div>'; return; }
+    data.New_Factor_Name = nf.trim();
+    data.New_Factor_Email = nfe.trim();
+    data.Effective_Date = (document.getElementById('noa-effective-date') || {}).value || '';
+    data.Notes = (document.getElementById('noa-notes') || {}).value || '';
+  } else {
+    var reason = (document.getElementById('lor-reason') || {}).value || '';
+    if (!reason.trim()) { feedback.innerHTML = '<div class="noa-error">Reason is required.</div>'; return; }
+    data.Current_Factor = (document.getElementById('lor-current-factor') || {}).value || '';
+    data.Reason = reason.trim();
+  }
+  noaSubmitting = true;
+  document.getElementById('noa-submit').disabled = true;
+  feedback.innerHTML = '<div style="color:#888;font-size:13px;">Submitting…</div>';
+
+  resolveBrokerContactId().then(function(contactId) {
+    if (contactId) data.Contact_Name = contactId;
+    return ZOHO.CREATOR.DATA.addRecords({
+      app_link_name: 'funding-portal',
+      form_name: 'NOA_LOR_Updates',
+      payload: { data: data }
+    });
+  }).then(function(res) {
+    noaSubmitting = false;
+    document.getElementById('noa-submit').disabled = false;
+    if (res && (res.code === 3000 || (res.result && res.result.length))) {
+      feedback.innerHTML = '<div class="noa-success">Submitted. OperFi will review.</div>';
+      setTimeout(function() { closeNoaModal(); loadProfile(); }, 800);
+    } else {
+      feedback.innerHTML = '<div class="noa-error">Submit failed. ' + esc(JSON.stringify(res || {})) + '</div>';
+    }
+  }).catch(function(err) {
+    noaSubmitting = false;
+    document.getElementById('noa-submit').disabled = false;
+    console.error('[CarrierProfile] NOA submit error', err);
+    feedback.innerHTML = '<div class="noa-error">Submit error: ' + esc(err && err.message ? err.message : String(err)) + '</div>';
+  });
+}
+
+function resolveBrokerContactId() {
+  if (!ZOHO.CREATOR.DATA || !ZOHO.CREATOR.DATA.getRecords) return Promise.resolve(null);
+  return ZOHO.CREATOR.DATA.getRecords({
+    app_link_name: 'funding-portal',
+    report_name: 'Authorized_Users',
+    page: 1, pageSize: 200
+  }).then(function(res) {
+    var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
+    var me = data.find(function(c) {
+      return (c.Email || '').toLowerCase() === brokerEmail.toLowerCase();
+    });
+    return me ? me.ID : null;
+  }).catch(function() { return null; });
+}
+
+function navigateParent(hash) {
+  var sp = new URLSearchParams(window.location.search);
+  var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+  var url = origin.replace(/\/$/, '') + '/' + hash;
+  try { window.top.location.href = url; return; } catch (e) {}
+  try { window.parent.location.href = url; return; } catch (e) {}
+  try { window.open(url, '_top'); } catch (e) {}
+}
+
+function signalRow(label, value, badWhenTrue) {
+  var hasValue = value !== undefined && value !== null && value !== '';
+  var cls, icon, text;
+  if (!hasValue) { cls = 'signal-neutral'; icon = '?'; text = 'Unknown'; }
+  else {
+    var truthy = value === true || value === 'true' || value === 1;
+    var isBad = badWhenTrue ? truthy : !truthy;
+    cls = isBad ? 'signal-bad' : 'signal-good';
+    icon = isBad ? '×' : '✓';
+    text = truthy ? 'Yes' : 'No';
+  }
+  return '<div class="signal-row">' +
+    '<span class="signal-label">' + esc(label) + '</span>' +
+    '<span class="signal-value ' + cls + '">' +
+      '<span class="signal-icon">' + icon + '</span>' + text +
+    '</span>' +
+  '</div>';
 }
 
 function renderOperations(p) {

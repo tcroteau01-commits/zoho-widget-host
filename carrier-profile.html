@@ -240,7 +240,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.9</div>
+  <div class="footer-version">v2026-05-11.10</div>
 </div>
 
 <!-- NOA / LOR Management Modal -->
@@ -282,7 +282,9 @@ window.addEventListener('load', function() {
   // Accept either casing - Creator page variable is "Vendor_ID" but earlier
   // nav code used "vendor_id". Try both so either wiring works.
   vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
-  profileAction = u.searchParams.get('action') || u.searchParams.get('Action') || '';
+  // "action" is a Zoho-reserved page variable name, so the Creator page
+  // declares "Modal" instead. Accept both for backward compatibility.
+  profileAction = u.searchParams.get('Modal') || u.searchParams.get('action') || '';
   bootApp();
 });
 

@@ -172,8 +172,28 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   padding: 18px 22px; border-bottom: 1px solid #f0efe9;
   gap: 12px; flex-wrap: wrap;
 }
-.history-search { display: flex; gap: 8px; align-items: center; }
+.history-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .history-search .input { padding: 7px 11px; font-size: 12px; width: 220px; }
+.history-search select.input { width: auto; min-width: 130px; }
+.history-search input[type="date"].input { width: 140px; }
+.history-custom-range { display: none; gap: 6px; align-items: center; }
+.history-custom-range.show { display: flex; }
+.history-custom-range span { font-size: 11px; color: #888; }
+
+.history-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 22px; border-top: 1px solid #f0efe9; background: #fafaf6;
+  font-size: 12px; color: #666;
+}
+.history-footer.hidden { display: none; }
+.history-pager { display: flex; gap: 6px; align-items: center; }
+.history-pager button {
+  padding: 6px 12px; font-size: 12px; border: 1px solid #e5e3d8;
+  background: #fff; color: #444; border-radius: 4px; cursor: pointer;
+}
+.history-pager button:hover:not(:disabled) { background: #f5f3eb; border-color: #d4d2c5; }
+.history-pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+.history-pager .page-info { padding: 0 8px; font-weight: 600; color: #272727; }
 
 .history-table { width: 100%; border-collapse: collapse; }
 .history-table th {
@@ -437,15 +457,31 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <div class="card-sub">Track which carriers have completed your sent links</div>
       </div>
       <div class="history-search">
+        <select class="input" id="history-date-filter">
+          <option value="all">All time</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d" selected>Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="custom">Custom range</option>
+        </select>
+        <div class="history-custom-range" id="history-custom-range">
+          <input class="input" id="history-date-from" type="date" />
+          <span>to</span>
+          <input class="input" id="history-date-to" type="date" />
+        </div>
         <input class="input" id="history-search" type="text" placeholder="Search by carrier or email..." />
       </div>
     </div>
     <div id="history-body">
       <div class="state"><div class="spinner"></div><div>Loading recently sent links…</div></div>
     </div>
+    <div class="history-footer hidden" id="history-footer">
+      <div id="history-summary"></div>
+      <div class="history-pager" id="history-pager"></div>
+    </div>
   </div>
 
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.1</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-11.1</div>
 </div>
 
 <!-- Send-link modal -->
@@ -509,6 +545,11 @@ var brokerContactId = null;        // Current broker's own Contact ID (used for 
 var lookupResult  = null;          // { carrier, existing_vendor } from last successful lookup
 var historyRecords = [];           // Combined records from both reports
 var historySearch = '';
+var historyDateFilter = '30d';     // '7d' | '30d' | '90d' | 'all' | 'custom'
+var historyDateFrom = '';          // YYYY-MM-DD when filter is 'custom'
+var historyDateTo = '';            // YYYY-MM-DD when filter is 'custom'
+var historyPage = 1;
+var HISTORY_PAGE_SIZE = 20;
 var currentModalType = null;       // 'full' or 'pay'
 
 // ── Boot ──────────────────────────────────────────────────────────────────
@@ -576,6 +617,26 @@ function bindGlobalUI() {
 
   document.getElementById('history-search').addEventListener('input', function(e) {
     historySearch = e.target.value.toLowerCase().trim();
+    historyPage = 1;
+    renderHistory();
+  });
+
+  document.getElementById('history-date-filter').addEventListener('change', function(e) {
+    historyDateFilter = e.target.value;
+    document.getElementById('history-custom-range').classList.toggle('show', historyDateFilter === 'custom');
+    historyPage = 1;
+    renderHistory();
+  });
+
+  document.getElementById('history-date-from').addEventListener('change', function(e) {
+    historyDateFrom = e.target.value;
+    historyPage = 1;
+    renderHistory();
+  });
+
+  document.getElementById('history-date-to').addEventListener('change', function(e) {
+    historyDateTo = e.target.value;
+    historyPage = 1;
     renderHistory();
   });
 
@@ -786,8 +847,33 @@ function fetchReport(reportName, type) {
     });
 }
 
+function historyDateBounds() {
+  var now = new Date();
+  var from = null, to = null;
+  if (historyDateFilter === '7d') {
+    from = new Date(now.getTime() - 7 * 86400000);
+  } else if (historyDateFilter === '30d') {
+    from = new Date(now.getTime() - 30 * 86400000);
+  } else if (historyDateFilter === '90d') {
+    from = new Date(now.getTime() - 90 * 86400000);
+  } else if (historyDateFilter === 'custom') {
+    if (historyDateFrom) from = new Date(historyDateFrom + 'T00:00:00');
+    if (historyDateTo)   to   = new Date(historyDateTo + 'T23:59:59');
+  }
+  return { from: from, to: to };
+}
+
 function renderHistory() {
-  var filtered = historyRecords;
+  var bounds = historyDateBounds();
+  var filtered = historyRecords.filter(function(r) {
+    if (!bounds.from && !bounds.to) return true;
+    var when = parseDate(r.Added_Time);
+    if (!when) return false;
+    if (bounds.from && when < bounds.from) return false;
+    if (bounds.to && when > bounds.to) return false;
+    return true;
+  });
+
   if (historySearch) {
     filtered = filtered.filter(function(r) {
       var hay = [
@@ -804,11 +890,19 @@ function renderHistory() {
   if (!filtered.length) {
     var msg = historyRecords.length === 0
       ? 'No links sent yet. Use one of the cards above to send your first onboarding link.'
-      : 'No links match your search.';
+      : 'No links match your filters.';
     document.getElementById('history-body').innerHTML =
       '<table class="history-table"><tbody><tr class="empty-row"><td>' + esc(msg) + '</td></tr></tbody></table>';
+    document.getElementById('history-footer').classList.add('hidden');
     return;
   }
+
+  var totalPages = Math.max(1, Math.ceil(filtered.length / HISTORY_PAGE_SIZE));
+  if (historyPage > totalPages) historyPage = totalPages;
+  if (historyPage < 1) historyPage = 1;
+  var startIdx = (historyPage - 1) * HISTORY_PAGE_SIZE;
+  var endIdx = Math.min(startIdx + HISTORY_PAGE_SIZE, filtered.length);
+  var pageRecords = filtered.slice(startIdx, endIdx);
 
   var html =
     '<table class="history-table">' +
@@ -821,7 +915,7 @@ function renderHistory() {
         '<th>Status</th>' +
       '</tr></thead>' +
       '<tbody>';
-  filtered.forEach(function(r) {
+  pageRecords.forEach(function(r) {
     var typeLabel = r._type === 'full' ? 'Full Onboarding' : 'Pay Link';
     var typeClass = r._type === 'full' ? 'full' : 'pay';
     var when = parseDate(r.Added_Time);
@@ -853,6 +947,19 @@ function renderHistory() {
   });
   html += '</tbody></table>';
   document.getElementById('history-body').innerHTML = html;
+
+  var footer = document.getElementById('history-footer');
+  footer.classList.remove('hidden');
+  document.getElementById('history-summary').textContent =
+    'Showing ' + (startIdx + 1) + '–' + endIdx + ' of ' + filtered.length;
+  document.getElementById('history-pager').innerHTML =
+    '<button id="history-prev"' + (historyPage <= 1 ? ' disabled' : '') + '>Prev</button>' +
+    '<span class="page-info">Page ' + historyPage + ' of ' + totalPages + '</span>' +
+    '<button id="history-next"' + (historyPage >= totalPages ? ' disabled' : '') + '>Next</button>';
+  var prev = document.getElementById('history-prev');
+  var next = document.getElementById('history-next');
+  if (prev) prev.addEventListener('click', function() { historyPage -= 1; renderHistory(); });
+  if (next) next.addEventListener('click', function() { historyPage += 1; renderHistory(); });
 }
 
 function contactDisplay(c) {

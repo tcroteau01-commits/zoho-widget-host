@@ -762,7 +762,7 @@ function renderLookupResult(payload, dotQueried) {
       '</div>';
     document.getElementById('lookup-view-vendor').addEventListener('click', function() {
       if (existing && existing.ID) {
-        navigateParent('#Page:Carrier_Profile?vendor_id=' + encodeURIComponent(existing.ID));
+        navigateParent('#Page:Carrier_Profile?Vendor_ID=' + encodeURIComponent(existing.ID));
       } else {
         navigateParent('#Page:Vendors');
       }

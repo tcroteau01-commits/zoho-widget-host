@@ -688,7 +688,10 @@ function loadVendors() {
 
 function prefillCarrierFromUrl() {
   var prefillId;
-  try { prefillId = new URL(window.location.href).searchParams.get('vendor_id'); } catch (e) { prefillId = null; }
+  try {
+    var sp = new URL(window.location.href).searchParams;
+    prefillId = sp.get('Vendor_ID') || sp.get('vendor_id');
+  } catch (e) { prefillId = null; }
   if (!prefillId) return;
   var match = vendorRecords.find(function(r) { return String(r.ID) === String(prefillId); });
   if (!match) {

@@ -669,15 +669,15 @@ function renderPanel() {
   document.getElementById('p-close').addEventListener('click', closePanel);
   var inv = document.getElementById('p-invoice');
   if (inv && !inv.disabled) inv.addEventListener('click', function() {
-    navigateParent('#Page:Load_Details_NEW?vendor_id=' + encodeURIComponent(r.ID));
+    navigateParent('#Page:Load_Details_NEW?Vendor_ID=' + encodeURIComponent(r.ID));
   });
   var prof = document.getElementById('p-profile');
   if (prof) prof.addEventListener('click', function() {
-    navigateParent('#Page:Carrier_Profile?vendor_id=' + encodeURIComponent(r.ID));
+    navigateParent('#Page:Carrier_Profile?Vendor_ID=' + encodeURIComponent(r.ID));
   });
   var noa = document.getElementById('p-noa');
   if (noa) noa.addEventListener('click', function() {
-    navigateParent('#Page:Carrier_Profile?vendor_id=' + encodeURIComponent(r.ID) + '&action=noa');
+    navigateParent('#Page:Carrier_Profile?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=noa');
   });
 }
 

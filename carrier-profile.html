@@ -240,7 +240,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.8</div>
+  <div class="footer-version">v2026-05-11.9</div>
 </div>
 
 <!-- NOA / LOR Management Modal -->
@@ -279,8 +279,10 @@ var profilePayload = null;
 
 window.addEventListener('load', function() {
   var u = new URL(window.location.href);
-  vendorId = u.searchParams.get('vendor_id') || '';
-  profileAction = u.searchParams.get('action') || '';
+  // Accept either casing - Creator page variable is "Vendor_ID" but earlier
+  // nav code used "vendor_id". Try both so either wiring works.
+  vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
+  profileAction = u.searchParams.get('action') || u.searchParams.get('Action') || '';
   bootApp();
 });
 

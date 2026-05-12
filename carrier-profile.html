@@ -108,7 +108,7 @@ html, body {
   <div id="risk-strip" class="card"><span class="placeholder">Risk summary</span></div>
   <div id="risk-flags" class="card"><span class="placeholder">Risk flags</span></div>
   <div id="authority-history" class="card section"><span class="placeholder">Authority history</span></div>
-  <div id="insurance-history" class="card"><span class="placeholder">Insurance history</span></div>
+  <div id="insurance-history" class="card section"><span class="placeholder">Insurance history</span></div>
   <div id="crash-history" class="card"><span class="placeholder">Crash history</span></div>
   <div id="operations" class="card"><span class="placeholder">Operations and safety</span></div>
   <div id="identity-signals" class="card"><span class="placeholder">Identity and signup signals</span></div>
@@ -118,7 +118,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.4</div>
+  <div class="footer-version">v2026-05-11.5</div>
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -201,7 +201,44 @@ function renderProfile(payload) {
   renderRiskStrip(payload);
   renderRiskFlags(payload);
   renderAuthorityHistory(payload);
+  renderInsuranceHistory(payload);
   // Other section renderers called from subsequent tasks
+}
+
+function renderInsuranceHistory(p) {
+  var container = document.getElementById('insurance-history');
+  container.classList.add('section');
+  var hist = (p.carrierok || {}).insurance_history || [];
+  if (!hist.length) {
+    container.innerHTML = '<h2>Insurance History</h2><div class="empty">No insurance history available.</div>';
+    return;
+  }
+  var sorted = hist.slice().sort(function(a, b) {
+    return (a.effective_date || '') < (b.effective_date || '') ? 1 : -1;
+  });
+  var html = '<h2>Insurance History</h2>';
+  sorted.forEach(function(h) {
+    var method = (h.cancel_method || '').toUpperCase();
+    var statusPill;
+    if (method === 'CANCELLED') {
+      statusPill = '<span class="pill pill-danger">Cancelled</span>';
+    } else if (method === 'REPLACED') {
+      statusPill = '<span class="pill pill-neutral">Replaced</span>';
+    } else {
+      statusPill = '<span class="pill pill-success">Active</span>';
+    }
+    var policyLine = h.policy_number ? 'Policy ' + esc(h.policy_number) + ' · ' : '';
+    var coverage = h.minimum_coverage_amount ? ' · Min coverage $' + esc(h.minimum_coverage_amount) : '';
+    html += '<div class="timeline-row">' +
+      '<div class="title">' + esc(h.insurance_carrier || 'Insurer') + ' ' + statusPill + '</div>' +
+      '<div class="sub">' +
+        policyLine +
+        'Effective ' + esc(h.effective_date || '—') +
+        (h.cancel_effective_date ? ' · Cancelled ' + esc(h.cancel_effective_date) : '') +
+        coverage +
+      '</div></div>';
+  });
+  container.innerHTML = html;
 }
 
 function renderAuthorityHistory(p) {

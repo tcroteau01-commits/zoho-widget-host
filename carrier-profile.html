@@ -108,6 +108,35 @@ html, body {
 .data-table .num-zero { color: #999; }
 .empty-good { color: #0a7a2a; font-weight: 600; }
 
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+@media (max-width: 720px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+.kpi {
+  background: #fafaf6; border: 1px solid #e6e3da; border-radius: 8px;
+  padding: 12px 14px; position: relative; overflow: hidden;
+}
+.kpi::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: #888;
+}
+.kpi.drivers::before    { background: #1976d2; }
+.kpi.units::before      { background: #0a7a2a; }
+.kpi.inspections::before { background: #e8a020; }
+.kpi.violations::before { background: #b00020; }
+.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; font-weight: 600; }
+.kpi-value { font-size: 22px; font-weight: 700; color: #272727; margin-top: 4px; letter-spacing: -0.3px; }
+
+.oos-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-top: 1px solid #f0efe9; font-size: 13px;
+}
+.oos-row:first-of-type { border-top: none; }
+.oos-label { color: #555; }
+.oos-vals { display: flex; gap: 14px; align-items: center; }
+.oos-carrier { font-weight: 700; font-size: 15px; }
+.oos-carrier.above { color: #b00020; }
+.oos-carrier.below { color: #0a7a2a; }
+.oos-natl { color: #888; font-size: 12px; }
+
 .footer-version {
   text-align: right; font-size: 10px; color: #bbb; padding: 10px 8px 0;
 }
@@ -124,7 +153,7 @@ html, body {
   <div id="authority-history" class="card section"><span class="placeholder">Authority history</span></div>
   <div id="insurance-history" class="card section"><span class="placeholder">Insurance history</span></div>
   <div id="crash-history" class="card section"><span class="placeholder">Crash history</span></div>
-  <div id="operations" class="card"><span class="placeholder">Operations and safety</span></div>
+  <div id="operations" class="card section"><span class="placeholder">Operations and safety</span></div>
   <div id="identity-signals" class="card"><span class="placeholder">Identity and signup signals</span></div>
   <div id="vendor-internal" class="card"><span class="placeholder">Internal vendor data</span></div>
   <div id="noa-history" class="card"><span class="placeholder">NOA / LOR history</span></div>
@@ -132,7 +161,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.6</div>
+  <div class="footer-version">v2026-05-11.7</div>
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -217,7 +246,61 @@ function renderProfile(payload) {
   renderAuthorityHistory(payload);
   renderInsuranceHistory(payload);
   renderCrashHistory(payload);
+  renderOperations(payload);
   // Other section renderers called from subsequent tasks
+}
+
+function renderOperations(p) {
+  var container = document.getElementById('operations');
+  container.classList.add('section');
+  var c = p.carrierok || {};
+  if (!c.dot_number && (c.total_drivers === undefined && c.total_power_units === undefined)) {
+    container.innerHTML = '<h2>Operations and Safety</h2><div class="empty">No FMCSA operations data available.</div>';
+    return;
+  }
+  var html = '<h2>Operations and Safety</h2>' +
+    '<div class="kpi-row">' +
+      kpiTile('drivers', 'Drivers', fmtInt(c.total_drivers)) +
+      kpiTile('units', 'Power Units', fmtInt(c.total_power_units)) +
+      kpiTile('inspections', 'Inspections', fmtInt(c.inspections_total)) +
+      kpiTile('violations', 'Violations', fmtInt(c.violations_total)) +
+    '</div>' +
+    oosRow('Vehicle Out-of-Service Rate',
+           c.inspections_vehicle_out_of_service_pct, c.natl_avg_oos_vehicle) +
+    oosRow('Driver Out-of-Service Rate',
+           c.inspections_driver_out_of_service_pct, c.natl_avg_oos_driver);
+  container.innerHTML = html;
+}
+
+function kpiTile(cls, label, value) {
+  return '<div class="kpi ' + cls + '">' +
+    '<div class="kpi-label">' + esc(label) + '</div>' +
+    '<div class="kpi-value">' + esc(value) + '</div>' +
+  '</div>';
+}
+
+function oosRow(label, carrierPct, nationalPct) {
+  if (carrierPct === undefined || carrierPct === null) {
+    return '<div class="oos-row"><span class="oos-label">' + esc(label) + '</span>' +
+           '<span class="oos-vals"><span class="oos-carrier">—</span></span></div>';
+  }
+  var natl = (nationalPct || 0);
+  var cls = 'oos-carrier ' + (natl > 0 && carrierPct > natl ? 'above' : 'below');
+  var natlText = natl > 0 ? 'vs ' + Number(natl).toFixed(1) + '% national avg' : '';
+  return '<div class="oos-row">' +
+    '<span class="oos-label">' + esc(label) + '</span>' +
+    '<span class="oos-vals">' +
+      '<span class="' + cls + '">' + Number(carrierPct).toFixed(1) + '%</span>' +
+      (natlText ? '<span class="oos-natl">' + esc(natlText) + '</span>' : '') +
+    '</span>' +
+  '</div>';
+}
+
+function fmtInt(n) {
+  if (n === undefined || n === null || n === '') return '—';
+  var v = parseInt(n, 10);
+  if (isNaN(v)) return '—';
+  return v.toLocaleString();
 }
 
 function renderCrashHistory(p) {

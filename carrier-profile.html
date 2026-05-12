@@ -240,7 +240,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.10</div>
+  <div class="footer-version">v2026-05-11.11</div>
 </div>
 
 <!-- NOA / LOR Management Modal -->
@@ -279,13 +279,26 @@ var profilePayload = null;
 
 window.addEventListener('load', function() {
   var u = new URL(window.location.href);
-  // Accept either casing - Creator page variable is "Vendor_ID" but earlier
-  // nav code used "vendor_id". Try both so either wiring works.
   vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
-  // "action" is a Zoho-reserved page variable name, so the Creator page
-  // declares "Modal" instead. Accept both for backward compatibility.
   profileAction = u.searchParams.get('Modal') || u.searchParams.get('action') || '';
   bootApp();
+});
+
+// Parent posts hash params to us via window.postMessage because Creator's
+// portal pages don't auto-forward URL hash query params to widget iframes.
+// The parent's HTML Snippet on Carrier_Profile reads window.location.hash
+// and sends { type: 'carrier-profile-params', Vendor_ID, Modal }.
+window.addEventListener('message', function(e) {
+  var d = e && e.data;
+  if (!d || d.type !== 'carrier-profile-params') return;
+  var changed = false;
+  if (d.Vendor_ID && !vendorId) { vendorId = String(d.Vendor_ID); changed = true; }
+  if (d.Modal && !profileAction) { profileAction = String(d.Modal); changed = true; }
+  if (changed) {
+    console.log('[CarrierProfile] Received params via postMessage:', d);
+    // If we already showed the "Missing vendor" error, clear it and load now.
+    if (vendorId && brokerEmail) loadProfile();
+  }
 });
 
 function bootApp() {
@@ -305,7 +318,16 @@ function bootApp() {
       return;
     }
     if (!vendorId) {
-      showError('Missing vendor', 'Open this page from the Vendors list (vendor_id is required).');
+      // Wait briefly for the parent's HTML Snippet to postMessage us the
+      // Vendor_ID. The listener above will call loadProfile() when it arrives.
+      console.log('[CarrierProfile] No Vendor_ID in URL yet, waiting for parent postMessage…');
+      document.getElementById('hero').innerHTML =
+        '<div class="state"><span class="spinner"></span>Loading carrier profile…</div>';
+      setTimeout(function() {
+        if (!vendorId) {
+          showError('Missing vendor', 'Open this page from the Vendors list (Vendor_ID is required).');
+        }
+      }, 3500);
       return;
     }
     console.log('[CarrierProfile] Booted as', brokerEmail, 'vendor', vendorId);

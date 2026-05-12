@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carrier Profile</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh;
+}
+.widget { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+
+.card {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
+  padding: 20px; margin-bottom: 14px;
+}
+
+.hero h1 {
+  font-size: 26px; font-weight: 700; color: #272727;
+  letter-spacing: -0.3px; margin-bottom: 6px;
+}
+.hero .meta { font-size: 13px; color: #777; }
+
+.state { text-align: center; padding: 40px 20px; color: #888; font-size: 13px; }
+.state.error { color: #a31818; }
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid #e6e3da; border-top-color: #888;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+  vertical-align: middle; margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.placeholder { color: #aaa; font-size: 12px; font-style: italic; }
+
+.footer-version {
+  text-align: right; font-size: 10px; color: #bbb; padding: 10px 8px 0;
+}
+</style>
+</head>
+<body>
+
+<div class="widget">
+  <div id="hero" class="card hero">
+    <div class="state"><span class="spinner"></span>Loading carrier profile…</div>
+  </div>
+  <div id="risk-strip" class="card"><span class="placeholder">Risk summary — populated in later tasks</span></div>
+  <div id="risk-flags" class="card"><span class="placeholder">Risk flags</span></div>
+  <div id="authority-history" class="card"><span class="placeholder">Authority history</span></div>
+  <div id="insurance-history" class="card"><span class="placeholder">Insurance history</span></div>
+  <div id="crash-history" class="card"><span class="placeholder">Crash history</span></div>
+  <div id="operations" class="card"><span class="placeholder">Operations and safety</span></div>
+  <div id="identity-signals" class="card"><span class="placeholder">Identity and signup signals</span></div>
+  <div id="vendor-internal" class="card"><span class="placeholder">Internal vendor data</span></div>
+  <div id="noa-history" class="card"><span class="placeholder">NOA / LOR history</span></div>
+  <div id="recent-submissions" class="card"><span class="placeholder">Recent submissions</span></div>
+  <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
+  <div id="action-bar"></div>
+
+  <div class="footer-version">v2026-05-11.1</div>
+</div>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+(function() {
+'use strict';
+
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+
+var brokerEmail = '';
+var vendorId = '';
+var profileAction = '';
+var profilePayload = null;
+
+window.addEventListener('load', function() {
+  var u = new URL(window.location.href);
+  vendorId = u.searchParams.get('vendor_id') || '';
+  profileAction = u.searchParams.get('action') || '';
+  bootApp();
+});
+
+function bootApp() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+    showError('SDK unavailable', 'Reload the page.');
+    return;
+  }
+  if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+    showError('SDK shape unexpected', 'getInitParams is not available.');
+    return;
+  }
+  function gotParams(params) {
+    console.log('[CarrierProfile] init params:', params);
+    brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+    if (!brokerEmail) {
+      showError('Could not identify broker', 'Open DevTools console (F12) for details.');
+      return;
+    }
+    if (!vendorId) {
+      showError('Missing vendor', 'Open this page from the Vendors list (vendor_id is required).');
+      return;
+    }
+    console.log('[CarrierProfile] Booted as', brokerEmail, 'vendor', vendorId);
+    loadProfile();
+  }
+  try {
+    var result = ZOHO.CREATOR.UTIL.getInitParams();
+    if (result && typeof result.then === 'function') {
+      result.then(gotParams).catch(function(err) {
+        console.error('[CarrierProfile] getInitParams rejected', err);
+        showError('Initialization failed', 'Could not read init params.');
+      });
+    } else {
+      gotParams(result);
+    }
+  } catch (err) {
+    console.error('[CarrierProfile] getInitParams threw', err);
+    showError('Initialization failed', 'Could not read init params.');
+  }
+}
+
+function loadProfile() {
+  var qs = new URLSearchParams({ email: brokerEmail, vendor_id: vendorId });
+  fetch(BROKER_API_BASE + '/carrier-profile?' + qs.toString())
+    .then(function(res) {
+      if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
+      return res.json();
+    })
+    .then(function(payload) {
+      profilePayload = payload;
+      renderProfile(payload);
+    })
+    .catch(function(err) {
+      console.error('[CarrierProfile] /carrier-profile failed', err);
+      showError('Failed to load profile', String(err.message || err));
+    });
+}
+
+function renderProfile(payload) {
+  renderHero(payload);
+  // Other section renderers called from subsequent tasks
+}
+
+function renderHero(p) {
+  var v = p.vendor || {};
+  var c = p.carrierok || {};
+  var name = v.Vendor_Name || c.legal_name || 'Carrier';
+  document.getElementById('hero').innerHTML =
+    '<h1>' + esc(name) + '</h1>' +
+    '<div class="meta">DOT ' + esc(v.USDOT || c.dot_number || '—') +
+    ' &nbsp;·&nbsp; MC ' + esc(v.MC || c.docket_number || '—') + '</div>';
+}
+
+function showError(title, msg) {
+  document.getElementById('hero').innerHTML =
+    '<div class="state error"><strong>' + esc(title) + '</strong><br>' + esc(msg) + '</div>';
+}
+
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function(ch) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+  });
+}
+
+})();
+</script>
+</body>
+</html>

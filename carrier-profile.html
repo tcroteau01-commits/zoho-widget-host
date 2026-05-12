@@ -94,6 +94,20 @@ html, body {
 .auth-revoked { color: #b00020; font-weight: 600; }
 .auth-active  { color: #0a7a2a; font-weight: 600; }
 
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  font-size: 11px; font-weight: 700; color: #888;
+  text-transform: uppercase; letter-spacing: 0.5px; text-align: left;
+  padding: 8px 10px; background: #fafaf6; border-bottom: 1px solid #f0efe9;
+}
+.data-table td { padding: 10px; border-bottom: 1px solid #f5f3eb; color: #444; vertical-align: top; }
+.data-table tr:last-child td { border-bottom: 0; }
+.data-table .yes { color: #b00020; font-weight: 600; }
+.data-table .no  { color: #999; }
+.data-table .num-bad { color: #b00020; font-weight: 700; }
+.data-table .num-zero { color: #999; }
+.empty-good { color: #0a7a2a; font-weight: 600; }
+
 .footer-version {
   text-align: right; font-size: 10px; color: #bbb; padding: 10px 8px 0;
 }
@@ -109,7 +123,7 @@ html, body {
   <div id="risk-flags" class="card"><span class="placeholder">Risk flags</span></div>
   <div id="authority-history" class="card section"><span class="placeholder">Authority history</span></div>
   <div id="insurance-history" class="card section"><span class="placeholder">Insurance history</span></div>
-  <div id="crash-history" class="card"><span class="placeholder">Crash history</span></div>
+  <div id="crash-history" class="card section"><span class="placeholder">Crash history</span></div>
   <div id="operations" class="card"><span class="placeholder">Operations and safety</span></div>
   <div id="identity-signals" class="card"><span class="placeholder">Identity and signup signals</span></div>
   <div id="vendor-internal" class="card"><span class="placeholder">Internal vendor data</span></div>
@@ -118,7 +132,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.5</div>
+  <div class="footer-version">v2026-05-11.6</div>
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -202,7 +216,45 @@ function renderProfile(payload) {
   renderRiskFlags(payload);
   renderAuthorityHistory(payload);
   renderInsuranceHistory(payload);
+  renderCrashHistory(payload);
   // Other section renderers called from subsequent tasks
+}
+
+function renderCrashHistory(p) {
+  var container = document.getElementById('crash-history');
+  container.classList.add('section');
+  var crashes = (p.carrierok || {}).crash_history || [];
+  if (!crashes.length) {
+    container.innerHTML = '<h2>Crash History</h2><div class="empty-good">No crashes on record.</div>';
+    return;
+  }
+  var sorted = crashes.slice().sort(function(a, b) {
+    return (a.report_date || '') < (b.report_date || '') ? 1 : -1;
+  });
+  var rows = sorted.map(function(c) {
+    var state = c.report_state || c.state || c.vehicle_license_state || '—';
+    var fatalities = parseInt(c.fatalities, 10) || 0;
+    var injuries = parseInt(c.injuries, 10) || 0;
+    var hazmat = c.hazmat_released === true || c.vehicle_hazmat_placard === true;
+    var towAway = c.tow_away === true;
+    return '<tr>' +
+      '<td>' + esc(c.report_date || '—') + '</td>' +
+      '<td>' + esc(state) + '</td>' +
+      '<td class="' + (fatalities > 0 ? 'num-bad' : 'num-zero') + '">' + fatalities + '</td>' +
+      '<td class="' + (injuries > 0 ? 'num-bad' : 'num-zero') + '">' + injuries + '</td>' +
+      '<td class="' + (hazmat ? 'yes' : 'no') + '">' + (hazmat ? 'Yes' : 'No') + '</td>' +
+      '<td class="' + (towAway ? 'yes' : 'no') + '">' + (towAway ? 'Yes' : 'No') + '</td>' +
+    '</tr>';
+  }).join('');
+  container.innerHTML =
+    '<h2>Crash History (' + sorted.length + ')</h2>' +
+    '<table class="data-table">' +
+      '<thead><tr>' +
+        '<th>Date</th><th>State</th><th>Fatalities</th>' +
+        '<th>Injuries</th><th>Hazmat</th><th>Tow Away</th>' +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>';
 }
 
 function renderInsuranceHistory(p) {

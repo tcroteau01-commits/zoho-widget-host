@@ -35,6 +35,16 @@ html, body {
 
 .placeholder { color: #aaa; font-size: 12px; font-style: italic; }
 
+.hero-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.hero-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.pill { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill-success { background: #ddf7e3; color: #0a7a2a; }
+.pill-danger  { background: #fde2e1; color: #b00020; }
+.pill-warning { background: #fff3cd; color: #8a5b00; }
+.pill-info    { background: #d8eaff; color: #0a4a93; }
+.pill-neutral { background: #eee; color: #444; }
+
 .footer-version {
   text-align: right; font-size: 10px; color: #bbb; padding: 10px 8px 0;
 }
@@ -59,7 +69,7 @@ html, body {
   <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
   <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.1</div>
+  <div class="footer-version">v2026-05-11.2</div>
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -147,9 +157,52 @@ function renderHero(p) {
   var c = p.carrierok || {};
   var name = v.Vendor_Name || c.legal_name || 'Carrier';
   document.getElementById('hero').innerHTML =
-    '<h1>' + esc(name) + '</h1>' +
-    '<div class="meta">DOT ' + esc(v.USDOT || c.dot_number || '—') +
-    ' &nbsp;·&nbsp; MC ' + esc(v.MC || c.docket_number || '—') + '</div>';
+    '<div class="hero-row">' +
+      '<div>' +
+        '<h1>' + esc(name) + '</h1>' +
+        '<div class="meta">DOT ' + esc(v.USDOT || c.dot_number || '—') +
+          ' &nbsp;·&nbsp; MC ' + esc(v.MC || c.docket_number || '—') + '</div>' +
+      '</div>' +
+      '<div class="hero-pills">' +
+        pill(vendorStatusLabel(v), vendorStatusClass(v)) +
+        pill(paymentLabel(v), 'neutral') +
+        factorBadgeHtml(v) +
+      '</div>' +
+    '</div>';
+}
+
+function pill(text, cls) {
+  return '<span class="pill pill-' + cls + '">' + esc(text) + '</span>';
+}
+
+function vendorStatusLabel(v) {
+  if (v.DO_NOT_USE === true || v.DO_NOT_USE === 'true') return 'Do Not Use';
+  return v.Vendor_Status || 'Unknown';
+}
+
+function vendorStatusClass(v) {
+  if (v.DO_NOT_USE === true || v.DO_NOT_USE === 'true') return 'danger';
+  switch ((v.Vendor_Status || '').toLowerCase()) {
+    case 'approved': return 'success';
+    case 'denied': return 'danger';
+    case 'pending': return 'warning';
+    case 'payment change': return 'info';
+    default: return 'neutral';
+  }
+}
+
+function paymentLabel(v) {
+  if (v.Factoring_Company) return 'Factoring';
+  if ((v.Payment_Terms || '').toLowerCase().indexOf('quick pay') !== -1) return 'Quick Pay';
+  return v.Payment_Terms || '—';
+}
+
+function factorBadgeHtml(v) {
+  if (!v.Factoring_Company) return '';
+  var status = (v.Factor_Status || '').toLowerCase();
+  if (status === 'denied') return pill('Factor Not Approved', 'danger');
+  if (status === 'pending') return pill('Factor Pending', 'warning');
+  return '';
 }
 
 function showError(title, msg) {

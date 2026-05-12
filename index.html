@@ -619,7 +619,7 @@ textarea { resize: vertical; min-height: 90px; }
     </button>
   </div>
 
-<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-03-29.8</div>
+<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-05-11.1</div>
 </div><!-- /widget -->
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
@@ -680,9 +680,30 @@ function loadVendors() {
       },
       function(r, inputEl) { onCarrierSelect(r, inputEl); }
     );
+    prefillCarrierFromUrl();
   }).catch(function() {
     document.getElementById('sd_carrier_input').placeholder = 'Unable to load carriers';
   });
+}
+
+function prefillCarrierFromUrl() {
+  var prefillId;
+  try { prefillId = new URL(window.location.href).searchParams.get('vendor_id'); } catch (e) { prefillId = null; }
+  if (!prefillId) return;
+  var match = vendorRecords.find(function(r) { return String(r.ID) === String(prefillId); });
+  if (!match) {
+    console.warn('[LoadDetails] vendor_id ' + prefillId + ' not found in loaded vendor list');
+    return;
+  }
+  var input  = document.getElementById('sd_carrier_input');
+  var hidden = document.getElementById('Carrier_Name_or_MC');
+  var clear  = document.getElementById('sd_carrier_clear');
+  if (!input || !hidden) return;
+  hidden.value = match.ID;
+  input.value  = match.Vendor_Name || '';
+  if (clear) clear.style.display = 'inline';
+  onCarrierSelect(match, input);
+  console.log('[LoadDetails] Pre-filled carrier from URL:', match.Vendor_Name);
 }
 
 // ── Searchable dropdown engine ─────────────────────────────────────────────

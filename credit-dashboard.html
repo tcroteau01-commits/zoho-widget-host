@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Credit Dashboard</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #f0efe9;
+  color: #333;
+  min-height: 100vh;
+}
+
+.page { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+
+.page-head { margin-bottom: 18px; }
+.page-title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.page-sub { font-size: 12px; color: #888; margin-top: 4px; }
+
+.status-msg {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  display: none;
+}
+.status-msg.show { display: block; }
+.status-msg.error   { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+.status-msg.loading { background: #fff8e1; color: #856404; border: 1px solid #ffe082; }
+.status-msg.empty   { background: #f5f5f5; color: #555;    border: 1px solid #ddd; }
+
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.kpi-tile {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.kpi-label {
+  font-size: 11px;
+  color: #555;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+}
+.kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #272727;
+  letter-spacing: -0.4px;
+}
+.kpi-sub { font-size: 11px; color: #888; margin-top: 3px; }
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.card {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 12px;
+  padding: 18px 20px 22px;
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #272727;
+  letter-spacing: -0.1px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-meta { font-size: 11px; color: #888; font-weight: 500; }
+.chart-wrap { position: relative; height: 240px; }
+
+.table-wrap {
+  margin-top: 4px;
+  max-height: 480px;
+  overflow: auto;
+  border: 1px solid #ece9df;
+  border-radius: 8px;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  position: sticky; top: 0;
+  background: #fafaf6;
+  border-bottom: 1px solid #e6e3da;
+  text-align: left;
+  font-weight: 700;
+  font-size: 11px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f3f1e8;
+  color: #444;
+}
+tbody tr:hover { background: #fafaf6; }
+.cell-right { text-align: right; font-variant-numeric: tabular-nums; }
+.cell-muted { color: #aaa; }
+.risk-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+}
+.dup-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fff4e0;
+  color: #b86e00;
+  letter-spacing: 0.2px;
+}
+.risk-high { background: #ffebee; color: #c62828; }
+.risk-mid  { background: #fff8e1; color: #856404; }
+.risk-low  { background: #e8f5e9; color: #2e7d32; }
+.risk-na   { background: #f5f5f5; color: #888; }
+
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid #f1efe5;
+  border-top-color: #e8a020;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -3px;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.version { text-align: right; font-size: 10px; color: #bbb; padding: 14px 4px 0; }
+
+@media (max-width: 1100px) {
+  .chart-grid { grid-template-columns: repeat(2, 1fr); }
+  .kpi-strip  { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .chart-grid { grid-template-columns: 1fr; }
+  .chart-wrap { height: 220px; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="page-head">
+    <div class="page-title">Credit Dashboard</div>
+    <div class="page-sub" id="page-sub">Risk score, payment behavior, and monthly reported AR for your monitored debtors</div>
+  </div>
+
+  <div id="statusMsg" class="status-msg"></div>
+
+  <div class="kpi-strip">
+    <div class="kpi-tile">
+      <div class="kpi-label" id="kpi-risk-label">Latest Risk Score</div>
+      <div class="kpi-value" id="kpi-risk">—</div>
+      <div class="kpi-sub" id="kpi-risk-sub">&nbsp;</div>
+    </div>
+    <div class="kpi-tile">
+      <div class="kpi-label" id="kpi-ar-label">Latest Monthly AR</div>
+      <div class="kpi-value" id="kpi-ar">—</div>
+      <div class="kpi-sub" id="kpi-ar-sub">&nbsp;</div>
+    </div>
+    <div class="kpi-tile">
+      <div class="kpi-label" id="kpi-dtp-label">Days to Pay</div>
+      <div class="kpi-value" id="kpi-dtp">—</div>
+      <div class="kpi-sub" id="kpi-dtp-sub">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="chart-grid">
+    <div class="card">
+      <div class="card-title">Risk Score Over Time <span class="card-meta" id="meta-risk"></span></div>
+      <div class="chart-wrap"><canvas id="chartRisk"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Monthly Reported AR <span class="card-meta" id="meta-ar"></span></div>
+      <div class="chart-wrap"><canvas id="chartAr"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Days to Pay <span class="card-meta" id="meta-dtp"></span></div>
+      <div class="chart-wrap"><canvas id="chartDtp"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Monthly Credit Reports <span class="card-meta" id="meta-table"></span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Month</th>
+          <th>Risk Score</th>
+          <th class="cell-right">Days to Pay</th>
+          <th class="cell-right">Monthly AR</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="version">v2026-05-13.3</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+(function() {
+'use strict';
+
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+
+var PALETTE = [
+  '#e8a020', '#1976d2', '#388e3c', '#c62828', '#7b1fa2',
+  '#0097a7', '#fbc02d', '#5d4037', '#455a64', '#d84315',
+];
+
+var brokerEmail = '';
+
+function showStatus(msg, type) {
+  var el = document.getElementById('statusMsg');
+  el.innerHTML = type === 'loading' ? '<span class="spinner"></span>' + msg : msg;
+  el.className = 'status-msg show ' + type;
+}
+function clearStatus() { document.getElementById('statusMsg').className = 'status-msg'; }
+
+function fmtMoney(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  if (n >= 1e9) return '$' + (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+  return '$' + n.toLocaleString();
+}
+function fmtMoneyFull(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return '$' + Math.round(n).toLocaleString();
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  var dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function riskClass(score) {
+  if (score === null || score === undefined) return 'risk-na';
+  if (score >= 80) return 'risk-low';
+  if (score >= 50) return 'risk-mid';
+  return 'risk-high';
+}
+
+// Group snapshots by year-month. Average numeric fields across reports in the same month
+// so a broker with 2 reports in a single month doesn't double-count or distort the chart.
+function aggregateByMonth(snapshots) {
+  var groups = {};
+  for (var i = 0; i < snapshots.length; i++) {
+    var s = snapshots[i];
+    if (!s.date) continue;
+    var d = new Date(s.date);
+    if (isNaN(d.getTime())) continue;
+    var key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+    if (!groups[key]) {
+      groups[key] = {
+        monthKey: key,
+        date: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 15)),
+        risk: [], dtp: [], ar: [], cosRep: [],
+        ratings: [], reportCount: 0, noDataCount: 0,
+      };
+    }
+    var g = groups[key];
+    g.reportCount++;
+    if (s.rating) g.ratings.push(s.rating);
+    if (s.noData) { g.noDataCount++; continue; }
+    if (typeof s.riskScore === 'number') g.risk.push(s.riskScore);
+    if (typeof s.daysToPay === 'number') g.dtp.push(s.daysToPay);
+    if (typeof s.arMonthlyBalance === 'number') g.ar.push(s.arMonthlyBalance);
+    if (typeof s.cosReporting === 'number') g.cosRep.push(s.cosReporting);
+  }
+  function avg(arr) { return arr.length ? arr.reduce(function(a, b) { return a + b; }, 0) / arr.length : null; }
+  return Object.values(groups)
+    .sort(function(a, b) { return a.date - b.date; })
+    .map(function(g) {
+      return {
+        monthKey: g.monthKey,
+        date: g.date,
+        riskScore: avg(g.risk),
+        daysToPay: avg(g.dtp),
+        arMonthlyBalance: avg(g.ar),
+        cosReporting: avg(g.cosRep),
+        reportCount: g.reportCount,
+        noDataCount: g.noDataCount,
+        ratings: g.ratings,
+        noData: g.risk.length === 0 && g.dtp.length === 0 && g.ar.length === 0,
+      };
+    });
+}
+
+function buildSeriesByDebtor(debtors, valueKey) {
+  return debtors.map(function(d, i) {
+    var monthly = aggregateByMonth(d.snapshots);
+    var pts = monthly
+      .filter(function(m) { return m[valueKey] !== null && m[valueKey] !== undefined && !m.noData; })
+      .map(function(m) { return { x: m.date, y: m[valueKey] }; });
+    return {
+      label: d.name,
+      data: pts,
+      borderColor: PALETTE[i % PALETTE.length],
+      backgroundColor: PALETTE[i % PALETTE.length] + '22',
+      borderWidth: 2,
+      pointRadius: pts.length < 10 ? 4 : 2,
+      pointHoverRadius: 6,
+      tension: 0.15,
+      spanGaps: true,
+    };
+  }).filter(function(s) { return s.data.length > 0; });
+}
+
+function commonChartOptions(yLabel, yFormatter, hideLegend) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    plugins: {
+      legend: {
+        display: !hideLegend,
+        position: 'bottom',
+        labels: { boxWidth: 10, boxHeight: 10, padding: 12, font: { size: 11 } },
+      },
+      tooltip: {
+        callbacks: {
+          label: function(ctx) {
+            var v = ctx.parsed.y;
+            return ctx.dataset.label + ': ' + (yFormatter ? yFormatter(v) : v);
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        type: 'time',
+        time: { unit: 'month', displayFormats: { month: 'MMM yyyy' } },
+        grid: { color: '#f0efe9' },
+        ticks: { font: { size: 10 }, color: '#888' },
+      },
+      y: {
+        beginAtZero: true,
+        grid: { color: '#f0efe9' },
+        ticks: {
+          font: { size: 10 }, color: '#888',
+          callback: function(v) { return yFormatter ? yFormatter(v) : v; },
+        },
+        title: { display: !!yLabel, text: yLabel, font: { size: 10 }, color: '#888' },
+      },
+    },
+  };
+}
+
+function renderCharts(debtors) {
+  var topN = debtors.slice(0, 10); // limit lines for readability; rest still in table
+  // Hide the legend when there's only one line — the page header already names them.
+  var hideLegend = topN.length === 1;
+
+  new Chart(document.getElementById('chartRisk'), {
+    type: 'line',
+    data: { datasets: buildSeriesByDebtor(topN, 'riskScore') },
+    options: commonChartOptions(null, null, hideLegend),
+  });
+  new Chart(document.getElementById('chartAr'), {
+    type: 'line',
+    data: { datasets: buildSeriesByDebtor(topN, 'arMonthlyBalance') },
+    options: commonChartOptions(null, fmtMoney, hideLegend),
+  });
+  new Chart(document.getElementById('chartDtp'), {
+    type: 'line',
+    data: { datasets: buildSeriesByDebtor(topN, 'daysToPay') },
+    options: commonChartOptions('days', null, hideLegend),
+  });
+
+  var metaLabel = topN.length === 1 ? 'monthly avg' : ('top ' + topN.length + ' · monthly avg');
+  document.getElementById('meta-risk').textContent = metaLabel;
+  document.getElementById('meta-ar').textContent   = metaLabel;
+  document.getElementById('meta-dtp').textContent  = metaLabel;
+}
+
+function renderKPIs(client, debtors) {
+  // Self-monitoring framing: this dashboard is the broker's own credit profile.
+  // Three KPIs: latest risk, days to pay, monthly AR — from the most recent month.
+
+  var allMonthly = [];
+  debtors.forEach(function(d) {
+    var monthly = aggregateByMonth(d.snapshots).filter(function(m) { return !m.noData; });
+    if (monthly.length) allMonthly.push({ debtor: d.name, last: monthly[monthly.length - 1] });
+  });
+
+  var sumAr = allMonthly.reduce(function(a, x) { return a + (x.last.arMonthlyBalance || 0); }, 0);
+
+  var riskVals = allMonthly.filter(function(x) { return typeof x.last.riskScore === 'number'; }).map(function(x) { return x.last.riskScore; });
+  var latestRisk = riskVals.length ? Math.round(riskVals.reduce(function(a, b) { return a + b; }, 0) / riskVals.length) : null;
+
+  var dtpVals = allMonthly.filter(function(x) { return typeof x.last.daysToPay === 'number'; }).map(function(x) { return x.last.daysToPay; });
+  var latestDtp = dtpVals.length ? Math.round(dtpVals.reduce(function(a, b) { return a + b; }, 0) / dtpVals.length) : null;
+
+  var latestMonthKey = allMonthly.reduce(function(a, x) {
+    return !a || x.last.monthKey > a ? x.last.monthKey : a;
+  }, null);
+  var monthLabel = latestMonthKey ? formatMonthLabel(latestMonthKey) : null;
+
+  document.getElementById('kpi-risk').textContent = latestRisk === null ? '—' : latestRisk;
+  document.getElementById('kpi-risk-sub').textContent = latestRisk === null ? '' : (latestRisk >= 80 ? 'Low risk' : latestRisk >= 50 ? 'Moderate' : 'Elevated');
+
+  document.getElementById('kpi-dtp').textContent = latestDtp === null ? '—' : (latestDtp + ' days');
+  document.getElementById('kpi-dtp-sub').textContent = latestDtp === null ? '' : (monthLabel ? 'from ' + monthLabel : '');
+
+  document.getElementById('kpi-ar').textContent = fmtMoney(sumAr);
+  document.getElementById('kpi-ar-sub').textContent = monthLabel ? ('as of ' + monthLabel) : '';
+}
+
+function formatMonthLabel(monthKey) {
+  // "2026-04" -> "Apr 2026"
+  var parts = monthKey.split('-');
+  var d = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1));
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+function renderTable(debtors) {
+  // Flatten to one row per (debtor, month). For self-monitoring this is just
+  // one row per month. Each row shows monthly-averaged values with the dup-report count.
+  var rows = [];
+  debtors.forEach(function(d) {
+    var monthly = aggregateByMonth(d.snapshots);
+    monthly.forEach(function(m) {
+      rows.push({
+        debtorName: d.name,
+        monthKey: m.monthKey,
+        monthLabel: formatMonthLabel(m.monthKey),
+        reportCount: m.reportCount,
+        riskScore: m.riskScore,
+        daysToPay: m.daysToPay,
+        arMonthlyBalance: m.arMonthlyBalance,
+        cosReporting: m.cosReporting,
+        noData: m.noData,
+      });
+    });
+  });
+  rows.sort(function(a, b) { return b.monthKey.localeCompare(a.monthKey); });
+
+  var tbody = document.getElementById('tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;padding:24px;">No credit reports on file yet.</td></tr>';
+    document.getElementById('meta-table').textContent = '';
+    return;
+  }
+  var multiDebtor = debtors.length > 1;
+  tbody.innerHTML = rows.map(function(r) {
+    return '<tr>' +
+      '<td>' + escapeHtml(r.monthLabel) + (multiDebtor ? ' <span class="cell-muted">· ' + escapeHtml(r.debtorName) + '</span>' : '') + '</td>' +
+      '<td>' + (typeof r.riskScore === 'number'
+                  ? '<span class="risk-pill ' + riskClass(Math.round(r.riskScore)) + '">' + Math.round(r.riskScore) + '</span>'
+                  : '<span class="risk-pill risk-na">—</span>') + '</td>' +
+      '<td class="cell-right">' + (typeof r.daysToPay === 'number' ? Math.round(r.daysToPay) : '<span class="cell-muted">—</span>') + '</td>' +
+      '<td class="cell-right">' + (r.noData ? '<span class="cell-muted">—</span>' : fmtMoneyFull(r.arMonthlyBalance)) + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('meta-table').textContent = rows.length + ' month' + (rows.length === 1 ? '' : 's');
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+  });
+}
+
+// Self-monitor detection: broker has a single "debtor" whose name matches their own.
+// Strip common entity suffixes so "Marek LLC" matches "MAREK LLC" matches "Marek".
+function normalizeCompanyName(s) {
+  return String(s || '')
+    .toUpperCase()
+    .replace(/[.,]/g, ' ')
+    .replace(/\b(LLC|L\.L\.C\.|INC|INCORPORATED|CORP|CORPORATION|CO|COMPANY|LTD|LIMITED|LP|PLLC)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function isSelfMonitor(client, debtors) {
+  if (!debtors || debtors.length !== 1) return false;
+  if (!client || !client.name) return false;
+  return normalizeCompanyName(client.name) === normalizeCompanyName(debtors[0].name);
+}
+
+function applySubtitle(payload, suffix) {
+  var el = document.getElementById('page-sub');
+  if (!el) return;
+  var name = payload && payload.client && payload.client.name ? payload.client.name : '';
+  var parts = [];
+  if (name) parts.push(name);
+  parts.push('Your credit profile');
+  el.textContent = parts.join(' — ') + (suffix || '');
+}
+
+function loadDashboard() {
+  if (!brokerEmail) return;
+  showStatus('Loading credit data…', 'loading');
+  var url = BROKER_API_BASE + '/credit-dashboard?email=' + encodeURIComponent(brokerEmail);
+  fetch(url, { credentials: 'omit' })
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(j) { throw new Error(j.error || ('HTTP ' + r.status)); });
+      return r.json();
+    })
+    .then(function(payload) {
+      clearStatus();
+      applySubtitle(payload, '');
+      if (!payload.debtors || !payload.debtors.length) {
+        showStatus('No credit reports on file yet for your account.', 'empty');
+        renderKPIs(payload.client, []); renderTable([]);
+        return;
+      }
+      renderKPIs(payload.client, payload.debtors);
+      renderCharts(payload.debtors);
+      renderTable(payload.debtors);
+    })
+    .catch(function(err) {
+      console.error('[CreditDashboard] load failed', err);
+      showStatus('Could not load credit data: ' + err.message, 'error');
+    });
+}
+
+function bootApp() {
+  // Preview/test mode: skip SDK + API entirely, use embedded payload.
+  if (window.__PREVIEW_DATA__) {
+    var payload = window.__PREVIEW_DATA__;
+    applySubtitle(payload, ' (PREVIEW MODE)');
+    if (!payload.debtors || !payload.debtors.length) {
+      showStatus('No credit reports on file yet.', 'empty');
+      renderKPIs(payload.client, []); renderTable([]);
+      return;
+    }
+    renderKPIs(payload.client, payload.debtors);
+    renderCharts(payload.debtors);
+    renderTable(payload.debtors);
+    return;
+  }
+
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+    showStatus('SDK unavailable — reload the page.', 'error');
+    return;
+  }
+  function gotParams(params) {
+    console.log('[CreditDashboard] init params:', params);
+    brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+    if (!brokerEmail) {
+      showStatus('Could not identify broker. Open DevTools (F12) for details.', 'error');
+      return;
+    }
+    loadDashboard();
+  }
+  if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+    showStatus('SDK shape unexpected — getInitParams unavailable.', 'error');
+    return;
+  }
+  try {
+    var result = ZOHO.CREATOR.UTIL.getInitParams();
+    if (result && typeof result.then === 'function') {
+      result.then(gotParams).catch(function(err) {
+        console.error('[CreditDashboard] getInitParams rejected', err);
+        showStatus('Initialization failed.', 'error');
+      });
+    } else {
+      gotParams(result);
+    }
+  } catch (err) {
+    console.error('[CreditDashboard] getInitParams threw', err);
+    showStatus('Initialization failed.', 'error');
+  }
+}
+
+window.addEventListener('load', bootApp);
+})();
+</script>
+</body>
+</html>

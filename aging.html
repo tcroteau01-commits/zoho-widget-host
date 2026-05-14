@@ -346,6 +346,20 @@
       return 'email=' + encodeURIComponent(brokerEmail);
     }
 
+    function waitForZoho(attempts, delay) {
+      if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.init) {
+        return Promise.resolve();
+      }
+      if (attempts <= 0) {
+        return Promise.reject(new Error('SDK not loaded'));
+      }
+      return new Promise(function (resolve, reject) {
+        setTimeout(function () {
+          waitForZoho(attempts - 1, delay).then(resolve, reject);
+        }, delay);
+      });
+    }
+
     function init() {
       var params = new URLSearchParams(window.location.search);
       var clientIdOverride = params.get('clientId');
@@ -355,11 +369,9 @@
         bindGlobalEvents();
         return;
       }
-      if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.init) {
-        showError('Widget must be loaded inside OperFi Broker Portal. Or append ?clientId=7088 to the URL to test as Marek LLC.');
-        return;
-      }
-      ZOHO.CREATOR.init().then(function (initParams) {
+      waitForZoho(30, 100).then(function () {
+        return ZOHO.CREATOR.init();
+      }).then(function (initParams) {
         var loginUser = initParams && initParams.loginUser;
         brokerEmail = loginUser && loginUser.loginId;
         if (!brokerEmail) {
@@ -373,7 +385,11 @@
       });
     }
 
-    init();
+    if (document.readyState === 'complete') {
+      init();
+    } else {
+      window.addEventListener('load', init);
+    }
 
     function fetchAging() {
       var url = BROKER_API_BASE + '/aging?' + buildAuthParams();

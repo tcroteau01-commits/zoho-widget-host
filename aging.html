@@ -216,6 +216,95 @@
   .dp-empty {
     padding: 32px 24px; text-align: center; color: var(--of-gray-500); font-size: 13px;
   }
+
+  /* Load ID link in invoice table */
+  .load-id-link {
+    color: var(--of-orange); cursor: pointer; text-decoration: none;
+    font-weight: 500;
+  }
+  .load-id-link:hover { text-decoration: underline; }
+  .load-id-link .chev { font-size: 10px; opacity: 0.8; }
+
+  /* ----- Stacked Load Preview view ----- */
+  .lp-nav {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 20px; background: var(--of-gray-50);
+    border-bottom: 1px solid var(--of-gray-200); font-size: 13px;
+    position: sticky; top: 0; z-index: 2;
+  }
+  .lp-back-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--of-orange); font-weight: 600; cursor: pointer;
+    padding: 4px 10px; border-radius: 6px;
+    background: white; border: 1px solid var(--of-orange-soft);
+    font-family: inherit; font-size: 12px;
+  }
+  .lp-back-btn:hover { background: var(--of-orange-soft); }
+  .lp-breadcrumb { color: var(--of-gray-500); font-size: 12px; }
+  .lp-breadcrumb b { color: var(--of-charcoal); font-weight: 600; }
+  .lp-header {
+    padding: 20px 24px 16px; border-bottom: 1px solid var(--of-gray-200);
+  }
+  .lp-header h3 {
+    font-size: 18px; color: var(--of-charcoal); margin: 0 0 4px 0;
+    font-weight: 600;
+  }
+  .lp-header .sub { font-size: 12px; color: var(--of-gray-500); }
+  .lp-status-pill {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; margin-left: 8px;
+    background: var(--of-gray-100); color: var(--of-gray-700);
+    vertical-align: middle;
+  }
+  .lp-status-pill.purchased { background: #D1FAE5; color: #065F46; }
+  .lp-status-pill.pending { background: #FEF3C7; color: #92400E; }
+  .lp-section {
+    padding: 16px 24px; border-bottom: 1px solid var(--of-gray-100);
+  }
+  .lp-section h4 {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--of-gray-500); margin-bottom: 10px; font-weight: 600;
+  }
+  .lp-field-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 24px;
+  }
+  .lp-field .key {
+    font-size: 10px; color: var(--of-gray-500);
+    text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .lp-field .val {
+    font-size: 13px; color: var(--of-charcoal); font-weight: 500; margin-top: 2px;
+    word-break: break-word;
+  }
+  .lp-field .val.green { color: var(--of-green); }
+  .lp-field .val.amber { color: var(--of-amber); }
+  .lp-field .val.red { color: var(--of-red); }
+  .lp-doc-list { list-style: none; padding: 0; margin: 0; }
+  .lp-doc-list li {
+    display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    font-size: 12px; color: var(--of-gray-700);
+  }
+  .lp-doc-list li::before { content: '\1F4C4'; font-size: 14px; }
+  .lp-doc-empty { font-size: 12px; color: var(--of-gray-500); font-style: italic; }
+  .lp-actions {
+    padding: 14px 24px; background: var(--of-gray-50);
+    display: flex; justify-content: space-between; align-items: center;
+    border-top: 1px solid var(--of-gray-200);
+  }
+  .lp-kb-hint { font-size: 11px; color: var(--of-gray-500); }
+  .lp-kb-hint kbd {
+    background: white; border: 1px solid var(--of-gray-200); border-radius: 3px;
+    padding: 1px 5px; font-size: 10px; font-family: monospace; margin: 0 2px;
+  }
+  .lp-btn-primary {
+    padding: 8px 14px; font-size: 12px; font-weight: 600;
+    background: white; color: var(--of-orange);
+    border: 1px solid var(--of-orange); border-radius: 6px;
+    cursor: pointer; font-family: inherit;
+  }
+  .lp-btn-primary:hover { background: var(--of-orange-soft); }
+  .lp-loading { padding: 32px 24px; text-align: center; color: var(--of-gray-500); font-size: 13px; }
+  .lp-error { padding: 32px 24px; text-align: center; color: var(--of-red); font-size: 13px; }
 </style>
 </head>
 <body>
@@ -237,7 +326,11 @@
       searchQuery: '',
       selectedCustomerId: null,
       summaryExportOpen: false,
-      detailExportOpen: false
+      detailExportOpen: false,
+      viewingLoadId: null,
+      loadPreview: null,
+      loadPreviewLoading: false,
+      loadPreviewError: null
     };
 
     ZOHO.CREATOR.init().then(function (initParams) {
@@ -513,6 +606,10 @@
 
     function openDetail(id) {
       state.selectedCustomerId = id;
+      state.viewingLoadId = null;
+      state.loadPreview = null;
+      state.loadPreviewLoading = false;
+      state.loadPreviewError = null;
       renderDetail();
       // mark active row
       document.querySelectorAll('table.aging tr.customer-row').forEach(function (r) {
@@ -529,6 +626,10 @@
     function closeDetail() {
       state.selectedCustomerId = null;
       state.detailExportOpen = false;
+      state.viewingLoadId = null;
+      state.loadPreview = null;
+      state.loadPreviewLoading = false;
+      state.loadPreviewError = null;
       var panel = document.getElementById('detailPanel');
       var overlay = document.getElementById('overlay');
       panel.classList.remove('open');
@@ -537,6 +638,59 @@
       document.querySelectorAll('table.aging tr.customer-row.active').forEach(function (r) {
         r.classList.remove('active');
       });
+    }
+
+    // ----- Load preview view (stacked inside detail panel) -----
+    function openLoadPreview(loadId) {
+      if (!loadId) return;
+      state.viewingLoadId = String(loadId);
+      state.loadPreview = null;
+      state.loadPreviewLoading = true;
+      state.loadPreviewError = null;
+      renderDetail();
+      var url = BROKER_API_BASE + '/aging/load-preview?email=' +
+                encodeURIComponent(brokerEmail) + '&loadId=' + encodeURIComponent(loadId);
+      fetch(url)
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          // Guard: user may have navigated away
+          if (String(state.viewingLoadId) !== String(loadId)) return;
+          state.loadPreview = data;
+          state.loadPreviewLoading = false;
+          renderDetail();
+        })
+        .catch(function (err) {
+          if (String(state.viewingLoadId) !== String(loadId)) return;
+          state.loadPreviewLoading = false;
+          state.loadPreviewError = (err && err.message) ? err.message : 'Failed to load';
+          renderDetail();
+        });
+    }
+
+    function closeLoadPreview() {
+      state.viewingLoadId = null;
+      state.loadPreview = null;
+      state.loadPreviewLoading = false;
+      state.loadPreviewError = null;
+      renderDetail();
+    }
+
+    function openInSubmissionHistory(loadId) {
+      try { localStorage.setItem('focusLoadId', loadId); } catch (e) {}
+      if (window.top && window.top.location) {
+        window.top.location.href = '#Page:Submission_History';
+      }
+    }
+
+    function findInvoiceByLoadId(customer, loadId) {
+      if (!customer || !customer.invoices) return null;
+      for (var i = 0; i < customer.invoices.length; i++) {
+        if (String(customer.invoices[i].loadId) === String(loadId)) return customer.invoices[i];
+      }
+      return null;
     }
 
     function moveDetail(dir) {
@@ -559,17 +713,22 @@
       var d = state.data;
       if (!c) { panel.innerHTML = ''; return; }
 
+      if (state.viewingLoadId != null) {
+        renderLoadPreview(panel, c, d);
+        return;
+      }
+
       var basisLabel = state.dateBasis === 'invoice' ? 'Invoice Date' : 'Purchase Date';
-      var invoices = (c.invoices || c.detail || []).slice();
+      var invoices = (c.invoices || []).slice();
       // Sort by age desc (oldest first)
-      invoices.sort(function (a, b) { return (b.age || 0) - (a.age || 0); });
+      invoices.sort(function (a, b) { return (b.ageDays || 0) - (a.ageDays || 0); });
       var nOpen = invoices.length;
 
       var b = c.buckets || {};
       var totalOpen = b.total || 0;
       var pastDue = (b.b31_45 || 0) + (b.b46_60 || 0) + (b.b61_90 || 0) + (b.b90_plus || 0);
       var oldest = 0;
-      invoices.forEach(function (inv) { if ((inv.age || 0) > oldest) oldest = inv.age || 0; });
+      invoices.forEach(function (inv) { if ((inv.ageDays || 0) > oldest) oldest = inv.ageDays || 0; });
       var pctTotal = (d.buckets && d.buckets.total) ? ((totalOpen / d.buckets.total) * 100) : 0;
 
       // Distribution bar (only non-zero segments)
@@ -635,16 +794,19 @@
             '<th class="last">Open Balance</th>' +
           '</tr></thead><tbody>';
         invoices.forEach(function (inv) {
-          var age = inv.age != null ? inv.age : '';
-          var k = bucketKeyForAge(inv.age);
-          var invNum = inv.invoiceNumber || inv.invoiceNo || inv.invoice || inv.fvInvoiceId || inv.id || '';
-          var loadId = inv.loadId || inv.load || inv.loadNumber || '';
-          var buyDate = inv.buyDate || inv.purchaseDate || inv.purchase_date || '';
-          var dueDate = inv.dueDate || inv.due_date || '';
-          var bal = inv.openBalance != null ? inv.openBalance : (inv.balance != null ? inv.balance : inv.amount);
+          var age = inv.ageDays != null ? inv.ageDays : '';
+          var k = bucketKeyForAge(inv.ageDays);
+          var invNum = inv.invoiceNumber || '';
+          var loadId = inv.loadId || '';
+          var buyDate = inv.buyDate || '';
+          var dueDate = inv.dueDate || '';
+          var bal = inv.openBalance != null ? inv.openBalance : 0;
+          var loadCell = loadId
+            ? '<td><a class="load-id-link" data-load-id="' + esc(loadId) + '" href="#">' + esc(loadId) + ' <span class="chev">&#8599;</span></a></td>'
+            : '<td>-</td>';
           html += '<tr>' +
             '<td class="first">' + esc(invNum) + '</td>' +
-            '<td>' + (loadId ? esc(loadId) : '-') + '</td>' +
+            loadCell +
             '<td>' + fmtDate(buyDate) + '</td>' +
             '<td>' + fmtDate(dueDate) + '</td>' +
             '<td><span class="age-pill ' + k + '">' + (age !== '' ? age + ' days' : '-') + '</span></td>' +
@@ -681,6 +843,145 @@
           renderDetail();
         });
       });
+
+      // Wire up Load ID clicks
+      panel.querySelectorAll('.load-id-link').forEach(function (link) {
+        link.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          openLoadPreview(link.getAttribute('data-load-id'));
+        });
+      });
+    }
+
+    function renderLoadPreview(panel, customer, d) {
+      var loadId = state.viewingLoadId;
+      var customerName = customer.name || '';
+      // Pull through invoice context from /aging (open balance, age, bucket, due date)
+      var inv = findInvoiceByLoadId(customer, loadId) || {};
+
+      var navHtml = '<div class="lp-nav">' +
+        '<button class="lp-back-btn" id="lpBackBtn">&larr; Back</button>' +
+        '<span class="lp-breadcrumb">' + esc(customerName) +
+          ' &rsaquo; <b>Load #' + esc(loadId) + '</b></span>' +
+      '</div>';
+
+      if (state.loadPreviewLoading) {
+        panel.innerHTML = navHtml + '<div class="lp-loading">Loading load details&hellip;</div>';
+        bindLoadPreviewControls(panel, loadId);
+        return;
+      }
+      if (state.loadPreviewError) {
+        panel.innerHTML = navHtml +
+          '<div class="lp-error">Couldn&rsquo;t load this load (' + esc(state.loadPreviewError) + ').</div>';
+        bindLoadPreviewControls(panel, loadId);
+        return;
+      }
+
+      var lp = state.loadPreview || {};
+      var statusStr = lp.status || '';
+      var statusClass = String(statusStr).toLowerCase() === 'purchased' ? 'purchased'
+                     : (String(statusStr).toLowerCase() === 'pending' ? 'pending' : '');
+      var invoiceNumber = lp.invoiceNumber || inv.invoiceNumber || '';
+      var purchaseDate = lp.purchaseDate || inv.buyDate || '';
+      var subtitle = '';
+      if (invoiceNumber) subtitle += 'Invoice ' + esc(invoiceNumber);
+      if (purchaseDate) subtitle += (subtitle ? ' &bull; ' : '') + 'Purchased ' + esc(purchaseDate);
+
+      var customerVal = lp.customer || customerName || '-';
+      var carrierVal = lp.carrier || '-';
+      var poVal = lp.poNumber || '-';
+      var otherRefVal = lp.otherRef || '-';
+
+      var custRate = (lp.customerRate != null) ? fmtMoneyDec(lp.customerRate) : '-';
+      var carrierRate = (lp.carrierRate != null) ? fmtMoneyDec(lp.carrierRate) : '-';
+      var margin = lp.margin;
+      var marginVal = (margin != null) ? fmtMoneyDec(margin) : '-';
+      var marginCls = (margin != null && Number(margin) > 0) ? 'green' : '';
+      var openBalance = (inv.openBalance != null) ? fmtMoneyDec(inv.openBalance) : '-';
+
+      var dueDate = inv.dueDate || '';
+      var ageDays = inv.ageDays;
+      var ageBucketKey = bucketKeyForAge(ageDays);
+      var ageCls = (ageDays != null && ageDays > 60) ? 'red'
+                 : (ageDays != null && ageDays > 45 ? 'amber' : '');
+      var bucketVal = inv.bucket || bucketLabel(ageBucketKey);
+
+      var docs = Array.isArray(lp.documents) ? lp.documents : [];
+      var docListHtml = '';
+      if (docs.length) {
+        docListHtml = '<ul class="lp-doc-list">' +
+          docs.map(function (doc) {
+            var name = typeof doc === 'string' ? doc : (doc && (doc.name || doc.fileName || doc.filename)) || '';
+            return '<li>' + esc(name) + '</li>';
+          }).join('') +
+        '</ul>';
+      } else {
+        docListHtml = '<div class="lp-doc-empty">No documents on file.</div>';
+      }
+
+      var html = navHtml;
+      html += '<div class="lp-header">' +
+        '<h3>Load #' + esc(loadId) +
+          (statusStr ? '<span class="lp-status-pill ' + statusClass + '">' + esc(statusStr) + '</span>' : '') +
+        '</h3>' +
+        (subtitle ? '<div class="sub">' + subtitle + '</div>' : '') +
+      '</div>';
+
+      html += '<div class="lp-section">' +
+        '<h4>Parties</h4>' +
+        '<div class="lp-field-grid">' +
+          '<div class="lp-field"><div class="key">Customer</div><div class="val">' + esc(customerVal) + '</div></div>' +
+          '<div class="lp-field"><div class="key">Carrier</div><div class="val">' + esc(carrierVal) + '</div></div>' +
+          '<div class="lp-field"><div class="key">PO #</div><div class="val">' + esc(poVal) + '</div></div>' +
+          '<div class="lp-field"><div class="key">Other Ref</div><div class="val">' + esc(otherRefVal) + '</div></div>' +
+        '</div>' +
+      '</div>';
+
+      html += '<div class="lp-section">' +
+        '<h4>Amounts</h4>' +
+        '<div class="lp-field-grid">' +
+          '<div class="lp-field"><div class="key">Customer Rate</div><div class="val">' + custRate + '</div></div>' +
+          '<div class="lp-field"><div class="key">Carrier Rate</div><div class="val">' + carrierRate + '</div></div>' +
+          '<div class="lp-field"><div class="key">Margin</div><div class="val ' + marginCls + '">' + marginVal + '</div></div>' +
+          '<div class="lp-field"><div class="key">Open Balance</div><div class="val">' + openBalance + '</div></div>' +
+        '</div>' +
+      '</div>';
+
+      html += '<div class="lp-section">' +
+        '<h4>Dates</h4>' +
+        '<div class="lp-field-grid">' +
+          '<div class="lp-field"><div class="key">Purchase Date</div><div class="val">' + (purchaseDate ? esc(purchaseDate) : '-') + '</div></div>' +
+          '<div class="lp-field"><div class="key">Due Date</div><div class="val">' + (dueDate ? fmtDate(dueDate) : '-') + '</div></div>' +
+          '<div class="lp-field"><div class="key">Age</div><div class="val ' + ageCls + '">' + (ageDays != null ? ageDays + ' days' : '-') + '</div></div>' +
+          '<div class="lp-field"><div class="key">Bucket</div><div class="val">' + esc(bucketVal) + '</div></div>' +
+        '</div>' +
+      '</div>';
+
+      html += '<div class="lp-section">' +
+        '<h4>Documents (' + docs.length + ')</h4>' +
+        docListHtml +
+      '</div>';
+
+      html += '<div class="lp-actions">' +
+        '<span class="lp-kb-hint"><kbd>Esc</kbd> or <kbd>&larr;</kbd> back to invoice list</span>' +
+        '<button class="lp-btn-primary" id="lpOpenSubHistoryBtn">Open in Submission History &#8599;</button>' +
+      '</div>';
+
+      panel.innerHTML = html;
+      bindLoadPreviewControls(panel, loadId);
+    }
+
+    function bindLoadPreviewControls(panel, loadId) {
+      var backBtn = panel.querySelector('#lpBackBtn');
+      if (backBtn) backBtn.addEventListener('click', closeLoadPreview);
+      var openBtn = panel.querySelector('#lpOpenSubHistoryBtn');
+      if (openBtn) {
+        openBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          openInSubmissionHistory(loadId);
+        });
+      }
     }
 
     // ----- global listeners -----
@@ -688,13 +989,26 @@
       document.getElementById('overlay').addEventListener('click', closeDetail);
       document.addEventListener('keydown', function (e) {
         // Only handle nav keys when panel is open
-        if (state.selectedCustomerId != null) {
-          if (e.key === 'Escape') { e.preventDefault(); closeDetail(); return; }
-          var tag = (e.target && e.target.tagName) || '';
-          if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-          if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); moveDetail(+1); return; }
-          if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); moveDetail(-1); return; }
+        if (state.selectedCustomerId == null) return;
+        var tag = (e.target && e.target.tagName) || '';
+        var inLoadPreview = state.viewingLoadId != null;
+
+        if (inLoadPreview) {
+          // In load preview: Esc / Left / Backspace returns to invoice list
+          if (e.key === 'Escape' || e.key === 'ArrowLeft' || e.key === 'Backspace') {
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+            e.preventDefault();
+            closeLoadPreview();
+          }
+          // Up/Down/j/k disabled in load preview
+          return;
         }
+
+        // Invoice list view
+        if (e.key === 'Escape') { e.preventDefault(); closeDetail(); return; }
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); moveDetail(+1); return; }
+        if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); moveDetail(-1); return; }
       });
       // Close summary export dropdown on outside click
       document.addEventListener('click', function () {

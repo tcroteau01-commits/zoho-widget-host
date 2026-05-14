@@ -347,11 +347,11 @@
     }
 
     function waitForZoho(attempts, delay) {
-      if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.init) {
+      if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR) {
         return Promise.resolve();
       }
       if (attempts <= 0) {
-        return Promise.reject(new Error('SDK not loaded'));
+        return Promise.reject(new Error('Widget must be loaded inside OperFi Broker Portal. Or append ?clientId=7088 to the URL to test.'));
       }
       return new Promise(function (resolve, reject) {
         setTimeout(function () {
@@ -370,18 +370,20 @@
         return;
       }
       waitForZoho(30, 100).then(function () {
-        return ZOHO.CREATOR.init();
-      }).then(function (initParams) {
-        var loginUser = initParams && initParams.loginUser;
-        brokerEmail = loginUser && loginUser.loginId;
-        if (!brokerEmail) {
-          showError('Unable to identify broker - try refreshing or contact support.');
-          return;
+        if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+          throw new Error('SDK loaded but getInitParams unavailable.');
         }
+        var initParams = ZOHO.CREATOR.UTIL.getInitParams();
+        var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
+        brokerEmail = loginUser || '';
+        if (!brokerEmail) {
+          throw new Error('No login email returned from Creator. Open DevTools console (F12) for details.');
+        }
+        try { console.log('[Aging] init params:', initParams); } catch (e) {}
         fetchAging();
         bindGlobalEvents();
-      }).catch(function () {
-        showError('Widget must be loaded inside OperFi Broker Portal. Or append ?clientId=7088 to the URL to test as Marek LLC.');
+      }).catch(function (err) {
+        showError((err && err.message) ? err.message : 'Widget must be loaded inside OperFi Broker Portal. Or append ?clientId=7088 to the URL to test.');
       });
     }
 

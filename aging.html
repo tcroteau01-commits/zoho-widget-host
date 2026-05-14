@@ -333,29 +333,72 @@
       loadPreviewError: null
     };
 
-    ZOHO.CREATOR.init().then(function (initParams) {
-      var loginUser = initParams && initParams.loginUser;
-      brokerEmail = loginUser && loginUser.loginId;
-      if (!brokerEmail) {
-        document.getElementById('aging-app').innerHTML = '<div style="padding:24px;color:#DC2626">Unable to identify broker.</div>';
+    // Standalone-test mode: ?clientId=<id> bypasses Creator SDK
+    state.clientId = null;
+
+    function showError(msg) {
+      document.getElementById('aging-app').innerHTML =
+        '<div style="padding:24px;color:#DC2626">' + esc(msg) + '</div>';
+    }
+
+    function buildAuthParams() {
+      if (state.clientId) return 'clientId=' + encodeURIComponent(state.clientId);
+      return 'email=' + encodeURIComponent(brokerEmail);
+    }
+
+    function init() {
+      var params = new URLSearchParams(window.location.search);
+      var clientIdOverride = params.get('clientId');
+      if (clientIdOverride) {
+        state.clientId = clientIdOverride;
+        fetchAging();
+        bindGlobalEvents();
         return;
       }
-      fetchAging();
-      bindGlobalEvents();
-    });
+      if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.init) {
+        showError('Widget must be loaded inside OperFi Broker Portal. Or append ?clientId=7088 to the URL to test as Marek LLC.');
+        return;
+      }
+      ZOHO.CREATOR.init().then(function (initParams) {
+        var loginUser = initParams && initParams.loginUser;
+        brokerEmail = loginUser && loginUser.loginId;
+        if (!brokerEmail) {
+          showError('Unable to identify broker - try refreshing or contact support.');
+          return;
+        }
+        fetchAging();
+        bindGlobalEvents();
+      }).catch(function () {
+        showError('Widget must be loaded inside OperFi Broker Portal. Or append ?clientId=7088 to the URL to test as Marek LLC.');
+      });
+    }
+
+    init();
 
     function fetchAging() {
-      var url = BROKER_API_BASE + '/aging?email=' + encodeURIComponent(brokerEmail);
+      var url = BROKER_API_BASE + '/aging?' + buildAuthParams();
       if (state.dateBasis === 'invoice') url += '&dateBasis=invoice';
       document.getElementById('aging-app').innerHTML = '<div class="loading">Loading aging data...</div>';
       fetch(url)
-        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          if (!r.ok) {
+            return r.json().then(function (body) {
+              throw new Error((body && body.error) || ('HTTP ' + r.status));
+            }, function () {
+              throw new Error('HTTP ' + r.status);
+            });
+          }
+          return r.json();
+        })
         .then(function (data) {
+          if (!data || !data.client || !data.buckets) {
+            throw new Error('Aging data returned in unexpected format.');
+          }
           state.data = data;
           renderSummary();
         })
-        .catch(function () {
-          document.getElementById('aging-app').innerHTML = "<div style='padding:24px;color:#DC2626'>Couldn't load aging data - try refreshing.</div>";
+        .catch(function (err) {
+          showError("Couldn't load aging data: " + (err && err.message ? err.message : 'unknown error'));
         });
     }
 
@@ -496,7 +539,7 @@
     }
 
     function openExport(scope, format, customerId) {
-      var url = BROKER_API_BASE + '/aging?email=' + encodeURIComponent(brokerEmail) +
+      var url = BROKER_API_BASE + '/aging?' + buildAuthParams() +
                 '&format=' + encodeURIComponent(format) +
                 '&scope=' + encodeURIComponent(scope);
       if (state.dateBasis === 'invoice') url += '&dateBasis=invoice';
@@ -648,8 +691,8 @@
       state.loadPreviewLoading = true;
       state.loadPreviewError = null;
       renderDetail();
-      var url = BROKER_API_BASE + '/aging/load-preview?email=' +
-                encodeURIComponent(brokerEmail) + '&loadId=' + encodeURIComponent(loadId);
+      var url = BROKER_API_BASE + '/aging/load-preview?' + buildAuthParams() +
+                '&loadId=' + encodeURIComponent(loadId);
       fetch(url)
         .then(function (r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);

@@ -374,12 +374,14 @@
           throw new Error('SDK loaded but getInitParams unavailable.');
         }
         var initParams = ZOHO.CREATOR.UTIL.getInitParams();
+        try { console.log('[Aging] init params:', initParams); } catch (e) {}
+        try { console.log('[Aging] init params keys:', initParams ? Object.keys(initParams) : 'null'); } catch (e) {}
+        try { console.log('[Aging] init params JSON:', JSON.stringify(initParams)); } catch (e) {}
         var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
         brokerEmail = loginUser || '';
         if (!brokerEmail) {
-          throw new Error('No login email returned from Creator. Open DevTools console (F12) for details.');
+          throw new Error('No login email returned from Creator. Open DevTools console (F12) for details — look for "[Aging] init params keys".');
         }
-        try { console.log('[Aging] init params:', initParams); } catch (e) {}
         fetchAging();
         bindGlobalEvents();
       }).catch(function (err) {

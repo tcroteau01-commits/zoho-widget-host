@@ -644,6 +644,35 @@
       return html;
     }
 
+    function dateRangeToFromTo(rangeKey) {
+      var today = new Date();
+      function fmt(d) {
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + dd;
+      }
+      function addDays(d, n) { var c = new Date(d); c.setDate(c.getDate() + n); return c; }
+      function startOfWeek(d) { var c = new Date(d); c.setDate(c.getDate() - c.getDay()); return c; }
+      function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+      function startOfYear(d) { return new Date(d.getFullYear(), 0, 1); }
+      switch (rangeKey) {
+        case 'today':      return {from: fmt(today), to: fmt(today)};
+        case 'yesterday':  var y = addDays(today, -1); return {from: fmt(y), to: fmt(y)};
+        case 'this_week':  return {from: fmt(startOfWeek(today)), to: fmt(today)};
+        case 'last_week':  var ew = addDays(startOfWeek(today), -1);
+                           var sw = addDays(ew, -6);
+                           return {from: fmt(sw), to: fmt(ew)};
+        case 'this_month': return {from: fmt(startOfMonth(today)), to: fmt(today)};
+        case 'last_month': var sm = startOfMonth(today);
+                           var elm = addDays(sm, -1);
+                           var slm = startOfMonth(elm);
+                           return {from: fmt(slm), to: fmt(elm)};
+        case 'this_year':  return {from: fmt(startOfYear(today)), to: fmt(today)};
+        default:           return {from: fmt(addDays(today, -7)), to: fmt(today)};
+      }
+    }
+
     function uniqueDebtorsFromReceipts(receipts) {
       var seen = {};
       var out = [];
@@ -738,9 +767,32 @@
     }
 
     function fetchReceipts() {
-      // Real implementation in Task 11
-      state.receipts = { receipts: [], summary: [], totals: { count: 0, amount: 0, summaryCount: 0 } };
+      state.receiptsLoading = true;
       renderSummary();
+      var f = state.receiptsFilters;
+      var range = dateRangeToFromTo(f.dateRange);
+      var params = new URLSearchParams();
+      if (state.clientId) params.set('clientId', state.clientId);
+      else                params.set('email', brokerEmail);
+      params.set('dateFrom', range.from);
+      params.set('dateTo',   range.to);
+      if (f.debtorId)  params.set('debtorId',  f.debtorId);
+      if (f.loadId)    params.set('loadId',    f.loadId);
+      if (f.invoiceNo) params.set('invoiceNo', f.invoiceNo);
+
+      fetch(BROKER_API_BASE + '/aging/receipts?' + params.toString())
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          state.receipts = data;
+          state.receiptsLoading = false;
+          renderSummary();
+        })
+        .catch(function (err) {
+          console.error('fetchReceipts failed', err);
+          state.receipts = { receipts: [], summary: [], totals: { count: 0, amount: 0, summaryCount: 0 } };
+          state.receiptsLoading = false;
+          renderSummary();
+        });
     }
 
     function renderSummary() {
@@ -882,6 +934,17 @@
             }
           });
         });
+        // Export menu item clicks
+        document.querySelectorAll('[data-export]').forEach(function (b) {
+          b.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var spec = b.getAttribute('data-export'); // e.g. "receipts:csv"
+            var parts = spec.split(':');
+            openExport(parts[0], parts[1]);
+            state.receiptsExportOpen = false;
+            renderSummary();
+          });
+        });
       }
 
       if (state.currentTab === 'open-ar') {
@@ -937,11 +1000,28 @@
     }
 
     function openExport(scope, format, customerId) {
-      var url = BROKER_API_BASE + '/aging?' + buildAuthParams() +
-                '&format=' + encodeURIComponent(format) +
-                '&scope=' + encodeURIComponent(scope);
-      if (state.dateBasis === 'invoice') url += '&dateBasis=invoice';
-      if (customerId != null) url += '&customerId=' + encodeURIComponent(customerId);
+      var url;
+      if (scope === 'receipts') {
+        var f = state.receiptsFilters;
+        var range = dateRangeToFromTo(f.dateRange);
+        var params = new URLSearchParams();
+        if (state.clientId) params.set('clientId', state.clientId);
+        else                params.set('email', brokerEmail);
+        params.set('format', format);
+        params.set('dateFrom', range.from);
+        params.set('dateTo',   range.to);
+        if (f.debtorId)  params.set('debtorId',  f.debtorId);
+        if (f.loadId)    params.set('loadId',    f.loadId);
+        if (f.invoiceNo) params.set('invoiceNo', f.invoiceNo);
+        params.set('view', state.receiptsView);
+        url = BROKER_API_BASE + '/aging/receipts?' + params.toString();
+      } else {
+        url = BROKER_API_BASE + '/aging?' + buildAuthParams() +
+              '&format=' + encodeURIComponent(format) +
+              '&scope=' + encodeURIComponent(scope);
+        if (state.dateBasis === 'invoice') url += '&dateBasis=invoice';
+        if (customerId != null) url += '&customerId=' + encodeURIComponent(customerId);
+      }
       window.open(url, '_blank');
     }
 

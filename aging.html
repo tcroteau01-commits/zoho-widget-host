@@ -369,13 +369,21 @@
     border-bottom: 1px solid var(--of-gray-200);
   }
   table.invoices-nested {
-    width: 100%; border-collapse: collapse;
-    margin: 4px 0 4px 52px; font-size: 11px;
+    width: calc(100% - 52px); border-collapse: collapse;
+    table-layout: fixed;
+    margin: 4px 24px 4px 52px; font-size: 11px;
   }
+  table.invoices-nested col.c-inv     { width: 90px; }
+  table.invoices-nested col.c-load    { width: 100px; }
+  table.invoices-nested col.c-age     { width: 60px; }
+  table.invoices-nested col.c-note    { width: auto; }
+  table.invoices-nested col.c-amt     { width: 110px; }
   table.invoices-nested td {
     padding: 6px 10px; color: var(--of-gray-700); border: none !important;
     font-variant-numeric: tabular-nums;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  table.invoices-nested td.note { color: var(--of-gray-500); font-size: 10px; }
   table.invoices-nested td.num { text-align: right; }
   table.invoices-nested td.link { color: var(--of-orange); cursor: pointer; font-weight: 500; }
   table.invoices-nested td.link:hover { text-decoration: underline; }
@@ -694,14 +702,16 @@
         '</tr>';
         if (expanded) {
           html += '<tr class="invoice-detail-row"><td colspan="6">' +
-            '<table class="invoices-nested"><tbody>';
+            '<table class="invoices-nested">' +
+            '<colgroup><col class="c-inv"><col class="c-load"><col class="c-age"><col class="c-note"><col class="c-amt"></colgroup>' +
+            '<tbody>';
           for (var j = 0; j < (g.invoices || []).length; j++) {
             var inv = g.invoices[j];
             html += '<tr>' +
               '<td>Inv ' + esc(inv.invoiceNo || '') + '</td>' +
-              '<td class="link" data-action="load" data-load="' + esc(inv.loadId) + '">Load ' + esc(inv.loadId || '') + '</td>' +
+              '<td class="link" data-action="load" data-load="' + esc(inv.loadId) + '" data-debtor-name="' + esc(g.debtorName || '') + '">Load ' + esc(inv.loadId || '') + '</td>' +
               '<td>' + (inv.age === null ? '-' : esc(inv.age) + 'd') + '</td>' +
-              '<td>' + esc(inv.note || '') + '</td>' +
+              '<td class="note" title="' + esc(inv.note || '') + '">' + esc(inv.note || '') + '</td>' +
               '<td class="num">' + fmtMoney(inv.amount) + '</td>' +
             '</tr>';
           }
@@ -903,7 +913,8 @@
           cell.addEventListener('click', function (e) {
             e.stopPropagation();  // don't collapse the accordion
             var loadId = cell.getAttribute('data-load');
-            if (loadId && typeof openLoadPreview === 'function') openLoadPreview(loadId);
+            var debtorName = cell.getAttribute('data-debtor-name') || '';
+            if (loadId && typeof openLoadPreview === 'function') openLoadPreview(loadId, debtorName);
           });
         });
         // Detail-view row clicks: Load ID cell → load preview; row body → customer detail
@@ -911,7 +922,9 @@
           tr.addEventListener('click', function (e) {
             var loadCell = e.target.closest('td.link[data-action="load"]');
             if (loadCell && typeof openLoadPreview === 'function') {
-              openLoadPreview(tr.getAttribute('data-load'));
+              var dbCell = tr.querySelectorAll('td')[3];
+              var dbName = dbCell ? dbCell.textContent : '';
+              openLoadPreview(tr.getAttribute('data-load'), dbName);
             } else {
               var dbId = tr.getAttribute('data-debtor');
               if (dbId && typeof openDetail === 'function') openDetail(dbId);
@@ -1188,12 +1201,23 @@
     }
 
     // ----- Load preview view (stacked inside detail panel) -----
-    function openLoadPreview(loadId) {
+    function openLoadPreview(loadId, debtorNameFallback) {
       if (!loadId) return;
       state.viewingLoadId = String(loadId);
       state.loadPreview = null;
       state.loadPreviewLoading = true;
       state.loadPreviewError = null;
+      if (debtorNameFallback) state.viewingLoadCustomerName = debtorNameFallback;
+      // Receipts-tab callers won't have an open detail panel — open it now
+      var panel = document.getElementById('detailPanel');
+      var overlay = document.getElementById('overlay');
+      var wasOpen = panel && panel.classList.contains('open');
+      state.viewingLoadStandalone = !wasOpen;
+      if (panel && !wasOpen) {
+        panel.classList.add('open');
+        panel.setAttribute('aria-hidden', 'false');
+        if (overlay) overlay.classList.add('open');
+      }
       renderDetail();
       var url = BROKER_API_BASE + '/aging/load-preview?' + buildAuthParams() +
                 '&loadId=' + encodeURIComponent(loadId);
@@ -1218,11 +1242,18 @@
     }
 
     function closeLoadPreview() {
+      var standalone = state.viewingLoadStandalone;
       state.viewingLoadId = null;
       state.loadPreview = null;
       state.loadPreviewLoading = false;
       state.loadPreviewError = null;
-      renderDetail();
+      state.viewingLoadStandalone = false;
+      state.viewingLoadCustomerName = null;
+      if (standalone) {
+        closeDetail();  // close the whole panel — there was no customer detail behind it
+      } else {
+        renderDetail();
+      }
     }
 
     function openInSubmissionHistory(loadId) {
@@ -1258,6 +1289,14 @@
       var panel = document.getElementById('detailPanel');
       var c = findCustomer(state.selectedCustomerId);
       var d = state.data;
+
+      // Standalone load preview from the Receipts tab — no aging customer context
+      if (!c && state.viewingLoadId != null) {
+        var fallback = { name: state.viewingLoadCustomerName || '', invoices: [] };
+        renderLoadPreview(panel, fallback, d || {});
+        return;
+      }
+
       if (!c) { panel.innerHTML = ''; return; }
 
       if (state.viewingLoadId != null) {

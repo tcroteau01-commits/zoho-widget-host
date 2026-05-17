@@ -306,6 +306,94 @@
   .lp-loading { padding: 32px 24px; text-align: center; color: var(--of-gray-500); font-size: 13px; }
   .lp-error { padding: 32px 24px; text-align: center; color: var(--of-red); font-size: 13px; }
 
+  /* Receipts tab — Summary/Detail toggle */
+  .view-toggle {
+    display: inline-flex;
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .view-toggle button {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 16px;
+    cursor: pointer;
+  }
+  .view-toggle button.active {
+    background: #1e293b;
+    color: #ffffff;
+  }
+
+  /* Receipts table — shared */
+  table.receipts {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  table.receipts thead th {
+    text-align: left;
+    font-weight: 600;
+    color: #94a3b8;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 10px 12px;
+    background: #0f172a;
+    border-bottom: 1px solid #1e293b;
+  }
+  table.receipts thead th.num { text-align: right; }
+  table.receipts tbody td {
+    padding: 12px;
+    border-bottom: 1px solid #1e293b;
+    color: #e2e8f0;
+  }
+  table.receipts tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.receipts tbody tr.total-row { background: #111827; font-weight: 700; }
+
+  /* Summary view chevron column */
+  table.receipts.summary tbody tr.summary-row { cursor: pointer; }
+  table.receipts.summary tbody tr.summary-row:hover { background: #1e293b; }
+  table.receipts.summary tbody tr.summary-row td.chevron {
+    width: 24px;
+    color: #64748b;
+    font-size: 11px;
+  }
+  table.receipts.summary tbody tr.summary-row.expanded td.chevron { color: #f97316; }
+
+  /* Summary view — expanded invoice-detail sub-row */
+  table.receipts tbody tr.invoice-detail-row > td {
+    padding: 0;
+    background: #0a0f1c;
+    border-bottom: 1px solid #1e293b;
+  }
+  table.receipts tbody tr.invoice-detail-row table.invoices-nested {
+    width: 100%;
+    border-collapse: collapse;
+    margin-left: 32px;
+    font-size: 13px;
+  }
+  table.invoices-nested td {
+    padding: 8px 12px;
+    color: #cbd5e1;
+    border: none !important;
+  }
+  table.invoices-nested td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.invoices-nested td.link { color: #60a5fa; cursor: pointer; }
+  table.invoices-nested td.link:hover { text-decoration: underline; }
+
+  /* Detail view links */
+  table.receipts.detail tbody td.link { color: #60a5fa; cursor: pointer; }
+  table.receipts.detail tbody td.link:hover { text-decoration: underline; }
+  table.receipts.detail tbody tr:hover { background: #1e293b; cursor: pointer; }
+
+  /* Receipts loading / empty states */
+  .rcpt-loading { padding: 40px 24px; text-align: center; color: #64748b; }
+  .rcpt-empty { padding: 40px 24px; text-align: center; color: #64748b; }
+
   /* Tab strip */
   .tab-strip {
     display: flex;
@@ -505,7 +593,148 @@
     }
 
     function renderReceiptsBody() {
-      return '<div class="kpi-grid"><div class="kpi-card"><div class="kpi-label">Receipts</div><div class="kpi-value">Loading…</div></div></div>';
+      var r = state.receipts;
+      var f = state.receiptsFilters;
+      var view = state.receiptsView;
+      var html = '';
+
+      // Filter bar (view toggle + filters + export)
+      html += '<div class="filter-bar">' +
+        '<div class="view-toggle">' +
+          '<button data-view="summary" class="' + (view === 'summary' ? 'active' : '') + '">Summary</button>' +
+          '<button data-view="detail"  class="' + (view === 'detail'  ? 'active' : '') + '">Detail</button>' +
+        '</div>' +
+        '<select id="rcptDate" class="seg-control" style="min-width:160px">' +
+          ['today','yesterday','this_week','last_week','this_month','last_month','this_year'].map(function (k) {
+            var labels = {today:'Today', yesterday:'Yesterday', this_week:'This Week', last_week:'Last Week',
+                          this_month:'This Month', last_month:'Last Month', this_year:'This Year'};
+            return '<option value="' + k + '"' + (f.dateRange === k ? ' selected' : '') + '>' + labels[k] + '</option>';
+          }).join('') +
+        '</select>' +
+        '<select id="rcptDebtor" class="seg-control" style="min-width:200px"><option value="">Debtor: All</option>' +
+          (r && r.receipts ? uniqueDebtorsFromReceipts(r.receipts).map(function (d) {
+            return '<option value="' + esc(d.id) + '"' + (f.debtorId === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>';
+          }).join('') : '') +
+        '</select>' +
+        '<input id="rcptLoad" class="search-input" type="text" placeholder="Search Load ID…" value="' + esc(f.loadId) + '">' +
+        '<input id="rcptInv" class="search-input" type="text" placeholder="Search Invoice #…" value="' + esc(f.invoiceNo) + '">' +
+        '<div class="export-wrap">' +
+          '<button id="receiptsExportBtn" class="btn-export">Export <span style="font-size:9px;">&#9660;</span></button>' +
+          (state.receiptsExportOpen ? renderReceiptsExportMenu() : '') +
+        '</div>' +
+      '</div>';
+
+      // KPI strip — count depends on view
+      var totals = (r && r.totals) ? r.totals : { count: 0, amount: 0, summaryCount: 0 };
+      var displayCount = view === 'summary' ? (totals.summaryCount || 0) : (totals.count || 0);
+      var displayLabel = view === 'summary' ? 'Receipts in range' : 'Transactions in range';
+      html += '<div class="kpi-grid">' +
+        kpiCard(true, displayLabel, String(displayCount), '') +
+        kpiCard(false, 'Total received', fmtMoney(totals.amount || 0), '') +
+      '</div>';
+
+      // Table — dispatch on view
+      if (state.receiptsLoading) {
+        html += '<div class="rcpt-loading">Loading receipts…</div>';
+      } else if (view === 'summary') {
+        html += renderReceiptsSummaryTable();
+      } else {
+        html += renderReceiptsDetailTable();
+      }
+      return html;
+    }
+
+    function uniqueDebtorsFromReceipts(receipts) {
+      var seen = {};
+      var out = [];
+      for (var i = 0; i < receipts.length; i++) {
+        var d = receipts[i].debtorId;
+        if (d && !seen[d]) {
+          seen[d] = true;
+          out.push({ id: d, name: receipts[i].debtorName });
+        }
+      }
+      out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      return out;
+    }
+
+    function renderReceiptsSummaryTable() {
+      var r = state.receipts;
+      if (!r || !r.summary || r.summary.length === 0) {
+        return '<div class="rcpt-empty">No receipts in this range.</div>';
+      }
+      var html = '<table class="receipts summary"><thead><tr>' +
+        '<th></th>' +
+        '<th>Date</th><th>Pmt #</th><th>Debtor</th>' +
+        '<th class="num"># Invoices</th><th class="num">Amount</th>' +
+      '</tr></thead><tbody>';
+      for (var i = 0; i < r.summary.length; i++) {
+        var g = r.summary[i];
+        var key = (g.debtorId || '') + '|' + (g.pmtNumber || '');
+        var expanded = !!state.expandedSummary[key];
+        html += '<tr class="summary-row' + (expanded ? ' expanded' : '') + '" data-key="' + esc(key) + '" data-debtor="' + esc(g.debtorId) + '">' +
+          '<td class="chevron">' + (expanded ? '&#9662;' : '&#9656;') + '</td>' +
+          '<td>' + esc(g.date || '') + '</td>' +
+          '<td>' + esc(g.pmtNumber || '') + '</td>' +
+          '<td>' + esc(g.debtorName || '') + '</td>' +
+          '<td class="num">' + (g.invoiceCount || 0) + '</td>' +
+          '<td class="num"><strong>' + fmtMoney(g.amount) + '</strong></td>' +
+        '</tr>';
+        if (expanded) {
+          html += '<tr class="invoice-detail-row"><td colspan="6">' +
+            '<table class="invoices-nested"><tbody>';
+          for (var j = 0; j < (g.invoices || []).length; j++) {
+            var inv = g.invoices[j];
+            html += '<tr>' +
+              '<td>Inv ' + esc(inv.invoiceNo || '') + '</td>' +
+              '<td class="link" data-action="load" data-load="' + esc(inv.loadId) + '">Load ' + esc(inv.loadId || '') + '</td>' +
+              '<td>' + (inv.age === null ? '—' : esc(inv.age) + 'd') + '</td>' +
+              '<td>' + esc(inv.note || '') + '</td>' +
+              '<td class="num">' + fmtMoney(inv.amount) + '</td>' +
+            '</tr>';
+          }
+          html += '</tbody></table></td></tr>';
+        }
+      }
+      html += '<tr class="total-row"><td colspan="5"><strong>Total</strong></td>' +
+        '<td class="num"><strong>' + fmtMoney(r.totals.amount) + '</strong></td></tr>';
+      html += '</tbody></table>';
+      return html;
+    }
+
+    function renderReceiptsDetailTable() {
+      var r = state.receipts;
+      if (!r || !r.receipts || r.receipts.length === 0) {
+        return '<div class="rcpt-empty">No receipts in this range.</div>';
+      }
+      var html = '<table class="receipts detail"><thead><tr>' +
+        '<th>Date</th><th>Invoice #</th><th>Load ID</th><th>Debtor</th>' +
+        '<th>Note</th><th>Check #</th><th class="num">Age</th><th class="num">Amount</th>' +
+      '</tr></thead><tbody>';
+      for (var i = 0; i < r.receipts.length; i++) {
+        var row = r.receipts[i];
+        html += '<tr data-debtor="' + esc(row.debtorId) + '" data-load="' + esc(row.loadId) + '">' +
+          '<td>' + esc(row.date || '') + '</td>' +
+          '<td>' + esc(row.invoiceNo || '') + '</td>' +
+          '<td class="link" data-action="load">' + esc(row.loadId || '') + '</td>' +
+          '<td>' + esc(row.debtorName || '') + '</td>' +
+          '<td>' + esc(row.note || '') + '</td>' +
+          '<td>' + esc(row.checkNumber || '') + '</td>' +
+          '<td class="num">' + (row.age === null ? '—' : row.age + 'd') + '</td>' +
+          '<td class="num"><strong>' + fmtMoney(row.amount) + '</strong></td>' +
+        '</tr>';
+      }
+      html += '<tr class="total-row"><td colspan="7"><strong>Total</strong></td>' +
+        '<td class="num"><strong>' + fmtMoney(r.totals.amount) + '</strong></td></tr>';
+      html += '</tbody></table>';
+      return html;
+    }
+
+    function renderReceiptsExportMenu() {
+      return '<div class="export-menu">' +
+        '<button data-export="receipts:csv">Receipts CSV</button>' +
+        '<button data-export="receipts:pdf">Receipts PDF</button>' +
+      '</div>';
     }
 
     function fetchReceipts() {
@@ -578,6 +807,82 @@
           }
         });
       });
+
+      if (state.currentTab === 'receipts') {
+        // View toggle
+        document.querySelectorAll('.view-toggle button').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var v = b.getAttribute('data-view');
+            if (v === state.receiptsView) return;
+            state.receiptsView = v;
+            renderSummary();
+          });
+        });
+        // Date / debtor selects
+        var dateSel = document.getElementById('rcptDate');
+        if (dateSel) dateSel.addEventListener('change', function (e) {
+          state.receiptsFilters.dateRange = e.target.value;
+          fetchReceipts();
+        });
+        var debtSel = document.getElementById('rcptDebtor');
+        if (debtSel) debtSel.addEventListener('change', function (e) {
+          state.receiptsFilters.debtorId = e.target.value;
+          fetchReceipts();
+        });
+        // Load / invoice search (debounced)
+        var loadInp = document.getElementById('rcptLoad');
+        if (loadInp) loadInp.addEventListener('input', function (e) {
+          state.receiptsFilters.loadId = e.target.value;
+          if (state._rcptDebounce) clearTimeout(state._rcptDebounce);
+          state._rcptDebounce = setTimeout(fetchReceipts, 300);
+        });
+        var invInp = document.getElementById('rcptInv');
+        if (invInp) invInp.addEventListener('input', function (e) {
+          state.receiptsFilters.invoiceNo = e.target.value;
+          if (state._rcptDebounce) clearTimeout(state._rcptDebounce);
+          state._rcptDebounce = setTimeout(fetchReceipts, 300);
+        });
+        // Export menu toggle (Task 11 wires the click-through)
+        var expBtn = document.getElementById('receiptsExportBtn');
+        if (expBtn) expBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          state.receiptsExportOpen = !state.receiptsExportOpen;
+          renderSummary();
+        });
+        // Summary row clicks → toggle accordion
+        document.querySelectorAll('table.receipts.summary tbody tr.summary-row').forEach(function (tr) {
+          tr.addEventListener('click', function (e) {
+            var key = tr.getAttribute('data-key');
+            if (!key) return;
+            if (state.expandedSummary[key]) {
+              delete state.expandedSummary[key];
+            } else {
+              state.expandedSummary[key] = true;
+            }
+            renderSummary();
+          });
+        });
+        // Nested invoice "Load XXXX" cell clicks → open load preview
+        document.querySelectorAll('table.invoices-nested td.link[data-action="load"]').forEach(function (cell) {
+          cell.addEventListener('click', function (e) {
+            e.stopPropagation();  // don't collapse the accordion
+            var loadId = cell.getAttribute('data-load');
+            if (loadId && typeof openLoadPreview === 'function') openLoadPreview(loadId);
+          });
+        });
+        // Detail-view row clicks: Load ID cell → load preview; row body → customer detail
+        document.querySelectorAll('table.receipts.detail tbody tr[data-debtor]').forEach(function (tr) {
+          tr.addEventListener('click', function (e) {
+            var loadCell = e.target.closest('td.link[data-action="load"]');
+            if (loadCell && typeof openLoadPreview === 'function') {
+              openLoadPreview(tr.getAttribute('data-load'));
+            } else {
+              var dbId = tr.getAttribute('data-debtor');
+              if (dbId && typeof openDetail === 'function') openDetail(dbId);
+            }
+          });
+        });
+      }
 
       if (state.currentTab === 'open-ar') {
         // bind filter-bar listeners

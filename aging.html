@@ -217,6 +217,15 @@
     padding: 32px 24px; text-align: center; color: var(--of-gray-500); font-size: 13px;
   }
 
+  /* Recent Receipts section inside detail panel */
+  .dp-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--of-gray-500); padding: 16px 24px 8px; border-top: 1px solid var(--of-gray-200);
+    margin-top: 8px;
+  }
+  .recent-receipts { padding: 0 24px 24px; }
+  .recent-receipts .rcpt-empty { padding: 8px 0; text-align: left; }
+
   /* Load ID link in invoice table */
   .load-id-link {
     color: var(--of-orange); cursor: pointer; text-decoration: none;
@@ -1114,6 +1123,48 @@
       return '<td' + (dim ? ' class="dim"' : '') + '>' + fmtMoney(v) + '</td>';
     }
 
+    // ----- Recent Receipts section (customer detail panel) -----
+    function renderRecentReceiptsSection(debtorId) {
+      return '<div class="dp-section-title">Recent Receipts</div>' +
+        '<div class="recent-receipts" id="recentReceipts-' + esc(debtorId) + '">Loading…</div>';
+    }
+
+    function fillRecentReceipts(debtorId) {
+      var params = new URLSearchParams();
+      if (state.clientId) params.set('clientId', state.clientId);
+      if (typeof brokerEmail !== 'undefined' && brokerEmail) params.set('email', brokerEmail);
+      params.set('debtorId', debtorId);
+      params.set('limit', '10');
+      fetch(BROKER_API_BASE + '/aging/customer-receipts?' + params.toString())
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var el = document.getElementById('recentReceipts-' + debtorId);
+          if (!el) return;
+          if (!data.receipts || data.receipts.length === 0) {
+            el.innerHTML = '<div class="rcpt-empty" style="padding:12px 0;text-align:left">No recent receipts.</div>';
+            return;
+          }
+          var html = '<table class="detail" style="margin-top:4px"><thead><tr>' +
+            '<th class="first">Date</th><th>Invoice #</th><th>Check #</th><th class="last num">Amount</th>' +
+          '</tr></thead><tbody>';
+          for (var i = 0; i < data.receipts.length; i++) {
+            var r = data.receipts[i];
+            html += '<tr>' +
+              '<td class="first">' + esc(r.date || '') + '</td>' +
+              '<td>' + esc(r.invoiceNo || '') + '</td>' +
+              '<td>' + esc(r.checkNumber || '') + '</td>' +
+              '<td class="last">' + fmtMoney(r.amount) + '</td>' +
+            '</tr>';
+          }
+          html += '</tbody></table>';
+          el.innerHTML = html;
+        })
+        .catch(function () {
+          var el = document.getElementById('recentReceipts-' + debtorId);
+          if (el) el.innerHTML = '<div class="rcpt-empty" style="padding:12px 0;text-align:left">Could not load.</div>';
+        });
+    }
+
     // ----- Slide-in detail panel -----
     function findCustomer(id) {
       if (id == null) return null;
@@ -1342,7 +1393,11 @@
         html += '</tbody></table>';
       }
 
+      html += renderRecentReceiptsSection(cid);
+
       panel.innerHTML = html;
+
+      fillRecentReceipts(cid);
 
       // bind detail-panel listeners
       var closeBtn = document.getElementById('dpCloseBtn');

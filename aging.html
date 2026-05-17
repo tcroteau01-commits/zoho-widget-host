@@ -880,18 +880,26 @@
         if (dateSel) dateSel.addEventListener('change', function (e) {
           var v = e.target.value;
           state.receiptsFilters.dateRange = v;
-          if (v !== 'custom') {
-            // Sync the date inputs to the resolved preset range
-            var r = dateRangeToFromTo(v);
-            state.receiptsFilters.dateFrom = r.from;
-            state.receiptsFilters.dateTo = r.to;
+          if (v === 'custom') {
+            // Switch the inputs to editable empty fields and wait for the
+            // user to pick both dates before fetching.
+            state.receiptsFilters.dateFrom = '';
+            state.receiptsFilters.dateTo = '';
+            renderSummary();
+            return;
           }
+          var r = dateRangeToFromTo(v);
+          state.receiptsFilters.dateFrom = r.from;
+          state.receiptsFilters.dateTo = r.to;
           fetchReceipts();
         });
         function onCustomDateChange() {
           state.receiptsFilters.dateRange = 'custom';
           state.receiptsFilters.dateFrom = (document.getElementById('rcptFrom') || {}).value || '';
           state.receiptsFilters.dateTo   = (document.getElementById('rcptTo')   || {}).value || '';
+          // Only fetch when both dates are populated — partial ranges would
+          // pull everything from that point onward.
+          if (!state.receiptsFilters.dateFrom || !state.receiptsFilters.dateTo) return;
           if (state._rcptDateDebounce) clearTimeout(state._rcptDateDebounce);
           state._rcptDateDebounce = setTimeout(fetchReceipts, 300);
         }

@@ -305,6 +305,33 @@
   .lp-btn-primary:hover { background: var(--of-orange-soft); }
   .lp-loading { padding: 32px 24px; text-align: center; color: var(--of-gray-500); font-size: 13px; }
   .lp-error { padding: 32px 24px; text-align: center; color: var(--of-red); font-size: 13px; }
+
+  /* Tab strip */
+  .tab-strip {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid #1e293b;
+    padding: 0 24px;
+    margin: 0 -24px 18px;
+  }
+  .tab-strip button {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 14px 0;
+    margin-right: 28px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tab-strip button.active {
+    color: #ffffff;
+    border-bottom-color: #f97316;
+  }
+  .tab-strip button:hover:not(.active) {
+    color: #cbd5e1;
+  }
 </style>
 </head>
 <body>
@@ -330,7 +357,15 @@
       viewingLoadId: null,
       loadPreview: null,
       loadPreviewLoading: false,
-      loadPreviewError: null
+      loadPreviewError: null,
+      currentTab: 'open-ar',
+      receipts: null,
+      receiptsLoading: false,
+      receiptsFilters: { dateRange: 'this_week', debtorId: '', loadId: '', invoiceNo: '' },
+      // View toggle scope (Tom's 2026-05-17 addition -- Summary/Detail toggle inside Receipts tab)
+      receiptsView: 'summary',          // 'summary' (default) | 'detail'
+      expandedSummary: {},              // { 'debtorId|pmtNumber': true } -- accordion expansion state
+      receiptsExportOpen: false         // export dropdown visibility
     };
 
     // Standalone-test mode: ?clientId=<id> bypasses Creator SDK
@@ -463,6 +498,23 @@
       return ({ b0_30:'0-30', b31_45:'31-45', b46_60:'46-60', b61_90:'61-90', b90_plus:'90+' })[k] || k;
     }
 
+    function renderTabStrip() {
+      return '<div class="tab-strip">' +
+        '<button data-tab="open-ar" class="' + (state.currentTab === 'open-ar' ? 'active' : '') + '">Open AR</button>' +
+        '<button data-tab="receipts" class="' + (state.currentTab === 'receipts' ? 'active' : '') + '">Receipts</button>' +
+      '</div>';
+    }
+
+    function renderReceiptsBody() {
+      return '<div class="kpi-grid"><div class="kpi-card"><div class="kpi-label">Receipts</div><div class="kpi-value">Loading…</div></div></div>';
+    }
+
+    function fetchReceipts() {
+      // Real implementation in Task 11
+      state.receipts = { receipts: [], summary: [], totals: { count: 0, amount: 0, summaryCount: 0 } };
+      renderSummary();
+    }
+
     function renderSummary() {
       var d = state.data;
       if (!d || !d.buckets || !d.customers) {
@@ -479,72 +531,96 @@
       })[0];
 
       var basisLabel = state.dateBasis === 'invoice' ? 'Invoice Date' : 'Purchase Date';
+      var subtitleText = state.currentTab === 'receipts' ? 'Debtor receipts log' : 'Open customer balances';
       var html = '<div class="page-header">' +
-        '<div><h2>Aging Summary</h2><p class="subtitle">' + esc(d.client && d.client.name) + ' &mdash; Open customer balances</p></div>' +
+        '<div><h2>Aging Summary</h2><p class="subtitle">' + esc(d.client && d.client.name) + ' &mdash; ' + subtitleText + '</p></div>' +
         '<span class="pill">As of <b>' + esc(d.asOf) + '</b></span>' +
       '</div>';
 
-      html += '<div class="kpi-grid">' +
-        kpiCard(true, 'Total Open AR', fmtMoney(d.buckets.total), 'across ' + d.customers.length + ' customers') +
-        kpiCard(false, 'Buy Limit', fmtMoney(d.client && d.client.buyLimit), fmtMoney(d.client && d.client.available) + ' available') +
-        kpiCard(false, 'Past Due (31+ days)', fmtMoney(pastDue), pctOf(pastDue, d.buckets.total) + ' of total') +
-        kpiCard(false, 'Top Concentration', (top ? (top.concentrationPct || 0).toFixed(1) + '%' : '-'), top ? esc(top.name) : '') +
-      '</div>';
+      html += renderTabStrip();
 
-      // Filter bar
-      html += '<div class="filter-bar">' +
-        '<input id="searchInput" class="search-input" type="text" placeholder="Search customers..." value="' + esc(state.searchQuery) + '">' +
-        '<div class="seg-control" role="tablist">' +
-          '<button class="seg-btn ' + (state.dateBasis === 'purchase' ? 'active' : '') + '" data-basis="purchase">Purchase Date</button>' +
-          '<button class="seg-btn ' + (state.dateBasis === 'invoice' ? 'active' : '') + '" data-basis="invoice">Invoice Date</button>' +
-        '</div>' +
-        '<div class="export-wrap">' +
-          '<button id="summaryExportBtn" class="btn-export">Export <span style="font-size:9px;">&#9660;</span></button>' +
-          (state.summaryExportOpen ? renderSummaryExportMenu() : '') +
-        '</div>' +
-      '</div>';
+      if (state.currentTab === 'open-ar') {
+        html += '<div class="kpi-grid">' +
+          kpiCard(true, 'Total Open AR', fmtMoney(d.buckets.total), 'across ' + d.customers.length + ' customers') +
+          kpiCard(false, 'Buy Limit', fmtMoney(d.client && d.client.buyLimit), fmtMoney(d.client && d.client.available) + ' available') +
+          kpiCard(false, 'Past Due (31+ days)', fmtMoney(pastDue), pctOf(pastDue, d.buckets.total) + ' of total') +
+          kpiCard(false, 'Top Concentration', (top ? (top.concentrationPct || 0).toFixed(1) + '%' : '-'), top ? esc(top.name) : '') +
+        '</div>';
 
-      html += renderTable();
+        // Filter bar
+        html += '<div class="filter-bar">' +
+          '<input id="searchInput" class="search-input" type="text" placeholder="Search customers..." value="' + esc(state.searchQuery) + '">' +
+          '<div class="seg-control" role="tablist">' +
+            '<button class="seg-btn ' + (state.dateBasis === 'purchase' ? 'active' : '') + '" data-basis="purchase">Purchase Date</button>' +
+            '<button class="seg-btn ' + (state.dateBasis === 'invoice' ? 'active' : '') + '" data-basis="invoice">Invoice Date</button>' +
+          '</div>' +
+          '<div class="export-wrap">' +
+            '<button id="summaryExportBtn" class="btn-export">Export <span style="font-size:9px;">&#9660;</span></button>' +
+            (state.summaryExportOpen ? renderSummaryExportMenu() : '') +
+          '</div>' +
+        '</div>';
+
+        html += renderTable();
+      } else if (state.currentTab === 'receipts') {
+        html += renderReceiptsBody();
+      }
+
       document.getElementById('aging-app').innerHTML = html;
 
-      // bind filter-bar listeners
-      var search = document.getElementById('searchInput');
-      if (search) {
-        search.addEventListener('input', function (e) {
-          state.searchQuery = e.target.value;
-          var tbody = document.querySelector('table.aging tbody');
-          if (tbody) tbody.outerHTML = renderTableBody();
-          // Re-bind row clicks since outerHTML replaced the tbody
-          bindRowClicks();
-        });
-      }
-      document.querySelectorAll('.seg-btn').forEach(function (b) {
+      // bind tab-strip listeners
+      document.querySelectorAll('.tab-strip button').forEach(function (b) {
         b.addEventListener('click', function () {
-          var basis = b.getAttribute('data-basis');
-          if (basis === state.dateBasis) return;
-          state.dateBasis = basis;
-          fetchAging();
+          var tab = b.getAttribute('data-tab');
+          if (tab === state.currentTab) return;
+          state.currentTab = tab;
+          if (tab === 'receipts' && state.receipts === null) {
+            fetchReceipts();
+          } else {
+            renderSummary();
+          }
         });
       });
-      var sumBtn = document.getElementById('summaryExportBtn');
-      if (sumBtn) {
-        sumBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          state.summaryExportOpen = !state.summaryExportOpen;
-          renderSummary();
+
+      if (state.currentTab === 'open-ar') {
+        // bind filter-bar listeners
+        var search = document.getElementById('searchInput');
+        if (search) {
+          search.addEventListener('input', function (e) {
+            state.searchQuery = e.target.value;
+            var tbody = document.querySelector('table.aging tbody');
+            if (tbody) tbody.outerHTML = renderTableBody();
+            // Re-bind row clicks since outerHTML replaced the tbody
+            bindRowClicks();
+          });
+        }
+        document.querySelectorAll('.seg-btn').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var basis = b.getAttribute('data-basis');
+            if (basis === state.dateBasis) return;
+            state.dateBasis = basis;
+            fetchAging();
+          });
         });
+        var sumBtn = document.getElementById('summaryExportBtn');
+        if (sumBtn) {
+          sumBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            state.summaryExportOpen = !state.summaryExportOpen;
+            renderSummary();
+          });
+        }
+        document.querySelectorAll('[data-export]').forEach(function (b) {
+          b.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var spec = b.getAttribute('data-export'); // e.g. "summary:csv"
+            var parts = spec.split(':');
+            openExport(parts[0], parts[1]);
+            state.summaryExportOpen = false;
+            renderSummary();
+          });
+        });
+        bindRowClicks();
       }
-      document.querySelectorAll('[data-export]').forEach(function (b) {
-        b.addEventListener('click', function (e) {
-          e.stopPropagation();
-          var spec = b.getAttribute('data-export'); // e.g. "summary:csv"
-          var parts = spec.split(':');
-          openExport(parts[0], parts[1]);
-          state.summaryExportOpen = false;
-          renderSummary();
-        });
-      });
-      bindRowClicks();
     }
 
     function renderSummaryExportMenu() {

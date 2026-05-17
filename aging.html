@@ -362,10 +362,9 @@
       receipts: null,
       receiptsLoading: false,
       receiptsFilters: { dateRange: 'this_week', debtorId: '', loadId: '', invoiceNo: '' },
-      // View toggle scope (Tom's 2026-05-17 addition -- Summary/Detail toggle inside Receipts tab)
-      receiptsView: 'summary',          // 'summary' (default) | 'detail'
-      expandedSummary: {},              // { 'debtorId|pmtNumber': true } -- accordion expansion state
-      receiptsExportOpen: false         // export dropdown visibility
+      receiptsView: 'summary',
+      expandedSummary: {},
+      receiptsExportOpen: false
     };
 
     // Standalone-test mode: ?clientId=<id> bypasses Creator SDK
@@ -530,7 +529,6 @@
         return (b.concentrationPct || 0) - (a.concentrationPct || 0);
       })[0];
 
-      var basisLabel = state.dateBasis === 'invoice' ? 'Invoice Date' : 'Purchase Date';
       var subtitleText = state.currentTab === 'receipts' ? 'Debtor receipts log' : 'Open customer balances';
       var html = '<div class="page-header">' +
         '<div><h2>Aging Summary</h2><p class="subtitle">' + esc(d.client && d.client.name) + ' &mdash; ' + subtitleText + '</p></div>' +

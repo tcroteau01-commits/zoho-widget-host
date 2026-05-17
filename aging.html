@@ -440,7 +440,7 @@
       currentTab: 'open-ar',
       receipts: null,
       receiptsLoading: false,
-      receiptsFilters: { dateRange: 'this_week', debtorId: '', loadId: '', invoiceNo: '' },
+      receiptsFilters: { dateRange: 'this_week', dateFrom: '', dateTo: '', debtorId: '', loadId: '', invoiceNo: '' },
       receiptsView: 'summary',
       expandedSummary: {},
       receiptsExportOpen: false
@@ -595,13 +595,15 @@
           '<button data-view="summary" class="' + (view === 'summary' ? 'active' : '') + '">Summary</button>' +
           '<button data-view="detail"  class="' + (view === 'detail'  ? 'active' : '') + '">Detail</button>' +
         '</div>' +
-        '<select id="rcptDate" class="seg-control" style="min-width:160px">' +
-          ['today','yesterday','this_week','last_week','this_month','last_month','this_year'].map(function (k) {
+        '<select id="rcptDate" class="seg-control" style="min-width:140px">' +
+          ['today','yesterday','this_week','last_week','this_month','last_month','this_year','custom'].map(function (k) {
             var labels = {today:'Today', yesterday:'Yesterday', this_week:'This Week', last_week:'Last Week',
-                          this_month:'This Month', last_month:'Last Month', this_year:'This Year'};
+                          this_month:'This Month', last_month:'Last Month', this_year:'This Year', custom:'Custom'};
             return '<option value="' + k + '"' + (f.dateRange === k ? ' selected' : '') + '>' + labels[k] + '</option>';
           }).join('') +
         '</select>' +
+        '<input id="rcptFrom" class="search-input" type="date" style="width:140px" value="' + esc(resolvedDateFrom(f)) + '">' +
+        '<input id="rcptTo" class="search-input" type="date" style="width:140px" value="' + esc(resolvedDateTo(f)) + '">' +
         '<select id="rcptDebtor" class="seg-control" style="min-width:200px"><option value="">Debtor: All</option>' +
           (r && r.receipts ? uniqueDebtorsFromReceipts(r.receipts).map(function (d) {
             return '<option value="' + esc(d.id) + '"' + (f.debtorId === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>';
@@ -663,6 +665,15 @@
         default:           return {from: fmt(addDays(today, -7)), to: fmt(today)};
       }
     }
+
+    function resolvedRange(f) {
+      if (f.dateRange === 'custom') {
+        return { from: f.dateFrom || '', to: f.dateTo || '' };
+      }
+      return dateRangeToFromTo(f.dateRange);
+    }
+    function resolvedDateFrom(f) { return resolvedRange(f).from; }
+    function resolvedDateTo(f)   { return resolvedRange(f).to;   }
 
     function uniqueDebtorsFromReceipts(receipts) {
       var seen = {};
@@ -763,12 +774,12 @@
       state.receiptsLoading = true;
       renderSummary();
       var f = state.receiptsFilters;
-      var range = dateRangeToFromTo(f.dateRange);
+      var range = resolvedRange(f);
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
       else                params.set('email', brokerEmail);
-      params.set('dateFrom', range.from);
-      params.set('dateTo',   range.to);
+      if (range.from) params.set('dateFrom', range.from);
+      if (range.to)   params.set('dateTo',   range.to);
       if (f.debtorId)  params.set('debtorId',  f.debtorId);
       if (f.loadId)    params.set('loadId',    f.loadId);
       if (f.invoiceNo) params.set('invoiceNo', f.invoiceNo);
@@ -864,12 +875,30 @@
             renderSummary();
           });
         });
-        // Date / debtor selects
+        // Date preset + custom from/to
         var dateSel = document.getElementById('rcptDate');
         if (dateSel) dateSel.addEventListener('change', function (e) {
-          state.receiptsFilters.dateRange = e.target.value;
+          var v = e.target.value;
+          state.receiptsFilters.dateRange = v;
+          if (v !== 'custom') {
+            // Sync the date inputs to the resolved preset range
+            var r = dateRangeToFromTo(v);
+            state.receiptsFilters.dateFrom = r.from;
+            state.receiptsFilters.dateTo = r.to;
+          }
           fetchReceipts();
         });
+        function onCustomDateChange() {
+          state.receiptsFilters.dateRange = 'custom';
+          state.receiptsFilters.dateFrom = (document.getElementById('rcptFrom') || {}).value || '';
+          state.receiptsFilters.dateTo   = (document.getElementById('rcptTo')   || {}).value || '';
+          if (state._rcptDateDebounce) clearTimeout(state._rcptDateDebounce);
+          state._rcptDateDebounce = setTimeout(fetchReceipts, 300);
+        }
+        var fromInp = document.getElementById('rcptFrom');
+        if (fromInp) fromInp.addEventListener('change', onCustomDateChange);
+        var toInp = document.getElementById('rcptTo');
+        if (toInp) toInp.addEventListener('change', onCustomDateChange);
         var debtSel = document.getElementById('rcptDebtor');
         if (debtSel) debtSel.addEventListener('change', function (e) {
           state.receiptsFilters.debtorId = e.target.value;
@@ -1000,13 +1029,13 @@
       var url;
       if (scope === 'receipts') {
         var f = state.receiptsFilters;
-        var range = dateRangeToFromTo(f.dateRange);
+        var range = resolvedRange(f);
         var params = new URLSearchParams();
         if (state.clientId) params.set('clientId', state.clientId);
         else                params.set('email', brokerEmail);
         params.set('format', format);
-        params.set('dateFrom', range.from);
-        params.set('dateTo',   range.to);
+        if (range.from) params.set('dateFrom', range.from);
+        if (range.to)   params.set('dateTo',   range.to);
         if (f.debtorId)  params.set('debtorId',  f.debtorId);
         if (f.loadId)    params.set('loadId',    f.loadId);
         if (f.invoiceNo) params.set('invoiceNo', f.invoiceNo);

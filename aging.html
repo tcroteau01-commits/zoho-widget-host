@@ -720,7 +720,7 @@
             var inv = g.invoices[j];
             html += '<tr>' +
               '<td>Inv ' + esc(inv.invoiceNo || '') + '</td>' +
-              '<td class="link" data-action="load" data-load="' + esc(inv.loadId) + '" data-debtor-name="' + esc(g.debtorName || '') + '">Load ' + esc(inv.loadId || '') + '</td>' +
+              '<td class="link" data-action="load" data-load="' + esc(inv.loadId) + '" data-debtor-name="' + esc(g.debtorName || '') + '">Load ' + esc(inv.invoiceNo || '') + '</td>' +
               '<td>' + (inv.age === null ? '-' : esc(inv.age) + 'd') + '</td>' +
               '<td class="note" title="' + esc(inv.note || '') + '">' + esc(inv.note || '') + '</td>' +
               '<td class="num">' + fmtMoney(inv.amount) + '</td>' +
@@ -749,7 +749,7 @@
         html += '<tr data-debtor="' + esc(row.debtorId) + '" data-load="' + esc(row.loadId) + '">' +
           '<td class="first">' + esc(row.date || '') + '</td>' +
           '<td>' + esc(row.invoiceNo || '') + '</td>' +
-          '<td class="link" data-action="load">' + esc(row.loadId || '') + '</td>' +
+          '<td class="link" data-action="load">' + esc(row.invoiceNo || '') + '</td>' +
           '<td>' + esc(row.debtorName || '') + '</td>' +
           '<td>' + esc(row.note || '') + '</td>' +
           '<td>' + esc(row.checkNumber || '') + '</td>' +

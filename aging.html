@@ -365,26 +365,26 @@
 
   /* Summary view — expanded invoice-detail sub-row */
   table.receipts tbody tr.invoice-detail-row > td {
-    padding: 0; background: var(--of-gray-50);
+    padding: 4px 24px 8px 52px;
+    background: var(--of-gray-50);
     border-bottom: 1px solid var(--of-gray-200);
   }
   table.invoices-nested {
-    width: calc(100% - 52px); border-collapse: collapse;
-    table-layout: fixed;
-    margin: 4px 24px 4px 52px; font-size: 11px;
+    width: 100%; border-collapse: collapse;
+    table-layout: fixed; font-size: 11px;
   }
-  table.invoices-nested col.c-inv     { width: 90px; }
-  table.invoices-nested col.c-load    { width: 100px; }
-  table.invoices-nested col.c-age     { width: 60px; }
+  table.invoices-nested col.c-inv     { width: 80px; }
+  table.invoices-nested col.c-load    { width: 90px; }
+  table.invoices-nested col.c-age     { width: 50px; }
   table.invoices-nested col.c-note    { width: auto; }
-  table.invoices-nested col.c-amt     { width: 110px; }
+  table.invoices-nested col.c-amt     { width: 100px; }
   table.invoices-nested td {
     padding: 6px 10px; color: var(--of-gray-700); border: none !important;
     font-variant-numeric: tabular-nums;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   table.invoices-nested td.note { color: var(--of-gray-500); font-size: 10px; }
-  table.invoices-nested td.num { text-align: right; }
+  table.invoices-nested td.num { text-align: right; padding-right: 0; }
   table.invoices-nested td.link { color: var(--of-orange); cursor: pointer; font-weight: 500; }
   table.invoices-nested td.link:hover { text-decoration: underline; }
 

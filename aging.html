@@ -317,118 +317,92 @@
 
   /* Receipts tab — Summary/Detail toggle */
   .view-toggle {
-    display: inline-flex;
-    background: #0f172a;
-    border: 1px solid #1e293b;
-    border-radius: 6px;
-    overflow: hidden;
+    display: inline-flex; background: var(--of-gray-100);
+    border: 1px solid var(--of-gray-200); border-radius: 8px;
+    padding: 3px;
   }
   .view-toggle button {
-    background: transparent;
-    border: none;
-    color: #94a3b8;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 8px 16px;
-    cursor: pointer;
+    background: transparent; border: none; font-size: 12px; font-weight: 600;
+    padding: 6px 14px; color: var(--of-gray-700); cursor: pointer;
+    border-radius: 6px; font-family: inherit;
   }
   .view-toggle button.active {
-    background: #1e293b;
-    color: #ffffff;
+    background: white; color: var(--of-charcoal);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
 
-  /* Receipts table — shared */
-  table.receipts {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
+  /* Receipts table — shared (matches table.detail aesthetic) */
+  table.receipts { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
   table.receipts thead th {
-    text-align: left;
-    font-weight: 600;
-    color: #94a3b8;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 10px 12px;
-    background: #0f172a;
-    border-bottom: 1px solid #1e293b;
+    text-align: right; padding: 8px; color: var(--of-gray-500); font-weight: 600;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px;
+    border-bottom: 1px solid var(--of-gray-200); background: var(--of-gray-50);
   }
+  table.receipts thead th.first { text-align: left; padding-left: 24px; }
+  table.receipts thead th.last { padding-right: 24px; }
   table.receipts thead th.num { text-align: right; }
   table.receipts tbody td {
-    padding: 12px;
-    border-bottom: 1px solid #1e293b;
-    color: #e2e8f0;
+    padding: 8px; text-align: right; border-bottom: 1px solid var(--of-gray-100);
+    color: var(--of-charcoal); font-variant-numeric: tabular-nums;
   }
-  table.receipts tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  table.receipts tbody tr.total-row { background: #111827; font-weight: 700; }
+  table.receipts tbody td.first { text-align: left; padding-left: 24px; font-weight: 500; }
+  table.receipts tbody td.last { padding-right: 24px; }
+  table.receipts tbody td.num { text-align: right; }
+  table.receipts tbody tr.total-row td {
+    font-weight: 700; border-top: 2px solid var(--of-charcoal);
+    padding-top: 10px; padding-bottom: 12px; border-bottom: none;
+  }
 
-  /* Summary view chevron column */
+  /* Summary view chevron + row hover */
   table.receipts.summary tbody tr.summary-row { cursor: pointer; }
-  table.receipts.summary tbody tr.summary-row:hover { background: #1e293b; }
+  table.receipts.summary tbody tr.summary-row:hover { background: var(--of-gray-50); }
+  table.receipts.summary tbody tr.summary-row.expanded { background: var(--of-orange-soft); }
   table.receipts.summary tbody tr.summary-row td.chevron {
-    width: 24px;
-    color: #64748b;
-    font-size: 11px;
+    width: 28px; padding-left: 24px; padding-right: 0;
+    text-align: left; color: var(--of-gray-500); font-size: 10px;
   }
-  table.receipts.summary tbody tr.summary-row.expanded td.chevron { color: #f97316; }
+  table.receipts.summary tbody tr.summary-row.expanded td.chevron { color: var(--of-orange); }
 
   /* Summary view — expanded invoice-detail sub-row */
   table.receipts tbody tr.invoice-detail-row > td {
-    padding: 0;
-    background: #0a0f1c;
-    border-bottom: 1px solid #1e293b;
+    padding: 0; background: var(--of-gray-50);
+    border-bottom: 1px solid var(--of-gray-200);
   }
-  table.receipts tbody tr.invoice-detail-row table.invoices-nested {
-    width: 100%;
-    border-collapse: collapse;
-    margin-left: 32px;
-    font-size: 13px;
+  table.invoices-nested {
+    width: 100%; border-collapse: collapse;
+    margin: 4px 0 4px 52px; font-size: 11px;
   }
   table.invoices-nested td {
-    padding: 8px 12px;
-    color: #cbd5e1;
-    border: none !important;
+    padding: 6px 10px; color: var(--of-gray-700); border: none !important;
+    font-variant-numeric: tabular-nums;
   }
-  table.invoices-nested td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  table.invoices-nested td.link { color: #60a5fa; cursor: pointer; }
+  table.invoices-nested td.num { text-align: right; }
+  table.invoices-nested td.link { color: var(--of-orange); cursor: pointer; font-weight: 500; }
   table.invoices-nested td.link:hover { text-decoration: underline; }
 
-  /* Detail view links */
-  table.receipts.detail tbody td.link { color: #60a5fa; cursor: pointer; }
+  /* Detail view links + hover */
+  table.receipts.detail tbody td.link { color: var(--of-orange); cursor: pointer; font-weight: 500; }
   table.receipts.detail tbody td.link:hover { text-decoration: underline; }
-  table.receipts.detail tbody tr:hover { background: #1e293b; cursor: pointer; }
+  table.receipts.detail tbody tr:hover { background: var(--of-gray-50); cursor: pointer; }
 
   /* Receipts loading / empty states */
-  .rcpt-loading { padding: 40px 24px; text-align: center; color: #64748b; }
-  .rcpt-empty { padding: 40px 24px; text-align: center; color: #64748b; }
+  .rcpt-loading { padding: 40px 24px; text-align: center; color: var(--of-gray-500); }
+  .rcpt-empty { padding: 40px 24px; text-align: center; color: var(--of-gray-500); }
 
   /* Tab strip */
   .tab-strip {
-    display: flex;
-    gap: 0;
-    border-bottom: 1px solid #1e293b;
-    padding: 0 24px;
-    margin: 0 -24px 18px;
+    display: flex; border-bottom: 1px solid var(--of-gray-200);
+    margin: 0 0 18px;
   }
   .tab-strip button {
-    background: transparent;
-    border: none;
-    color: #64748b;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 14px 0;
-    margin-right: 28px;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
+    background: transparent; border: none; color: var(--of-gray-500);
+    font-size: 14px; font-weight: 600; padding: 12px 0; margin-right: 28px;
+    cursor: pointer; border-bottom: 2px solid transparent; font-family: inherit;
   }
   .tab-strip button.active {
-    color: #ffffff;
-    border-bottom-color: #f97316;
+    color: var(--of-charcoal); border-bottom-color: var(--of-orange);
   }
-  .tab-strip button:hover:not(.active) {
-    color: #cbd5e1;
-  }
+  .tab-strip button:hover:not(.active) { color: var(--of-gray-700); }
 </style>
 </head>
 <body>
@@ -703,8 +677,8 @@
       }
       var html = '<table class="receipts summary"><thead><tr>' +
         '<th></th>' +
-        '<th>Date</th><th>Pmt #</th><th>Debtor</th>' +
-        '<th class="num"># Invoices</th><th class="num">Amount</th>' +
+        '<th class="first">Date</th><th>Pmt #</th><th>Debtor</th>' +
+        '<th class="num"># Invoices</th><th class="num last">Amount</th>' +
       '</tr></thead><tbody>';
       for (var i = 0; i < r.summary.length; i++) {
         var g = r.summary[i];
@@ -712,11 +686,11 @@
         var expanded = !!state.expandedSummary[key];
         html += '<tr class="summary-row' + (expanded ? ' expanded' : '') + '" data-key="' + esc(key) + '" data-debtor="' + esc(g.debtorId) + '">' +
           '<td class="chevron">' + (expanded ? '&#9662;' : '&#9656;') + '</td>' +
-          '<td>' + esc(g.date || '') + '</td>' +
+          '<td class="first">' + esc(g.date || '') + '</td>' +
           '<td>' + esc(g.pmtNumber || '') + '</td>' +
           '<td>' + esc(g.debtorName || '') + '</td>' +
           '<td class="num">' + (g.invoiceCount || 0) + '</td>' +
-          '<td class="num"><strong>' + fmtMoney(g.amount) + '</strong></td>' +
+          '<td class="num last"><strong>' + fmtMoney(g.amount) + '</strong></td>' +
         '</tr>';
         if (expanded) {
           html += '<tr class="invoice-detail-row"><td colspan="6">' +
@@ -726,7 +700,7 @@
             html += '<tr>' +
               '<td>Inv ' + esc(inv.invoiceNo || '') + '</td>' +
               '<td class="link" data-action="load" data-load="' + esc(inv.loadId) + '">Load ' + esc(inv.loadId || '') + '</td>' +
-              '<td>' + (inv.age === null ? '—' : esc(inv.age) + 'd') + '</td>' +
+              '<td>' + (inv.age === null ? '-' : esc(inv.age) + 'd') + '</td>' +
               '<td>' + esc(inv.note || '') + '</td>' +
               '<td class="num">' + fmtMoney(inv.amount) + '</td>' +
             '</tr>';
@@ -734,8 +708,8 @@
           html += '</tbody></table></td></tr>';
         }
       }
-      html += '<tr class="total-row"><td colspan="5"><strong>Total</strong></td>' +
-        '<td class="num"><strong>' + fmtMoney((r.totals || {}).amount) + '</strong></td></tr>';
+      html += '<tr class="total-row"><td class="first" colspan="5"><strong>Total</strong></td>' +
+        '<td class="num last"><strong>' + fmtMoney((r.totals || {}).amount) + '</strong></td></tr>';
       html += '</tbody></table>';
       return html;
     }
@@ -746,24 +720,24 @@
         return '<div class="rcpt-empty">No receipts in this range.</div>';
       }
       var html = '<table class="receipts detail"><thead><tr>' +
-        '<th>Date</th><th>Invoice #</th><th>Load ID</th><th>Debtor</th>' +
-        '<th>Note</th><th>Check #</th><th class="num">Age</th><th class="num">Amount</th>' +
+        '<th class="first">Date</th><th>Invoice #</th><th>Load ID</th><th>Debtor</th>' +
+        '<th>Note</th><th>Check #</th><th class="num">Age</th><th class="num last">Amount</th>' +
       '</tr></thead><tbody>';
       for (var i = 0; i < r.receipts.length; i++) {
         var row = r.receipts[i];
         html += '<tr data-debtor="' + esc(row.debtorId) + '" data-load="' + esc(row.loadId) + '">' +
-          '<td>' + esc(row.date || '') + '</td>' +
+          '<td class="first">' + esc(row.date || '') + '</td>' +
           '<td>' + esc(row.invoiceNo || '') + '</td>' +
           '<td class="link" data-action="load">' + esc(row.loadId || '') + '</td>' +
           '<td>' + esc(row.debtorName || '') + '</td>' +
           '<td>' + esc(row.note || '') + '</td>' +
           '<td>' + esc(row.checkNumber || '') + '</td>' +
-          '<td class="num">' + (row.age === null ? '—' : row.age + 'd') + '</td>' +
-          '<td class="num"><strong>' + fmtMoney(row.amount) + '</strong></td>' +
+          '<td class="num">' + (row.age === null ? '-' : row.age + 'd') + '</td>' +
+          '<td class="num last"><strong>' + fmtMoney(row.amount) + '</strong></td>' +
         '</tr>';
       }
-      html += '<tr class="total-row"><td colspan="7"><strong>Total</strong></td>' +
-        '<td class="num"><strong>' + fmtMoney((r.totals || {}).amount) + '</strong></td></tr>';
+      html += '<tr class="total-row"><td class="first" colspan="7"><strong>Total</strong></td>' +
+        '<td class="num last"><strong>' + fmtMoney((r.totals || {}).amount) + '</strong></td></tr>';
       html += '</tbody></table>';
       return html;
     }
@@ -819,9 +793,10 @@
         return (b.concentrationPct || 0) - (a.concentrationPct || 0);
       })[0];
 
-      var subtitleText = state.currentTab === 'receipts' ? 'Debtor receipts log' : 'Open customer balances';
+      var titleText = state.currentTab === 'receipts' ? 'Debtor Receipts' : 'Aging Summary';
+      var subtitleText = state.currentTab === 'receipts' ? 'Receipts ledger' : 'Open customer balances';
       var html = '<div class="page-header">' +
-        '<div><h2>Aging Summary</h2><p class="subtitle">' + esc(d.client && d.client.name) + ' &mdash; ' + subtitleText + '</p></div>' +
+        '<div><h2>' + titleText + '</h2><p class="subtitle">' + esc(d.client && d.client.name) + ' &mdash; ' + subtitleText + '</p></div>' +
         '<span class="pill">As of <b>' + esc(d.asOf) + '</b></span>' +
       '</div>';
 

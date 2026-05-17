@@ -697,7 +697,7 @@
         }
       }
       html += '<tr class="total-row"><td colspan="5"><strong>Total</strong></td>' +
-        '<td class="num"><strong>' + fmtMoney(r.totals.amount) + '</strong></td></tr>';
+        '<td class="num"><strong>' + fmtMoney((r.totals || {}).amount) + '</strong></td></tr>';
       html += '</tbody></table>';
       return html;
     }
@@ -725,7 +725,7 @@
         '</tr>';
       }
       html += '<tr class="total-row"><td colspan="7"><strong>Total</strong></td>' +
-        '<td class="num"><strong>' + fmtMoney(r.totals.amount) + '</strong></td></tr>';
+        '<td class="num"><strong>' + fmtMoney((r.totals || {}).amount) + '</strong></td></tr>';
       html += '</tbody></table>';
       return html;
     }

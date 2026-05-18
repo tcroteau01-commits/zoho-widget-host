@@ -777,6 +777,8 @@
                    (f.debtorId === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
           }).join('') : '') +
         '</select>' +
+        '<input id="loadsVendor" class="search-input" type="text"' +
+          ' placeholder="Vendor name..." value="' + esc(f.vendor) + '">' +
         '<input id="loadsLoadId" class="search-input" type="text"' +
           ' placeholder="Load ID..." value="' + esc(f.loadId) + '">' +
         '<select id="loadsAR" class="seg-control" style="min-width:120px">' +
@@ -816,7 +818,7 @@
       } else {
         html += '<table class="loads"><thead><tr>' +
           '<th class="first">Buy Date</th><th class="left">Load #</th><th class="left">Debtor</th>' +
-          '<th>Purchase</th><th>Margin</th><th class="last">Margin %</th>' +
+          '<th class="left">Vendor</th><th>Purchase</th><th>Margin</th><th class="last">Margin %</th>' +
         '</tr></thead><tbody>';
         for (var i = 0; i < d.loads.length; i++) {
           var r = d.loads[i];
@@ -824,12 +826,13 @@
             '<td class="first">' + esc(r.buyDate || '') + '</td>' +
             '<td class="left">' + esc(r.loadNumber || '') + '</td>' +
             '<td class="left">' + esc(r.debtorName || '') + '</td>' +
+            '<td class="left">' + esc(r.vendorName || '') + '</td>' +
             '<td>' + fmtMoneyDec(r.purchaseAmount) + '</td>' +
             '<td class="' + (r.margin >= 0 ? 'pos' : 'neg') + '">' + fmtMoneyDec(r.margin) + '</td>' +
             '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '">' + fmtPct(r.marginPct) + '</td>' +
           '</tr>';
         }
-        html += '<tr class="totals"><td class="first" colspan="3">TOTAL</td>' +
+        html += '<tr class="totals"><td class="first" colspan="4">TOTAL</td>' +
           '<td>' + fmtMoneyDec(t.purchaseAmount) + '</td>' +
           '<td>' + fmtMoneyDec(t.margin) + '</td>' +
           '<td class="last">' + fmtPct(t.marginPct) + '</td></tr>';
@@ -948,6 +951,13 @@
       if (debtSel) debtSel.addEventListener('change', function (e) {
         state.loadsFilters.debtorId = e.target.value;
         fetchLoads();
+      });
+      // Vendor search (debounced)
+      var venInp = document.getElementById('loadsVendor');
+      if (venInp) venInp.addEventListener('input', function (e) {
+        state.loadsFilters.vendor = e.target.value;
+        if (state._loadsVendorDebounce) clearTimeout(state._loadsVendorDebounce);
+        state._loadsVendorDebounce = setTimeout(fetchLoads, 300);
       });
       // Load ID search
       var lidInp = document.getElementById('loadsLoadId');

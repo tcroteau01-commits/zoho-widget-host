@@ -217,6 +217,39 @@
   .quick-links a {
     color: var(--of-orange); text-decoration: underline; cursor: pointer;
   }
+
+  /* Margins grouping toggle */
+  .group-toggle {
+    display: inline-flex; background: var(--of-gray-100);
+    border: 1px solid var(--of-gray-200); border-radius: 8px; padding: 3px;
+  }
+  .group-toggle button {
+    background: transparent; border: none; font-size: 12px; font-weight: 600;
+    padding: 6px 14px; color: var(--of-gray-700); cursor: pointer;
+    border-radius: 6px; font-family: inherit;
+  }
+  .group-toggle button.active {
+    background: white; color: var(--of-charcoal);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  table.margins { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  table.margins th {
+    text-align: right; padding: 8px; color: var(--of-gray-500); font-weight: 600;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px;
+    border-bottom: 1px solid var(--of-gray-200); background: var(--of-gray-50);
+  }
+  table.margins th.first { text-align: left; padding-left: 16px; }
+  table.margins th.last  { padding-right: 16px; }
+  table.margins td {
+    padding: 8px; text-align: right; border-bottom: 1px solid var(--of-gray-100);
+    color: var(--of-charcoal); font-variant-numeric: tabular-nums;
+  }
+  table.margins td.first { text-align: left; padding-left: 16px; font-weight: 500; }
+  table.margins td.last  { padding-right: 16px; }
+  table.margins tbody tr.totals td {
+    font-weight: 700; border-top: 2px solid var(--of-charcoal);
+    padding-top: 10px; padding-bottom: 12px; border-bottom: none;
+  }
 </style>
 </head>
 <body>
@@ -345,12 +378,165 @@
     }
 
     // Stubs -- to be replaced in Tasks 16-17
-    function renderMarginsTab() { return '<div class="loading">Margins tab -- Task 16</div>'; }
     function renderFeesTab()    { return '<div class="loading">Fees tab -- Task 17</div>'; }
-    function bindMarginsTab() {}
     function bindFeesTab()    {}
-    function fetchMargins() { state.marginsData = { rows: [], totals: {} }; renderShell(); }
     function fetchFees()    { state.feesData = { groups: [], totals: { count: 0, amount: 0 } }; renderShell(); }
+
+    function renderMarginsTab() {
+      var d = state.marginsData;
+      var f = state.marginsFilters;
+      var html = '';
+      html += '<div class="filter-bar">' +
+        '<div class="group-toggle">' +
+          '<button data-group="month" class="' + (state.marginsGroupBy === 'month' ? 'active' : '') + '">By Month</button>' +
+          '<button data-group="debtor" class="' + (state.marginsGroupBy === 'debtor' ? 'active' : '') + '">By Debtor</button>' +
+        '</div>' +
+        '<select id="marginsDate" class="seg-control" style="min-width:140px">' +
+          ['this_month','last_month','this_year','last_12_months','custom'].map(function (k) {
+            var labels = {this_month:'This Month', last_month:'Last Month',
+                          this_year:'This Year', last_12_months:'Last 12 Months', custom:'Custom'};
+            return '<option value="' + k + '"' +
+                   (f.dateRange === k ? ' selected' : '') + '>' + labels[k] + '</option>';
+          }).join('') +
+        '</select>' +
+        '<input id="marginsFrom" class="search-input" type="date" style="width:140px"' +
+          ' value="' + esc(resolvedRange(f).from) + '">' +
+        '<input id="marginsTo" class="search-input" type="date" style="width:140px"' +
+          ' value="' + esc(resolvedRange(f).to) + '">' +
+        '<div class="export-wrap">' +
+          '<button id="marginsExportBtn" class="btn-export">Export &#9660;</button>' +
+          (state.marginsExportOpen ?
+            '<div class="export-menu">' +
+              '<button data-export="margins:csv">Margins CSV</button>' +
+              '<button data-export="margins:pdf">Margins PDF</button>' +
+            '</div>' : '') +
+        '</div>' +
+      '</div>';
+
+      var t = (d && d.totals) ? d.totals : { loadCount: 0, purchaseAmount: 0, margin: 0, marginPct: null };
+      html += '<div class="kpi-grid">' +
+        '<div class="kpi-card accent"><div class="kpi-label">Loads</div>' +
+          '<div class="kpi-value">' + (t.loadCount || 0) + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">Purchase</div>' +
+          '<div class="kpi-value">' + fmtMoney(t.purchaseAmount) + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">Margin</div>' +
+          '<div class="kpi-value">' + fmtMoney(t.margin) + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">Margin %</div>' +
+          '<div class="kpi-value">' + fmtPct(t.marginPct) + '</div></div>' +
+      '</div>';
+
+      if (state.marginsLoading) {
+        html += '<div class="loading">Loading margins...</div>';
+      } else if (!d || !d.rows || d.rows.length === 0) {
+        html += '<div class="empty">No data in this range.</div>';
+      } else {
+        var labelCol = state.marginsGroupBy === 'debtor' ? 'Debtor' : 'Period';
+        html += '<table class="margins"><thead><tr>' +
+          '<th class="first">' + labelCol + '</th>' +
+          '<th>Loads</th><th>Purchase</th><th>Discount Fee</th>' +
+          '<th>Vendor Payable</th><th>Margin</th><th class="last">Margin %</th>' +
+        '</tr></thead><tbody>';
+        for (var i = 0; i < d.rows.length; i++) {
+          var r = d.rows[i];
+          html += '<tr>' +
+            '<td class="first">' + esc(r.label) + '</td>' +
+            '<td>' + (r.loadCount || 0) + '</td>' +
+            '<td>' + fmtMoneyDec(r.purchaseAmount) + '</td>' +
+            '<td class="neg">' + fmtMoneyDec(r.discountFee) + '</td>' +
+            '<td class="neg">' + fmtMoneyDec(r.vendorPayable) + '</td>' +
+            '<td class="' + (r.margin >= 0 ? 'pos' : 'neg') + '">' + fmtMoneyDec(r.margin) + '</td>' +
+            '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '">' + fmtPct(r.marginPct) + '</td>' +
+          '</tr>';
+        }
+        html += '<tr class="totals"><td class="first">TOTAL</td>' +
+          '<td>' + (t.loadCount || 0) + '</td>' +
+          '<td>' + fmtMoneyDec(t.purchaseAmount) + '</td>' +
+          '<td>' + fmtMoneyDec(t.discountFee) + '</td>' +
+          '<td>' + fmtMoneyDec(t.vendorPayable) + '</td>' +
+          '<td>' + fmtMoneyDec(t.margin) + '</td>' +
+          '<td class="last">' + fmtPct(t.marginPct) + '</td></tr>';
+        html += '</tbody></table>';
+      }
+      return html;
+    }
+
+    function fetchMargins() {
+      state.marginsLoading = true;
+      renderShell();
+      var f = state.marginsFilters;
+      var range = resolvedRange(f);
+      var params = new URLSearchParams();
+      if (state.clientId) params.set('clientId', state.clientId);
+      else                params.set('email', brokerEmail);
+      if (range.from) params.set('dateFrom', range.from);
+      if (range.to)   params.set('dateTo',   range.to);
+      params.set('groupBy', state.marginsGroupBy);
+      fetch(BROKER_API_BASE + '/loads/margins?' + params.toString())
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          state.marginsData = data;
+          state.marginsLoading = false;
+          renderShell();
+        })
+        .catch(function (err) {
+          console.error('fetchMargins failed', err);
+          state.marginsData = { rows: [], totals: {} };
+          state.marginsLoading = false;
+          renderShell();
+        });
+    }
+
+    function bindMarginsTab() {
+      document.querySelectorAll('.group-toggle button').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var g = b.getAttribute('data-group');
+          if (g === state.marginsGroupBy) return;
+          state.marginsGroupBy = g;
+          fetchMargins();
+        });
+      });
+      var dateSel = document.getElementById('marginsDate');
+      if (dateSel) dateSel.addEventListener('change', function (e) {
+        var v = e.target.value;
+        state.marginsFilters.dateRange = v;
+        if (v === 'custom') {
+          state.marginsFilters.dateFrom = '';
+          state.marginsFilters.dateTo = '';
+          renderShell();
+          return;
+        }
+        var r = dateRangeToFromTo(v);
+        state.marginsFilters.dateFrom = r.from;
+        state.marginsFilters.dateTo = r.to;
+        fetchMargins();
+      });
+      function onCustomDate() {
+        state.marginsFilters.dateRange = 'custom';
+        state.marginsFilters.dateFrom = (document.getElementById('marginsFrom') || {}).value || '';
+        state.marginsFilters.dateTo   = (document.getElementById('marginsTo')   || {}).value || '';
+        if (!state.marginsFilters.dateFrom || !state.marginsFilters.dateTo) return;
+        if (state._marginsDateDebounce) clearTimeout(state._marginsDateDebounce);
+        state._marginsDateDebounce = setTimeout(fetchMargins, 300);
+      }
+      var fromInp = document.getElementById('marginsFrom');
+      if (fromInp) fromInp.addEventListener('change', onCustomDate);
+      var toInp = document.getElementById('marginsTo');
+      if (toInp) toInp.addEventListener('change', onCustomDate);
+      var expBtn = document.getElementById('marginsExportBtn');
+      if (expBtn) expBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        state.marginsExportOpen = !state.marginsExportOpen;
+        renderShell();
+      });
+      document.querySelectorAll('[data-export]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var parts = b.getAttribute('data-export').split(':');
+          openExport(parts[0], parts[1]);
+          state.marginsExportOpen = false;
+          renderShell();
+        });
+      });
+    }
 
     function renderLoadsTab() {
       var d = state.loadsData;

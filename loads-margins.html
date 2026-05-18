@@ -133,10 +133,96 @@
   td.pos { color: var(--of-green); font-weight: 500; }
   td.neg { color: var(--of-orange); font-weight: 500; }
   .empty { padding: 32px 16px; text-align: center; color: var(--of-gray-500); }
+
+  /* Slide-in detail panel — light-theme */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(15, 17, 21, 0.32);
+    opacity: 0; pointer-events: none; transition: opacity 180ms ease; z-index: 300;
+  }
+  .overlay.open { opacity: 1; pointer-events: auto; }
+  .detail-panel {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: min(720px, 92vw); background: white;
+    box-shadow: -8px 0 28px rgba(0,0,0,0.14);
+    transform: translateX(100%); transition: transform 220ms ease;
+    z-index: 310; overflow-y: auto; display: flex; flex-direction: column;
+  }
+  .detail-panel.open { transform: translateX(0); }
+  .dp-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 20px 24px 16px; border-bottom: 1px solid var(--of-gray-200);
+    position: sticky; top: 0; background: white; z-index: 1;
+  }
+  .dp-header h3 { font-size: 18px; color: var(--of-charcoal); margin: 0; font-weight: 600; }
+  .dp-header .sub { font-size: 12px; color: var(--of-gray-500); margin-top: 4px; }
+  .dp-close {
+    background: none; border: none; font-size: 22px; color: var(--of-gray-500);
+    cursor: pointer; padding: 0 4px; line-height: 1; font-family: inherit;
+  }
+  .dp-close:hover { color: var(--of-charcoal); }
+  .dp-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--of-gray-500); padding: 16px 24px 8px; border-top: 1px solid var(--of-gray-200);
+    margin-top: 8px;
+  }
+  .dp-stat-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    padding: 8px 24px;
+  }
+  .dp-stat {
+    background: var(--of-gray-50); border: 1px solid var(--of-gray-200);
+    border-radius: 4px; padding: 8px 10px;
+  }
+  .dp-stat .lbl {
+    font-size: 9px; color: var(--of-gray-500); text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .dp-stat .val {
+    font-size: 13px; font-weight: 600; color: var(--of-charcoal); margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .dp-stat .val.pos { color: var(--of-green); }
+  .dp-stat .val.neg { color: var(--of-orange); }
+  .dp-row-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+    padding: 8px 24px 16px;
+  }
+  .dp-row-grid .lbl { color: var(--of-gray-500); font-size: 11px; }
+  .dp-row-grid .val { color: var(--of-charcoal); font-size: 12px;
+    font-variant-numeric: tabular-nums; }
+  table.dp-txns { width: 100%; border-collapse: collapse; font-size: 11px;
+    margin: 8px 0 16px; }
+  table.dp-txns th {
+    text-align: right; padding: 6px 8px; color: var(--of-gray-500); font-weight: 600;
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px;
+    border-bottom: 1px solid var(--of-gray-200); background: var(--of-gray-50);
+  }
+  table.dp-txns th.first { text-align: left; padding-left: 24px; }
+  table.dp-txns th.last { padding-right: 24px; }
+  table.dp-txns td {
+    padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--of-gray-100);
+    color: var(--of-charcoal); font-variant-numeric: tabular-nums;
+  }
+  table.dp-txns td.first { text-align: left; padding-left: 24px; }
+  table.dp-txns td.last { padding-right: 24px; }
+  table.dp-txns td.neg { color: var(--of-orange); }
+  .pill-open { display:inline-block; padding:2px 8px; border-radius:10px;
+    background:#FEF3C7; color:#92400E; font-size:11px; font-weight:600 }
+  .pill-closed { display:inline-block; padding:2px 8px; border-radius:10px;
+    background:var(--of-gray-100); color:var(--of-gray-700); font-size:11px; font-weight:600 }
+  .clickable-debtor { color: var(--of-orange); cursor: pointer; text-decoration: underline; }
+  .quick-links {
+    padding: 8px 24px 24px; display: flex; gap: 12px; font-size: 12px;
+  }
+  .quick-links a {
+    color: var(--of-orange); text-decoration: underline; cursor: pointer;
+  }
 </style>
 </head>
 <body>
   <div id="loads-margins-app"><div class="loading">Loading loads &amp; margins...</div></div>
+  <div class="overlay" id="overlay"></div>
+  <aside class="detail-panel" id="detailPanel" aria-hidden="true"></aside>
 
   <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
   <script>
@@ -543,12 +629,155 @@
       window.open(url, '_blank');
     }
 
-    // Stub -- Task 15 implements
     function openLoadDetail(loadId) {
-      console.log('TODO Task 15: open detail for', loadId);
+      if (!loadId) return;
+      state.selectedLoadId = loadId;
+      state.loadPreview = null;
+      state.loadPreviewLoading = true;
+      state.loadPreviewError = null;
+      var panel = document.getElementById('detailPanel');
+      var overlay = document.getElementById('overlay');
+      panel.classList.add('open');
+      panel.setAttribute('aria-hidden', 'false');
+      overlay.classList.add('open');
+      renderLoadDetail();
+
+      var params = new URLSearchParams();
+      if (state.clientId) params.set('clientId', state.clientId);
+      else                params.set('email', brokerEmail);
+      params.set('loadId', loadId);
+      fetch(BROKER_API_BASE + '/loads/preview?' + params.toString())
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          if (state.selectedLoadId !== loadId) return;
+          state.loadPreview = data;
+          state.loadPreviewLoading = false;
+          renderLoadDetail();
+        })
+        .catch(function (err) {
+          if (state.selectedLoadId !== loadId) return;
+          state.loadPreviewLoading = false;
+          state.loadPreviewError = err.message || String(err);
+          renderLoadDetail();
+        });
+    }
+
+    function closeLoadDetail() {
+      state.selectedLoadId = null;
+      state.loadPreview = null;
+      state.loadPreviewLoading = false;
+      state.loadPreviewError = null;
+      var panel = document.getElementById('detailPanel');
+      var overlay = document.getElementById('overlay');
+      panel.classList.remove('open');
+      panel.setAttribute('aria-hidden', 'true');
+      overlay.classList.remove('open');
+    }
+
+    function renderLoadDetail() {
+      var panel = document.getElementById('detailPanel');
+      if (!state.selectedLoadId) { panel.innerHTML = ''; return; }
+      if (state.loadPreviewLoading) {
+        panel.innerHTML = '<div class="dp-header"><div><h3>Loading...</h3></div>' +
+          '<button class="dp-close" onclick="closeLoadDetail()">×</button></div>';
+        return;
+      }
+      if (state.loadPreviewError) {
+        panel.innerHTML = '<div class="dp-header"><div><h3>Error</h3>' +
+          '<div class="sub">Could not load: ' + esc(state.loadPreviewError) + '</div></div>' +
+          '<button class="dp-close" onclick="closeLoadDetail()">×</button></div>';
+        return;
+      }
+      var p = state.loadPreview || {};
+      var L = p.load || {};
+      var V = p.vendor || {};
+      var txns = p.transactions || [];
+      var pill = L.arStatus === 'closed' ?
+        '<span class="pill-closed">AR closed</span>' : '<span class="pill-open">AR open</span>';
+
+      var html = '<div class="dp-header"><div>' +
+        '<h3>Load #' + esc(L.loadNumber) + ' &mdash; ' + esc(V.name || '(no vendor)') + '</h3>' +
+        '<div class="sub">Buy date ' + esc(L.buyDate || '') + ' &middot; Invoice #' + esc(L.invoiceNo) +
+          ' &middot; ' + pill + '</div>' +
+      '</div><button class="dp-close" onclick="closeLoadDetail()">×</button></div>';
+
+      // Margin breakdown — 8 stat cards in two rows
+      html += '<div class="dp-section-title">Margin breakdown</div>';
+      html += '<div class="dp-stat-grid">' +
+        '<div class="dp-stat"><div class="lbl">Purchase</div><div class="val">' + fmtMoneyDec(L.purchaseAmount) + '</div></div>' +
+        '<div class="dp-stat"><div class="lbl">Margin</div><div class="val ' + (L.margin >= 0 ? 'pos' : 'neg') + '">' + fmtMoneyDec(L.margin) + '</div></div>' +
+        '<div class="dp-stat"><div class="lbl">Margin %</div><div class="val ' + (L.marginPct >= 0 ? 'pos' : 'neg') + '">' + fmtPct(L.marginPct) + '</div></div>' +
+        '<div class="dp-stat"><div class="lbl">Discount Fee</div><div class="val neg">' + fmtMoneyDec(L.discountFee) + '</div></div>' +
+      '</div>';
+      html += '<div class="dp-stat-grid">' +
+        '<div class="dp-stat"><div class="lbl">Vendor Payable</div><div class="val neg">' + fmtMoneyDec(L.vendorPayable) + '</div></div>' +
+        '<div class="dp-stat"><div class="lbl">Escrow Reserve</div><div class="val neg">' + fmtMoneyDec(L.escrowReserve) + '</div></div>' +
+        '<div class="dp-stat"><div class="lbl">Cash Reserve</div><div class="val neg">' + fmtMoneyDec(L.cashReserve) + '</div></div>' +
+        '<div class="dp-stat"><div class="lbl">Debtor</div><div class="val"><span class="clickable-debtor" data-debtor-id="' + esc(L.debtorId) + '">' + esc(L.debtorName) + '</span></div></div>' +
+      '</div>';
+
+      // Vendor section
+      if (V.name) {
+        html += '<div class="dp-section-title">Vendor / Carrier</div>' +
+          '<div class="dp-row-grid">' +
+            '<span class="lbl">Vendor Name</span><span class="val">' + esc(V.name) + '</span>' +
+            '<span class="lbl">Vendor Invoice #</span><span class="val">' + esc(V.invoiceNo || '-') + '</span>' +
+            '<span class="lbl">Vendor Terms</span><span class="val">' + esc(V.terms || '-') + '</span>' +
+            '<span class="lbl">Paid Date</span><span class="val">' + esc(V.paidDate || '-') + '</span>' +
+            '<span class="lbl">Payment Status</span><span class="val" style="color:' +
+              (V.paymentStatus === 'Paid' ? 'var(--of-green)' : 'var(--of-amber)') + '">' + esc(V.paymentStatus || '-') + '</span>' +
+            '<span class="lbl">PO / Ref #</span><span class="val">' + esc(V.poNumber || '-') + '</span>' +
+          '</div>';
+      }
+
+      // Transactions
+      html += '<div class="dp-section-title">All transactions on this load (' + txns.length + ')</div>' +
+        '<table class="dp-txns"><thead><tr>' +
+          '<th class="first">Date</th><th>GL Account</th><th>Note</th><th class="last">Amount</th>' +
+        '</tr></thead><tbody>';
+      for (var i = 0; i < txns.length; i++) {
+        var t = txns[i];
+        html += '<tr>' +
+          '<td class="first">' + esc(t.date || '') + '</td>' +
+          '<td>' + esc(t.glAccountName || '') + '</td>' +
+          '<td>' + esc(t.note || '') + '</td>' +
+          '<td class="last ' + (t.amount < 0 ? 'neg' : '') + '">' + fmtMoneyDec(t.amount) + '</td>' +
+        '</tr>';
+      }
+      html += '</tbody></table>';
+
+      // Quick links
+      html += '<div class="dp-section-title">Quick links</div>' +
+        '<div class="quick-links">' +
+          '<a data-action="open-aging">&rarr; Open this debtor in Aging Open AR</a>' +
+        '</div>';
+
+      panel.innerHTML = html;
+
+      // Bind clickable-debtor + quick link
+      function navigateToAging(debtorId) {
+        try { localStorage.setItem('openCustomerId', String(debtorId)); } catch (e) {}
+        if (window.top && window.top.location) {
+          window.top.location.hash = '#Page:Aging';
+        } else {
+          window.location.hash = '#Page:Aging';
+        }
+      }
+      var dbt = panel.querySelector('.clickable-debtor');
+      if (dbt) dbt.addEventListener('click', function () {
+        navigateToAging(dbt.getAttribute('data-debtor-id'));
+      });
+      var openAging = panel.querySelector('[data-action="open-aging"]');
+      if (openAging) openAging.addEventListener('click', function () {
+        navigateToAging(L.debtorId);
+      });
     }
 
     bootstrap();
+    document.getElementById('overlay').addEventListener('click', closeLoadDetail);
   </script>
 </body>
 </html>

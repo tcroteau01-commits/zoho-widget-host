@@ -250,6 +250,39 @@
     font-weight: 700; border-top: 2px solid var(--of-charcoal);
     padding-top: 10px; padding-bottom: 12px; border-bottom: none;
   }
+
+  /* Fees accordion */
+  table.fees { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  table.fees tbody tr.group {
+    background: var(--of-gray-50); cursor: pointer;
+  }
+  table.fees tbody tr.group:hover { background: var(--of-orange-soft); }
+  table.fees tbody tr.group td {
+    padding: 10px 12px; font-weight: 600; color: var(--of-charcoal);
+    border-bottom: 1px solid var(--of-gray-200);
+  }
+  table.fees tbody tr.group td.subtotal {
+    text-align: right; color: var(--of-orange); font-variant-numeric: tabular-nums;
+  }
+  table.fees tbody tr.group td .chev { color: var(--of-gray-500); margin-right: 6px; }
+  table.fees tbody tr.expanded td .chev { color: var(--of-orange); }
+  table.fees tbody tr.group .count {
+    font-weight: 400; color: var(--of-gray-500); margin-left: 6px; font-size: 11px;
+  }
+  table.fees tbody tr.txn td {
+    padding: 6px 12px 6px 32px; text-align: right; color: var(--of-charcoal);
+    border-bottom: 1px solid var(--of-gray-100); font-variant-numeric: tabular-nums;
+    font-size: 11px;
+  }
+  table.fees tbody tr.txn td.first { text-align: left; padding-left: 36px; }
+  table.fees tbody tr.txn td.neg { color: var(--of-orange); }
+  table.fees tbody tr.txn .load-link { color: var(--of-orange); cursor: pointer; }
+  table.fees tbody tr.txn .load-link:hover { text-decoration: underline; }
+  table.fees tbody tr.total-row td {
+    font-weight: 700; border-top: 2px solid var(--of-charcoal);
+    padding: 10px 12px 12px; border-bottom: none;
+  }
+  table.fees tbody tr.total-row td.amt { text-align: right; color: var(--of-orange); }
 </style>
 </head>
 <body>
@@ -377,10 +410,187 @@
       });
     }
 
-    // Stubs -- to be replaced in Tasks 16-17
-    function renderFeesTab()    { return '<div class="loading">Fees tab -- Task 17</div>'; }
-    function bindFeesTab()    {}
-    function fetchFees()    { state.feesData = { groups: [], totals: { count: 0, amount: 0 } }; renderShell(); }
+    // Task 17 -- Fees Paid tab body
+    function renderFeesTab() {
+      var d = state.feesData;
+      var f = state.feesFilters;
+      var html = '';
+      html += '<div class="filter-bar">' +
+        '<select id="feesDate" class="seg-control" style="min-width:140px">' +
+          ['today','this_week','this_month','last_month','this_year','custom'].map(function (k) {
+            var labels = {today:'Today', this_week:'This Week', this_month:'This Month',
+                          last_month:'Last Month', this_year:'This Year', custom:'Custom'};
+            return '<option value="' + k + '"' + (f.dateRange === k ? ' selected' : '') + '>' + labels[k] + '</option>';
+          }).join('') +
+        '</select>' +
+        '<input id="feesFrom" class="search-input" type="date" style="width:140px" value="' + esc(resolvedRange(f).from) + '">' +
+        '<input id="feesTo" class="search-input" type="date" style="width:140px" value="' + esc(resolvedRange(f).to) + '">' +
+        '<select id="feesType" class="seg-control" style="min-width:160px">' +
+          '<option value="">Fee Type: All</option>' +
+          [
+            ['4001','Wire Fee'], ['4011','ACH Fee'], ['3001','Discount Fee'],
+            ['3000','Schedule Fee'], ['4013','Fuel Card Fee'], ['4014','Processing Fee'],
+            ['4015','Setup Fee'], ['4016','Broker Packet Fee'], ['4017','Fuel Advance Fee'],
+            ['4019','Tank Fee'], ['3005','Vendor Quick Pay Fee'],
+          ].map(function (p) {
+            return '<option value="' + p[0] + '"' + (f.feeType === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+          }).join('') +
+        '</select>' +
+        '<input id="feesLoadId" class="search-input" type="text" placeholder="Load ID..." value="' + esc(f.loadId) + '">' +
+        '<div class="export-wrap">' +
+          '<button id="feesExportBtn" class="btn-export">Export &#9660;</button>' +
+          (state.feesExportOpen ?
+            '<div class="export-menu">' +
+              '<button data-export="fees:csv">Fees CSV</button>' +
+              '<button data-export="fees:pdf">Fees PDF</button>' +
+            '</div>' : '') +
+        '</div>' +
+      '</div>';
+
+      var t = (d && d.totals) ? d.totals : { count: 0, amount: 0 };
+      html += '<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr)">' +
+        '<div class="kpi-card accent"><div class="kpi-label">Transactions</div>' +
+          '<div class="kpi-value">' + (t.count || 0) + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">Total fees</div>' +
+          '<div class="kpi-value">' + fmtMoney(t.amount) + '</div></div>' +
+      '</div>';
+
+      if (state.feesLoading) {
+        html += '<div class="loading">Loading fees...</div>';
+      } else if (!d || !d.groups || d.groups.length === 0) {
+        html += '<div class="empty">No fees in this range.</div>';
+      } else {
+        html += '<table class="fees"><tbody>';
+        for (var i = 0; i < d.groups.length; i++) {
+          var g = d.groups[i];
+          var key = g.glCode;
+          var expanded = !!state.expandedFeeGroups[key];
+          html += '<tr class="group' + (expanded ? ' expanded' : '') + '" data-fee-key="' + esc(key) + '">' +
+            '<td>' +
+              '<span class="chev">' + (expanded ? '&#9662;' : '&#9656;') + '</span>' +
+              esc(g.feeType) +
+              '<span class="count">(' + (g.count || 0) + ' txns)</span>' +
+            '</td>' +
+            '<td class="subtotal">' + fmtMoneyDec(g.subtotal) + '</td>' +
+          '</tr>';
+          if (expanded) {
+            for (var j = 0; j < g.transactions.length; j++) {
+              var x = g.transactions[j];
+              html += '<tr class="txn">' +
+                '<td class="first">' +
+                  esc(x.date) + '&nbsp;&middot;&nbsp;' +
+                  '<span class="load-link" data-load-id="' + esc(x.loadId) + '">Load ' + esc(x.loadNumber) + '</span>' +
+                  '&nbsp;&middot;&nbsp;' + esc(x.debtorName) +
+                '</td>' +
+                '<td class="neg">' + fmtMoneyDec(x.amount) + '</td>' +
+              '</tr>';
+            }
+          }
+        }
+        html += '<tr class="total-row"><td>TOTAL FEES PAID (' + (t.count || 0) + ' txns)</td>' +
+          '<td class="amt">' + fmtMoneyDec(t.amount) + '</td></tr>';
+        html += '</tbody></table>';
+      }
+      return html;
+    }
+    function fetchFees() {
+      state.feesLoading = true;
+      renderShell();
+      var f = state.feesFilters;
+      var range = resolvedRange(f);
+      var params = new URLSearchParams();
+      if (state.clientId) params.set('clientId', state.clientId);
+      else                params.set('email', brokerEmail);
+      if (range.from) params.set('dateFrom', range.from);
+      if (range.to)   params.set('dateTo',   range.to);
+      if (f.feeType)  params.set('feeType',  f.feeType);
+      if (f.loadId)   params.set('loadId',   f.loadId);
+      fetch(BROKER_API_BASE + '/loads/fees?' + params.toString())
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          state.feesData = data;
+          state.feesLoading = false;
+          renderShell();
+        })
+        .catch(function (err) {
+          console.error('fetchFees failed', err);
+          state.feesData = { groups: [], totals: { count: 0, amount: 0 } };
+          state.feesLoading = false;
+          renderShell();
+        });
+    }
+    function bindFeesTab() {
+      var dateSel = document.getElementById('feesDate');
+      if (dateSel) dateSel.addEventListener('change', function (e) {
+        var v = e.target.value;
+        state.feesFilters.dateRange = v;
+        if (v === 'custom') {
+          state.feesFilters.dateFrom = '';
+          state.feesFilters.dateTo = '';
+          renderShell();
+          return;
+        }
+        var r = dateRangeToFromTo(v);
+        state.feesFilters.dateFrom = r.from;
+        state.feesFilters.dateTo = r.to;
+        fetchFees();
+      });
+      function onCustomDate() {
+        state.feesFilters.dateRange = 'custom';
+        state.feesFilters.dateFrom = (document.getElementById('feesFrom') || {}).value || '';
+        state.feesFilters.dateTo   = (document.getElementById('feesTo')   || {}).value || '';
+        if (!state.feesFilters.dateFrom || !state.feesFilters.dateTo) return;
+        if (state._feesDateDebounce) clearTimeout(state._feesDateDebounce);
+        state._feesDateDebounce = setTimeout(fetchFees, 300);
+      }
+      var fromInp = document.getElementById('feesFrom');
+      if (fromInp) fromInp.addEventListener('change', onCustomDate);
+      var toInp = document.getElementById('feesTo');
+      if (toInp) toInp.addEventListener('change', onCustomDate);
+      var typeSel = document.getElementById('feesType');
+      if (typeSel) typeSel.addEventListener('change', function (e) {
+        state.feesFilters.feeType = e.target.value;
+        fetchFees();
+      });
+      var lidInp = document.getElementById('feesLoadId');
+      if (lidInp) lidInp.addEventListener('input', function (e) {
+        state.feesFilters.loadId = e.target.value;
+        if (state._feesLoadIdDebounce) clearTimeout(state._feesLoadIdDebounce);
+        state._feesLoadIdDebounce = setTimeout(fetchFees, 300);
+      });
+      var expBtn = document.getElementById('feesExportBtn');
+      if (expBtn) expBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        state.feesExportOpen = !state.feesExportOpen;
+        renderShell();
+      });
+      // Export menu click-through
+      document.querySelectorAll('[data-export]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var parts = b.getAttribute('data-export').split(':');
+          openExport(parts[0], parts[1]);
+          state.feesExportOpen = false;
+          renderShell();
+        });
+      });
+      // Group accordion toggle
+      document.querySelectorAll('table.fees tr.group').forEach(function (tr) {
+        tr.addEventListener('click', function (e) {
+          if (e.target.classList.contains('load-link')) return;
+          var key = tr.getAttribute('data-fee-key');
+          if (state.expandedFeeGroups[key]) delete state.expandedFeeGroups[key];
+          else state.expandedFeeGroups[key] = true;
+          renderShell();
+        });
+      });
+      // Load # links inside expanded groups
+      document.querySelectorAll('table.fees .load-link').forEach(function (el) {
+        el.addEventListener('click', function (e) {
+          e.stopPropagation();
+          openLoadDetail(el.getAttribute('data-load-id'));
+        });
+      });
+    }
 
     function renderMarginsTab() {
       var d = state.marginsData;

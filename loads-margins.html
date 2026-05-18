@@ -52,6 +52,87 @@
   .tab-strip button:hover:not(.active) { color: var(--of-gray-700); }
 
   .loading { padding: 24px; color: var(--of-gray-500); }
+
+  /* Loads-tab filter bar */
+  .filter-bar { display: flex; gap: 8px; flex-wrap: wrap;
+    align-items: center; margin-bottom: 16px; }
+  .seg-control {
+    padding: 8px 12px; border: 1px solid var(--of-gray-200); border-radius: 8px;
+    font-size: 13px; font-family: inherit; color: var(--of-charcoal); background: white;
+  }
+  .seg-control:focus { border-color: var(--of-orange); outline: none;
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.12); }
+  .search-input {
+    padding: 8px 12px; border: 1px solid var(--of-gray-200); border-radius: 8px;
+    font-size: 13px; font-family: inherit; color: var(--of-charcoal); background: white;
+    min-width: 140px;
+  }
+  .search-input:focus { border-color: var(--of-orange); outline: none;
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.12); }
+  .btn-export {
+    padding: 8px 14px; font-size: 12px; font-weight: 600;
+    border: 1px solid var(--of-gray-200); background: white;
+    color: var(--of-gray-700); border-radius: 8px; cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-export:hover { background: var(--of-gray-50); }
+  .export-wrap { position: relative; }
+  .export-menu {
+    position: absolute; top: 100%; right: 0; margin-top: 4px;
+    background: white; border: 1px solid var(--of-gray-200); border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 4px; min-width: 140px;
+    z-index: 50;
+  }
+  .export-menu button {
+    display: block; width: 100%; text-align: left; padding: 8px 12px;
+    border: none; background: white; font-size: 12px; color: var(--of-gray-700);
+    border-radius: 4px; cursor: pointer; font-family: inherit;
+  }
+  .export-menu button:hover { background: var(--of-gray-50); color: var(--of-charcoal); }
+
+  /* KPI grid */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 12px; margin-bottom: 18px;
+  }
+  .kpi-card {
+    background: var(--of-gray-50); border: 1px solid var(--of-gray-200);
+    border-radius: 8px; padding: 12px 16px;
+  }
+  .kpi-card.accent { background: var(--of-orange-soft); border-color: #FCD3A8; }
+  .kpi-card.accent .kpi-value { color: var(--of-orange); }
+  .kpi-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--of-gray-500); margin-bottom: 6px;
+  }
+  .kpi-value { font-size: 22px; font-weight: 600; color: var(--of-charcoal); }
+
+  /* Loads table */
+  table.loads {
+    width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px;
+  }
+  table.loads th {
+    text-align: right; padding: 8px; color: var(--of-gray-500); font-weight: 600;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px;
+    border-bottom: 1px solid var(--of-gray-200); background: var(--of-gray-50);
+  }
+  table.loads th.first { text-align: left; padding-left: 16px; }
+  table.loads th.last { padding-right: 16px; }
+  table.loads td {
+    padding: 8px; text-align: right; border-bottom: 1px solid var(--of-gray-100);
+    color: var(--of-charcoal); font-variant-numeric: tabular-nums;
+  }
+  table.loads td.first { text-align: left; padding-left: 16px; font-weight: 500; }
+  table.loads td.last { padding-right: 16px; }
+  table.loads tbody tr { cursor: pointer; }
+  table.loads tbody tr:hover { background: var(--of-gray-50); }
+  table.loads tbody tr.totals td {
+    font-weight: 700; border-top: 2px solid var(--of-charcoal);
+    padding-top: 10px; padding-bottom: 12px; border-bottom: none;
+  }
+  td.pos { color: var(--of-green); font-weight: 500; }
+  td.neg { color: var(--of-orange); font-weight: 500; }
+  .empty { padding: 32px 16px; text-align: center; color: var(--of-gray-500); }
 </style>
 </head>
 <body>
@@ -177,16 +258,295 @@
       });
     }
 
-    // Stubs -- to be replaced in Tasks 14-17
-    function renderLoadsTab()   { return '<div class="loading">Loads tab -- Task 14</div>'; }
+    // Stubs -- to be replaced in Tasks 16-17
     function renderMarginsTab() { return '<div class="loading">Margins tab -- Task 16</div>'; }
     function renderFeesTab()    { return '<div class="loading">Fees tab -- Task 17</div>'; }
-    function bindLoadsTab()   {}
     function bindMarginsTab() {}
     function bindFeesTab()    {}
-    function fetchLoads()   { state.loadsData = { loads: [], totals: { count: 0, purchaseAmount: 0, margin: 0, marginPct: null } }; renderShell(); }
     function fetchMargins() { state.marginsData = { rows: [], totals: {} }; renderShell(); }
     function fetchFees()    { state.feesData = { groups: [], totals: { count: 0, amount: 0 } }; renderShell(); }
+
+    function renderLoadsTab() {
+      var d = state.loadsData;
+      var f = state.loadsFilters;
+      var html = '';
+
+      // Filter bar
+      html += '<div class="filter-bar">' +
+        '<select id="loadsDate" class="seg-control" style="min-width:140px">' +
+          ['today','this_week','this_month','last_month','this_year','custom'].map(function (k) {
+            var labels = {today:'Today', this_week:'This Week',
+                          this_month:'This Month', last_month:'Last Month',
+                          this_year:'This Year', custom:'Custom'};
+            return '<option value="' + k + '"' +
+                   (f.dateRange === k ? ' selected' : '') + '>' + labels[k] + '</option>';
+          }).join('') +
+        '</select>' +
+        '<input id="loadsFrom" class="search-input" type="date" style="width:140px"' +
+          ' value="' + esc(resolvedLoadsDateFrom(f)) + '">' +
+        '<input id="loadsTo" class="search-input" type="date" style="width:140px"' +
+          ' value="' + esc(resolvedLoadsDateTo(f)) + '">' +
+        '<select id="loadsDebtor" class="seg-control" style="min-width:180px">' +
+          '<option value="">Debtor: All</option>' +
+          (d && d.loads ? uniqueDebtorsFromLoads(d.loads).map(function (x) {
+            return '<option value="' + esc(x.id) + '"' +
+                   (f.debtorId === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+          }).join('') : '') +
+        '</select>' +
+        '<input id="loadsVendor" class="search-input" type="text"' +
+          ' placeholder="Vendor name..." value="' + esc(f.vendor) + '">' +
+        '<input id="loadsLoadId" class="search-input" type="text"' +
+          ' placeholder="Load ID..." value="' + esc(f.loadId) + '">' +
+        '<select id="loadsAR" class="seg-control" style="min-width:120px">' +
+          ['all','open','closed'].map(function (s) {
+            return '<option value="' + s + '"' +
+                   (f.arStatus === s ? ' selected' : '') + '>AR: ' + s + '</option>';
+          }).join('') +
+        '</select>' +
+        '<div class="export-wrap">' +
+          '<button id="loadsExportBtn" class="btn-export">Export &#9660;</button>' +
+          (state.loadsExportOpen ?
+            '<div class="export-menu">' +
+              '<button data-export="loads:csv">Loads CSV</button>' +
+              '<button data-export="loads:pdf">Loads PDF</button>' +
+            '</div>' : '') +
+        '</div>' +
+      '</div>';
+
+      // KPI strip
+      var t = (d && d.totals) ? d.totals : { count: 0, purchaseAmount: 0, margin: 0, marginPct: null };
+      html += '<div class="kpi-grid">' +
+        '<div class="kpi-card accent"><div class="kpi-label">Loads</div>' +
+          '<div class="kpi-value">' + (t.count || 0) + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">Purchase</div>' +
+          '<div class="kpi-value">' + fmtMoney(t.purchaseAmount) + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">Margin</div>' +
+          '<div class="kpi-value">' + fmtMoney(t.margin) + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">Margin %</div>' +
+          '<div class="kpi-value">' + fmtPct(t.marginPct) + '</div></div>' +
+      '</div>';
+
+      // Table
+      if (state.loadsLoading) {
+        html += '<div class="loading">Loading loads...</div>';
+      } else if (!d || !d.loads || d.loads.length === 0) {
+        html += '<div class="empty">No loads in this range.</div>';
+      } else {
+        html += '<table class="loads"><thead><tr>' +
+          '<th class="first">Buy Date</th><th>Load #</th><th>Debtor</th>' +
+          '<th>Vendor</th><th>Purchase</th><th>Margin</th><th class="last">Margin %</th>' +
+        '</tr></thead><tbody>';
+        for (var i = 0; i < d.loads.length; i++) {
+          var r = d.loads[i];
+          html += '<tr data-load-id="' + esc(r.loadId) + '">' +
+            '<td class="first">' + esc(r.buyDate || '') + '</td>' +
+            '<td>' + esc(r.loadNumber || '') + '</td>' +
+            '<td>' + esc(r.debtorName || '') + '</td>' +
+            '<td>' + esc(r.vendorName || '') + '</td>' +
+            '<td>' + fmtMoneyDec(r.purchaseAmount) + '</td>' +
+            '<td class="' + (r.margin >= 0 ? 'pos' : 'neg') + '">' + fmtMoneyDec(r.margin) + '</td>' +
+            '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '">' + fmtPct(r.marginPct) + '</td>' +
+          '</tr>';
+        }
+        html += '<tr class="totals"><td class="first" colspan="4">TOTAL</td>' +
+          '<td>' + fmtMoneyDec(t.purchaseAmount) + '</td>' +
+          '<td>' + fmtMoneyDec(t.margin) + '</td>' +
+          '<td class="last">' + fmtPct(t.marginPct) + '</td></tr>';
+        html += '</tbody></table>';
+      }
+      return html;
+    }
+
+    function uniqueDebtorsFromLoads(loads) {
+      var seen = {};
+      var out = [];
+      for (var i = 0; i < loads.length; i++) {
+        var id = loads[i].debtorId;
+        if (id && !seen[id]) { seen[id] = true;
+          out.push({ id: id, name: loads[i].debtorName }); }
+      }
+      out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      return out;
+    }
+
+    function dateRangeToFromTo(rangeKey) {
+      var today = new Date();
+      function fmt(d) {
+        return d.getFullYear() + '-' +
+          String(d.getMonth() + 1).padStart(2, '0') + '-' +
+          String(d.getDate()).padStart(2, '0');
+      }
+      function addDays(d, n) { var c = new Date(d); c.setDate(c.getDate() + n); return c; }
+      function startOfWeek(d) { var c = new Date(d); c.setDate(c.getDate() - c.getDay()); return c; }
+      function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+      function startOfYear(d) { return new Date(d.getFullYear(), 0, 1); }
+      switch (rangeKey) {
+        case 'today':       return { from: fmt(today), to: fmt(today) };
+        case 'this_week':   return { from: fmt(startOfWeek(today)), to: fmt(today) };
+        case 'this_month':  return { from: fmt(startOfMonth(today)), to: fmt(today) };
+        case 'last_month':  var sm = startOfMonth(today);
+                            var elm = addDays(sm, -1);
+                            return { from: fmt(startOfMonth(elm)), to: fmt(elm) };
+        case 'this_year':   return { from: fmt(startOfYear(today)), to: fmt(today) };
+        case 'last_12_months':
+                            var d = new Date(today); d.setMonth(d.getMonth() - 12);
+                            return { from: fmt(d), to: fmt(today) };
+        default:            return { from: fmt(addDays(today, -7)), to: fmt(today) };
+      }
+    }
+
+    function resolvedRange(f) {
+      if (f.dateRange === 'custom') return { from: f.dateFrom || '', to: f.dateTo || '' };
+      return dateRangeToFromTo(f.dateRange);
+    }
+    function resolvedLoadsDateFrom(f) { return resolvedRange(f).from; }
+    function resolvedLoadsDateTo(f)   { return resolvedRange(f).to; }
+
+    function fetchLoads() {
+      state.loadsLoading = true;
+      renderShell();
+      var f = state.loadsFilters;
+      var range = resolvedRange(f);
+      var params = new URLSearchParams();
+      if (state.clientId) params.set('clientId', state.clientId);
+      else                params.set('email', brokerEmail);
+      if (range.from) params.set('dateFrom', range.from);
+      if (range.to)   params.set('dateTo',   range.to);
+      if (f.debtorId) params.set('debtorId', f.debtorId);
+      if (f.vendor)   params.set('vendor',   f.vendor);
+      if (f.loadId)   params.set('loadId',   f.loadId);
+      if (f.arStatus) params.set('arStatus', f.arStatus);
+
+      fetch(BROKER_API_BASE + '/loads?' + params.toString())
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          state.loadsData = data;
+          state.loadsLoading = false;
+          renderShell();
+        })
+        .catch(function (err) {
+          console.error('fetchLoads failed', err);
+          state.loadsData = { loads: [], totals: { count: 0, purchaseAmount: 0, margin: 0, marginPct: null } };
+          state.loadsLoading = false;
+          renderShell();
+        });
+    }
+
+    function bindLoadsTab() {
+      // Date preset
+      var dateSel = document.getElementById('loadsDate');
+      if (dateSel) dateSel.addEventListener('change', function (e) {
+        var v = e.target.value;
+        state.loadsFilters.dateRange = v;
+        if (v === 'custom') {
+          state.loadsFilters.dateFrom = '';
+          state.loadsFilters.dateTo = '';
+          renderShell();
+          return;
+        }
+        var r = dateRangeToFromTo(v);
+        state.loadsFilters.dateFrom = r.from;
+        state.loadsFilters.dateTo = r.to;
+        fetchLoads();
+      });
+      // Custom date inputs
+      function onCustomDate() {
+        state.loadsFilters.dateRange = 'custom';
+        state.loadsFilters.dateFrom = (document.getElementById('loadsFrom') || {}).value || '';
+        state.loadsFilters.dateTo   = (document.getElementById('loadsTo')   || {}).value || '';
+        if (!state.loadsFilters.dateFrom || !state.loadsFilters.dateTo) return;
+        if (state._loadsDateDebounce) clearTimeout(state._loadsDateDebounce);
+        state._loadsDateDebounce = setTimeout(fetchLoads, 300);
+      }
+      var fromInp = document.getElementById('loadsFrom');
+      if (fromInp) fromInp.addEventListener('change', onCustomDate);
+      var toInp = document.getElementById('loadsTo');
+      if (toInp) toInp.addEventListener('change', onCustomDate);
+      // Debtor select
+      var debtSel = document.getElementById('loadsDebtor');
+      if (debtSel) debtSel.addEventListener('change', function (e) {
+        state.loadsFilters.debtorId = e.target.value;
+        fetchLoads();
+      });
+      // Vendor search (debounced)
+      var venInp = document.getElementById('loadsVendor');
+      if (venInp) venInp.addEventListener('input', function (e) {
+        state.loadsFilters.vendor = e.target.value;
+        if (state._loadsVendorDebounce) clearTimeout(state._loadsVendorDebounce);
+        state._loadsVendorDebounce = setTimeout(fetchLoads, 300);
+      });
+      // Load ID search
+      var lidInp = document.getElementById('loadsLoadId');
+      if (lidInp) lidInp.addEventListener('input', function (e) {
+        state.loadsFilters.loadId = e.target.value;
+        if (state._loadsLoadIdDebounce) clearTimeout(state._loadsLoadIdDebounce);
+        state._loadsLoadIdDebounce = setTimeout(fetchLoads, 300);
+      });
+      // AR status
+      var arSel = document.getElementById('loadsAR');
+      if (arSel) arSel.addEventListener('change', function (e) {
+        state.loadsFilters.arStatus = e.target.value;
+        fetchLoads();
+      });
+      // Export menu toggle + click-through
+      var expBtn = document.getElementById('loadsExportBtn');
+      if (expBtn) expBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        state.loadsExportOpen = !state.loadsExportOpen;
+        renderShell();
+      });
+      document.querySelectorAll('[data-export]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var parts = b.getAttribute('data-export').split(':');
+          openExport(parts[0], parts[1]);
+          state.loadsExportOpen = false;
+          renderShell();
+        });
+      });
+      // Row clicks -> open detail panel (Task 15)
+      document.querySelectorAll('table.loads tbody tr[data-load-id]').forEach(function (tr) {
+        tr.addEventListener('click', function () {
+          openLoadDetail(tr.getAttribute('data-load-id'));
+        });
+      });
+    }
+
+    function openExport(scope, format) {
+      var f, range, params = new URLSearchParams();
+      if (state.clientId) params.set('clientId', state.clientId);
+      else                params.set('email', brokerEmail);
+      params.set('format', format);
+      var url;
+      if (scope === 'loads') {
+        f = state.loadsFilters; range = resolvedRange(f);
+        if (range.from) params.set('dateFrom', range.from);
+        if (range.to)   params.set('dateTo',   range.to);
+        if (f.debtorId) params.set('debtorId', f.debtorId);
+        if (f.vendor)   params.set('vendor',   f.vendor);
+        if (f.loadId)   params.set('loadId',   f.loadId);
+        if (f.arStatus) params.set('arStatus', f.arStatus);
+        url = BROKER_API_BASE + '/loads?' + params.toString();
+      } else if (scope === 'margins') {
+        f = state.marginsFilters; range = resolvedRange(f);
+        if (range.from) params.set('dateFrom', range.from);
+        if (range.to)   params.set('dateTo',   range.to);
+        params.set('groupBy', state.marginsGroupBy);
+        url = BROKER_API_BASE + '/loads/margins?' + params.toString();
+      } else {
+        f = state.feesFilters; range = resolvedRange(f);
+        if (range.from) params.set('dateFrom', range.from);
+        if (range.to)   params.set('dateTo',   range.to);
+        if (f.feeType)  params.set('feeType', f.feeType);
+        if (f.loadId)   params.set('loadId',  f.loadId);
+        url = BROKER_API_BASE + '/loads/fees?' + params.toString();
+      }
+      window.open(url, '_blank');
+    }
+
+    // Stub -- Task 15 implements
+    function openLoadDetail(loadId) {
+      console.log('TODO Task 15: open detail for', loadId);
+    }
 
     bootstrap();
   </script>

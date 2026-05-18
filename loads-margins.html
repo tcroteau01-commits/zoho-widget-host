@@ -123,6 +123,8 @@
     color: var(--of-charcoal); font-variant-numeric: tabular-nums;
   }
   table.loads td.first { text-align: left; padding-left: 16px; font-weight: 500; }
+  table.loads td.left { text-align: left; }
+  table.loads th.left { text-align: left; }
   table.loads td.last { padding-right: 16px; }
   table.loads tbody tr { cursor: pointer; }
   table.loads tbody tr:hover { background: var(--of-gray-50); }
@@ -775,8 +777,6 @@
                    (f.debtorId === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
           }).join('') : '') +
         '</select>' +
-        '<input id="loadsVendor" class="search-input" type="text"' +
-          ' placeholder="Vendor name..." value="' + esc(f.vendor) + '">' +
         '<input id="loadsLoadId" class="search-input" type="text"' +
           ' placeholder="Load ID..." value="' + esc(f.loadId) + '">' +
         '<select id="loadsAR" class="seg-control" style="min-width:120px">' +
@@ -815,22 +815,21 @@
         html += '<div class="empty">No loads in this range.</div>';
       } else {
         html += '<table class="loads"><thead><tr>' +
-          '<th class="first">Buy Date</th><th>Load #</th><th>Debtor</th>' +
-          '<th>Vendor</th><th>Purchase</th><th>Margin</th><th class="last">Margin %</th>' +
+          '<th class="first">Buy Date</th><th class="left">Load #</th><th class="left">Debtor</th>' +
+          '<th>Purchase</th><th>Margin</th><th class="last">Margin %</th>' +
         '</tr></thead><tbody>';
         for (var i = 0; i < d.loads.length; i++) {
           var r = d.loads[i];
           html += '<tr data-load-id="' + esc(r.loadId) + '">' +
             '<td class="first">' + esc(r.buyDate || '') + '</td>' +
-            '<td>' + esc(r.loadNumber || '') + '</td>' +
-            '<td>' + esc(r.debtorName || '') + '</td>' +
-            '<td>' + esc(r.vendorName || '') + '</td>' +
+            '<td class="left">' + esc(r.loadNumber || '') + '</td>' +
+            '<td class="left">' + esc(r.debtorName || '') + '</td>' +
             '<td>' + fmtMoneyDec(r.purchaseAmount) + '</td>' +
             '<td class="' + (r.margin >= 0 ? 'pos' : 'neg') + '">' + fmtMoneyDec(r.margin) + '</td>' +
             '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '">' + fmtPct(r.marginPct) + '</td>' +
           '</tr>';
         }
-        html += '<tr class="totals"><td class="first" colspan="4">TOTAL</td>' +
+        html += '<tr class="totals"><td class="first" colspan="3">TOTAL</td>' +
           '<td>' + fmtMoneyDec(t.purchaseAmount) + '</td>' +
           '<td>' + fmtMoneyDec(t.margin) + '</td>' +
           '<td class="last">' + fmtPct(t.marginPct) + '</td></tr>';
@@ -949,13 +948,6 @@
       if (debtSel) debtSel.addEventListener('change', function (e) {
         state.loadsFilters.debtorId = e.target.value;
         fetchLoads();
-      });
-      // Vendor search (debounced)
-      var venInp = document.getElementById('loadsVendor');
-      if (venInp) venInp.addEventListener('input', function (e) {
-        state.loadsFilters.vendor = e.target.value;
-        if (state._loadsVendorDebounce) clearTimeout(state._loadsVendorDebounce);
-        state._loadsVendorDebounce = setTimeout(fetchLoads, 300);
       });
       // Load ID search
       var lidInp = document.getElementById('loadsLoadId');
@@ -1156,11 +1148,22 @@
       // Bind clickable-debtor + quick link
       function navigateToAging(debtorId) {
         try { localStorage.setItem('openCustomerId', String(debtorId)); } catch (e) {}
-        if (window.top && window.top.location) {
-          window.top.location.hash = '#Page:Aging';
-        } else {
-          window.location.hash = '#Page:Aging';
-        }
+        // Try Creator SDK navigation first (works inside the portal iframe);
+        // fall back to hash change for standalone-test mode.
+        try {
+          if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.UTIL &&
+              typeof ZOHO.CREATOR.UTIL.navigateParentURL === 'function') {
+            ZOHO.CREATOR.UTIL.navigateParentURL('#Page:Aging');
+            return;
+          }
+        } catch (e) {}
+        try {
+          if (window.top && window.top.location) {
+            window.top.location.hash = '#Page:Aging';
+            return;
+          }
+        } catch (e) {}
+        window.location.hash = '#Page:Aging';
       }
       var dbt = panel.querySelector('.clickable-debtor');
       if (dbt) dbt.addEventListener('click', function () {

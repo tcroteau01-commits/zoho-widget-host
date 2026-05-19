@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OperFi Wallet</title>
+<style>
+  :root {
+    --of-charcoal: #1d1d1f;
+    --of-orange: #F97316;
+    --of-orange-soft: #FEF3E8;
+    --of-gray-50: #F8F9FB;
+    --of-gray-100: #F1F2F4;
+    --of-gray-200: #E5E7EB;
+    --of-gray-300: #D1D5DB;
+    --of-gray-500: #6B7280;
+    --of-gray-700: #374151;
+    --of-green: #059669;
+    --of-green-soft: #ECFDF5;
+    --of-amber: #D97706;
+    --of-amber-soft: #FFFBEB;
+    --of-red: #DC2626;
+    --of-red-soft: #FEF2F2;
+    --of-blue: #1976d2;
+    --of-blue-soft: #E3F0FB;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    background: #f0efe9;
+    color: var(--of-charcoal);
+    min-height: 100vh;
+  }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+  .wallet-header { margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+  .wallet-title { font-size: 22px; font-weight: 700; letter-spacing: -0.2px; }
+  .wallet-sub { font-size: 12px; color: var(--of-gray-500); margin-top: 4px; }
+  .acct-pill {
+    background: var(--of-gray-100); border: 1px solid var(--of-gray-200);
+    padding: 6px 12px; border-radius: 8px; font-size: 12px; color: var(--of-gray-700);
+    white-space: nowrap;
+  }
+  .acct-pill b { color: var(--of-charcoal); margin-left: 4px; }
+
+  /* Reserve cards */
+  .reserves { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .reserve-card {
+    background: #fff; border: 1px solid #e6e3da; border-radius: 12px;
+    padding: 22px 24px; position: relative; overflow: hidden;
+  }
+  .reserve-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+  .reserve-card.cash::before { background: #2e7d32; }
+  .reserve-card.escrow::before { background: var(--of-blue); }
+
+  .reserve-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  .reserve-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; }
+  .reserve-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .reserve-card.cash .reserve-icon { background: #e3f4e3; color: #1f6321; }
+  .reserve-card.escrow .reserve-icon { background: var(--of-blue-soft); color: #0d4a8a; }
+
+  .reserve-value { font-size: 38px; font-weight: 700; letter-spacing: -1px; line-height: 1; margin-bottom: 8px; }
+  .reserve-card.cash .reserve-value { color: #2e7d32; }
+  .reserve-card.escrow .reserve-value { color: var(--of-blue); }
+  .reserve-value .cents { font-size: 22px; opacity: 0.55; font-weight: 600; }
+  .reserve-value.skeleton { color: var(--of-gray-300); }
+
+  .reserve-sub { font-size: 13px; color: var(--of-gray-500); font-weight: 500; line-height: 1.4; }
+  .reserve-meta {
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0efe9;
+    font-size: 11px; color: #999;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+
+  /* Smart cutoff banner */
+  .cutoff-banner {
+    display: flex; align-items: flex-start; gap: 14px;
+    border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; border: 1px solid;
+  }
+  .cutoff-banner.ok { background: var(--of-green-soft); border-color: #c8e3c8; color: #1f6321; }
+  .cutoff-banner.late { background: var(--of-amber-soft); border-color: #ffe082; color: #856404; }
+  .cutoff-banner.weekend { background: #fff4e0; border-color: #ffd699; color: #b86e00; }
+  .cutoff-icon { font-size: 20px; line-height: 1; flex-shrink: 0; margin-top: 1px; }
+  .cutoff-text { flex: 1; }
+  .cutoff-headline { font-size: 14px; font-weight: 700; letter-spacing: -0.1px; }
+  .cutoff-detail { font-size: 12px; margin-top: 3px; opacity: 0.85; line-height: 1.45; }
+
+  /* Section heads */
+  .section-head { margin: 8px 4px 14px; }
+  .section-title { font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
+  .section-sub { font-size: 12px; color: var(--of-gray-500); margin-top: 3px; }
+
+  /* Form card */
+  .form-card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 22px 26px 24px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field-label { font-size: 11px; color: var(--of-gray-700); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+  .field-label .req { color: var(--of-red); margin-left: 2px; }
+  .field-input, .field-select {
+    border: 1px solid var(--of-gray-300); border-radius: 8px;
+    padding: 11px 14px; font-size: 14px; font-family: inherit;
+    background: #fff; outline: none; transition: all 0.15s; color: var(--of-charcoal);
+  }
+  .field-input:focus, .field-select:focus {
+    border-color: var(--of-orange);
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.12);
+  }
+  .field-input.invalid, .field-select.invalid { border-color: var(--of-red); }
+  .field-amount { position: relative; }
+  .field-amount input { padding-left: 30px; font-size: 16px; font-weight: 600; }
+  .field-amount::before {
+    content: '$'; position: absolute; left: 14px; top: 50%;
+    transform: translateY(-50%); color: var(--of-gray-500); font-weight: 600;
+    pointer-events: none; font-size: 16px;
+  }
+  .field-err { font-size: 11px; color: var(--of-red); margin-top: 2px; min-height: 14px; }
+
+  /* Eligibility + status */
+  .eligibility-msg {
+    background: var(--of-green-soft);
+    border-left: 3px solid var(--of-green);
+    color: #14532d;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin-bottom: 18px;
+    display: none;
+  }
+  .eligibility-msg.show { display: block; }
+  .eligibility-msg.warn {
+    background: var(--of-amber-soft);
+    border-left-color: var(--of-amber);
+    color: #7c4d00;
+  }
+
+  .help-note {
+    background: var(--of-gray-50);
+    border: 1px solid var(--of-gray-200);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--of-gray-500);
+    line-height: 1.5;
+    margin-bottom: 18px;
+  }
+
+  .actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .btn {
+    background: #fff; border: 1px solid var(--of-gray-300); border-radius: 8px;
+    padding: 11px 22px; font-size: 13px; font-weight: 700; color: var(--of-gray-700);
+    cursor: pointer; transition: all 0.15s; font-family: inherit;
+  }
+  .btn:hover:not(:disabled) { border-color: #b8b8b8; background: #fafafa; }
+  .btn.primary { background: var(--of-orange); color: #fff; border-color: var(--of-orange); }
+  .btn.primary:hover:not(:disabled) { background: #d96710; border-color: #d96710; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Status banner */
+  .status-banner {
+    display: none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 18px;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.success { background: var(--of-green-soft); color: #14532d; border: 1px solid #a5d6a7; }
+  .status-banner.error { background: var(--of-red-soft); color: #7f1d1d; border: 1px solid #ef9a9a; }
+  .status-banner.loading { background: var(--of-amber-soft); color: #856404; border: 1px solid #ffe082; }
+
+  .empty-state {
+    background: #fff;
+    border: 1px solid #e6e3da;
+    border-radius: 12px;
+    padding: 36px 24px;
+    text-align: center;
+    color: var(--of-gray-500);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .empty-state strong { color: var(--of-charcoal); display: block; margin-bottom: 6px; font-size: 14px; }
+
+  .version-stamp { text-align: right; font-size: 10px; color: #bbb; padding: 8px 4px 0; }
+
+  @media (max-width: 700px) {
+    .reserves, .form-grid { grid-template-columns: 1fr; }
+    .reserve-value { font-size: 30px; }
+    .reserve-value .cents { font-size: 18px; }
+    .wallet-header { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="wallet-header">
+    <div>
+      <div class="wallet-title">OperFi Wallet</div>
+      <div class="wallet-sub">Your reserve balances and release requests</div>
+    </div>
+    <div class="acct-pill" id="acctPill" style="display:none;">Account<b id="acctName">—</b></div>
+  </div>
+
+  <div id="statusBanner" class="status-banner"></div>
+
+  <div id="walletBody">
+
+    <div class="reserves">
+      <div class="reserve-card cash">
+        <div class="reserve-top">
+          <div class="reserve-label">Cash Reserve</div>
+          <div class="reserve-icon">$</div>
+        </div>
+        <div class="reserve-value skeleton" id="cashValue">$0<span class="cents">.00</span></div>
+        <div class="reserve-sub">Available for release today</div>
+        <div class="reserve-meta">
+          <span>Updated just now</span>
+          <span id="cashAcct"></span>
+        </div>
+      </div>
+      <div class="reserve-card escrow">
+        <div class="reserve-top">
+          <div class="reserve-label">Escrow Reserve</div>
+          <div class="reserve-icon">&#9201;</div>
+        </div>
+        <div class="reserve-value skeleton" id="escrowValue">$0<span class="cents">.00</span></div>
+        <div class="reserve-sub">Available as customers pay open invoices</div>
+        <div class="reserve-meta">
+          <span>Updated just now</span>
+          <span id="escrowAcct"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cutoff-banner ok" id="cutoffBanner">
+      <div class="cutoff-icon">&#9200;</div>
+      <div class="cutoff-text">
+        <div class="cutoff-headline" id="cutoffHead">Loading cutoff status...</div>
+        <div class="cutoff-detail" id="cutoffDetail"></div>
+      </div>
+    </div>
+
+    <div class="section-head">
+      <div class="section-title">Request a Reserve Release</div>
+      <div class="section-sub">Pull funds from your Cash Reserve to your selected funding method</div>
+    </div>
+
+    <div class="form-card">
+
+      <div class="form-grid">
+        <div class="field">
+          <label class="field-label">Requested Payment <span class="req">*</span></label>
+          <div class="field-amount">
+            <input class="field-input" type="text" inputmode="decimal" id="requestedPayment" placeholder="0.00" autocomplete="off">
+          </div>
+          <div class="field-err" id="paymentErr"></div>
+        </div>
+        <div class="field">
+          <label class="field-label">Funding Method <span class="req">*</span></label>
+          <select class="field-select" id="fundingMethod">
+            <option value="">Select funding method...</option>
+            <option value="ACH - $5 (Next Day)">ACH - $5 (Next Day)</option>
+            <option value="WIRE - $25 (Same Day)">WIRE - $25 (Same Day)</option>
+            <option value="TANK - $3 (Instant - Must have a TANK account)">TANK - $3 (Instant - Must have a TANK account)</option>
+          </select>
+          <div class="field-err" id="methodErr"></div>
+        </div>
+      </div>
+
+      <div class="eligibility-msg" id="eligibilityMsg"></div>
+
+      <div class="help-note">
+        <strong>How it works:</strong> Reserve release requests are processed manually by our team. Requests submitted before the 1:00 PM CST cutoff on a business day are processed the same day for WIRE/TANK and the next business day for ACH.
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="submitBtn" type="button">Submit Request</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="version-stamp">v2026-05-19.3</div>
+
+</div>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+  var state = {
+    email: '',
+    accountName: '',
+    cash: 0,
+    escrow: 0,
+    loaded: false
+  };
+
+  // -------- Boot --------
+  function waitForZoho(attempts, delay) {
+    if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR) return Promise.resolve();
+    if (attempts <= 0) return Promise.reject(new Error('Widget must be loaded inside OperFi Broker Portal. Or append ?email=BROKER_EMAIL to the URL to test.'));
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () { waitForZoho(attempts - 1, delay).then(resolve, reject); }, delay);
+    });
+  }
+
+  function init() {
+    renderCutoff(); // banner works without any data — render immediately
+    setInterval(renderCutoff, 60 * 1000); // refresh every minute
+
+    var override = new URLSearchParams(window.location.search).get('email');
+    if (override) {
+      state.email = override;
+      fetchReserves();
+      bindFormHandlers();
+      return;
+    }
+
+    waitForZoho(30, 100).then(function () {
+      if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+        throw new Error('SDK loaded but getInitParams unavailable.');
+      }
+      return ZOHO.CREATOR.UTIL.getInitParams();
+    }).then(function (initParams) {
+      try { console.log('[Wallet] init params:', initParams); } catch (e) {}
+      var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
+      state.email = loginUser || '';
+      if (!state.email) throw new Error('No login email returned from Creator. Open DevTools console (F12) for details.');
+      fetchReserves();
+      bindFormHandlers();
+    }).catch(function (err) {
+      showFatal((err && err.message) || 'Failed to load wallet.');
+    });
+  }
+
+  if (document.readyState === 'complete') init();
+  else window.addEventListener('load', init);
+
+  // -------- Reserves --------
+  function isLocalTest() {
+    // file:// can't reach Render due to CORS; ?mock=1 forces it from any origin.
+    var params = new URLSearchParams(window.location.search);
+    return window.location.protocol === 'file:' || params.get('mock') === '1';
+  }
+
+  function fetchReserves() {
+    if (isLocalTest()) {
+      try { console.log('[Wallet] Local test mode — using mock reserves'); } catch (e) {}
+      state.cash = 5000;
+      state.escrow = 20000;
+      state.accountName = state.accountName || 'Marek LLC (mock)';
+      state.loaded = true;
+      renderReserves();
+      return;
+    }
+    var url = BROKER_API_BASE + '/wallet-reserves?email=' + encodeURIComponent(state.email);
+    fetch(url).then(function (r) {
+      if (r.status === 404) {
+        return r.json().then(function () {
+          showEmpty('Reserves not yet available', 'Your account is being set up. Once your first load is funded, your Cash and Escrow balances will appear here. Contact your OperFi account manager if you have questions.');
+          throw new Error('__handled__');
+        });
+      }
+      if (!r.ok) {
+        return r.json().then(function (body) {
+          throw new Error((body && body.error) || ('HTTP ' + r.status));
+        }, function () { throw new Error('HTTP ' + r.status); });
+      }
+      return r.json();
+    }).then(function (data) {
+      // Endpoint returns cash/escrow as strings — coerce to numbers
+      state.cash = parseFloat(data.cash) || 0;
+      state.escrow = parseFloat(data.escrow) || 0;
+      state.accountName = data.account_name || '';
+      state.loaded = true;
+      renderReserves();
+    }).catch(function (err) {
+      if (err && err.message === '__handled__') return;
+      showFatal((err && err.message) || 'Unable to load reserves.');
+    });
+  }
+
+  function renderReserves() {
+    document.getElementById('cashValue').innerHTML = formatMoney(state.cash);
+    document.getElementById('cashValue').classList.remove('skeleton');
+    document.getElementById('escrowValue').innerHTML = formatMoney(state.escrow);
+    document.getElementById('escrowValue').classList.remove('skeleton');
+    document.getElementById('cashAcct').textContent = state.accountName;
+    document.getElementById('escrowAcct').textContent = state.accountName;
+    if (state.accountName) {
+      document.getElementById('acctName').textContent = state.accountName;
+      document.getElementById('acctPill').style.display = 'inline-block';
+    }
+  }
+
+  function formatMoney(n) {
+    var parts = (Math.abs(n)).toFixed(2).split('.');
+    var whole = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    var sign = n < 0 ? '-' : '';
+    return sign + '$' + whole + '<span class="cents">.' + parts[1] + '</span>';
+  }
+
+  // -------- Cutoff banner --------
+  function getCstParts() {
+    // Use Intl to read current wall-clock time in America/Chicago, regardless of user's locale
+    var fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      hour12: false,
+      weekday: 'long',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+    var parts = {};
+    fmt.formatToParts(new Date()).forEach(function (p) { parts[p.type] = p.value; });
+    var hour = parseInt(parts.hour, 10);
+    // Intl returns '24' for midnight in hour12:false mode on some engines — normalize
+    if (hour === 24) hour = 0;
+    return {
+      weekday: parts.weekday,                              // 'Monday', 'Friday', ...
+      hour: hour,                                          // 0..23
+      minute: parseInt(parts.minute, 10),
+      year: parseInt(parts.year, 10),
+      month: parseInt(parts.month, 10),
+      day: parseInt(parts.day, 10)
+    };
+  }
+
+  var DOW = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+
+  function addBusinessDays(weekdayIdx, n) {
+    // From a starting weekday index (0=Sun..6=Sat), advance n calendar days then skip weekends.
+    // Returns { weekday: 'Tuesday', daysAhead: 3 } where daysAhead is the # of *calendar* days from start.
+    var idx = weekdayIdx;
+    var daysAhead = 0;
+    while (n > 0) {
+      idx = (idx + 1) % 7;
+      daysAhead++;
+      if (idx !== 0 && idx !== 6) n--; // not Sun/Sat → counts as a business day
+    }
+    var names = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    return { weekday: names[idx], daysAhead: daysAhead };
+  }
+
+  function calendarDateString(base, daysAhead) {
+    // base = { year, month, day } in CST; returns "Tuesday, May 20" style for base + daysAhead days
+    var d = new Date(Date.UTC(base.year, base.month - 1, base.day));
+    d.setUTCDate(d.getUTCDate() + daysAhead);
+    var names = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return names[d.getUTCDay()] + ', ' + months[d.getUTCMonth()] + ' ' + String(d.getUTCDate()).padStart(2,'0');
+  }
+
+  function cutoffState() {
+    var n = getCstParts();
+    var dowIdx = DOW[n.weekday];
+    var totalMin = n.hour * 60 + n.minute;
+    var cutoffMin = 13 * 60; // 1:00 PM CST
+    var afterCutoff = totalMin >= cutoffMin;
+    var isWeekend = (dowIdx === 0 || dowIdx === 6);
+    var isFriday = (dowIdx === 5);
+
+    // Display "next business day" — for after-cutoff/weekend banners, this is +1 business day
+    var nextBiz = addBusinessDays(dowIdx, 1);
+    var nextBizDateStr = calendarDateString(n, nextBiz.daysAhead);
+
+    // Time-of-day formatting for "It's X:XX AM/PM CST"
+    var hr12 = n.hour % 12;
+    if (hr12 === 0) hr12 = 12;
+    var ampm = n.hour >= 12 ? 'PM' : 'AM';
+    var minStr = String(n.minute).padStart(2,'0');
+    var cstNow = hr12 + ':' + minStr + ' ' + ampm + ' CST';
+
+    if (isWeekend) {
+      return {
+        cls: 'weekend',
+        head: 'Weekend — will process ' + nextBizDateStr,
+        detail: "It's " + n.weekday + ' ' + cstNow + '. Reserve release requests submitted now will process on the next business day.'
+      };
+    }
+    if (isFriday && afterCutoff) {
+      return {
+        cls: 'weekend',
+        head: 'Past Friday cutoff — will process ' + nextBizDateStr,
+        detail: "It's " + cstNow + ' (after 1:00 PM CST). Reserve releases requested now will process Monday.'
+      };
+    }
+    if (afterCutoff) {
+      return {
+        cls: 'late',
+        head: 'Past 1:00 PM CST cutoff — will process ' + nextBizDateStr,
+        detail: "It's " + cstNow + '. You can still submit, but processing happens the next business day.'
+      };
+    }
+    // Before cutoff, weekday
+    var remainingMin = cutoffMin - totalMin;
+    var remainHr = Math.floor(remainingMin / 60);
+    var remainMn = remainingMin % 60;
+    var head;
+    if (remainHr > 0) {
+      head = remainHr + (remainHr === 1 ? ' hour' : ' hours') + ', ' + remainMn + (remainMn === 1 ? ' minute' : ' minutes') + ' before cutoff';
+    } else {
+      head = remainMn + (remainMn === 1 ? ' minute' : ' minutes') + ' before cutoff';
+    }
+    return {
+      cls: 'ok',
+      head: head,
+      detail: "It's " + cstNow + '. Submit before 1:00 PM CST today for fastest processing — WIRE/TANK same-day, ACH next business day.'
+    };
+  }
+
+  function renderCutoff() {
+    var s = cutoffState();
+    var banner = document.getElementById('cutoffBanner');
+    banner.classList.remove('ok', 'late', 'weekend');
+    banner.classList.add(s.cls);
+    document.getElementById('cutoffHead').textContent = s.head;
+    document.getElementById('cutoffDetail').textContent = s.detail;
+    // Eligibility message depends on cutoff state — recompute if a method is selected
+    if (document.getElementById('fundingMethod').value) updateEligibility();
+  }
+
+  // -------- Eligibility per funding method --------
+  function eligibilityState() {
+    var method = document.getElementById('fundingMethod').value;
+    if (!method) return null;
+    var n = getCstParts();
+    var dowIdx = DOW[n.weekday];
+    var afterCutoff = (n.hour * 60 + n.minute) >= 13 * 60;
+    var isWeekend = (dowIdx === 0 || dowIdx === 6);
+    var isFridayLate = (dowIdx === 5 && afterCutoff);
+
+    var isWireOrTank = method.indexOf('WIRE') === 0 || method.indexOf('TANK') === 0;
+
+    var bizOffset; // # of business days from today
+    if (isWireOrTank) {
+      if (isWeekend || isFridayLate) bizOffset = 1;
+      else if (afterCutoff) bizOffset = 1;
+      else bizOffset = 0; // today
+    } else { // ACH
+      if (isWeekend || isFridayLate) bizOffset = 2;
+      else if (afterCutoff) bizOffset = 2;
+      else bizOffset = 1;
+    }
+
+    var dateStr;
+    if (bizOffset === 0) {
+      dateStr = 'today';
+    } else {
+      var biz = addBusinessDays(dowIdx, bizOffset);
+      dateStr = calendarDateString(n, biz.daysAhead);
+    }
+
+    var methodLabel = method.split(' - ')[0]; // 'ACH', 'WIRE', 'TANK'
+    var msg = 'Eligible to receive funds ' + (bizOffset === 0 ? 'today' : 'on ' + dateStr) +
+              ' (' + methodLabel + (afterCutoff || isWeekend || isFridayLate ? ' submitted after 1PM CST cutoff' : ' submitted before 1PM CST') + ').';
+
+    return {
+      cls: (bizOffset >= 2 || isWeekend || isFridayLate) ? 'warn' : 'ok',
+      msg: msg
+    };
+  }
+
+  function updateEligibility() {
+    var el = document.getElementById('eligibilityMsg');
+    var s = eligibilityState();
+    if (!s) {
+      el.classList.remove('show', 'warn');
+      el.textContent = '';
+      return;
+    }
+    el.classList.add('show');
+    el.classList.toggle('warn', s.cls === 'warn');
+    el.textContent = s.msg;
+  }
+
+  // -------- Form --------
+  function bindFormHandlers() {
+    document.getElementById('fundingMethod').addEventListener('change', function () {
+      clearFieldErr('methodErr', 'fundingMethod');
+      updateEligibility();
+    });
+    document.getElementById('requestedPayment').addEventListener('input', function () {
+      clearFieldErr('paymentErr', 'requestedPayment');
+    });
+    document.getElementById('submitBtn').addEventListener('click', submitRequest);
+  }
+
+  function clearFieldErr(errId, inputId) {
+    document.getElementById(errId).textContent = '';
+    document.getElementById(inputId).classList.remove('invalid');
+  }
+
+  function parsePayment(raw) {
+    if (!raw) return NaN;
+    var cleaned = String(raw).replace(/[,$\s]/g, '');
+    return parseFloat(cleaned);
+  }
+
+  function validateForm() {
+    var ok = true;
+    var paymentRaw = document.getElementById('requestedPayment').value;
+    var payment = parsePayment(paymentRaw);
+    var method = document.getElementById('fundingMethod').value;
+
+    if (!paymentRaw || isNaN(payment) || payment <= 0) {
+      document.getElementById('paymentErr').textContent = 'Enter a positive amount.';
+      document.getElementById('requestedPayment').classList.add('invalid');
+      ok = false;
+    } else if (payment > state.cash) {
+      document.getElementById('paymentErr').textContent = 'Amount exceeds Cash Reserve balance of $' + state.cash.toFixed(2) + '.';
+      document.getElementById('requestedPayment').classList.add('invalid');
+      ok = false;
+    }
+
+    if (!method) {
+      document.getElementById('methodErr').textContent = 'Select a funding method.';
+      document.getElementById('fundingMethod').classList.add('invalid');
+      ok = false;
+    }
+
+    return ok ? { payment: payment, method: method } : null;
+  }
+
+  function submitRequest() {
+    var v = validateForm();
+    if (!v) return;
+    if (!state.loaded) {
+      showStatus('Wallet data still loading. Please wait a moment and try again.', 'error');
+      return;
+    }
+
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    showStatus('Submitting your reserve release request...', 'loading');
+
+    var payload = {
+      data: {
+        Requested_Payment: v.payment,
+        Funding_Method: v.method,
+        Current_Balance: state.cash
+      }
+    };
+
+    if (isLocalTest()) {
+      // Local smoke test — SDK loads from CDN even on file://, but calling addRecords outside
+      // a Creator context hangs. Short-circuit and echo the payload instead.
+      setTimeout(function () {
+        showStatus('Test mode (no real submit): payload = ' + JSON.stringify(payload.data), 'success');
+        btn.disabled = false;
+        btn.textContent = 'Submit Request';
+      }, 300);
+      return;
+    }
+
+    ZOHO.CREATOR.DATA.addRecords({
+      form_name: 'Reserve_Request',
+      payload: payload
+    }).then(function (res) {
+      try { console.log('[Wallet] addRecords:', res); } catch (e) {}
+      if (res && (res.code === 3000 || res.code === '3000')) {
+        showStatus('Reserve release request submitted. Your OperFi team will process it on the timeline shown above.', 'success');
+        btn.textContent = 'Submitted';
+        // Reset form fields so the user can see the request went through
+        document.getElementById('requestedPayment').value = '';
+        document.getElementById('fundingMethod').value = '';
+        document.getElementById('eligibilityMsg').classList.remove('show', 'warn');
+      } else {
+        var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
+        showStatus('Submission failed' + detail + '. Please try again or contact your OperFi rep.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Submit Request';
+      }
+    }).catch(function (e) {
+      var msg = (e && (e.message || e.toString())) ? ': ' + (e.message || e.toString()) : '';
+      showStatus('Submission failed' + msg + '. Please try again or contact your OperFi rep.', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Submit Request';
+    });
+  }
+
+  // -------- Helpers --------
+  function showStatus(msg, type) {
+    var el = document.getElementById('statusBanner');
+    el.textContent = msg;
+    el.className = 'status-banner show ' + type;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function showFatal(msg) {
+    document.getElementById('walletBody').innerHTML =
+      '<div class="empty-state"><strong>Wallet unavailable</strong>' + escapeHtml(msg) + '</div>';
+  }
+
+  function showEmpty(title, detail) {
+    document.getElementById('walletBody').innerHTML =
+      '<div class="empty-state"><strong>' + escapeHtml(title) + '</strong>' + escapeHtml(detail) + '</div>';
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+})();
+</script>
+</body>
+</html>

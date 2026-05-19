@@ -29,6 +29,31 @@
   .loading, .empty { padding: 36px; text-align: center; color: var(--of-gray-500); background: #fff; border: 1px solid #e6e3da; border-radius: 12px; }
   .empty strong { color: var(--of-charcoal); display: block; margin-bottom: 6px; font-size: 14px; }
   .version-stamp { text-align: right; font-size: 10px; color: #bbb; padding: 8px 4px 0; }
+
+  .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+  .search { flex: 1; max-width: 280px; padding: 9px 12px; border: 1px solid var(--of-gray-300); border-radius: 8px; font-size: 13px; font-family: inherit; }
+  .search:focus { outline: none; border-color: var(--of-orange); box-shadow: 0 0 0 3px rgba(249,115,22,0.12); }
+  .btn-pdf { background: #fff; border: 1px solid var(--of-gray-300); border-radius: 8px; padding: 9px 14px; font-size: 13px; font-weight: 700; color: var(--of-gray-700); cursor: pointer; font-family: inherit; }
+  .btn-pdf:hover { background: var(--of-gray-50); }
+
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .kpi-card { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 14px 16px; }
+  .kpi-label { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--of-gray-500); }
+  .kpi-value { font-size: 22px; font-weight: 700; color: var(--of-charcoal); margin-top: 4px; }
+
+  .vp-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e6e3da; border-radius: 12px; overflow: hidden; }
+  .vp-table th, .vp-table td { padding: 10px 14px; text-align: left; font-size: 13px; border-bottom: 1px solid var(--of-gray-100); }
+  .vp-table th { background: var(--of-gray-50); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--of-gray-700); }
+  .vp-table tbody tr { cursor: pointer; }
+  .vp-table tbody tr:hover { background: var(--of-gray-50); }
+  .vp-table td.num, .vp-table th.num { text-align: right; }
+  .vp-table .empty-row { text-align: center; color: var(--of-gray-500); padding: 30px; }
+  .pending-vendor { color: var(--of-gray-500); font-family: ui-monospace, monospace; font-size: 12px; }
+  .pending-vendor em { font-style: normal; opacity: 0.7; }
+
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 11px; font-size: 11px; font-weight: 700; }
+  .pill.paid { background: var(--of-green-soft); color: var(--of-green); }
+  .pill.pending { background: var(--of-amber-soft); color: var(--of-amber); }
 </style>
 </head>
 <body>
@@ -111,11 +136,128 @@
     }
   }
 
-  // Stubs for later tasks
   function fetchOpenAP() {
-    document.getElementById('panel-open').innerHTML =
-      '<div class="empty"><strong>Open AP fetch not yet implemented</strong>Coming in Task 11.</div>';
+    var panel = document.getElementById('panel-open');
+    if (isLocalTest()) {
+      renderOpenAP(MOCK_OPEN_ROWS, mockTotals(MOCK_OPEN_ROWS, 'open'), 'Marek LLC (mock)');
+      state.accountName = 'Marek LLC (mock)';
+      document.getElementById('acctName').textContent = state.accountName;
+      document.getElementById('acctPill').style.display = 'inline-block';
+      return;
+    }
+    panel.innerHTML = '<div class="loading">Loading open vendor payments...</div>';
+    fetch(BROKER_API_BASE + '/vendor-payments/open?email=' + encodeURIComponent(state.email))
+      .then(function (r) {
+        if (r.status === 404) {
+          return r.json().then(function () {
+            showEmpty('panel-open', 'Vendor payments not yet available', 'Your account is being set up. Once your first load is funded, vendor payments will appear here. Contact your OperFi account manager if you have questions.');
+            throw new Error('__handled__');
+          });
+        }
+        if (!r.ok) {
+          return r.json().then(function (b) { throw new Error((b && b.error) || ('HTTP ' + r.status)); });
+        }
+        return r.json();
+      })
+      .then(function (data) {
+        state.accountName = data.accountName || '';
+        if (state.accountName) {
+          document.getElementById('acctName').textContent = state.accountName;
+          document.getElementById('acctPill').style.display = 'inline-block';
+        }
+        renderOpenAP(data.rows || [], data.totals || {}, state.accountName);
+      })
+      .catch(function (e) {
+        if (e && e.message === '__handled__') return;
+        showEmpty('panel-open', 'Could not load Open AP', e.message);
+      });
   }
+
+  function renderOpenAP(rows, totals, accountName) {
+    state.openRows = rows;
+    state.openTotals = totals;
+    var html = '' +
+      '<div class="toolbar">' +
+        '<input class="search" id="open-search" placeholder="Search vendor..." />' +
+        '<button class="btn-pdf" id="open-pdf">Export PDF</button>' +
+      '</div>' +
+      '<div class="kpis">' +
+        kpiCard('OPEN LOADS', totals.openLoads || 0) +
+        kpiCard('TOTAL OWED', '$' + fmtMoney(totals.totalOwed || 0)) +
+        kpiCard('CARRIERS',   totals.carrierCount || 0) +
+      '</div>' +
+      '<div id="open-table-wrap"></div>';
+    document.getElementById('panel-open').innerHTML = html;
+    document.getElementById('open-search').addEventListener('input', renderOpenTable);
+    document.getElementById('open-pdf').addEventListener('click', function () { exportPdf('open'); });
+    renderOpenTable();
+  }
+
+  function renderOpenTable() {
+    var q = (document.getElementById('open-search').value || '').toLowerCase();
+    var filtered = (state.openRows || []).filter(function (r) {
+      if (!q) return true;
+      var name = (r['Vendor Name'] || '').toLowerCase();
+      var usdot = (r['USDOT'] || '').toLowerCase();
+      return name.indexOf(q) !== -1 || usdot.indexOf(q) !== -1;
+    });
+    var today = new Date();
+    var rowsHtml = filtered.map(function (r) {
+      var vendor = r['Vendor Name'] ? escapeHtml(r['Vendor Name']) :
+        '<span class="pending-vendor">' + escapeHtml(r['USDOT'] || '') + ' <em>(pending)</em></span>';
+      var buy = r['Date of Buy Date'] || r['Purchase Date'] || '';
+      var age = '';
+      if (buy) {
+        try { age = Math.floor((today - new Date(buy)) / (1000*60*60*24)); } catch (e) {}
+      }
+      var statusClass = (r['Payment Status'] === 'Paid') ? 'paid' : 'pending';
+      return '' +
+        '<tr data-id="' + escapeHtml(r['_id'] || '') + '">' +
+        '<td>' + escapeHtml(r['Load #'] || '') + '</td>' +
+        '<td>' + escapeHtml(r['Debtor'] || '') + '</td>' +
+        '<td>' + vendor + '</td>' +
+        '<td class="num">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
+        '<td>' + escapeHtml(r['Vendor Due'] || '') + '</td>' +
+        '<td class="num">' + age + '</td>' +
+        '<td>' + escapeHtml(r['Vendor Pmt Terms'] || '-') + '</td>' +
+        '<td><span class="pill ' + statusClass + '">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
+        '</tr>';
+    }).join('');
+    var table = '' +
+      '<table class="vp-table">' +
+        '<thead><tr><th>Load #</th><th>Debtor</th><th>Vendor</th><th class="num">Amount</th><th>Due</th><th class="num">AP Age</th><th>Terms</th><th>Status</th></tr></thead>' +
+        '<tbody>' + (rowsHtml || '<tr><td colspan="8" class="empty-row">No open vendor payments.</td></tr>') + '</tbody>' +
+      '</table>';
+    document.getElementById('open-table-wrap').innerHTML = table;
+    document.querySelectorAll('#open-table-wrap tbody tr[data-id]').forEach(function (tr) {
+      tr.addEventListener('click', function () { openDetail(tr.dataset.id, state.openRows); });
+    });
+  }
+
+  function kpiCard(label, value) {
+    return '<div class="kpi-card"><div class="kpi-label">' + label + '</div><div class="kpi-value">' + escapeHtml(String(value)) + '</div></div>';
+  }
+  function fmtMoney(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  function showEmpty(panelId, title, detail) {
+    document.getElementById(panelId).innerHTML = '<div class="empty"><strong>' + escapeHtml(title) + '</strong><br>' + escapeHtml(detail) + '</div>';
+  }
+  // Stubs filled by later tasks
+  function openDetail(_id, rows) { /* filled in Task 13 */ }
+  function exportPdf(tab) { /* filled in Task 14 */ }
+
+  function mockTotals(rows, tab) {
+    var sum = rows.reduce(function (s, r) { return s + (Number(r['Vendor Amount']) || 0); }, 0);
+    var vendors = new Set(rows.map(function (r) { return r['USDOT']; }).filter(Boolean));
+    if (tab === 'open') return { openLoads: rows.length, totalOwed: sum, carrierCount: vendors.size };
+    return { paymentCount: rows.length, totalPaid: sum, carriersPaid: vendors.size };
+  }
+
+  var MOCK_OPEN_ROWS = [
+    { _id: 'm1', 'Load #': '8662', 'Debtor': 'Sunbelt Rentals', 'Vendor Name': 'A&M FAST TRANSPORT', 'USDOT': '92261', 'Vendor Amount': 850.00, 'Vendor Due': '2026-05-29', 'Date of Buy Date': '2026-05-08', 'Vendor Pmt Terms': 'Factoring Company', 'Broker Pmt Terms': 'Quick Pay', 'Factoring Company': 'RTS Financial', 'Pmt Acct Number': 'XXXX0001', 'Vendor Invoice #': 'INV1', 'Invoice #': '8662', 'Payment Status': 'Pending Payment', 'Purchase Date': '2026-05-08', 'AR Balance': 0, 'Vendor Gross Amt': 850, 'PO #': 'PO1', 'Other Reference': 'REF1' },
+    { _id: 'm2', 'Load #': '8674', 'Debtor': 'United Rentals C/O Transportation Insight', 'Vendor Name': '', 'USDOT': '999999', 'Vendor Amount': 3700.00, 'Vendor Due': '2026-05-28', 'Date of Buy Date': '2026-05-10', 'Vendor Pmt Terms': '', 'Broker Pmt Terms': '', 'Factoring Company': '', 'Pmt Acct Number': '', 'Vendor Invoice #': 'INV2', 'Invoice #': '8674', 'Payment Status': 'Pending Payment', 'Purchase Date': '2026-05-10', 'AR Balance': 0, 'Vendor Gross Amt': 3700, 'PO #': 'PO2', 'Other Reference': 'REF2' }
+  ];
+
   function fetchHistory() {
     document.getElementById('panel-history').innerHTML =
       '<div class="empty"><strong>History fetch not yet implemented</strong>Coming in Task 12.</div>';

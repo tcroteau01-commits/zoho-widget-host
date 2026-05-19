@@ -87,7 +87,7 @@
   </div>
   <div class="tab-panel active" id="panel-open"><div class="loading">Loading open vendor payments...</div></div>
   <div class="tab-panel" id="panel-history"><div class="loading">Click to load Payment History</div></div>
-  <div class="version-stamp">v2026-05-19.1</div>
+  <div class="version-stamp">v2026-05-19.2</div>
 </div>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
@@ -321,8 +321,18 @@
 
   function escClose(e) { if (e.key === 'Escape') closeDetail(); }
 
-  // Stub filled by later task
-  function exportPdf(tab) { /* filled in Task 14 */ }
+  function exportPdf(tab) {
+    if (isLocalTest()) {
+      alert('Test mode: PDF export would download vendor_payments_' + tab + '.pdf');
+      return;
+    }
+    var url = BROKER_API_BASE + '/vendor-payments/pdf?email=' + encodeURIComponent(state.email) + '&tab=' + tab;
+    if (tab === 'history') {
+      var d = state.historyDates || defaultThisMonth();
+      url += '&from=' + d.from + '&to=' + d.to;
+    }
+    window.open(url, '_blank');
+  }
 
   function mockTotals(rows, tab) {
     var sum = rows.reduce(function (s, r) { return s + (Number(r['Vendor Amount']) || 0); }, 0);

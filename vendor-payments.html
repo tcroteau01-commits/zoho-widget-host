@@ -54,6 +54,8 @@
   .pill { display: inline-block; padding: 2px 10px; border-radius: 11px; font-size: 11px; font-weight: 700; }
   .pill.paid { background: var(--of-green-soft); color: var(--of-green); }
   .pill.pending { background: var(--of-amber-soft); color: var(--of-amber); }
+  input[type="date"] { padding: 8px 10px; border: 1px solid var(--of-gray-300); border-radius: 8px; font-size: 13px; font-family: inherit; }
+  select#hist-preset { padding: 8px 10px; border: 1px solid var(--of-gray-300); border-radius: 8px; font-size: 13px; background: #fff; font-family: inherit; }
 </style>
 </head>
 <body>
@@ -259,10 +261,144 @@
   ];
 
   function fetchHistory() {
-    document.getElementById('panel-history').innerHTML =
-      '<div class="empty"><strong>History fetch not yet implemented</strong>Coming in Task 12.</div>';
     state.historyLoaded = true;
+    if (!state.historyDates) state.historyDates = defaultThisMonth();
+    renderHistoryShell();
+    doHistoryFetch();
   }
+
+  function defaultThisMonth() {
+    var now = new Date();
+    var y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2,'0');
+    var first = y + '-' + m + '-01';
+    var lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    var last = y + '-' + m + '-' + String(lastDay).padStart(2,'0');
+    return { from: first, to: last };
+  }
+
+  function renderHistoryShell() {
+    var d = state.historyDates;
+    var html = '' +
+      '<div class="toolbar">' +
+        '<select id="hist-preset">' +
+          '<option value="this">This Month</option>' +
+          '<option value="last">Last Month</option>' +
+          '<option value="90">Last 90 Days</option>' +
+          '<option value="custom">Custom</option>' +
+        '</select>' +
+        '<input type="date" id="hist-from" value="' + d.from + '" />' +
+        '<input type="date" id="hist-to" value="' + d.to + '" />' +
+        '<input class="search" id="hist-search" placeholder="Search vendor..." />' +
+        '<button class="btn-pdf" id="hist-pdf">Export PDF</button>' +
+      '</div>' +
+      '<div class="kpis" id="hist-kpis"></div>' +
+      '<div id="hist-table-wrap"><div class="loading">Loading...</div></div>';
+    document.getElementById('panel-history').innerHTML = html;
+
+    document.getElementById('hist-preset').addEventListener('change', onHistPreset);
+    document.getElementById('hist-from').addEventListener('change', onHistDateChange);
+    document.getElementById('hist-to').addEventListener('change', onHistDateChange);
+    document.getElementById('hist-search').addEventListener('input', renderHistoryTable);
+    document.getElementById('hist-pdf').addEventListener('click', function () { exportPdf('history'); });
+  }
+
+  function onHistPreset() {
+    var v = document.getElementById('hist-preset').value;
+    var now = new Date(), y = now.getFullYear(), mo = now.getMonth();
+    function iso(d) { return d.toISOString().slice(0,10); }
+    if (v === 'this') state.historyDates = defaultThisMonth();
+    else if (v === 'last') {
+      var first = new Date(y, mo - 1, 1), last = new Date(y, mo, 0);
+      state.historyDates = { from: iso(first), to: iso(last) };
+    } else if (v === '90') {
+      var to = new Date(), from = new Date(); from.setDate(from.getDate() - 90);
+      state.historyDates = { from: iso(from), to: iso(to) };
+    }
+    if (v !== 'custom') {
+      document.getElementById('hist-from').value = state.historyDates.from;
+      document.getElementById('hist-to').value = state.historyDates.to;
+      doHistoryFetch();
+    }
+  }
+
+  function onHistDateChange() {
+    state.historyDates = {
+      from: document.getElementById('hist-from').value,
+      to: document.getElementById('hist-to').value
+    };
+    document.getElementById('hist-preset').value = 'custom';
+    if (state.historyDates.from && state.historyDates.to && state.historyDates.from <= state.historyDates.to) {
+      doHistoryFetch();
+    }
+  }
+
+  function doHistoryFetch() {
+    var d = state.historyDates;
+    if (isLocalTest()) {
+      state.historyRows = MOCK_HISTORY_ROWS;
+      renderHistoryKpis(mockTotals(MOCK_HISTORY_ROWS, 'history'));
+      renderHistoryTable();
+      return;
+    }
+    document.getElementById('hist-table-wrap').innerHTML = '<div class="loading">Loading...</div>';
+    var url = BROKER_API_BASE + '/vendor-payments/history?email=' + encodeURIComponent(state.email) +
+      '&from=' + d.from + '&to=' + d.to;
+    fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        state.historyRows = data.rows || [];
+        renderHistoryKpis(data.totals || {});
+        renderHistoryTable();
+      })
+      .catch(function (e) {
+        document.getElementById('hist-table-wrap').innerHTML =
+          '<div class="empty"><strong>Could not load history</strong><br>' + escapeHtml(e.message) + '</div>';
+      });
+  }
+
+  function renderHistoryKpis(totals) {
+    document.getElementById('hist-kpis').innerHTML = '' +
+      kpiCard('PAYMENTS', totals.paymentCount || 0) +
+      kpiCard('TOTAL PAID', '$' + fmtMoney(totals.totalPaid || 0)) +
+      kpiCard('CARRIERS PAID', totals.carriersPaid || 0);
+  }
+
+  function renderHistoryTable() {
+    var q = (document.getElementById('hist-search').value || '').toLowerCase();
+    var filtered = (state.historyRows || []).filter(function (r) {
+      if (!q) return true;
+      var name = (r['Vendor Name'] || '').toLowerCase();
+      var usdot = (r['USDOT'] || '').toLowerCase();
+      return name.indexOf(q) !== -1 || usdot.indexOf(q) !== -1;
+    });
+    var rowsHtml = filtered.map(function (r) {
+      var vendor = r['Vendor Name'] ? escapeHtml(r['Vendor Name']) :
+        '<span class="pending-vendor">' + escapeHtml(r['USDOT'] || '') + ' <em>(pending)</em></span>';
+      return '' +
+        '<tr data-id="' + escapeHtml(r['_id'] || '') + '">' +
+        '<td>' + escapeHtml(r['Load #'] || '') + '</td>' +
+        '<td>' + escapeHtml(r['Debtor'] || '') + '</td>' +
+        '<td>' + vendor + '</td>' +
+        '<td class="num">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
+        '<td>' + escapeHtml(r['Paid Date'] || '') + '</td>' +
+        '<td>' + escapeHtml(r['Vendor Pmt Terms'] || '-') + '</td>' +
+        '<td><span class="pill paid">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
+        '</tr>';
+    }).join('');
+    var table = '' +
+      '<table class="vp-table">' +
+        '<thead><tr><th>Load #</th><th>Debtor</th><th>Vendor</th><th class="num">Amount</th><th>Paid Date</th><th>Terms</th><th>Status</th></tr></thead>' +
+        '<tbody>' + (rowsHtml || '<tr><td colspan="7" class="empty-row">No payments in this period.</td></tr>') + '</tbody>' +
+      '</table>';
+    document.getElementById('hist-table-wrap').innerHTML = table;
+    document.querySelectorAll('#hist-table-wrap tbody tr[data-id]').forEach(function (tr) {
+      tr.addEventListener('click', function () { openDetail(tr.dataset.id, state.historyRows); });
+    });
+  }
+
+  var MOCK_HISTORY_ROWS = [
+    { _id: 'h1', 'Load #': '8530', 'Debtor': 'Sunbelt Rentals', 'Vendor Name': 'CAMT TRANSPORTATION', 'USDOT': '12345', 'Vendor Amount': 1060.00, 'Paid Date': '2026-05-12', 'Vendor Due': '2026-05-12', 'Date of Buy Date': '2026-04-22', 'Vendor Pmt Terms': 'Standard Net 30', 'Broker Pmt Terms': 'Quick Pay', 'Factoring Company': '', 'Pmt Acct Number': 'XXXX0002', 'Vendor Invoice #': 'INV3', 'Invoice #': '8530', 'Payment Status': 'Paid', 'Purchase Date': '2026-04-22', 'AR Balance': 0, 'Vendor Gross Amt': 1060, 'PO #': 'PO3', 'Other Reference': 'REF3' }
+  ];
   function showFatal(msg) {
     document.getElementById('panel-open').innerHTML =
       '<div class="empty"><strong>Widget unavailable</strong>' + (msg || '') + '</div>';

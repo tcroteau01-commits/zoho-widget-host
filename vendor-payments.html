@@ -56,6 +56,20 @@
   .pill.pending { background: var(--of-amber-soft); color: var(--of-amber); }
   input[type="date"] { padding: 8px 10px; border: 1px solid var(--of-gray-300); border-radius: 8px; font-size: 13px; font-family: inherit; }
   select#hist-preset { padding: 8px 10px; border: 1px solid var(--of-gray-300); border-radius: 8px; font-size: 13px; background: #fff; font-family: inherit; }
+
+  .detail-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.25); z-index: 99; }
+  .detail-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 95vw; background: #fff; border-left: 1px solid var(--of-gray-200); box-shadow: -4px 0 24px rgba(0,0,0,0.12); z-index: 100; overflow-y: auto; padding: 20px 24px 40px; }
+  .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--of-gray-100); }
+  .detail-title { font-size: 16px; font-weight: 700; line-height: 1.3; }
+  .detail-close { background: transparent; border: none; font-size: 22px; cursor: pointer; color: var(--of-gray-500); padding: 0 6px; }
+  .detail-close:hover { color: var(--of-charcoal); }
+  .dp-section { margin-bottom: 18px; }
+  .dp-heading { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--of-gray-500); margin-bottom: 8px; }
+  .dp-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 13px; border-bottom: 1px solid var(--of-gray-100); }
+  .dp-row:last-child { border-bottom: none; }
+  .dp-label { color: var(--of-gray-500); }
+  .dp-value { color: var(--of-charcoal); font-weight: 600; text-align: right; }
+  .dp-value .override { color: var(--of-orange); }
 </style>
 </head>
 <body>
@@ -244,8 +258,70 @@
   function showEmpty(panelId, title, detail) {
     document.getElementById(panelId).innerHTML = '<div class="empty"><strong>' + escapeHtml(title) + '</strong><br>' + escapeHtml(detail) + '</div>';
   }
-  // Stubs filled by later tasks
-  function openDetail(_id, rows) { /* filled in Task 13 */ }
+  function openDetail(id, rows) {
+    var row = (rows || []).find(function (r) { return r['_id'] === id; });
+    if (!row) return;
+    var brokerTerms = row['Broker Pmt Terms'] || '';
+    var vendorTerms = row['Vendor Pmt Terms'] || '';
+    var override = brokerTerms && vendorTerms && brokerTerms !== vendorTerms;
+    var vendorDisplay = row['Vendor Name'] || (row['USDOT'] + ' (pending)');
+    var html = '' +
+      '<div class="detail-overlay" id="detail-overlay"></div>' +
+      '<aside class="detail-panel" id="detail-panel">' +
+        '<div class="detail-head">' +
+          '<div class="detail-title">Load #' + escapeHtml(row['Load #'] || '') + ' &mdash; ' + escapeHtml(vendorDisplay) + '</div>' +
+          '<button class="detail-close" id="detail-close">&times;</button>' +
+        '</div>' +
+        detailSection('Amounts', [
+          ['Vendor Gross Amt', '$' + fmtMoney(row['Vendor Gross Amt'] || 0)],
+          ['Vendor Amount',    '$' + fmtMoney(row['Vendor Amount'] || 0)],
+          ['AR Balance',       '$' + fmtMoney(row['AR Balance'] || 0)],
+        ]) +
+        detailSection('Dates', [
+          ['Date of Buy Date', row['Date of Buy Date'] || '-'],
+          ['Purchase Date',   row['Purchase Date'] || '-'],
+          ['Vendor Due',      row['Vendor Due'] || '-'],
+          ['Paid Date',       row['Paid Date'] || '-'],
+        ]) +
+        detailSection('Identifiers', [
+          ['USDOT',            row['USDOT'] || '-'],
+          ['Invoice #',        row['Invoice #'] || '-'],
+          ['Vendor Invoice #', row['Vendor Invoice #'] || '-'],
+          ['PO #',             row['PO #'] || '-'],
+          ['Other Reference',  row['Other Reference'] || '-'],
+          ['Client (Debtor)',  row['Debtor'] || '-'],
+        ]) +
+        detailSection('Terms & Routing', [
+          ['Vendor Pmt Terms',                                       escapeHtml(vendorTerms || '-')],
+          [override ? 'Broker Pmt Terms (override)' : 'Broker Pmt Terms', '<span class="' + (override ? 'override' : '') + '">' + escapeHtml(brokerTerms || '-') + '</span>'],
+          ['Factoring Company', escapeHtml(row['Factoring Company'] || '-')],
+          ['Pmt Acct Number',   escapeHtml(row['Pmt Acct Number'] || '-')],
+        ]) +
+      '</aside>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    document.getElementById('detail-close').addEventListener('click', closeDetail);
+    document.getElementById('detail-overlay').addEventListener('click', closeDetail);
+    document.addEventListener('keydown', escClose);
+  }
+
+  function detailSection(heading, kvs) {
+    var rows = kvs.map(function (kv) {
+      return '<div class="dp-row"><span class="dp-label">' + escapeHtml(kv[0]) + '</span><span class="dp-value">' + kv[1] + '</span></div>';
+    }).join('');
+    return '<div class="dp-section"><div class="dp-heading">' + escapeHtml(heading) + '</div>' + rows + '</div>';
+  }
+
+  function closeDetail() {
+    var p = document.getElementById('detail-panel');
+    var o = document.getElementById('detail-overlay');
+    if (p) p.remove();
+    if (o) o.remove();
+    document.removeEventListener('keydown', escClose);
+  }
+
+  function escClose(e) { if (e.key === 'Escape') closeDetail(); }
+
+  // Stub filled by later task
   function exportPdf(tab) { /* filled in Task 14 */ }
 
   function mockTotals(rows, tab) {

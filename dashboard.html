@@ -233,7 +233,32 @@
       '</div>';
   }
 
-  function renderMonthlyChart() { return ''; } // implemented in Task 15
+  function renderMonthlyChart(months) {
+    if (!months || !months.length) return '';
+    var max = months.reduce(function (m, x) { return Math.max(m, x.purchases, x.collections); }, 1);
+    var bars = months.map(function (x) {
+      var ph = (x.purchases / max) * 100;
+      var ch = (x.collections / max) * 100;
+      return '<div style="flex:1;display:flex;gap:2px;align-items:flex-end">' +
+        '<div style="background:#3b82f6;width:50%;height:' + ph.toFixed(0) + '%" title="' + x.month + ' purchases $' + fmtMoney(x.purchases) + '"></div>' +
+        '<div style="background:#22c55e;width:50%;height:' + ch.toFixed(0) + '%" title="' + x.month + ' collections $' + fmtMoney(x.collections) + '"></div>' +
+      '</div>';
+    }).join('');
+    var labels = months.map(function (x) {
+      var mo = x.month.split('-')[1];
+      var names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '<div style="flex:1">' + names[parseInt(mo, 10)] + '</div>';
+    }).join('');
+    return '' +
+      '<div class="chart-card" data-action="nav-loads-margins">' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
+          '<div style="font-weight:600;font-size:13px">Monthly Purchases &amp; Collections &mdash; last 12 months</div>' +
+          '<div style="font-size:11px"><span style="margin-right:10px"><span style="display:inline-block;width:8px;height:8px;background:#3b82f6;border-radius:2px;margin-right:4px"></span>Purchases</span><span><span style="display:inline-block;width:8px;height:8px;background:#22c55e;border-radius:2px;margin-right:4px"></span>Collections</span></div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:flex-end;gap:6px;height:90px;padding:0 8px;border-bottom:1px solid var(--of-border)">' + bars + '</div>' +
+        '<div style="display:flex;gap:6px;padding:6px 8px 0;font-size:9px;color:var(--of-muted);text-align:center">' + labels + '</div>' +
+      '</div>';
+  }
 
   function renderHeader(d) {
     var h = d.header || {};

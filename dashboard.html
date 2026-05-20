@@ -103,7 +103,29 @@
 
   // ... section renderers added in subsequent tasks
 
-  function renderWatch() { return ''; }
+  function renderWatch(w) {
+    if (!w) return '';
+    var dso = (w.dsoDays != null) ? w.dsoDays + ' days' : '—';
+    return '' +
+      '<div class="label">Watch</div>' +
+      '<div class="watch">' +
+        '<div class="watch-card red" data-action="view-chargeback">' +
+          '<div style="font-size:11px;letter-spacing:.5px;text-transform:uppercase;font-weight:600">Chargeback Risk</div>' +
+          '<div style="margin-top:8px;font-size:18px;font-weight:700">$' + fmtMoney(w.chargebackRisk.amount) + '</div>' +
+          '<div style="font-size:11px">in 75+ day balances · ' + w.chargebackRisk.invoiceCount + ' invoices</div>' +
+        '</div>' +
+        '<div class="watch-card amber" data-action="view-credit-limits">' +
+          '<div style="font-size:11px;letter-spacing:.5px;text-transform:uppercase;font-weight:600">Credit Limits</div>' +
+          '<div style="margin-top:8px;font-size:18px;font-weight:700">' + w.creditLimits.customersAtRisk + ' customers</div>' +
+          '<div style="font-size:11px">at &gt;80% of credit limit</div>' +
+        '</div>' +
+        '<div class="watch-card blue" data-action="view-dso">' +
+          '<div style="font-size:11px;letter-spacing:.5px;text-transform:uppercase;font-weight:600">Avg Days to Pay</div>' +
+          '<div style="margin-top:8px;font-size:18px;font-weight:700">' + dso + '</div>' +
+          '<div style="font-size:11px">trailing 90 days</div>' +
+        '</div>' +
+      '</div>';
+  }
   function renderSnapshot() { return ''; }
   function renderKeyTasks() { return ''; }
   function renderInsights() { return ''; }

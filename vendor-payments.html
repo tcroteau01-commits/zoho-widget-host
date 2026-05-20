@@ -87,7 +87,7 @@
   </div>
   <div class="tab-panel active" id="panel-open"><div class="loading">Loading open vendor payments...</div></div>
   <div class="tab-panel" id="panel-history"><div class="loading">Click to load Payment History</div></div>
-  <div class="version-stamp">v2026-05-19.2</div>
+  <div class="version-stamp">v2026-05-20.1</div>
 </div>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
@@ -297,6 +297,9 @@
           ['Factoring Company', escapeHtml(row['Factoring Company'] || '-')],
           ['Pmt Acct Number',   escapeHtml(row['Pmt Acct Number'] || '-')],
         ]) +
+        '<div class="dp-section" style="font-size:11px;color:#888;line-height:1.5;padding-top:4px;">' +
+          'Broker-specific payment terms, factoring company, and payee account details will be added in a future enhancement. For now, refer to the Account/Vendor record in CRM.' +
+        '</div>' +
       '</aside>';
     document.body.insertAdjacentHTML('beforeend', html);
     document.getElementById('detail-close').addEventListener('click', closeDetail);

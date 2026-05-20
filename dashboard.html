@@ -126,8 +126,61 @@
         '</div>' +
       '</div>';
   }
-  function renderSnapshot() { return ''; }
-  function renderKeyTasks() { return ''; }
+  function renderSnapshot(s) {
+    if (!s) return '';
+    return '' +
+      '<div class="label">Snapshot</div>' +
+      '<div class="kpi-strip">' +
+        '<div class="kpi ar">' +
+          '<div class="label" style="margin:0">Open AR</div>' +
+          '<div style="display:flex;justify-content:space-between;margin-top:6px">' +
+            '<div><div style="font-size:20px;font-weight:700">' + fmtMoneyK(s.openAR.amount) + '</div><div style="font-size:10px;color:var(--of-muted)">outstanding</div></div>' +
+            '<div style="text-align:right"><div style="font-size:16px;font-weight:600">' + s.openAR.count + '</div><div style="font-size:10px;color:var(--of-muted)">invoices</div></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="kpi ap">' +
+          '<div class="label" style="margin:0">Open AP</div>' +
+          '<div style="display:flex;justify-content:space-between;margin-top:6px">' +
+            '<div><div style="font-size:20px;font-weight:700">' + fmtMoneyK(s.openAP.amount) + '</div><div style="font-size:10px;color:var(--of-muted)">owed to carriers</div></div>' +
+            '<div style="text-align:right"><div style="font-size:16px;font-weight:600">' + s.openAP.count + '</div><div style="font-size:10px;color:var(--of-muted)">invoices</div></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="kpi reserves">' +
+          '<div class="label" style="margin:0">Reserves</div>' +
+          '<div style="display:flex;justify-content:space-between;margin-top:6px">' +
+            '<div><div style="font-size:20px;font-weight:700">$' + fmtMoney(s.reserves.cash) + '</div><div style="font-size:10px;color:var(--of-muted)">cash</div></div>' +
+            '<div style="text-align:right"><div style="font-size:16px;font-weight:600">' + fmtMoneyK(s.reserves.escrow) + '</div><div style="font-size:10px;color:var(--of-muted)">escrow</div></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="kpi month">' +
+          '<div class="label" style="margin:0">This Month</div>' +
+          '<div style="display:flex;justify-content:space-between;margin-top:6px">' +
+            '<div><div style="font-size:20px;font-weight:700">' + fmtMoneyK(s.thisMonth.purchases) + '</div><div style="font-size:10px;color:var(--of-muted)">' + s.thisMonth.loads + ' loads</div></div>' +
+            '<div style="text-align:right"><div style="font-size:16px;font-weight:600">' + s.thisMonth.marginPct.toFixed(1) + '%</div><div style="font-size:10px;color:var(--of-muted)">margin</div></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderKeyTasks() {
+    var cards = [
+      { name: 'Vendor Payments', desc: 'Open AP, payment history, vendor pay dates', action: 'nav-vendor-payments' },
+      { name: 'AR Aging', desc: 'Customer balances by aging bucket', action: 'nav-aging' },
+      { name: 'Customer Approvals', desc: 'Credit application status & limits', action: 'nav-customer-approvals' },
+      { name: 'View Vendors', desc: 'Search carriers, view pay terms', action: 'nav-view-vendors' }
+    ];
+    return '' +
+      '<div class="label">Key Tasks</div>' +
+      '<div class="key-tasks">' +
+        cards.map(function (c) {
+          return '<div class="task-card" data-action="' + c.action + '">' +
+            '<div style="font-weight:600;font-size:13px">' + escapeHtml(c.name) + '</div>' +
+            '<div style="font-size:11px;color:var(--of-muted);margin-top:4px">' + escapeHtml(c.desc) + '</div>' +
+            '<div style="font-size:11px;color:var(--of-blue);margin-top:8px">View &rarr;</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }
   function renderInsights() { return ''; }
 
   function renderHeader(d) {

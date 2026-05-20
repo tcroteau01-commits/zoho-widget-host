@@ -103,11 +103,86 @@
 
   // ... section renderers added in subsequent tasks
 
+  function renderWatch() { return ''; }
+  function renderSnapshot() { return ''; }
+  function renderKeyTasks() { return ''; }
+  function renderInsights() { return ''; }
+
+  function renderHeader(d) {
+    var h = d.header || {};
+    return '' +
+      '<div class="header-strip">' +
+        '<div>' +
+          '<div class="eyebrow">Client</div>' +
+          '<div class="name">' + escapeHtml(d.accountName || '') + '</div>' +
+        '</div>' +
+        '<div class="meta">' +
+          (h.usdot ? 'USDOT ' + escapeHtml(h.usdot) + ' &nbsp;·&nbsp; ' : '') +
+          (h.mc ? 'MC ' + escapeHtml(h.mc) + ' &nbsp;·&nbsp; ' : '') +
+          '<span style="color:#22c55e">●</span> ' + escapeHtml(h.status || 'Active') +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderQuickActions() {
+    return '' +
+      '<div class="label">Quick Actions</div>' +
+      '<div class="quick-actions">' +
+        '<div class="qa primary" data-action="submit-load">+ Submit Load</div>' +
+        '<div class="qa secondary" data-action="credit-check">+ New Credit Check</div>' +
+        '<div class="qa secondary" data-action="onboard-carrier">+ Onboard Carrier</div>' +
+        '<div class="qa secondary" data-action="request-reserve">+ Request Reserve</div>' +
+      '</div>';
+  }
+
   function showFatal(e) {
     document.getElementById('root').innerHTML = '<div class="error">Widget unavailable: ' + escapeHtml(e && e.message || '') + '</div>';
   }
 
-  var MOCK_DASHBOARD = null; // populated in a later task
+  var MOCK_DASHBOARD = {
+    accountName: "Marek LLC (mock)",
+    header: { usdot: "4149541", mc: "1592667", status: "Active" },
+    watch: {
+      chargebackRisk: { amount: 9100, invoiceCount: 4 },
+      creditLimits: { customersAtRisk: 2 },
+      dsoDays: 38
+    },
+    snapshot: {
+      openAR: { amount: 427087, count: 268 },
+      openAP: { amount: 297952, count: 272 },
+      reserves: { cash: 839.51, escrow: 13456.83 },
+      thisMonth: { purchases: 243972, loads: 14, marginPct: 24.6 }
+    },
+    insights: {
+      agingBuckets: [
+        { label: "0-30", amount: 333000, count: 220 },
+        { label: "31-60", amount: 58000, count: 32 },
+        { label: "61-74", amount: 27000, count: 12 },
+        { label: "75+", amount: 9100, count: 4 }
+      ],
+      concentration: [
+        { customer: "United Rentals", amount: 183000, pct: 42.9, count: 80 },
+        { customer: "Millenia Productions", amount: 57000, pct: 13.3, count: 30 },
+        { customer: "Sunbelt Rentals", amount: 45000, pct: 10.5, count: 25 },
+        { customer: "Doka USA", amount: 26000, pct: 6.1, count: 12 },
+        { customer: "+ 19 others", amount: 116087, pct: 27.2, count: 121 }
+      ],
+      monthly: [
+        { month: "2025-06", purchases: 210000, collections: 230000 },
+        { month: "2025-07", purchases: 240000, collections: 250000 },
+        { month: "2025-08", purchases: 305000, collections: 220000 },
+        { month: "2025-09", purchases: 340000, collections: 200000 },
+        { month: "2025-10", purchases: 290000, collections: 235000 },
+        { month: "2025-11", purchases: 265000, collections: 215000 },
+        { month: "2025-12", purchases: 295000, collections: 250000 },
+        { month: "2026-01", purchases: 275000, collections: 225000 },
+        { month: "2026-02", purchases: 310000, collections: 240000 },
+        { month: "2026-03", purchases: 355000, collections: 270000 },
+        { month: "2026-04", purchases: 390000, collections: 255000 },
+        { month: "2026-05", purchases: 244000, collections: 215000 }
+      ]
+    }
+  };
 
   if (document.readyState === 'complete') init();
   else window.addEventListener('load', init);

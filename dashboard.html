@@ -51,7 +51,7 @@
 <div class="container" id="root">
   <div class="loading">Loading dashboard...</div>
 </div>
-<div class="version-stamp">v2026-05-20.1</div>
+<div class="version-stamp">v2026-05-20.2</div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
@@ -64,6 +64,14 @@
   function fmtMoney(n) { var v = Number(n) || 0; return v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
   function fmtMoneyK(n) { var v = Number(n) || 0; if (Math.abs(v) >= 1000) return '$' + (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k'; return '$' + Math.round(v); }
 
+  function waitForZoho(attempts, delay) {
+    if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR) return Promise.resolve();
+    if (attempts <= 0) return Promise.reject(new Error('Widget must be loaded inside OperFi Broker Portal. Or append ?mock=1 to test locally.'));
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () { waitForZoho(attempts - 1, delay).then(resolve, reject); }, delay);
+    });
+  }
+
   function init() {
     if (isLocalTest()) {
       var m = (location.search.match(/[?&]email=([^&]+)/) || [])[1] || 't.croteau01@gmail.com';
@@ -71,9 +79,12 @@
       fetchAndRender();
       return;
     }
-    ZOHO.CREATOR.init().then(function (params) {
-      var email = (params.loginUser && params.loginUser.identifier) || params.loginUser;
-      state.email = email;
+    waitForZoho(30, 100).then(function () {
+      return ZOHO.CREATOR.UTIL.getInitParams();
+    }).then(function (initParams) {
+      var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
+      state.email = loginUser || '';
+      if (!state.email) throw new Error('No login email returned from Creator.');
       fetchAndRender();
     }).catch(showFatal);
   }

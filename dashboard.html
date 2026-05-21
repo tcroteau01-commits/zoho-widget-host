@@ -51,7 +51,7 @@
 <div class="container" id="root">
   <div class="loading">Loading dashboard...</div>
 </div>
-<div class="version-stamp">v2026-05-20.2</div>
+<div class="version-stamp">v2026-05-20.3</div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
@@ -72,21 +72,28 @@
     });
   }
 
+  function dbg(msg, extra) { try { console.log('[Dashboard]', msg, extra || ''); } catch (e) {} }
+
   function init() {
+    dbg('init() called. isLocalTest=' + isLocalTest() + ' url=' + location.href);
     if (isLocalTest()) {
       var m = (location.search.match(/[?&]email=([^&]+)/) || [])[1] || 't.croteau01@gmail.com';
       state.email = decodeURIComponent(m);
       fetchAndRender();
       return;
     }
+    dbg('waiting for ZOHO.CREATOR global...');
     waitForZoho(30, 100).then(function () {
+      dbg('ZOHO.CREATOR available. calling getInitParams()...');
       return ZOHO.CREATOR.UTIL.getInitParams();
     }).then(function (initParams) {
+      dbg('getInitParams resolved with:', initParams);
       var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
       state.email = loginUser || '';
       if (!state.email) throw new Error('No login email returned from Creator.');
+      dbg('email resolved:', state.email);
       fetchAndRender();
-    }).catch(showFatal);
+    }).catch(function (e) { dbg('init failed:', e && e.message); showFatal(e); });
   }
 
   function fetchAndRender() {
@@ -95,10 +102,12 @@
       render();
       return;
     }
-    fetch(BROKER_API_BASE + '/dashboard/summary?email=' + encodeURIComponent(state.email))
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (d) { state.data = d; render(); })
-      .catch(function (e) { document.getElementById('root').innerHTML = '<div class="error">Could not load dashboard: ' + escapeHtml(e.message) + '</div>'; });
+    var url = BROKER_API_BASE + '/dashboard/summary?email=' + encodeURIComponent(state.email);
+    dbg('fetching:', url);
+    fetch(url)
+      .then(function (r) { dbg('fetch returned status:', r.status); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) { dbg('JSON parsed. keys:', Object.keys(d)); state.data = d; render(); })
+      .catch(function (e) { dbg('fetch failed:', e && e.message); document.getElementById('root').innerHTML = '<div class="error">Could not load dashboard: ' + escapeHtml(e.message) + '</div>'; });
   }
 
   function render() {

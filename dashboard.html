@@ -51,7 +51,7 @@
 <div class="container" id="root">
   <div class="loading">Loading dashboard...</div>
 </div>
-<div class="version-stamp">v2026-05-20.3</div>
+<div class="version-stamp">v2026-05-20.4</div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
@@ -128,31 +128,37 @@
   }
 
   var ACTION_TO_PAGE = {
-    'submit-load': '#Page:New_Broker_Funding_Portal',
-    'credit-check': '#Page:Credit_Check_New',
-    'onboard-carrier': '#Page:Carrier_Onboarding_New',
-    'request-reserve': '#Page:OperFi_Wallet_New',
-    'view-chargeback': '#Page:AR_Aging_New',
-    'view-credit-limits': '#Page:Customer_Approvals_New',
-    'view-dso': '#Page:AR_Aging_New',
-    'nav-vendor-payments': '#Page:Vendor_Payments_New',
-    'nav-aging': '#Page:AR_Aging_New',
-    'nav-customer-approvals': '#Page:Customer_Approvals_New',
-    'nav-view-vendors': '#Page:View_Vendors_New',
-    'nav-loads-margins': '#Page:Loads_Margins_New'
+    'submit-load': '#Page:Load_Details_NEW',
+    'credit-check': '#Page:Credit_Check_NEW',
+    'onboard-carrier': '#Page:Onboarding_Submissions',
+    'request-reserve': '#Page:OperFi_Wallet',
+    'view-chargeback': '#Page:Aging',
+    'view-credit-limits': '#Page:Customer_Approvals',
+    'view-dso': '#Page:Aging',
+    'nav-vendor-payments': '#Page:Vendor_Payments',
+    'nav-aging': '#Page:Aging',
+    'nav-customer-approvals': '#Page:Customer_Approvals',
+    'nav-view-vendors': '#Page:Vendors',
+    'nav-loads-margins': '#Page:Loads_Margins'
   };
+
+  // Cross-origin portal navigation. Pattern from customer-approvals.html.
+  // ZOHO.CREATOR.UTIL.navigateParentURL throws "Improper Configuration" in v2.0
+  // widget SDK, so we set window.top.location directly with the full origin.
+  function navigateParent(hash) {
+    var sp = new URLSearchParams(window.location.search);
+    var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+    var url = origin.replace(/\/$/, '') + '/' + hash;
+    try { window.top.location.href = url; return; } catch (e) {}
+    try { window.parent.location.href = url; return; } catch (e) {}
+    try { window.open(url, '_top'); } catch (e) {}
+  }
 
   function handleAction(action) {
     var page = ACTION_TO_PAGE[action];
     if (!page) return;
     if (isLocalTest()) { alert('Test mode: would navigate to ' + page); return; }
-    // Portal nav: top-level location change works for Creator-page targets
-    try {
-      if (parent && parent !== window) parent.location.hash = page;
-      else location.hash = page;
-    } catch (e) {
-      location.hash = page;
-    }
+    navigateParent(page);
   }
 
   // ... section renderers added in subsequent tasks

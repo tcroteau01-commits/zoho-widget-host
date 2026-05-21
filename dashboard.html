@@ -6,52 +6,52 @@
 <title>OperFi Dashboard</title>
 <style>
   :root {
-    --of-bg: #f8fafc;
-    --of-card: #ffffff;
-    --of-border: #e2e8f0;
-    --of-text: #1e293b;
-    --of-muted: #64748b;
-    --of-blue: #3b82f6;
-    --of-amber: #f59e0b;
-    --of-green: #22c55e;
-    --of-red: #dc2626;
-    --of-purple: #8b5cf6;
+    --of-charcoal: #1d1d1f;
+    --of-orange: #F97316; --of-orange-soft: #FEF3E8;
+    --of-gray-50: #F8F9FB; --of-gray-100: #F1F2F4; --of-gray-200: #E5E7EB;
+    --of-gray-300: #D1D5DB; --of-gray-500: #6B7280; --of-gray-700: #374151;
+    --of-green: #059669; --of-green-soft: #ECFDF5;
+    --of-amber: #D97706; --of-amber-soft: #FFFBEB;
+    --of-red: #DC2626; --of-red-soft: #FEF2F2;
   }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--of-bg); margin: 0; color: var(--of-text); }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; background: #f0efe9; color: var(--of-charcoal); margin: 0; min-height: 100vh; }
   .container { padding: 16px 20px; }
-  .label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--of-muted); margin-bottom: 8px; }
-  .header-strip { background: #1e293b; color: #fff; padding: 14px 20px; border-radius: 8px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
+  .label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--of-gray-500); margin-bottom: 8px; }
+  .header-strip { background: var(--of-charcoal); color: #fff; padding: 14px 20px; border-radius: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
   .header-strip .eyebrow { opacity: .6; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
   .header-strip .name { font-size: 18px; font-weight: 600; margin-top: 2px; }
-  .header-strip .meta { text-align: right; font-size: 11px; opacity: .8; }
+  .header-strip .meta { text-align: right; font-size: 11px; opacity: .85; }
   .quick-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
-  .qa { padding: 14px 12px; border-radius: 8px; text-align: center; font-weight: 600; cursor: pointer; }
-  .qa.primary { background: var(--of-blue); color: #fff; }
-  .qa.secondary { background: #fff; border: 1px solid #cbd5e1; color: var(--of-text); }
+  .qa { padding: 14px 12px; border-radius: 8px; text-align: center; font-weight: 700; font-size: 13px; cursor: pointer; transition: background 120ms; }
+  .qa.primary { background: var(--of-orange); color: #fff; }
+  .qa.primary:hover { background: #ea660c; }
+  .qa.secondary { background: #fff; border: 1px solid var(--of-gray-300); color: var(--of-gray-700); }
+  .qa.secondary:hover { background: var(--of-gray-50); }
   .watch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
-  .watch-card { border-radius: 8px; padding: 14px; cursor: pointer; }
-  .watch-card.red { background: #fef2f2; border: 1px solid #fca5a5; color: #7f1d1d; }
-  .watch-card.amber { background: #fffbeb; border: 1px solid #fcd34d; color: #78350f; }
-  .watch-card.blue { background: #f0f9ff; border: 1px solid #7dd3fc; color: #0c4a6e; }
+  .watch-card { border-radius: 12px; padding: 14px; cursor: pointer; }
+  .watch-card.red { background: var(--of-red-soft); border: 1px solid #fca5a5; color: #7f1d1d; }
+  .watch-card.amber { background: var(--of-amber-soft); border: 1px solid #fcd34d; color: #78350f; }
+  .watch-card.info { background: var(--of-gray-50); border: 1px solid var(--of-gray-200); color: var(--of-gray-700); }
   .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
-  .kpi { background: var(--of-card); border: 1px solid var(--of-border); border-radius: 8px; padding: 14px; border-top: 3px solid var(--of-blue); }
-  .kpi.ar { border-top-color: var(--of-blue); }
+  .kpi { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 14px; border-top: 3px solid var(--of-orange); }
+  .kpi.ar { border-top-color: var(--of-orange); }
   .kpi.ap { border-top-color: var(--of-amber); }
   .kpi.reserves { border-top-color: var(--of-green); }
-  .kpi.month { border-top-color: var(--of-purple); }
+  .kpi.month { border-top-color: var(--of-charcoal); }
   .key-tasks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
-  .task-card { background: var(--of-card); border: 1px solid var(--of-border); border-radius: 8px; padding: 14px; cursor: pointer; }
+  .task-card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 14px; cursor: pointer; transition: border-color 120ms; }
+  .task-card:hover { border-color: var(--of-orange); }
   .insights-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
-  .chart-card { background: var(--of-card); border: 1px solid var(--of-border); border-radius: 8px; padding: 16px; cursor: pointer; }
-  .empty, .loading, .error { padding: 24px; text-align: center; color: var(--of-muted); }
-  .version-stamp { text-align: right; font-size: 10px; color: #bbb; padding: 8px 4px 0; }
+  .chart-card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 16px; cursor: pointer; }
+  .empty, .loading, .error { padding: 24px; text-align: center; color: var(--of-gray-500); }
+  .version-stamp { text-align: right; font-size: 10px; color: #b6b09a; padding: 8px 4px 0; }
 </style>
 </head>
 <body>
 <div class="container" id="root">
   <div class="loading">Loading dashboard...</div>
 </div>
-<div class="version-stamp">v2026-05-20.4</div>
+<div class="version-stamp">v2026-05-20.5</div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
@@ -179,7 +179,7 @@
           '<div style="margin-top:8px;font-size:18px;font-weight:700">' + w.creditLimits.customersAtRisk + ' customers</div>' +
           '<div style="font-size:11px">at &gt;80% of credit limit</div>' +
         '</div>' +
-        '<div class="watch-card blue" data-action="view-dso">' +
+        '<div class="watch-card info" data-action="view-dso">' +
           '<div style="font-size:11px;letter-spacing:.5px;text-transform:uppercase;font-weight:600">Avg Days to Pay</div>' +
           '<div style="margin-top:8px;font-size:18px;font-weight:700">' + dso + '</div>' +
           '<div style="font-size:11px">trailing 90 days</div>' +
@@ -236,7 +236,7 @@
           return '<div class="task-card" data-action="' + c.action + '">' +
             '<div style="font-weight:600;font-size:13px">' + escapeHtml(c.name) + '</div>' +
             '<div style="font-size:11px;color:var(--of-muted);margin-top:4px">' + escapeHtml(c.desc) + '</div>' +
-            '<div style="font-size:11px;color:var(--of-blue);margin-top:8px">View &rarr;</div>' +
+            '<div style="font-size:11px;color:var(--of-orange);margin-top:8px">View &rarr;</div>' +
           '</div>';
         }).join('') +
       '</div>';
@@ -254,7 +254,7 @@
 
   function renderAgingChart(buckets) {
     var total = (buckets || []).reduce(function (s, b) { return s + b.amount; }, 0) || 1;
-    var colors = { '0-30': '#3b82f6', '31-60': '#22c55e', '61-74': '#f59e0b', '75+': '#dc2626' };
+    var colors = { '0-30': '#059669', '31-60': '#65A30D', '61-74': '#D97706', '75+': '#DC2626' };
     var segs = (buckets || []).map(function (b) {
       var pct = b.amount / total * 100;
       return '<div style="background:' + colors[b.label] + ';width:' + pct.toFixed(2) + '%" title="' + b.label + ' days"></div>';
@@ -268,7 +268,7 @@
     }).join('');
     return '' +
       '<div class="chart-card" data-action="nav-aging">' +
-        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">AR Aging — chargeback line at 75 days</div><div style="font-size:11px;color:var(--of-blue)">View &rarr;</div></div>' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">AR Aging — chargeback line at 75 days</div><div style="font-size:11px;color:var(--of-orange)">View &rarr;</div></div>' +
         '<div style="display:flex;height:24px;border-radius:4px;overflow:hidden;margin-bottom:8px">' + segs + '</div>' +
         '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:11px">' + legend + '</div>' +
       '</div>';
@@ -277,7 +277,7 @@
   function renderConcentrationChart(rows) {
     if (!rows || !rows.length) return '<div class="chart-card">No customer data.</div>';
     var max = Math.max.apply(null, rows.map(function (r) { return r.pct; }));
-    var palette = ['#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#cbd5e1'];
+    var palette = ['#F97316', '#D97706', '#059669', '#65A30D', '#94A3B8'];
     var bars = rows.map(function (r, idx) {
       var color = palette[idx] || palette[palette.length - 1];
       var w = (r.pct / max) * 100;
@@ -288,7 +288,7 @@
     }).join('');
     return '' +
       '<div class="chart-card" data-action="nav-aging">' +
-        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">Customer Concentration</div><div style="font-size:11px;color:var(--of-blue)">View &rarr;</div></div>' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">Customer Concentration</div><div style="font-size:11px;color:var(--of-orange)">View &rarr;</div></div>' +
         bars +
       '</div>';
   }
@@ -300,8 +300,8 @@
       var ph = (x.purchases / max) * 100;
       var ch = (x.collections / max) * 100;
       return '<div style="flex:1;display:flex;gap:2px;align-items:flex-end">' +
-        '<div style="background:#3b82f6;width:50%;height:' + ph.toFixed(0) + '%" title="' + x.month + ' purchases $' + fmtMoney(x.purchases) + '"></div>' +
-        '<div style="background:#22c55e;width:50%;height:' + ch.toFixed(0) + '%" title="' + x.month + ' collections $' + fmtMoney(x.collections) + '"></div>' +
+        '<div style="background:#F97316;width:50%;height:' + ph.toFixed(0) + '%" title="' + x.month + ' purchases $' + fmtMoney(x.purchases) + '"></div>' +
+        '<div style="background:#059669;width:50%;height:' + ch.toFixed(0) + '%" title="' + x.month + ' collections $' + fmtMoney(x.collections) + '"></div>' +
       '</div>';
     }).join('');
     var labels = months.map(function (x) {
@@ -313,7 +313,7 @@
       '<div class="chart-card" data-action="nav-loads-margins">' +
         '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
           '<div style="font-weight:600;font-size:13px">Monthly Purchases &amp; Collections &mdash; last 12 months</div>' +
-          '<div style="font-size:11px"><span style="margin-right:10px"><span style="display:inline-block;width:8px;height:8px;background:#3b82f6;border-radius:2px;margin-right:4px"></span>Purchases</span><span><span style="display:inline-block;width:8px;height:8px;background:#22c55e;border-radius:2px;margin-right:4px"></span>Collections</span></div>' +
+          '<div style="font-size:11px"><span style="margin-right:10px"><span style="display:inline-block;width:8px;height:8px;background:#F97316;border-radius:2px;margin-right:4px"></span>Purchases</span><span><span style="display:inline-block;width:8px;height:8px;background:#059669;border-radius:2px;margin-right:4px"></span>Collections</span></div>' +
         '</div>' +
         '<div style="display:flex;align-items:flex-end;gap:6px;height:90px;padding:0 8px;border-bottom:1px solid var(--of-border)">' + bars + '</div>' +
         '<div style="display:flex;gap:6px;padding:6px 8px 0;font-size:9px;color:var(--of-muted);text-align:center">' + labels + '</div>' +

@@ -204,6 +204,8 @@
   let currentData = null;
   let currentTab = 'cash';
   let currentSearch = '';
+  let loanData = null;          // /loan/activity payload, populated only if has_outstanding_balance
+  let hasOutstandingBalance = false;
   // Resolved SDK init params (loginUser email, scope, etc). Populated by
   // bootstrap() before any API call. getInitParams() returns a Promise in
   // production — accessing .loginUser synchronously yields undefined.
@@ -237,11 +239,15 @@
   function renderActivity(data) {
     currentData = data;
     const panel = document.getElementById('activityPanel');
+    const loanTabBtn = hasOutstandingBalance
+      ? `<button class="tab${currentTab === 'loan' ? ' active' : ''}" data-tab="loan">Outstanding Balance</button>`
+      : '';
     panel.innerHTML = `
       <div class="tabs-row">
         <div class="tabs">
           <button class="tab${currentTab === 'cash' ? ' active' : ''}" data-tab="cash">Cash Reserve</button>
           <button class="tab${currentTab === 'escrow' ? ' active' : ''}" data-tab="escrow">Escrow Reserve</button>
+          ${loanTabBtn}
         </div>
         <input class="search" id="rr-search" type="search" placeholder="Search transactions…" value="${currentSearch}" />
       </div>

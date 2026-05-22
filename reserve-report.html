@@ -377,14 +377,36 @@
 
   async function loadActivity() {
     const { start, end } = getDateRange();
-    const url = `${API_BASE}/reserve/activity?${scopeParams()}&start=${start}&end=${end}`;
-    const r = await fetch(url);
-    if (!r.ok) {
+    const reserveUrl = `${API_BASE}/reserve/activity?${scopeParams()}&start=${start}&end=${end}`;
+
+    const reserveResp = await fetch(reserveUrl);
+    if (!reserveResp.ok) {
       document.getElementById('activityPanel').innerHTML =
         '<div style="padding: 32px; color: var(--negative); text-align: center;">Failed to load reserve activity.</div>';
       return;
     }
-    const data = await r.json();
+    const data = await reserveResp.json();
+    hasOutstandingBalance = !!data.has_outstanding_balance;
+
+    if (hasOutstandingBalance) {
+      const loanUrl = `${API_BASE}/loan/activity?${scopeParams()}&start=${start}&end=${end}`;
+      try {
+        const loanResp = await fetch(loanUrl);
+        if (loanResp.ok) {
+          loanData = await loanResp.json();
+        } else {
+          loanData = null;
+          hasOutstandingBalance = false;
+        }
+      } catch (err) {
+        console.error('loan fetch failed:', err);
+        loanData = null;
+        hasOutstandingBalance = false;
+      }
+    } else {
+      loanData = null;
+    }
+
     renderKpis(data.kpis);
     renderActivity(data);
   }

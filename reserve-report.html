@@ -272,14 +272,20 @@
   function renderBody() {
     const bodyEl = document.getElementById('rr-body');
     if (!bodyEl || !currentData) return;
-    const days = currentTab === 'cash'
-      ? (currentData.cash_activity_by_date || [])
-      : (currentData.escrow_activity_by_date || []);
+    let days;
+    if (currentTab === 'loan') {
+      days = (loanData && loanData.activity_by_date) || [];
+    } else if (currentTab === 'cash') {
+      days = currentData.cash_activity_by_date || [];
+    } else {
+      days = currentData.escrow_activity_by_date || [];
+    }
     const today = new Date().toISOString().slice(0, 10);
     const q = currentSearch;
 
     if (days.length === 0) {
-      bodyEl.innerHTML = '<div class="empty">No reserve activity in this date range.</div>';
+      const label = currentTab === 'loan' ? 'outstanding balance' : 'reserve';
+      bodyEl.innerHTML = `<div class="empty">No ${label} activity in this date range.</div>`;
       return;
     }
 
@@ -328,15 +334,18 @@
 
     const rows = txns.map(t => {
       const amtClass = Number(t.amount) >= 0 ? 'positive' : 'negative';
-      return `<tr>
+      const isInterest = !!t.is_interest;
+      const noteHtml = isInterest ? `<em>${t.note || ''}</em>` : (t.note || '');
+      const endingHtml = isInterest ? '<span class="muted">—</span>' : fmtMoney(t.ending_balance);
+      return `<tr${isInterest ? ' class="interest-row"' : ''}>
         <td>${t.trans_id || ''}</td>
         <td>${t.inv_no || ''}</td>
         <td>${t.debtor_name || ''}</td>
-        <td>${t.note || ''}</td>
+        <td>${noteHtml}</td>
         <td><span class="chip ${chipClass(t.category)}">${t.category || 'Other'}</span></td>
         <td class="num">${fmtMoney(t.beginning_balance)}</td>
         <td class="num ${amtClass}">${fmtMoney(t.amount)}</td>
-        <td class="num">${fmtMoney(t.ending_balance)}</td>
+        <td class="num">${endingHtml}</td>
       </tr>`;
     }).join('');
 

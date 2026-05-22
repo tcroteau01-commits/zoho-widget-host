@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Reserve Report</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<style>
+  :root {
+    --bg: #f0efe9;
+    --card: #ffffff;
+    --border: #e6e3da;
+    --text: #272727;
+    --muted: #6b6b6b;
+    --accent: #F97316;
+    --accent-soft: #fff1e6;
+    --positive: #16a34a;
+    --negative: #dc2626;
+    --chip-orange: #fff1e6;
+    --chip-orange-text: #b45309;
+    --chip-red: #fee2e2;
+    --chip-red-text: #991b1b;
+    --chip-green: #dcfce7;
+    --chip-green-text: #166534;
+    --chip-blue: #dbeafe;
+    --chip-blue-text: #1e40af;
+    --chip-amber: #fef3c7;
+    --chip-amber-text: #92400e;
+    --chip-gray: #e5e7eb;
+    --chip-gray-text: #374151;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+  }
+  .page-header { display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; }
+  .page-header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .btn { padding: 8px 14px; border: 1px solid var(--border); background: var(--card);
+    color: var(--text); border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .btn:hover { border-color: var(--accent); }
+  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 16px; }
+  .kpi-label { color: var(--muted); font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 8px; }
+  .kpi-value { font-size: 24px; font-weight: 600; }
+  .kpi-cta { margin-top: 8px; }
+  .kpi-cta button { padding: 4px 10px; font-size: 12px; }
+  .activity-panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+  .footer-note { color: var(--muted); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>Reserve Report</h1>
+    <div class="toolbar">
+      <select id="dateRange" class="btn">
+        <option value="30" selected>Last 30 days</option>
+        <option value="7">Last 7 days</option>
+        <option value="60">Last 60 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="this_month">This month</option>
+        <option value="last_month">Last month</option>
+      </select>
+      <button class="btn" id="exportCsv">CSV</button>
+      <button class="btn" id="exportPdf">PDF</button>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi-card">
+      <div class="kpi-label">Escrow Reserve</div>
+      <div class="kpi-value" id="kpiEscrow">--</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Cash Reserve</div>
+      <div class="kpi-value" id="kpiCash">--</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Reserve</div>
+      <div class="kpi-value" id="kpiTotal">--</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Available for Release</div>
+      <div class="kpi-value" id="kpiAvailable">--</div>
+      <div class="kpi-cta">
+        <button class="btn btn-primary" id="btnRequestRelease">Request Release &rarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="activity-panel" id="activityPanel">
+    <!-- Task 11 fills this in -->
+    <div style="padding: 32px; color: var(--muted); text-align: center;">Loading reserve activity...</div>
+  </div>
+
+  <div class="footer-note">
+    Balances reflect OperFi's transaction history; for the authoritative FactorView balance contact OperFi if needed.
+  </div>
+
+<script>
+  const API_BASE = "https://operfi-broker-api.onrender.com";
+
+  function navigateParent(hash) {
+    if (window.top && window.top.location) {
+      window.top.location.href = hash;
+    }
+  }
+
+  function fmtMoney(n) {
+    const v = Number(n || 0);
+    return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString(undefined, {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+  }
+
+  function getDateRange() {
+    const sel = document.getElementById('dateRange').value;
+    const today = new Date();
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    let start, end;
+    if (sel === 'this_month') {
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+      end = today;
+    } else if (sel === 'last_month') {
+      start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      end = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else {
+      const days = parseInt(sel, 10);
+      start = new Date(today);
+      start.setDate(start.getDate() - days);
+      end = today;
+    }
+    return { start: fmt(start), end: fmt(end) };
+  }
+
+  async function loadActivity() {
+    const params = ZOHO.CREATOR.UTIL.getInitParams();
+    const email = params.loginUser;
+    const { start, end } = getDateRange();
+    const url = `${API_BASE}/reserve/activity?email=${encodeURIComponent(email)}&start=${start}&end=${end}`;
+    const r = await fetch(url);
+    if (!r.ok) {
+      document.getElementById('activityPanel').innerHTML =
+        '<div style="padding: 32px; color: var(--negative); text-align: center;">Failed to load reserve activity.</div>';
+      return;
+    }
+    const data = await r.json();
+    renderKpis(data.kpis);
+    renderActivity(data);
+  }
+
+  function renderKpis(k) {
+    document.getElementById('kpiEscrow').textContent    = fmtMoney(k.escrow_reserve);
+    document.getElementById('kpiCash').textContent      = fmtMoney(k.cash_reserve);
+    document.getElementById('kpiTotal').textContent     = fmtMoney(k.total_reserve);
+    document.getElementById('kpiAvailable').textContent = fmtMoney(k.available_for_release);
+  }
+
+  function renderActivity(data) {
+    // Filled in by Task 11
+    document.getElementById('activityPanel').innerHTML =
+      '<div style="padding: 32px; color: var(--muted); text-align: center;">Activity rendering: Task 11.</div>';
+  }
+
+  document.getElementById('btnRequestRelease').addEventListener('click', () => {
+    navigateParent('#Page:OperFi_Wallet');
+  });
+
+  document.getElementById('dateRange').addEventListener('change', loadActivity);
+  document.getElementById('exportCsv').addEventListener('click', () => {
+    const params = ZOHO.CREATOR.UTIL.getInitParams();
+    const { start, end } = getDateRange();
+    const tab = document.querySelector('.tab.active')?.dataset.tab || 'cash';
+    window.open(`${API_BASE}/reserve/export/csv?email=${encodeURIComponent(params.loginUser)}&start=${start}&end=${end}&tab=${tab}`);
+  });
+  document.getElementById('exportPdf').addEventListener('click', () => {
+    const params = ZOHO.CREATOR.UTIL.getInitParams();
+    const { start, end } = getDateRange();
+    const tab = document.querySelector('.tab.active')?.dataset.tab || 'cash';
+    window.open(`${API_BASE}/reserve/export/pdf?email=${encodeURIComponent(params.loginUser)}&start=${start}&end=${end}&tab=${tab}`);
+  });
+
+  loadActivity();
+</script>
+</body>
+</html>

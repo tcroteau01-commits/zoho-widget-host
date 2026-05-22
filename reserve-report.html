@@ -130,7 +130,7 @@
     </div>
   </div>
 
-  <div class="kpis">
+  <div class="kpis" id="kpiStrip">
     <div class="kpi-card">
       <div class="kpi-label">Escrow Reserve</div>
       <div class="kpi-value" id="kpiEscrow">--</div>
@@ -258,6 +258,7 @@
         currentTab = btn.dataset.tab;
         panel.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        renderKpis(currentTab);
         renderBody();
       });
     });
@@ -407,20 +408,61 @@
       loanData = null;
     }
 
-    renderKpis(data.kpis);
+    currentData = data;          // set before renderKpis so the reserve KPI path can read currentData.kpis
+    renderKpis(currentTab);
     renderActivity(data);
   }
 
-  function renderKpis(k) {
-    document.getElementById('kpiEscrow').textContent    = fmtMoney(k.escrow_reserve);
-    document.getElementById('kpiCash').textContent      = fmtMoney(k.cash_reserve);
-    document.getElementById('kpiTotal').textContent     = fmtMoney(k.total_reserve);
-    document.getElementById('kpiAvailable').textContent = fmtMoney(k.available_for_release);
-  }
+  function renderKpis(tab) {
+    const strip = document.getElementById('kpiStrip');
+    if (!strip) return;
 
-  document.getElementById('btnRequestRelease').addEventListener('click', () => {
-    navigateParent('#Page:OperFi_Wallet');
-  });
+    if (tab === 'loan' && loanData && loanData.kpis) {
+      const k = loanData.kpis;
+      const rateStr = (k.interest_rate != null) ? `${k.interest_rate}%` : '—';
+      strip.innerHTML = `
+        <div class="kpi-card">
+          <div class="kpi-label">Amount Owed</div>
+          <div class="kpi-value">${fmtMoney(k.amount_owed)}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Interest Rate</div>
+          <div class="kpi-value">${rateStr}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Interest Charged LTD</div>
+          <div class="kpi-value">${fmtMoney(k.interest_charged_ltd)}</div>
+        </div>
+      `;
+      return;
+    }
+
+    // Default: cash/escrow reserve KPI strip — matches the original static markup.
+    const k = (currentData && currentData.kpis) || {};
+    strip.innerHTML = `
+      <div class="kpi-card">
+        <div class="kpi-label">Escrow Reserve</div>
+        <div class="kpi-value" id="kpiEscrow">${fmtMoney(k.escrow_reserve)}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Cash Reserve</div>
+        <div class="kpi-value" id="kpiCash">${fmtMoney(k.cash_reserve)}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Reserve</div>
+        <div class="kpi-value" id="kpiTotal">${fmtMoney(k.total_reserve)}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Available for Release</div>
+        <div class="kpi-value" id="kpiAvailable">${fmtMoney(k.available_for_release)}</div>
+        <div class="kpi-cta">
+          <button class="btn btn-primary" id="btnRequestRelease">Request Release &rarr;</button>
+        </div>
+      </div>
+    `;
+    const btn = strip.querySelector('#btnRequestRelease');
+    if (btn) btn.addEventListener('click', () => navigateParent('#Page:OperFi_Wallet'));
+  }
 
   document.getElementById('dateRange').addEventListener('change', loadActivity);
   document.getElementById('exportCsv').addEventListener('click', () => {

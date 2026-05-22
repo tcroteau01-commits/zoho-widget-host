@@ -180,6 +180,9 @@
   function getDateRange() {
     const sel = document.getElementById('dateRange').value;
     const today = new Date();
+    // .toISOString() returns UTC; in Phoenix evenings (MST -07:00), the rendered
+    // date string may be one day ahead of the local calendar day. Acceptable for
+    // 30/60/90-day rolling windows; edge case for narrow same-day queries.
     const fmt = (d) => d.toISOString().slice(0, 10);
     let start, end;
     if (sel === 'this_month') {
@@ -259,8 +262,8 @@
     const bodyEl = document.getElementById('rr-body');
     if (!bodyEl || !currentData) return;
     const days = currentTab === 'cash'
-      ? (currentData.cash_days || [])
-      : (currentData.escrow_days || []);
+      ? (currentData.cash_activity_by_date || [])
+      : (currentData.escrow_activity_by_date || []);
     const today = new Date().toISOString().slice(0, 10);
     const q = currentSearch;
 
@@ -273,8 +276,8 @@
     const filtered = q
       ? days.map(day => ({
           ...day,
-          txns: (day.txns || []).filter(t => txnMatchesSearch(t, q)),
-        })).filter(day => day.txns.length > 0)
+          transactions: (day.transactions || []).filter(t => txnMatchesSearch(t, q)),
+        })).filter(day => day.transactions.length > 0)
       : days;
 
     if (filtered.length === 0) {
@@ -289,7 +292,7 @@
       } else {
         expanded = day.date === today || filtered.indexOf(day) === 0;
       }
-      return dayMarkup(day, day.txns || [], expanded);
+      return dayMarkup(day, day.transactions || [], expanded);
     }).join('');
 
     // Attach click handlers for accordion
@@ -302,13 +305,15 @@
   }
 
   function dayMarkup(day, txns, expanded) {
-    const net = txns.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const net = Number(day.net_change) || 0;
     const netClass = net >= 0 ? 'positive' : 'negative';
-    const lastTxn = txns[txns.length - 1];
-    const endBal = lastTxn ? Number(lastTxn.balance_after) : null;
+    const endBal = day.ending_balance != null ? Number(day.ending_balance) : null;
     const endStr = endBal !== null
       ? `<span class="day-end">End: ${fmtMoney(endBal)}</span>`
       : '';
+    const dateLabel = new Date(day.date + 'T00:00:00').toLocaleDateString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    });
 
     const rows = txns.map(t => {
       const amtClass = Number(t.amount) >= 0 ? 'positive' : 'negative';
@@ -316,17 +321,18 @@
         <td>${t.trans_id || ''}</td>
         <td>${t.inv_no || ''}</td>
         <td>${t.debtor_name || ''}</td>
+        <td>${t.note || ''}</td>
         <td><span class="chip ${chipClass(t.category)}">${t.category || 'Other'}</span></td>
-        <td class="num">${fmtMoney(t.balance_before)}</td>
+        <td class="num">${fmtMoney(t.beginning_balance)}</td>
         <td class="num ${amtClass}">${fmtMoney(t.amount)}</td>
-        <td class="num">${fmtMoney(t.balance_after)}</td>
+        <td class="num">${fmtMoney(t.ending_balance)}</td>
       </tr>`;
     }).join('');
 
     return `<div class="day-group${expanded ? ' expanded' : ''}">
       <div class="day-header">
         <span class="day-caret"></span>
-        <span class="day-date">${day.date}</span>
+        <span class="day-date">${dateLabel}</span>
         <span class="day-count">${txns.length} txn${txns.length !== 1 ? 's' : ''}</span>
         <span class="day-net ${netClass}">${net >= 0 ? '+' : ''}${fmtMoney(net)}</span>
         ${endStr}
@@ -334,7 +340,7 @@
       <div class="day-body">
         <table class="txns">
           <thead><tr>
-            <th>Trans ID</th><th>Invoice</th><th>Debtor</th><th>Category</th>
+            <th>Trans ID</th><th>Invoice</th><th>Debtor</th><th>Note</th><th>Category</th>
             <th style="text-align:right">Beginning</th>
             <th style="text-align:right">Amount</th>
             <th style="text-align:right">Ending</th>

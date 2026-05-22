@@ -204,6 +204,10 @@
   let currentData = null;
   let currentTab = 'cash';
   let currentSearch = '';
+  // Resolved SDK init params (loginUser email, scope, etc). Populated by
+  // bootstrap() before any API call. getInitParams() returns a Promise in
+  // production — accessing .loginUser synchronously yields undefined.
+  let initParams = null;
 
   function chipClass(cat) {
     const map = {
@@ -353,16 +357,16 @@
 
   // clientId override: when the page URL includes ?clientId=NNNN, scope to that
   // FVClientID directly instead of resolving from email. Mirrors the admin
-  // testing pattern used by /aging, /credit-dashboard, /loads-margins.
-  // Required because the Creator portal spoof does NOT propagate to the SDK.
+  // testing pattern used by /aging, /credit-dashboard, /loads-margins. Lets
+  // an admin spot-check any broker's view without remapping their Contact.
   const QUERY_CLIENT_ID = new URLSearchParams(window.location.search).get('clientId');
 
   function scopeParams() {
-    const params = ZOHO.CREATOR.UTIL.getInitParams();
     if (QUERY_CLIENT_ID) {
       return `clientId=${encodeURIComponent(QUERY_CLIENT_ID)}`;
     }
-    return `email=${encodeURIComponent(params.loginUser)}`;
+    const email = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
+    return `email=${encodeURIComponent(email || '')}`;
   }
 
   async function loadActivity() {
@@ -402,7 +406,38 @@
     window.open(`${API_BASE}/reserve/export/pdf?${scopeParams()}&start=${start}&end=${end}&tab=${tab}`);
   });
 
-  loadActivity();
+  // Bootstrap: getInitParams() returns a Promise in production. Resolve it
+  // once, cache to module-scope, then kick off the first load. Defensive
+  // duck-typing handles older SDK builds that returned the params sync.
+  function bootstrap() {
+    function onParams(p) {
+      initParams = p || {};
+      loadActivity();
+    }
+    function onErr(err) {
+      console.error('getInitParams failed:', err);
+      // If admin override is in URL, we can still load without the SDK params.
+      if (QUERY_CLIENT_ID) {
+        initParams = {};
+        loadActivity();
+        return;
+      }
+      document.getElementById('activityPanel').innerHTML =
+        '<div style="padding: 32px; color: var(--negative); text-align: center;">Could not initialize widget. Reload the page or contact OperFi.</div>';
+    }
+    try {
+      const result = ZOHO.CREATOR.UTIL.getInitParams();
+      if (result && typeof result.then === 'function') {
+        result.then(onParams).catch(onErr);
+      } else {
+        onParams(result);
+      }
+    } catch (e) {
+      onErr(e);
+    }
+  }
+
+  bootstrap();
 </script>
 </body>
 </html>

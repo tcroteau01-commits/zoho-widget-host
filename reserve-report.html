@@ -109,6 +109,16 @@
   .chip-escrow-reserve   { background: var(--chip-orange); color: var(--chip-orange-text); }
   .chip-collection       { background: var(--chip-red);    color: var(--chip-red-text);    }
   .chip-other            { background: var(--chip-gray);   color: var(--chip-gray-text);   }
+  .chip-interest          { background: #e0e7ff; color: #3730a3; }
+  .chip-loan-payment      { background: #d1fae5; color: #065f46; }
+  .chip-loan-adjustment   { background: #fef3c7; color: #92400e; }
+  .chip-fuel-advance      { background: #fed7aa; color: #9a3412; }
+  .chip-tank-fee          { background: #fde68a; color: #78350f; }
+  .chip-fee-reclass       { background: #ede9fe; color: #5b21b6; }
+  .chip-reserve-transfer  { background: #cffafe; color: #155e75; }
+  .chip-client-advance    { background: #f3e8ff; color: #6b21a8; }
+  .interest-row td        { color: #6b7280; }
+  .muted                  { color: #9ca3af; }
 
   .empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 14px; }
 </style>
@@ -213,6 +223,7 @@
 
   function chipClass(cat) {
     const map = {
+      // Reserve categories (existing)
       'Invoice Purchase':          'chip-invoice-purchase',
       'Reserve Release':           'chip-reserve-release',
       'Vendor Quick Pay':          'chip-vendor-qp',
@@ -223,6 +234,15 @@
       'Escrow ↔ Cash Transfer': 'chip-escrow-cash',
       'Escrow Reserve Adjustment': 'chip-escrow-reserve',
       'Collection':                'chip-collection',
+      // Loan categories (new)
+      'Interest':                  'chip-interest',
+      'Loan Payment':              'chip-loan-payment',
+      'Loan Adjustment':           'chip-loan-adjustment',
+      'Fuel Advance':              'chip-fuel-advance',
+      'Tank Fee':                  'chip-tank-fee',
+      'Fee Reclassification':      'chip-fee-reclass',
+      'Reserve Transfer':          'chip-reserve-transfer',
+      'Client Advance':            'chip-client-advance',
       'Other':                     'chip-other',
     };
     return map[cat] || 'chip-other';

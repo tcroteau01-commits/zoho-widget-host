@@ -452,7 +452,7 @@
       strip.innerHTML = `
         <div class="kpi-card">
           <div class="kpi-label">Amount Owed</div>
-          <div class="kpi-value">${fmtMoney(k.amount_owed)}</div>
+          <div class="kpi-value">${fmtMoney(Math.abs(k.amount_owed || 0))}</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Interest Rate</div>

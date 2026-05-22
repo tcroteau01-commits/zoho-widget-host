@@ -351,11 +351,23 @@
     </div>`;
   }
 
-  async function loadActivity() {
+  // clientId override: when the page URL includes ?clientId=NNNN, scope to that
+  // FVClientID directly instead of resolving from email. Mirrors the admin
+  // testing pattern used by /aging, /credit-dashboard, /loads-margins.
+  // Required because the Creator portal spoof does NOT propagate to the SDK.
+  const QUERY_CLIENT_ID = new URLSearchParams(window.location.search).get('clientId');
+
+  function scopeParams() {
     const params = ZOHO.CREATOR.UTIL.getInitParams();
-    const email = params.loginUser;
+    if (QUERY_CLIENT_ID) {
+      return `clientId=${encodeURIComponent(QUERY_CLIENT_ID)}`;
+    }
+    return `email=${encodeURIComponent(params.loginUser)}`;
+  }
+
+  async function loadActivity() {
     const { start, end } = getDateRange();
-    const url = `${API_BASE}/reserve/activity?email=${encodeURIComponent(email)}&start=${start}&end=${end}`;
+    const url = `${API_BASE}/reserve/activity?${scopeParams()}&start=${start}&end=${end}`;
     const r = await fetch(url);
     if (!r.ok) {
       document.getElementById('activityPanel').innerHTML =
@@ -380,16 +392,14 @@
 
   document.getElementById('dateRange').addEventListener('change', loadActivity);
   document.getElementById('exportCsv').addEventListener('click', () => {
-    const params = ZOHO.CREATOR.UTIL.getInitParams();
     const { start, end } = getDateRange();
     const tab = document.querySelector('.tab.active')?.dataset.tab || 'cash';
-    window.open(`${API_BASE}/reserve/export/csv?email=${encodeURIComponent(params.loginUser)}&start=${start}&end=${end}&tab=${tab}`);
+    window.open(`${API_BASE}/reserve/export/csv?${scopeParams()}&start=${start}&end=${end}&tab=${tab}`);
   });
   document.getElementById('exportPdf').addEventListener('click', () => {
-    const params = ZOHO.CREATOR.UTIL.getInitParams();
     const { start, end } = getDateRange();
     const tab = document.querySelector('.tab.active')?.dataset.tab || 'cash';
-    window.open(`${API_BASE}/reserve/export/pdf?email=${encodeURIComponent(params.loginUser)}&start=${start}&end=${end}&tab=${tab}`);
+    window.open(`${API_BASE}/reserve/export/pdf?${scopeParams()}&start=${start}&end=${end}&tab=${tab}`);
   });
 
   loadActivity();

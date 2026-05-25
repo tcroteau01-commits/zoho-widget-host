@@ -305,6 +305,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 }
 .flag-row .count.warn { color: var(--of-amber-text); background: #fff4e0; }
 .flag-row .count.bad  { color: var(--of-red-text); background: var(--of-red-soft); }
+.flag-label { font-weight: 600; color: var(--of-charcoal); }
+.flag-exp { color: var(--of-gray-700); font-size: 12px; margin-left: 6px; }
 
 /* Decision History timeline */
 .history-timeline { display: flex; flex-direction: column; gap: 0; }
@@ -508,11 +510,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <span class="current">Risk Profile</span>
   </div>
 
-  <!-- Re-review banner -->
-  <div class="review-banner">
+  <!-- Re-review banner (data-driven; hidden by default) -->
+  <div id="cp-review-banner" class="review-banner" style="display:none">
     <div class="review-banner-text">
-      ⚠ This carrier needs review — <strong>Insurance pending cancellation</strong> detected 3 days ago.
-      <span class="meta">Last decision: Approve with Caution on Feb 12, 2026 by Sarah K. · 4 loads tendered since</span>
+      <span id="cp-review-banner-text"></span>
     </div>
     <button class="review-cta">Document New Decision</button>
   </div>
@@ -534,7 +535,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <!-- Sync bar -->
   <div class="sync-bar">
-    <div>Last refreshed: <strong>2 hours ago</strong> · <span class="fresh">Data current</span> · Sources: CarrierOK · FMCSA · IPQS · FedACH · OperFi Network</div>
+    <div><span class="fresh">Live data</span> · Sources: CarrierOK · FMCSA · IPQS · FedACH · OperFi Network</div>
     <button class="refresh-btn">↻ Refresh all data</button>
   </div>
 
@@ -543,7 +544,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div id="cp-recommendation" class="rec-left">
       <div class="rec-label">System Recommendation</div>
       <div class="rec-verdict"></div>
-      <ul class="rec-reasons"></ul>
+      <ul id="cp-rec-reasons" class="rec-reasons"></ul>
       <div class="rec-meta"></div>
     </div>
   </div>
@@ -691,7 +692,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   </div>
 
   <div class="footer-note">
-    Data sourced from CarrierOK, FMCSA, IPQualityScore, FedACH Directory, and OperFi Network · Last full refresh: 2 hours ago<br>
+    Data sourced from CarrierOK, FMCSA, IPQualityScore, FedACH Directory, and OperFi Network · Live data<br>
     Risk profile is informational. Final booking decisions are at the broker's discretion. Decisions and snapshots are retained for audit purposes per Montgomery v. Caribe Transport II (2026) due diligence requirements.
   </div>
 
@@ -748,6 +749,7 @@ function boot() {
 }
 
 function loadProfile() {
+  var ee=document.getElementById('cp-error'); if(ee){ee.style.display='none';ee.textContent='';}
   showLoading(true);
   var qs = new URLSearchParams({ email: brokerEmail, vendor_id: vendorId });
   fetch(BROKER_API_BASE + '/carrier-profile?' + qs.toString())
@@ -842,6 +844,20 @@ function renderRecommendation(p){
   var metaEl=el.querySelector('.rec-meta');
   if(verdictEl) verdictEl.innerHTML='<span class="rec-icon">'+(REC_ICON[rec]||'◐')+'</span> '+esc(rec);
   if(metaEl) metaEl.textContent='Engine: risk_model · Based on the flags below';
+  var reasonsList=document.getElementById('cp-rec-reasons');
+  if(reasonsList){
+    var allFlags=(p.risk&&p.risk.flags)||[];
+    var SRANK={"Critical":3,"High":2,"Medium":1,"Low":0};
+    var sorted=allFlags.slice().sort(function(a,b){
+      return (SRANK[b.severity]||0)-(SRANK[a.severity]||0);
+    });
+    var top=sorted.slice(0,4);
+    if(top.length){
+      reasonsList.innerHTML=top.map(function(f){ return '<li>'+esc(f.label)+'</li>'; }).join('');
+    } else {
+      reasonsList.innerHTML='<li>No risk flags detected.</li>';
+    }
+  }
 }
 
 // ── Litigation Defense Checklist ───────────────────────────────────────────
@@ -976,18 +992,26 @@ function renderDecisionState(p){
   var av=p.account_vendor;
   var pill=document.getElementById('cp-decision-pill');
   var meta=document.getElementById('cp-decision-meta');
+  var banner=document.getElementById('cp-review-banner');
+  var bannerText=document.getElementById('cp-review-banner-text');
   if(!av){
-    if(pill) pill.innerHTML='<span class="decision-state-pill">No relationship yet</span>';
+    if(pill){ pill.className='decision-state-pill'; pill.textContent='No relationship yet'; }
     if(meta) meta.textContent='Tender a load to this carrier to enable decision capture.';
+    if(banner) banner.style.display='none';
     return;
   }
   var hd=av.Hiring_Decision||'Not Reviewed';
   var cls=av.Broker_DNU?'bad':(av.Needs_Re_Review?'need-review':(hd==='Approve'?'approved':'caution'));
-  if(pill) pill.innerHTML='<span class="decision-state-pill '+cls+'">'+esc(hd)+'</span>'+
-    (av.Needs_Re_Review?' <span class="decision-state-pill need-review">Needs Re-review</span>':'');
+  if(pill){ pill.className='decision-state-pill '+cls; pill.textContent=hd; }
   if(meta) meta.textContent='Last decision: '+esc(hd)+
     (av.Last_Reviewed_By?' by '+esc(av.Last_Reviewed_By):'')+
     ' · '+esc(av.Loads_Tendered_Count||0)+' loads tendered';
+  if(av.Needs_Re_Review){
+    if(banner) banner.style.display='flex';
+    if(bannerText) bannerText.textContent=esc(av.Re_Review_Reason||'This carrier is flagged for re-review.');
+  } else {
+    if(banner) banner.style.display='none';
+  }
 }
 
 function renderDecisionHistory(p){
@@ -1023,6 +1047,10 @@ function notesRequired(decision, systemRec){
 }
 function openDecisionModal(){
   if(!profilePayload||!profilePayload.account_vendor) return;
+  selectedDecision=null;
+  Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(o){ o.classList.remove('selected'); });
+  var notesEl=document.getElementById('cp-notes'); if(notesEl) notesEl.value='';
+  var reqEl=document.querySelector('.modal-notes-label .req'); if(reqEl) reqEl.style.display='none';
   var m=document.getElementById('cp-modal'); if(m) m.style.display='block';
 }
 function closeDecisionModal(){
@@ -1051,9 +1079,15 @@ function submitDecision(){
   var data=buildDecisionPayload();
   var sb=document.getElementById('cp-submit'); if(sb) sb.disabled=true;
   resolveBrokerContactId().then(function(cid){
-    if(cid) data.Reviewed_By=cid;
+    if(!cid){
+      if(fb) fb.textContent='Could not resolve your contact — cannot record decision. Contact OperFi.';
+      if(sb) sb.disabled=false;
+      return;
+    }
+    data.Reviewed_By=cid;
     return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}});
   }).then(function(res){
+    if(!res) return;
     if(sb) sb.disabled=false;
     if(res&&(res.code===3000||(res.result&&res.result.length))){ closeDecisionModal(); loadProfile(); }
     else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }

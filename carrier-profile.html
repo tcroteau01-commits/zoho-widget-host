@@ -763,10 +763,211 @@ function renderProfile(p) {
   renderDecisionState(p); renderDecisionHistory(p); wireDecisionCapture(p);
 }
 
-// Stubs filled in later tasks — defined now so renderProfile never throws.
-function renderHero(p){} function renderRiskStrip(p){} function renderRecommendation(p){}
-function renderLitigation(p){} function renderAuthority(p){} function renderInsurance(p){}
-function renderSafety(p){} function renderCrash(p){} function renderStability(p){}
+// ── Helpers ────────────────────────────────────────────────────────────────
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+var REC_ICON = {"Approve":"✓","Approve with Caution":"◐","Hold":"⏸","Decline":"✕"};
+var FLAG_CATEGORIES = ["Authority and Compliance","Identity and Signup Fraud","Insurance","Operations and Safety","Payment and Internal"];
+function flagsByCategory(p, cat){ return ((p.risk && p.risk.flags) || []).filter(function(f){ return f.category === cat; }); }
+function worstSeverity(flags){ var rank={"Low":0,"Medium":1,"High":2,"Critical":3},w=-1; flags.forEach(function(f){ if(rank[f.severity]>w) w=rank[f.severity]; }); return w; }
+function _num(v){ return (v==null||v==='')?null:Number(v); }
+function renderFlagRow(f){
+  return '<div class="flag-row sev-'+esc(f.severity).toLowerCase()+'">'+
+    '<span class="flag-label">'+esc(f.label)+'</span>'+
+    '<span class="flag-exp">'+esc(f.explanation)+'</span></div>';
+}
+
+// ── Hero ───────────────────────────────────────────────────────────────────
+function renderHero(p){
+  var v=p.vendor||{};
+  var nameEl=document.querySelector('#cp-hero .hero-name');
+  var metaEl=document.querySelector('#cp-hero .hero-meta');
+  if(nameEl) nameEl.textContent=v.Vendor_Name||v.Name1||'Carrier';
+  if(metaEl) metaEl.innerHTML=
+    '<span class="key">USDOT</span> '+esc(v.USDOT||'—')+
+    '<span class="sep">·</span>'+
+    '<span class="key">MC</span> '+esc(v.MC||'—')+
+    (v.Physical_State ? '<span class="sep">·</span>'+esc(v.Physical_State) : '');
+}
+
+// ── Risk strip + KPI row ───────────────────────────────────────────────────
+function renderKpiRow(container, vals){
+  // Targets each .kpi card by order; reads label to confirm, then sets .kpi-value text.
+  var cards=container.querySelectorAll('.kpi');
+  var map=[
+    {label:'FMCSA Safety Rating', value:vals.safety,   sub:vals.safetySub||''},
+    {label:'CarrierOK Risk Score',value:vals.riskScore, sub:vals.riskScoreSub||''},
+    {label:'Insurance Status',    value:vals.insurance, sub:vals.insuranceSub||''},
+    {label:'IPQS Risk Level',     value:vals.ipqs,      sub:vals.ipqsSub||''}
+  ];
+  for(var i=0;i<cards.length&&i<map.length;i++){
+    var vEl=cards[i].querySelector('.kpi-value');
+    var sEl=cards[i].querySelector('.kpi-sub');
+    if(vEl) vEl.textContent=map[i].value;
+    if(sEl) sEl.textContent=map[i].sub;
+  }
+}
+
+function renderRiskStrip(p){
+  var tier=(p.risk&&p.risk.tier)||'Low';
+  var tierClass={Low:'low',Medium:'med',High:'high'}[tier]||'med';
+  var badge=document.getElementById('cp-risk-strip');
+  if(badge){
+    badge.className='verdict-badge '+tierClass;
+    badge.textContent=tier+' Risk';
+  }
+  var kpi=document.getElementById('cp-kpi-row');
+  if(kpi){
+    var co=p.carrierok||{};
+    var rf=(co.risk_factors&&co.risk_factors[0])||{};
+    var prob=_num(rf.risk_score_probability);
+    var safetyRating=esc(co.safety_rating||p.fmcsa_safety_rating||'—');
+    var riskScore=prob!=null?(prob*100).toFixed(0)+'%':'—';
+    var insStatus=esc(co.indicator_insurance||'—');
+    renderKpiRow(kpi,{
+      safety: safetyRating, safetySub: co.safety_rating_date?'As of '+esc(co.safety_rating_date):'FMCSA',
+      riskScore: riskScore, riskScoreSub: 'Probability of default',
+      insurance: insStatus, insuranceSub: co.pending_insurance_cancellation?'⚠ Cancellation pending':'FMCSA',
+      ipqs: 'Pending', ipqsSub: 'IPQS not yet wired'
+    });
+  }
+}
+
+// ── Recommendation ─────────────────────────────────────────────────────────
+function renderRecommendation(p){
+  var el=document.getElementById('cp-recommendation'); if(!el) return;
+  var rec=p.system_recommendation||'Hold';
+  var verdictEl=el.querySelector('.rec-verdict');
+  var metaEl=el.querySelector('.rec-meta');
+  if(verdictEl) verdictEl.innerHTML='<span class="rec-icon">'+(REC_ICON[rec]||'◐')+'</span> '+esc(rec);
+  if(metaEl) metaEl.textContent='Engine: risk_model · Based on the flags below';
+}
+
+// ── Litigation Defense Checklist ───────────────────────────────────────────
+function renderLitigation(p){
+  var el=document.getElementById('cp-litigation'); if(!el) return;
+  el.innerHTML=FLAG_CATEGORIES.map(function(cat){
+    var fl=flagsByCategory(p,cat), w=worstSeverity(fl);
+    var iconCls,iconChar,pillCls,pillText;
+    if(w<0){     iconCls='good';iconChar='✓';pillCls='good';pillText='Clear'; }
+    else if(w>=2){iconCls='bad'; iconChar='✕';pillCls='bad'; pillText=w===3?'Critical':'High'; }
+    else{         iconCls='warn';iconChar='!';pillCls='warn';pillText='Caution'; }
+    return '<div class="check-row">'+
+      '<span class="check-icon '+iconCls+'">'+iconChar+'</span>'+
+      '<div class="check-text"><span class="q">'+esc(cat)+'</span>'+
+        (fl.length?'<span class="a">'+fl.length+' flag'+(fl.length>1?'s':'')+'</span>':'<span class="a">No issues found</span>')+
+      '</div>'+
+      '<span class="check-pill '+pillCls+'">'+pillText+'</span>'+
+    '</div>';
+  }).join('');
+}
+
+// ── Authority ──────────────────────────────────────────────────────────────
+function renderAuthority(p){
+  var el=document.getElementById('cp-authority'); if(!el) return;
+  var co=p.carrierok||{};
+  var rows=[
+    {label:'Common Authority', source:'CarrierOK', val:co.authority_common, good:'Active',bad:'Inactive'},
+    {label:'Contract Authority',source:'CarrierOK', val:co.authority_contract,good:'Active',bad:'Inactive'},
+    {label:'DOT Age (days)',   source:'FMCSA',     val:co.dot_age!=null?String(co.dot_age):null, good:null,bad:null}
+  ];
+  var flags=flagsByCategory(p,'Authority and Compliance');
+  el.innerHTML=rows.map(function(r){
+    var val=r.val!=null?r.val:'—';
+    var pillCls=r.good&&r.bad?(val===r.good?'good':val===r.bad?'bad':'neutral'):'neutral';
+    return '<div class="ind-row">'+
+      '<span class="ind-label">'+esc(r.label)+'</span>'+
+      '<span class="ind-source">'+esc(r.source)+'</span>'+
+      '<span class="ind-pill '+pillCls+'">'+esc(val)+'</span>'+
+    '</div>';
+  }).join('')+
+  (flags.length?flags.map(renderFlagRow).join(''):'<p style="color:var(--of-gray-500);font-size:12px;margin-top:8px;">No authority flags.</p>');
+}
+
+// ── Insurance ──────────────────────────────────────────────────────────────
+function renderInsurance(p){
+  var el=document.getElementById('cp-insurance'); if(!el) return;
+  var co=p.carrierok||{};
+  var histCount=Array.isArray(co.insurance_history)?co.insurance_history.length:0;
+  var rows=[
+    {label:'Insurance Indicator',    source:'FMCSA', val:co.indicator_insurance, good:'Active',bad:'Inactive'},
+    {label:'Pending Cancellation',   source:'FMCSA', val:co.pending_insurance_cancellation?'Yes':'No', good:'No',bad:'Yes'},
+    {label:'Insurance History Items',source:'FMCSA', val:histCount>0?String(histCount):'None', good:null,bad:null}
+  ];
+  var flags=flagsByCategory(p,'Insurance');
+  el.innerHTML=rows.map(function(r){
+    var val=r.val!=null?r.val:'—';
+    var pillCls=r.good&&r.bad?(val===r.good?'good':val===r.bad?'bad':'neutral'):'neutral';
+    return '<div class="ind-row">'+
+      '<span class="ind-label">'+esc(r.label)+'</span>'+
+      '<span class="ind-source">'+esc(r.source)+'</span>'+
+      '<span class="ind-pill '+pillCls+'">'+esc(val)+'</span>'+
+    '</div>';
+  }).join('')+
+  (flags.length?flags.map(renderFlagRow).join(''):'<p style="color:var(--of-gray-500);font-size:12px;margin-top:8px;">No insurance flags.</p>');
+}
+
+// ── Safety ─────────────────────────────────────────────────────────────────
+function renderSafety(p){
+  var el=document.getElementById('cp-safety'); if(!el) return;
+  var co=p.carrierok||{};
+  var selfPct=_num(co.inspections_driver_out_of_service_pct);
+  var avgPct=_num(co.natl_avg_oos_driver);
+  var units=_num(co.total_power_units);
+  var flags=flagsByCategory(p,'Operations and Safety');
+  var selfStr=selfPct!=null?selfPct.toFixed(1)+'%':'—';
+  var avgStr=avgPct!=null?avgPct.toFixed(1)+'%':'—';
+  var barPct=selfPct!=null&&avgPct!=null?Math.min(selfPct/Math.max(avgPct*2,0.01)*100,100):0;
+  var barCls=selfPct!=null&&avgPct!=null?(selfPct<=avgPct?'good':'bad'):'';
+  var avgPos=50;
+  el.innerHTML=
+    '<div class="stat-grid two" style="margin-bottom:16px;">'+
+      '<div class="stat"><div class="stat-label">Driver OOS %</div>'+
+        '<div class="stat-val '+(barCls||'')+'">'+esc(selfStr)+'</div>'+
+        '<div class="stat-sub">Carrier rate</div></div>'+
+      '<div class="stat"><div class="stat-label">National Avg OOS %</div>'+
+        '<div class="stat-val">'+esc(avgStr)+'</div>'+
+        '<div class="stat-sub">FMCSA benchmark</div></div>'+
+    '</div>'+
+    (selfPct!=null&&avgPct!=null?
+      '<div class="bench">'+
+        '<div class="bench-label"><span>Driver OOS vs National Avg</span><span>'+esc(selfStr)+'</span></div>'+
+        '<div class="bench-bars">'+
+          '<div class="bench-fill-self '+barCls+'" style="width:'+barPct.toFixed(1)+'%">'+esc(selfStr)+'</div>'+
+          '<div class="bench-marker" style="left:'+avgPos+'%"></div>'+
+        '</div>'+
+      '</div>':'')+
+    (units!=null?'<div style="margin-top:12px;font-size:12px;color:var(--of-gray-700);">Power units: <strong>'+esc(String(units))+'</strong></div>':'')+
+    (flags.length?'<div style="margin-top:12px;">'+flags.map(renderFlagRow).join('')+'</div>':'<p style="color:var(--of-gray-500);font-size:12px;margin-top:12px;">No safety flags.</p>');
+}
+
+// ── Crash ──────────────────────────────────────────────────────────────────
+function renderCrash(p){
+  var el=document.getElementById('cp-crash'); if(!el) return;
+  var co=p.carrierok||{};
+  var total=_num(co.crash_total), fatal=_num(co.crash_fatalities), inj=_num(co.crash_injuries);
+  var tow=total!=null&&fatal!=null&&inj!=null?_num(total-fatal-inj):null;
+  function crashCard(num,label){
+    var n=num!=null?String(num):'—';
+    var cls=num!=null&&num>0?(label==='Total'||label==='Injuries'?'warn':'bad'):'good';
+    return '<div class="crash-card"><div class="crash-num '+cls+'">'+esc(n)+'</div><div class="crash-label">'+esc(label)+'</div></div>';
+  }
+  el.innerHTML=
+    crashCard(total,'Total')+
+    crashCard(fatal,'Fatalities')+
+    crashCard(inj,'Injuries')+
+    crashCard(tow,'Tow-Away');
+}
+
+// ── Stability ──────────────────────────────────────────────────────────────
+function renderStability(p){
+  var el=document.getElementById('cp-stability'); if(!el) return;
+  var flags=flagsByCategory(p,'Identity and Signup Fraud');
+  el.innerHTML=flags.length
+    ? flags.map(renderFlagRow).join('')
+    : '<p style="color:var(--of-gray-500);font-size:12px;padding:4px 0;">No identity/stability flags.</p>';
+}
+
+// ── Decision state / history / capture — stubs (wired in next task) ────────
 function renderDecisionState(p){} function renderDecisionHistory(p){} function wireDecisionCapture(p){}
 
 document.addEventListener('DOMContentLoaded', boot);

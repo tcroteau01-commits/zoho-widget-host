@@ -3,990 +3,1123 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Carrier Profile</title>
+<title>Carrier Risk Profile — v2 Mock</title>
 <style>
+:root {
+  --of-beige: #f0efe9;
+  --of-beige-soft: #fafaf6;
+  --of-beige-line: #e6e3da;
+  --of-charcoal: #272727;
+  --of-charcoal-soft: #444;
+  --of-gray-500: #888;
+  --of-gray-700: #555;
+  --of-gray-100: #f5f5f0;
+  --of-orange: #e8a020;
+  --of-orange-soft: #f5a623;
+  --of-green: #2e7d32;
+  --of-green-text: #1f6321;
+  --of-green-soft: #e3f4e3;
+  --of-amber: #f5a623;
+  --of-amber-text: #b86e00;
+  --of-amber-soft: #fff8e1;
+  --of-red: #c62828;
+  --of-red-text: #a31818;
+  --of-red-soft: #fde4e4;
+  --of-blue-text: #1a5fb4;
+  --of-blue-soft: #e3edfb;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh;
-}
-.widget { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: var(--of-beige); color: var(--of-charcoal); min-height: 100vh; }
+.page { max-width: 1320px; margin: 0 auto; padding: 20px 24px 110px; }
 
-.card {
-  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
-  padding: 20px; margin-bottom: 14px;
-}
+/* Breadcrumb */
+.breadcrumb { font-size: 12px; color: var(--of-gray-500); margin-bottom: 12px; }
+.breadcrumb a { color: var(--of-gray-500); text-decoration: none; font-weight: 600; }
+.breadcrumb a:hover { color: var(--of-charcoal); }
+.breadcrumb .sep { margin: 0 6px; opacity: 0.5; }
+.breadcrumb .current { color: var(--of-charcoal); font-weight: 600; }
 
-.hero h1 {
-  font-size: 26px; font-weight: 700; color: #272727;
-  letter-spacing: -0.3px; margin-bottom: 6px;
-}
-.hero .meta { font-size: 13px; color: #777; }
-
-.state { text-align: center; padding: 40px 20px; color: #888; font-size: 13px; }
-.state.error { color: #a31818; }
-.spinner {
-  display: inline-block; width: 16px; height: 16px;
-  border: 2px solid #e6e3da; border-top-color: #888;
-  border-radius: 50%; animation: spin 0.8s linear infinite;
-  vertical-align: middle; margin-right: 8px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.placeholder { color: #aaa; font-size: 12px; font-style: italic; }
-
-.hero-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-.hero-pills { display: flex; gap: 8px; flex-wrap: wrap; }
-
-.pill { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.pill-success { background: #ddf7e3; color: #0a7a2a; }
-.pill-danger  { background: #fde2e1; color: #b00020; }
-.pill-warning { background: #fff3cd; color: #8a5b00; }
-.pill-info    { background: #d8eaff; color: #0a4a93; }
-.pill-neutral { background: #eee; color: #444; }
-
-.risk-strip-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.tier {
-  padding: 6px 14px; border-radius: 6px; font-weight: 700;
-  font-size: 13px; letter-spacing: 0.3px; text-transform: uppercase;
-}
-.tier-critical { background: #b00020; color: #fff; }
-.tier-high     { background: #e58200; color: #fff; }
-.tier-medium   { background: #c69500; color: #fff; }
-.tier-low      { background: #0a7a2a; color: #fff; }
-.risk-counts { color: #666; font-size: 13px; }
-
-.risk-flags h2 { font-size: 16px; margin-bottom: 12px; color: #272727; letter-spacing: -0.1px; }
-.risk-flags h3 {
-  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
-  color: #888; margin: 18px 0 6px; font-weight: 700;
-}
-.risk-flags h3:first-of-type { margin-top: 0; }
-.risk-flags .no-flags { color: #0a7a2a; font-weight: 600; }
-
-.flag-row {
-  display: flex; gap: 12px; padding: 12px 0;
-  border-top: 1px solid #f0efe9;
-}
-.flag-row:first-of-type { border-top: none; padding-top: 4px; }
-.flag-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
-.flag-critical .flag-dot { background: #b00020; }
-.flag-high     .flag-dot { background: #e58200; }
-.flag-medium   .flag-dot { background: #c69500; }
-.flag-low      .flag-dot { background: #0a7a2a; }
-.flag-label { font-weight: 600; color: #272727; }
-.flag-sev {
-  font-size: 11px; color: #666; margin-left: 8px;
-  text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600;
-}
-.flag-explanation { color: #555; font-size: 13px; margin-top: 2px; }
-.flag-data { color: #999; font-size: 11px; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-
-.section h2 { font-size: 16px; margin-bottom: 12px; color: #272727; letter-spacing: -0.1px; }
-.section .empty { color: #999; font-size: 13px; }
-.timeline-row {
-  padding: 10px 0; border-top: 1px solid #f0efe9;
-  display: flex; flex-direction: column; gap: 2px;
-}
-.timeline-row:first-child { border-top: none; padding-top: 0; }
-.timeline-row .title { font-weight: 600; color: #272727; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.timeline-row .sub { color: #666; font-size: 13px; }
-.auth-revoked { color: #b00020; font-weight: 600; }
-.auth-active  { color: #0a7a2a; font-weight: 600; }
-
-.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.data-table th {
-  font-size: 11px; font-weight: 700; color: #888;
-  text-transform: uppercase; letter-spacing: 0.5px; text-align: left;
-  padding: 8px 10px; background: #fafaf6; border-bottom: 1px solid #f0efe9;
-}
-.data-table td { padding: 10px; border-bottom: 1px solid #f5f3eb; color: #444; vertical-align: top; }
-.data-table tr:last-child td { border-bottom: 0; }
-.data-table .yes { color: #b00020; font-weight: 600; }
-.data-table .no  { color: #999; }
-.data-table .num-bad { color: #b00020; font-weight: 700; }
-.data-table .num-zero { color: #999; }
-.empty-good { color: #0a7a2a; font-weight: 600; }
-
-.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
-@media (max-width: 720px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
-.kpi {
-  background: #fafaf6; border: 1px solid #e6e3da; border-radius: 8px;
-  padding: 12px 14px; position: relative; overflow: hidden;
-}
-.kpi::before {
-  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-  background: #888;
-}
-.kpi.drivers::before    { background: #1976d2; }
-.kpi.units::before      { background: #0a7a2a; }
-.kpi.inspections::before { background: #e8a020; }
-.kpi.violations::before { background: #b00020; }
-.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; font-weight: 600; }
-.kpi-value { font-size: 22px; font-weight: 700; color: #272727; margin-top: 4px; letter-spacing: -0.3px; }
-
-.oos-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 0; border-top: 1px solid #f0efe9; font-size: 13px;
-}
-.oos-row:first-of-type { border-top: none; }
-.oos-label { color: #555; }
-.oos-vals { display: flex; gap: 14px; align-items: center; }
-.oos-carrier { font-weight: 700; font-size: 15px; }
-.oos-carrier.above { color: #b00020; }
-.oos-carrier.below { color: #0a7a2a; }
-.oos-natl { color: #888; font-size: 12px; }
-
-.signal-row {
+/* Re-review banner (conditional) */
+.review-banner {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 0; border-top: 1px solid #f0efe9; font-size: 13px;
+  background: linear-gradient(90deg, #fff4e0 0%, #fff8e1 100%);
+  border: 1px solid #f5d889;
+  border-left: 4px solid var(--of-amber);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
 }
-.signal-row:first-of-type { border-top: none; padding-top: 0; }
-.signal-label { color: #444; }
-.signal-value { display: flex; align-items: center; gap: 6px; font-weight: 600; }
-.signal-icon { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
-.signal-good { color: #0a7a2a; }
-.signal-good .signal-icon { background: #ddf7e3; color: #0a7a2a; }
-.signal-bad  { color: #b00020; }
-.signal-bad .signal-icon { background: #fde2e1; color: #b00020; }
-.signal-neutral { color: #888; }
-.signal-neutral .signal-icon { background: #eee; color: #888; }
+.review-banner-text { font-size: 13px; color: var(--of-amber-text); font-weight: 600; line-height: 1.4; }
+.review-banner-text strong { color: var(--of-charcoal); }
+.review-banner-text .meta { color: var(--of-gray-700); font-weight: 500; font-size: 12px; margin-top: 2px; display: block; }
+.review-cta {
+  background: var(--of-charcoal); color: #fff; border: none; border-radius: 8px;
+  padding: 9px 16px; font-size: 12px; font-weight: 700; cursor: pointer;
+  letter-spacing: 0.3px;
+}
 
-.kv-row {
-  display: flex; justify-content: space-between; gap: 16px;
-  padding: 9px 0; border-top: 1px solid #f0efe9; font-size: 13px;
+/* Hero */
+.hero {
+  background: var(--of-charcoal); color: #fff; border-radius: 14px;
+  padding: 24px 28px;
+  display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center;
+  margin-bottom: 14px;
 }
-.kv-row:first-of-type { border-top: none; padding-top: 0; }
-.kv-label { color: #888; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-.kv-value { color: #272727; font-weight: 600; text-align: right; }
-.kv-value .pill { margin-left: 4px; }
-.kv-notes { color: #555; font-style: italic; }
+.hero-left { display: flex; flex-direction: column; gap: 6px; }
+.hero-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.5); font-weight: 700; }
+.hero-name { font-size: 26px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.1; }
+.hero-meta { display: flex; gap: 14px; font-size: 13px; color: rgba(255,255,255,0.7); flex-wrap: wrap; margin-top: 4px; }
+.hero-meta .sep { color: rgba(255,255,255,0.3); }
+.hero-meta .key { color: var(--of-orange); font-weight: 600; }
 
-.action-bar {
-  display: flex; gap: 10px; justify-content: flex-end; align-items: center;
-  flex-wrap: wrap;
+.verdict { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.verdict-badge {
+  padding: 8px 18px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  display: inline-flex; align-items: center; gap: 8px;
 }
-.btn {
-  padding: 10px 18px; border-radius: 8px; border: 1px solid transparent;
-  font-weight: 600; font-size: 14px; cursor: pointer; font-family: inherit;
-  transition: all 0.15s;
+.verdict-badge::before {
+  content: ''; width: 10px; height: 10px; border-radius: 50%;
+  background: currentColor; box-shadow: 0 0 0 4px currentColor; opacity: 0.4;
 }
-.btn-primary { background: #272727; color: #fff; }
-.btn-primary:hover:not(:disabled) { background: #1a1a1a; }
-.btn-secondary { background: #fff; color: #272727; border-color: #d8d8d8; }
-.btn-secondary:hover:not(:disabled) { background: #fafaf6; border-color: #b8b8b8; }
-.btn:disabled, .btn-disabled { background: #f5f3eb; color: #aaa; cursor: not-allowed; border-color: transparent; }
-.btn-gate-msg { font-size: 12px; color: #888; margin-right: 4px; }
+.verdict-badge.low { background: rgba(46,125,50,0.18); color: #6dcf6d; }
+.verdict-badge.med { background: rgba(245,166,35,0.18); color: var(--of-amber); }
+.verdict-badge.high { background: rgba(198,40,40,0.18); color: #ff7a7a; }
 
-.modal { position: fixed; inset: 0; z-index: 1000; display: none; }
-.modal.show { display: block; }
-.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.4); }
-.modal-body {
-  position: relative; max-width: 560px; margin: 60px auto;
-  background: #fff; padding: 24px; border-radius: 12px;
-  max-height: 80vh; overflow-y: auto;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+.decision-state-pill {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+  padding: 5px 12px; border-radius: 6px;
+  background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85);
+  border: 1px solid rgba(255,255,255,0.15);
+  display: inline-flex; align-items: center; gap: 6px;
 }
-.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.modal-head h2 { margin: 0; font-size: 18px; color: #272727; }
-.modal-close { background: none; border: none; font-size: 28px; cursor: pointer; color: #888; line-height: 1; padding: 0 4px; }
-.modal-close:hover { color: #272727; }
-.modal-sub { color: #666; font-size: 13px; margin-bottom: 16px; }
+.decision-state-pill .icon { font-size: 13px; }
+.decision-state-pill.need-review { background: rgba(245,166,35,0.18); color: #fbc77f; border-color: rgba(245,166,35,0.3); }
+.decision-state-pill.approved { background: rgba(46,125,50,0.2); color: #8fd690; border-color: rgba(46,125,50,0.3); }
+.decision-state-pill.caution { background: rgba(245,166,35,0.18); color: #fbc77f; border-color: rgba(245,166,35,0.3); }
+.decision-state-pill.bad { background: rgba(198,40,40,0.22); color: #ff9a9a; border-color: rgba(198,40,40,0.35); }
 
-.noa-picker { display: flex; gap: 8px; margin-bottom: 16px; }
-.noa-pick {
-  flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #d8d8d8;
-  background: #fff; cursor: pointer; text-align: center; font-weight: 600;
-  font-family: inherit; font-size: 14px; transition: all 0.15s;
+/* Sync bar */
+.sync-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px;
+  background: var(--of-beige-soft); border: 1px solid var(--of-beige-line);
+  border-radius: 10px; margin-bottom: 16px;
+  font-size: 12px; color: var(--of-gray-700);
 }
-.noa-pick:hover { border-color: #b8b8b8; }
-.noa-pick.active { background: #272727; color: #fff; border-color: #272727; }
+.sync-bar .fresh { color: var(--of-green-text); font-weight: 600; }
+.sync-bar .stale { color: var(--of-amber-text); font-weight: 600; }
+.refresh-btn {
+  background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal);
+  border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.3px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  font-family: inherit;
+}
+.refresh-btn:hover { background: var(--of-beige); }
 
-.noa-fields label { display: block; margin: 10px 0; font-size: 13px; color: #444; font-weight: 600; }
-.noa-fields input, .noa-fields textarea, .noa-fields select {
-  display: block; width: 100%; padding: 9px 11px; margin-top: 4px;
-  border: 1px solid #d8d8d8; border-radius: 6px; font-size: 13px;
-  font-family: inherit; background: #fafaf6;
+/* Recommendation card */
+.recommendation {
+  background: #fff; border: 1px solid var(--of-beige-line); border-left: 4px solid var(--of-amber);
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin-bottom: 14px;
+  display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: start;
 }
-.noa-fields textarea { min-height: 80px; resize: vertical; }
-.noa-fields input:focus, .noa-fields textarea:focus, .noa-fields select:focus {
-  border-color: #272727; background: #fff; outline: none;
-}
-.noa-submit-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-.noa-error { color: #b00020; font-size: 13px; margin-top: 8px; }
-.noa-success { color: #0a7a2a; font-size: 13px; margin-top: 8px; font-weight: 600; }
+.rec-left { min-width: 0; }
+.rec-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--of-gray-500); font-weight: 700; margin-bottom: 4px; }
+.rec-verdict { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; color: var(--of-charcoal); line-height: 1.1; margin-bottom: 10px; }
+.rec-verdict .rec-icon { color: var(--of-amber); margin-right: 6px; }
+.rec-reasons { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.rec-reasons li { font-size: 13px; color: var(--of-charcoal-soft); padding-left: 18px; position: relative; line-height: 1.5; }
+.rec-reasons li::before { content: '▸'; position: absolute; left: 0; color: var(--of-amber); font-weight: 700; }
+.rec-meta { font-size: 11px; color: var(--of-gray-500); margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--of-beige-line); }
 
-.footer-version {
-  text-align: right; font-size: 10px; color: #bbb; padding: 10px 8px 0;
+/* KPI strip */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+.kpi {
+  background: #fff; border: 1px solid var(--of-beige-line); border-radius: 12px;
+  padding: 16px 20px; position: relative; overflow: hidden;
+}
+.kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--of-orange); }
+.kpi.good::before { background: var(--of-green); }
+.kpi.warn::before { background: var(--of-amber); }
+.kpi.bad::before  { background: var(--of-red); }
+.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--of-gray-500); font-weight: 700; margin-bottom: 6px; }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--of-charcoal); letter-spacing: -0.4px; line-height: 1; }
+.kpi-value.good { color: var(--of-green-text); }
+.kpi-value.warn { color: var(--of-amber-text); }
+.kpi-value.bad  { color: var(--of-red-text); }
+.kpi-sub { font-size: 11px; color: var(--of-gray-700); margin-top: 6px; line-height: 1.4; }
+
+/* Section card + title */
+.card { background: #fff; border: 1px solid var(--of-beige-line); border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
+.card-title {
+  font-size: 11px; font-weight: 700; color: var(--of-charcoal);
+  text-transform: uppercase; letter-spacing: 0.7px;
+  padding-bottom: 10px; margin-bottom: 16px;
+  border-bottom: 2px solid var(--of-orange);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.card-title .tag {
+  background: var(--of-beige); color: var(--of-gray-700);
+  border-radius: 999px; padding: 2px 9px; font-size: 10px; letter-spacing: 0.4px;
+  font-weight: 600;
+}
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.grid-2 .card { margin-bottom: 0; }
+
+/* Indicator pills */
+.indicators { display: flex; flex-direction: column; gap: 8px; }
+.ind-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 0; }
+.ind-row + .ind-row { border-top: 1px solid var(--of-gray-100); }
+.ind-label { font-size: 13px; color: var(--of-charcoal-soft); font-weight: 500; }
+.ind-source { font-size: 10px; color: var(--of-gray-500); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; }
+.ind-pill {
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap;
+}
+.ind-pill.good { background: var(--of-green-soft); color: var(--of-green-text); }
+.ind-pill.bad  { background: var(--of-red-soft); color: var(--of-red-text); }
+.ind-pill.warn { background: var(--of-amber-soft); color: #856404; }
+.ind-pill.neutral { background: var(--of-beige); color: var(--of-gray-700); }
+
+/* Litigation Defense Checklist */
+.checklist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+.check-row {
+  display: grid; grid-template-columns: auto 1fr auto;
+  align-items: start; gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--of-gray-100);
+}
+.check-icon {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; line-height: 1; flex-shrink: 0;
+}
+.check-icon.good { background: var(--of-green-soft); color: var(--of-green-text); }
+.check-icon.warn { background: var(--of-amber-soft); color: #856404; }
+.check-icon.bad  { background: var(--of-red-soft); color: var(--of-red-text); }
+.check-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.check-text .q { font-size: 13px; color: var(--of-charcoal); font-weight: 600; }
+.check-text .a { font-size: 12px; color: var(--of-gray-700); }
+.check-text .meta { font-size: 10px; color: var(--of-gray-500); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; margin-top: 2px; }
+.check-pill {
+  font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap;
+}
+.check-pill.good { background: var(--of-green-soft); color: var(--of-green-text); }
+.check-pill.warn { background: var(--of-amber-soft); color: #856404; }
+.check-pill.bad  { background: var(--of-red-soft); color: var(--of-red-text); }
+
+/* Stat grid */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 18px; }
+.stat-grid.two { grid-template-columns: 1fr 1fr; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-label { font-size: 11px; color: var(--of-gray-500); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.stat-val { font-size: 18px; font-weight: 700; color: var(--of-charcoal); letter-spacing: -0.2px; }
+.stat-val.bad { color: var(--of-red-text); }
+.stat-val.warn { color: var(--of-amber-text); }
+.stat-val.good { color: var(--of-green-text); }
+.stat-sub { font-size: 11px; color: var(--of-gray-500); }
+
+/* OOS bench bars */
+.bench { margin-top: 14px; }
+.bench + .bench { margin-top: 16px; }
+.bench-label { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--of-charcoal-soft); margin-bottom: 6px; }
+.bench-bars { position: relative; height: 22px; background: var(--of-beige); border-radius: 4px; overflow: hidden; }
+.bench-fill-self {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--of-amber); border-radius: 4px;
+  display: flex; align-items: center; padding-left: 6px;
+  font-size: 11px; color: #fff; font-weight: 700;
+}
+.bench-fill-self.good { background: var(--of-green); }
+.bench-fill-self.bad  { background: var(--of-red); }
+.bench-marker { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--of-charcoal); }
+.bench-marker::after {
+  content: 'avg'; position: absolute; top: -16px; left: -10px;
+  font-size: 9px; color: var(--of-gray-700); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+}
+
+/* Crash history */
+.crash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.crash-card { background: var(--of-beige-soft); border: 1px solid var(--of-beige-line); border-radius: 8px; padding: 12px 14px; text-align: center; }
+.crash-num { font-size: 22px; font-weight: 700; color: var(--of-charcoal); letter-spacing: -0.3px; }
+.crash-num.bad { color: var(--of-red-text); }
+.crash-num.warn { color: var(--of-amber-text); }
+.crash-num.good { color: var(--of-green-text); }
+.crash-label { font-size: 10px; color: var(--of-gray-700); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 4px; }
+
+/* Digital Footprint — IPQS */
+.ipqs-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.ipqs-channel {
+  background: var(--of-beige-soft); border: 1px solid var(--of-beige-line); border-radius: 10px;
+  padding: 14px 16px;
+}
+.ipqs-channel.warn { background: #fff8e6; border-color: #ffe082; }
+.ipqs-channel.bad  { background: #fdecec; border-color: #f3b9b9; }
+.ipqs-channel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ipqs-channel-name { font-size: 11px; color: var(--of-gray-500); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.ipqs-score-pill { font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 6px; }
+.ipqs-score-pill.good { background: var(--of-green-soft); color: var(--of-green-text); }
+.ipqs-score-pill.warn { background: var(--of-amber-soft); color: #856404; }
+.ipqs-score-pill.bad  { background: var(--of-red-soft); color: var(--of-red-text); }
+.ipqs-value { font-size: 17px; font-weight: 700; color: var(--of-charcoal); letter-spacing: -0.2px; margin-bottom: 6px; word-break: break-word; }
+.ipqs-flags { display: flex; flex-wrap: wrap; gap: 5px; }
+.ipqs-flag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+.ipqs-flag.good { background: var(--of-green-soft); color: var(--of-green-text); }
+.ipqs-flag.warn { background: var(--of-amber-soft); color: #856404; }
+.ipqs-flag.bad  { background: var(--of-red-soft); color: var(--of-red-text); }
+.ipqs-flag.neutral { background: var(--of-beige); color: var(--of-gray-700); }
+
+/* Bank-check section */
+.bank-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; align-items: stretch; }
+.bank-card { background: var(--of-beige-soft); border: 1px solid var(--of-beige-line); border-radius: 10px; padding: 14px 16px; }
+.bank-card.warn { background: #fff8e6; border-color: #ffe082; }
+.bank-card.bad  { background: #fdecec; border-color: #f3b9b9; }
+.bank-name { font-size: 16px; font-weight: 700; color: var(--of-charcoal); margin-bottom: 4px; }
+.bank-loc { font-size: 12px; color: var(--of-gray-700); }
+.bank-sub-label { font-size: 10px; color: var(--of-gray-500); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 6px; }
+.bank-mismatch {
+  background: #fde4e4; color: var(--of-red-text);
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 4px 9px; border-radius: 999px; display: inline-block; margin-top: 8px;
+}
+.bank-fingerprint-num { font-size: 22px; font-weight: 700; color: var(--of-charcoal); }
+.bank-fingerprint-num.warn { color: var(--of-amber-text); }
+.bank-fingerprint-num.bad { color: var(--of-red-text); }
+
+/* Stability */
+.flag-row {
+  display: grid; grid-template-columns: 1fr auto;
+  align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: var(--of-beige-soft); border: 1px solid var(--of-beige-line);
+  border-radius: 8px; margin-bottom: 6px;
+}
+.flag-row .label { font-size: 12px; color: var(--of-charcoal-soft); font-weight: 600; }
+.flag-row .count {
+  font-size: 14px; font-weight: 700; color: var(--of-charcoal);
+  background: #fff; border-radius: 6px; padding: 3px 12px; min-width: 36px; text-align: center;
+}
+.flag-row .count.warn { color: var(--of-amber-text); background: #fff4e0; }
+.flag-row .count.bad  { color: var(--of-red-text); background: var(--of-red-soft); }
+.flag-label { font-weight: 600; color: var(--of-charcoal); }
+.flag-exp { color: var(--of-gray-700); font-size: 12px; margin-left: 6px; }
+
+/* Decision History timeline */
+.history-timeline { display: flex; flex-direction: column; gap: 0; }
+.history-event {
+  display: grid; grid-template-columns: auto 1fr auto;
+  gap: 16px; padding: 14px 0;
+  border-bottom: 1px solid var(--of-gray-100);
+  align-items: start;
+}
+.history-event:last-child { border-bottom: none; }
+.history-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--of-orange); margin-top: 4px;
+  box-shadow: 0 0 0 4px rgba(232, 160, 32, 0.15);
+}
+.history-dot.good { background: var(--of-green); box-shadow: 0 0 0 4px rgba(46,125,50,0.12); }
+.history-dot.warn { background: var(--of-amber); box-shadow: 0 0 0 4px rgba(245,166,35,0.15); }
+.history-dot.bad  { background: var(--of-red); box-shadow: 0 0 0 4px rgba(198,40,40,0.15); }
+.history-body { display: flex; flex-direction: column; gap: 4px; }
+.history-head { font-size: 13px; font-weight: 700; color: var(--of-charcoal); }
+.history-head .pill {
+  display: inline-block; margin-left: 8px;
+  font-size: 10px; padding: 2px 8px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700;
+}
+.history-head .pill.good { background: var(--of-green-soft); color: var(--of-green-text); }
+.history-head .pill.warn { background: var(--of-amber-soft); color: #856404; }
+.history-head .pill.bad  { background: var(--of-red-soft); color: var(--of-red-text); }
+.history-meta { font-size: 11px; color: var(--of-gray-500); }
+.history-note { font-size: 12px; color: var(--of-charcoal-soft); font-style: italic; line-height: 1.5; margin-top: 4px; }
+.history-side { font-size: 11px; color: var(--of-gray-500); white-space: nowrap; padding-top: 4px; }
+.variance-badge {
+  background: #fff4e0; color: var(--of-amber-text);
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+  display: inline-block; margin-left: 6px;
+}
+
+/* Comments thread */
+.comment-input {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--of-beige-soft); border: 1px dashed var(--of-beige-line);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;
+}
+.comment-input textarea {
+  width: 100%; border: 1px solid var(--of-beige-line); border-radius: 6px;
+  padding: 8px 10px; font-family: inherit; font-size: 13px; color: var(--of-charcoal);
+  background: #fff; resize: vertical; min-height: 60px;
+}
+.comment-input-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.comment-type-select {
+  font-family: inherit; font-size: 12px; padding: 5px 8px;
+  border: 1px solid var(--of-beige-line); border-radius: 6px; background: #fff;
+  color: var(--of-charcoal-soft);
+}
+.comment-submit {
+  background: var(--of-charcoal); color: #fff; border: none; border-radius: 6px;
+  padding: 7px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer;
+  font-family: inherit;
+}
+
+.comment {
+  display: grid; grid-template-columns: 34px 1fr;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--of-gray-100);
+}
+.comment:last-child { border-bottom: none; }
+.comment-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--of-orange); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+  letter-spacing: 0.5px;
+}
+.comment-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.comment-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.comment-author { font-size: 13px; color: var(--of-charcoal); font-weight: 700; }
+.comment-date { font-size: 11px; color: var(--of-gray-500); }
+.comment-type-pill {
+  font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.comment-type-pill.general { background: var(--of-beige); color: var(--of-gray-700); }
+.comment-type-pill.risk    { background: var(--of-red-soft); color: var(--of-red-text); }
+.comment-type-pill.ops     { background: var(--of-blue-soft); color: var(--of-blue-text); }
+.comment-type-pill.payment { background: var(--of-amber-soft); color: #856404; }
+.comment-pinned-marker { font-size: 10px; color: var(--of-amber-text); font-weight: 700; }
+.comment-text { font-size: 13px; color: var(--of-charcoal-soft); line-height: 1.5; }
+
+/* Decision modal preview */
+.modal-preview {
+  background: #fff; border: 1px solid var(--of-beige-line); border-radius: 12px;
+  padding: 24px 28px; margin-bottom: 14px;
+  border-top: 4px solid var(--of-orange);
+}
+.modal-head { font-size: 18px; font-weight: 700; color: var(--of-charcoal); letter-spacing: -0.3px; margin-bottom: 6px; }
+.modal-sub { font-size: 12px; color: var(--of-gray-700); margin-bottom: 16px; }
+.modal-recommendation {
+  background: var(--of-beige); border-radius: 8px; padding: 10px 14px;
+  font-size: 12px; color: var(--of-charcoal-soft); margin-bottom: 18px;
+  display: flex; align-items: center; gap: 8px;
+}
+.modal-recommendation strong { color: var(--of-charcoal); }
+.decision-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.decision-option {
+  border: 2px solid var(--of-beige-line); border-radius: 10px; padding: 14px;
+  cursor: pointer; transition: all 0.15s; background: #fff;
+}
+.decision-option:hover { border-color: var(--of-charcoal); }
+.decision-option.selected { border-color: var(--of-amber); background: #fff8e1; }
+.decision-option-name { font-size: 13px; font-weight: 700; color: var(--of-charcoal); margin-bottom: 4px; }
+.decision-option-desc { font-size: 11px; color: var(--of-gray-700); line-height: 1.4; }
+.decision-option-icon { font-size: 18px; margin-bottom: 6px; display: block; }
+.decision-option.good .decision-option-icon { color: var(--of-green); }
+.decision-option.warn .decision-option-icon { color: var(--of-amber); }
+.decision-option.amber .decision-option-icon { color: var(--of-amber-text); }
+.decision-option.bad  .decision-option-icon { color: var(--of-red); }
+
+.modal-notes-label { font-size: 11px; font-weight: 700; color: var(--of-charcoal); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block; }
+.modal-notes-label .req { color: var(--of-red); margin-left: 4px; }
+.modal-notes-input {
+  width: 100%; min-height: 70px;
+  border: 1px solid var(--of-beige-line); border-radius: 6px; padding: 8px 10px;
+  font-family: inherit; font-size: 13px; color: var(--of-charcoal); background: #fff;
+  resize: vertical;
+}
+.modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; }
+.modal-cancel {
+  background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal);
+  border-radius: 6px; padding: 9px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer;
+  font-family: inherit;
+}
+.modal-submit {
+  background: var(--of-charcoal); color: #fff; border: none; border-radius: 6px;
+  padding: 9px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer;
+  font-family: inherit;
+}
+
+/* Sticky decision bar */
+.decision-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #fff; border-top: 1px solid var(--of-beige-line);
+  padding: 14px 24px;
+  display: flex; justify-content: space-between; align-items: center;
+  z-index: 100; box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
+}
+.decision-bar-left { display: flex; gap: 14px; align-items: center; }
+.decision-bar-pill {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 5px 12px; border-radius: 6px;
+  background: var(--of-beige); color: var(--of-charcoal-soft);
+}
+.decision-bar-pill.need-review { background: var(--of-amber-soft); color: var(--of-amber-text); }
+.decision-bar-info { font-size: 12px; color: var(--of-gray-700); }
+.decision-bar-actions { display: flex; gap: 10px; }
+.btn-secondary {
+  background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal);
+  border-radius: 8px; padding: 10px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer;
+  font-family: inherit;
+}
+.btn-primary {
+  background: var(--of-charcoal); color: #fff; border: none;
+  border-radius: 8px; padding: 10px 22px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer;
+  font-family: inherit;
+}
+.btn-primary.amber { background: var(--of-amber); }
+
+/* Footer note */
+.footer-note {
+  text-align: center; font-size: 11px; color: var(--of-gray-500);
+  margin-top: 24px; padding: 0 4px; line-height: 1.6;
+}
+
+@media (max-width: 1100px) {
+  .hero { grid-template-columns: 1fr; }
+  .verdict { align-items: flex-start; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .grid-2 { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+  .checklist-grid { grid-template-columns: 1fr; }
+  .crash-grid { grid-template-columns: 1fr 1fr; }
+  .ipqs-summary { grid-template-columns: 1fr; }
+  .bank-grid { grid-template-columns: 1fr; }
+  .decision-options { grid-template-columns: 1fr 1fr; }
+  .recommendation { grid-template-columns: 1fr; }
 }
 </style>
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 </head>
 <body>
 
-<div class="widget">
-  <div id="hero" class="card hero">
-    <div class="state"><span class="spinner"></span>Loading carrier profile…</div>
+<div id="cp-loading" style="display:none">Loading…</div>
+<div id="cp-error" style="display:none;color:var(--of-red-text)"></div>
+
+<div class="page">
+
+  <div class="breadcrumb">
+    <a href="#">View Vendors</a>
+    <span class="sep">›</span>
+    <span class="current">Risk Profile</span>
   </div>
-  <div id="risk-strip" class="card"><span class="placeholder">Risk summary</span></div>
-  <div id="risk-flags" class="card"><span class="placeholder">Risk flags</span></div>
-  <div id="authority-history" class="card section"><span class="placeholder">Authority history</span></div>
-  <div id="insurance-history" class="card section"><span class="placeholder">Insurance history</span></div>
-  <div id="crash-history" class="card section"><span class="placeholder">Crash history</span></div>
-  <div id="operations" class="card section"><span class="placeholder">Operations and safety</span></div>
-  <div id="identity-signals" class="card section"><span class="placeholder">Identity and signup signals</span></div>
-  <div id="vendor-internal" class="card section"><span class="placeholder">Internal vendor data</span></div>
-  <div id="noa-history" class="card section"><span class="placeholder">NOA / LOR history</span></div>
-  <div id="recent-submissions" class="card section"><span class="placeholder">Recent submissions</span></div>
-  <div id="documents" class="card"><span class="placeholder">Documents — coming soon</span></div>
-  <div id="action-bar"></div>
 
-  <div class="footer-version">v2026-05-11.12</div>
-</div>
+  <!-- Re-review banner (data-driven; hidden by default) -->
+  <div id="cp-review-banner" class="review-banner" style="display:none">
+    <div class="review-banner-text">
+      <span id="cp-review-banner-text"></span>
+    </div>
+    <button class="review-cta">Document New Decision</button>
+  </div>
 
-<!-- NOA / LOR Management Modal -->
-<div class="modal" id="noa-modal" aria-hidden="true">
-  <div class="modal-backdrop" id="noa-backdrop"></div>
-  <div class="modal-body" role="dialog" aria-modal="true" aria-labelledby="noa-title">
-    <div class="modal-head">
-      <h2 id="noa-title">NOA / LOR Management</h2>
-      <button class="modal-close" id="noa-close" aria-label="Close">×</button>
+  <!-- Hero -->
+  <div class="hero">
+    <div id="cp-hero" class="hero-left">
+      <div class="hero-eyebrow">Carrier Risk Profile</div>
+      <div class="hero-name"></div>
+      <div class="hero-meta"></div>
     </div>
-    <div class="modal-sub">Submit a Notice of Assignment update or request a Letter of Release. OperFi will review.</div>
-    <div class="noa-picker">
-      <button class="noa-pick" id="noa-pick-update" type="button">Update NOA</button>
-      <button class="noa-pick" id="noa-pick-lor" type="button">Request LOR</button>
-    </div>
-    <div id="noa-fields" class="noa-fields"></div>
-    <div id="noa-feedback"></div>
-    <div class="noa-submit-row">
-      <button class="btn btn-secondary" id="noa-cancel" type="button">Cancel</button>
-      <button class="btn btn-primary" id="noa-submit" type="button">Submit</button>
+    <div class="verdict">
+      <div id="cp-risk-strip" class="verdict-badge med"></div>
+      <div id="cp-decision-pill" class="decision-state-pill need-review">
+        <span class="icon">⟳</span> Needs Re-review
+      </div>
     </div>
   </div>
+
+  <!-- Sync bar -->
+  <div class="sync-bar">
+    <div><span class="fresh">Live data</span> · Sources: CarrierOK · FMCSA · IPQS · FedACH · OperFi Network</div>
+    <button class="refresh-btn">↻ Refresh all data</button>
+  </div>
+
+  <!-- Recommendation card -->
+  <div class="recommendation">
+    <div id="cp-recommendation" class="rec-left">
+      <div class="rec-label">System Recommendation</div>
+      <div class="rec-verdict"></div>
+      <ul id="cp-rec-reasons" class="rec-reasons"></ul>
+      <div class="rec-meta"></div>
+    </div>
+  </div>
+
+  <!-- KPI strip -->
+  <div id="cp-kpi-row" class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-label">FMCSA Safety Rating</div>
+      <div class="kpi-value" style="font-size: 20px; line-height: 1.2;"></div>
+      <div class="kpi-sub"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">CarrierOK Risk Score</div>
+      <div class="kpi-value"></div>
+      <div class="kpi-sub"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Insurance Status</div>
+      <div class="kpi-value" style="font-size: 18px; line-height: 1.2;"></div>
+      <div class="kpi-sub"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">IPQS Risk Level</div>
+      <div class="kpi-value"></div>
+      <div class="kpi-sub"></div>
+    </div>
+  </div>
+
+  <!-- Litigation Defense Checklist -->
+  <div class="card">
+    <div class="card-title">Litigation Defense Checklist <span class="tag">Montgomery v. Caribe Transport II</span></div>
+    <div id="cp-litigation" class="checklist-grid"></div>
+  </div>
+
+  <!-- Two-column: Authority & Insurance -->
+  <div class="grid-2">
+
+    <div class="card">
+      <div class="card-title">Authority &amp; Operating History <span class="tag">CarrierOK · FMCSA</span></div>
+      <div id="cp-authority" class="indicators"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Insurance Detail <span class="tag">FMCSA</span></div>
+      <div id="cp-insurance" class="indicators"></div>
+    </div>
+
+  </div>
+
+  <!-- Safety & Compliance -->
+  <div class="card">
+    <div class="card-title">Safety &amp; Compliance Metrics <span class="tag">FMCSA</span></div>
+    <div id="cp-safety"></div>
+  </div>
+
+  <!-- Crash History -->
+  <div class="card">
+    <div class="card-title">Crash History <span class="tag">FMCSA · 24 months</span></div>
+    <div id="cp-crash" class="crash-grid"></div>
+  </div>
+
+  <!-- Digital Footprint (IPQS) -->
+  <div class="card">
+    <div class="card-title">Digital Footprint <span class="tag">IPQualityScore</span> <span class="tag" style="background:var(--of-amber-soft);color:var(--of-amber-text);">Coming soon — pending IPQS integration</span></div>
+    <div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">Not yet wired — placeholder.</div>
+  </div>
+
+  <!-- Bank-check -->
+  <div class="card">
+    <div class="card-title">Bank &amp; Routing Intelligence <span class="tag">FedACH · OperFi Network</span> <span class="tag" style="background:var(--of-amber-soft);color:var(--of-amber-text);">Coming soon — pending FedACH integration</span></div>
+    <div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">Not yet wired — placeholder.</div>
+  </div>
+
+  <!-- Stability & Contact -->
+  <div class="card">
+    <div class="card-title">Stability &amp; Contact History <span class="tag">CarrierOK</span></div>
+    <div id="cp-stability"></div>
+  </div>
+
+  <!-- Decision History -->
+  <div class="card">
+    <div class="card-title">Decision History <span class="tag">Audit trail — Carrier_Risk_Decision</span></div>
+    <div id="cp-decision-history" class="history-timeline"></div>
+  </div>
+
+  <!-- Vendor Comments -->
+  <div class="card">
+    <div class="card-title">Comments &amp; Notes <span class="tag">Visible only to Marek LLC</span> <span class="tag" style="background:var(--of-amber-soft);color:var(--of-amber-text);">Coming soon — pending Comments module</span></div>
+
+    <div class="comment-input">
+      <textarea disabled placeholder="Add a comment about this carrier… (visible only to your team)"></textarea>
+      <div class="comment-input-actions">
+        <select class="comment-type-select" disabled>
+          <option>General</option>
+          <option>Operational</option>
+          <option>Risk</option>
+          <option>Payment</option>
+        </select>
+        <button class="comment-submit" disabled>Add Comment</button>
+      </div>
+    </div>
+    <div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">Not yet wired — placeholder.</div>
+  </div>
+
+  <!-- Decision Modal Preview -->
+  <div id="cp-modal" class="modal-preview" style="display:none">
+    <div class="modal-head">Document Hiring Decision</div>
+    <div class="modal-sub">Your decision is recorded in the audit log along with a snapshot of the risk data shown above. Notes are required for any decision other than Approve.</div>
+
+    <div class="modal-recommendation">
+      <strong>System recommends:</strong> Hold for review <span style="opacity:0.6;">— Conditional rating + recent reinstatement + bank-state mismatch</span>
+    </div>
+
+    <div class="decision-options">
+      <div class="decision-option good" data-decision="Approve">
+        <span class="decision-option-icon">✓</span>
+        <div class="decision-option-name">Approve</div>
+        <div class="decision-option-desc">Clean profile, normal use.</div>
+      </div>
+      <div class="decision-option warn" data-decision="Approve with Caution">
+        <span class="decision-option-icon">◐</span>
+        <div class="decision-option-name">Approve with Caution</div>
+        <div class="decision-option-desc">Saw flags, accepting risk. Notes required.</div>
+      </div>
+      <div class="decision-option amber" data-decision="Hold">
+        <span class="decision-option-icon">⏸</span>
+        <div class="decision-option-name">Hold</div>
+        <div class="decision-option-desc">Need more info. Pauses use.</div>
+      </div>
+      <div class="decision-option bad" data-decision="Decline">
+        <span class="decision-option-icon">✕</span>
+        <div class="decision-option-name">Decline</div>
+        <div class="decision-option-desc">Won't use. Adds to your DNU list.</div>
+      </div>
+    </div>
+
+    <label class="modal-notes-label">Decision Notes <span class="req">*</span></label>
+    <textarea id="cp-notes" class="modal-notes-input" placeholder="Why are you choosing Approve with Caution over the system recommendation of Hold? (required when decision differs from system recommendation)"></textarea>
+
+    <div class="modal-actions">
+      <button id="cp-cancel" class="modal-cancel">Cancel</button>
+      <button id="cp-submit" class="modal-submit">Save Decision &amp; Update Hiring Status</button>
+      <div id="cp-modal-feedback" style="color:var(--of-red-text);font-size:12px;margin-top:6px;"></div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Data sourced from CarrierOK, FMCSA, IPQualityScore, FedACH Directory, and OperFi Network · Live data<br>
+    Risk profile is informational. Final booking decisions are at the broker's discretion. Decisions and snapshots are retained for audit purposes per Montgomery v. Caribe Transport II (2026) due diligence requirements.
+  </div>
+
 </div>
 
-<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<!-- Sticky decision bar -->
+<div id="cp-decision-bar" class="decision-bar">
+  <div class="decision-bar-left">
+    <span class="decision-bar-pill need-review">⟳ Needs Re-review</span>
+    <span id="cp-decision-meta" class="decision-bar-info"></span>
+  </div>
+  <div class="decision-bar-actions">
+    <button class="btn-secondary">🖨 Print / Save PDF</button>
+    <button class="btn-primary amber">Document New Decision</button>
+  </div>
+</div>
+
+
 <script>
-(function() {
-'use strict';
-
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
-
 var brokerEmail = '';
 var vendorId = '';
-var profileAction = '';
 var profilePayload = null;
 
-window.addEventListener('load', function() {
+function showLoading(on) {
+  var el = document.getElementById('cp-loading');
+  if (el) el.style.display = on ? 'block' : 'none';
+}
+function showError(title, detail) {
+  var el = document.getElementById('cp-error');
+  if (el) { el.style.display = 'block'; el.textContent = title + (detail ? ' — ' + detail : ''); }
+}
+
+function boot() {
   var u = new URL(window.location.href);
   vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
-  profileAction = u.searchParams.get('Modal') || u.searchParams.get('action') || '';
-  // localStorage bridge - both widgets are same origin, so View Vendors /
-  // Carrier Onboarding can stash the target here just before navigating,
-  // and we read it here on load. Works around Creator not forwarding hash
-  // params into widget iframes.
-  if (!vendorId) {
-    try {
-      var stored = localStorage.getItem('carrierProfileTarget');
-      if (stored) {
-        var t = JSON.parse(stored);
-        if (t && t.ts && (Date.now() - t.ts) < 30000) {
-          vendorId = t.Vendor_ID || vendorId;
-          profileAction = t.Modal || profileAction;
-          console.log('[CarrierProfile] Loaded target from localStorage:', t);
-        }
-        localStorage.removeItem('carrierProfileTarget');
-      }
-    } catch (e) { console.warn('[CarrierProfile] localStorage read failed', e); }
-  }
-  bootApp();
-});
-
-// Parent posts hash params to us via window.postMessage because Creator's
-// portal pages don't auto-forward URL hash query params to widget iframes.
-// The parent's HTML Snippet on Carrier_Profile reads window.location.hash
-// and sends { type: 'carrier-profile-params', Vendor_ID, Modal }.
-window.addEventListener('message', function(e) {
-  var d = e && e.data;
-  if (!d || d.type !== 'carrier-profile-params') return;
-  var changed = false;
-  if (d.Vendor_ID && !vendorId) { vendorId = String(d.Vendor_ID); changed = true; }
-  if (d.Modal && !profileAction) { profileAction = String(d.Modal); changed = true; }
-  if (changed) {
-    console.log('[CarrierProfile] Received params via postMessage:', d);
-    // If we already showed the "Missing vendor" error, clear it and load now.
-    if (vendorId && brokerEmail) loadProfile();
-  }
-});
-
-function bootApp() {
-  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
-    showError('SDK unavailable', 'Reload the page.');
-    return;
-  }
-  if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
-    showError('SDK shape unexpected', 'getInitParams is not available.');
+  if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+    showError('SDK unavailable', 'getInitParams is not available.');
     return;
   }
   function gotParams(params) {
-    console.log('[CarrierProfile] init params:', params);
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
-    if (!brokerEmail) {
-      showError('Could not identify broker', 'Open DevTools console (F12) for details.');
-      return;
-    }
-    if (!vendorId) {
-      // Wait briefly for the parent's HTML Snippet to postMessage us the
-      // Vendor_ID. The listener above will call loadProfile() when it arrives.
-      console.log('[CarrierProfile] No Vendor_ID in URL yet, waiting for parent postMessage…');
-      document.getElementById('hero').innerHTML =
-        '<div class="state"><span class="spinner"></span>Loading carrier profile…</div>';
-      setTimeout(function() {
-        if (!vendorId) {
-          showError('Missing vendor', 'Open this page from the Vendors list (Vendor_ID is required).');
-        }
-      }, 3500);
-      return;
-    }
-    console.log('[CarrierProfile] Booted as', brokerEmail, 'vendor', vendorId);
+    if (!brokerEmail) { showError('No broker identity', 'login user missing'); return; }
+    if (!vendorId && params && params.Vendor_ID) vendorId = String(params.Vendor_ID);
+    if (!vendorId) { showError('No vendor', 'vendor_id missing'); return; }
     loadProfile();
   }
   try {
     var result = ZOHO.CREATOR.UTIL.getInitParams();
     if (result && typeof result.then === 'function') {
-      result.then(gotParams).catch(function(err) {
-        console.error('[CarrierProfile] getInitParams rejected', err);
-        showError('Initialization failed', 'Could not read init params.');
-      });
-    } else {
-      gotParams(result);
-    }
-  } catch (err) {
-    console.error('[CarrierProfile] getInitParams threw', err);
-    showError('Initialization failed', 'Could not read init params.');
-  }
+      result.then(gotParams).catch(function(err) { showError('Init failed', String(err)); });
+    } else { gotParams(result); }
+  } catch (err) { showError('Init threw', String(err)); }
 }
 
 function loadProfile() {
+  var ee=document.getElementById('cp-error'); if(ee){ee.style.display='none';ee.textContent='';}
+  showLoading(true);
   var qs = new URLSearchParams({ email: brokerEmail, vendor_id: vendorId });
   fetch(BROKER_API_BASE + '/carrier-profile?' + qs.toString())
     .then(function(res) {
       if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
       return res.json();
     })
-    .then(function(payload) {
-      profilePayload = payload;
-      renderProfile(payload);
-    })
-    .catch(function(err) {
-      console.error('[CarrierProfile] /carrier-profile failed', err);
-      showError('Failed to load profile', String(err.message || err));
-    });
+    .then(function(payload) { profilePayload = payload; showLoading(false); renderProfile(payload); })
+    .catch(function(err) { showLoading(false); showError('Failed to load profile', String(err)); });
 }
 
-function renderProfile(payload) {
-  renderHero(payload);
-  renderRiskStrip(payload);
-  renderRiskFlags(payload);
-  renderAuthorityHistory(payload);
-  renderInsuranceHistory(payload);
-  renderCrashHistory(payload);
-  renderOperations(payload);
-  renderIdentitySignals(payload);
-  renderVendorInternal(payload);
-  renderNoaHistory(payload);
-  renderRecentSubmissions(payload);
-  renderActionBar(payload);
-  if (profileAction === 'noa') openNoaModal();
+function renderProfile(p) {
+  renderHero(p); renderRiskStrip(p); renderRecommendation(p); renderLitigation(p);
+  renderAuthority(p); renderInsurance(p); renderSafety(p); renderCrash(p); renderStability(p);
+  renderDecisionState(p); renderDecisionHistory(p); wireDecisionCapture(p);
 }
 
-function renderIdentitySignals(p) {
-  var container = document.getElementById('identity-signals');
-  container.classList.add('section');
-  var c = p.carrierok || {};
-  var ipqs = p.ipqs || {};
-  var rfList = c.risk_factors || [];
-  var rf = rfList.length ? rfList[0] : {};
+// ── Helpers ────────────────────────────────────────────────────────────────
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+var REC_ICON = {"Approve":"✓","Approve with Caution":"◐","Hold":"⏸","Decline":"✕"};
+var FLAG_CATEGORIES = ["Authority and Compliance","Identity and Signup Fraud","Insurance","Operations and Safety","Payment and Internal"];
+function flagsByCategory(p, cat){ return ((p.risk && p.risk.flags) || []).filter(function(f){ return f.category === cat; }); }
+function worstSeverity(flags){ var rank={"Low":0,"Medium":1,"High":2,"Critical":3},w=-1; flags.forEach(function(f){ if(rank[f.severity]>w) w=rank[f.severity]; }); return w; }
+function _num(v){ return (v==null||v==='')?null:Number(v); }
+function renderFlagRow(f){
+  return '<div class="flag-row sev-'+esc(f.severity).toLowerCase()+'">'+
+    '<span class="flag-label">'+esc(f.label)+'</span>'+
+    '<span class="flag-exp">'+esc(f.explanation)+'</span></div>';
+}
 
-  var rows = [
-    signalRow('VPN at Signup', ipqs.vpn_detected, true),
-    signalRow('VOIP Phone', ipqs.voip_number, true),
-    signalRow('Tor Detected', ipqs.tor_detected, true),
-    signalRow('Disposable Email', ipqs.email_disposable, true),
-    signalRow('Spam Trap Email', ipqs.spam_trap_flag && ipqs.spam_trap_flag !== 'none', true),
-    signalRow('Phone Shared With Other Carriers', rf.indicator_network_graph_phone, true),
-    signalRow('Address Shared With Other Carriers', rf.indicator_network_graph_address, true),
-    signalRow('Virtual Mailing Address', rf.virtual_physical_mailing_address, true),
-    signalRow('Primary Contact Info Missing', rf.primary_contact_info_missing, true),
-    signalRow('Phone Area Code Matches State', rf.phone_number_area_codes_match_address_state, false),
+// ── Hero ───────────────────────────────────────────────────────────────────
+function renderHero(p){
+  var v=p.vendor||{};
+  var nameEl=document.querySelector('#cp-hero .hero-name');
+  var metaEl=document.querySelector('#cp-hero .hero-meta');
+  if(nameEl) nameEl.textContent=v.Vendor_Name||v.Name1||'Carrier';
+  if(metaEl) metaEl.innerHTML=
+    '<span class="key">USDOT</span> '+esc(v.USDOT||'—')+
+    '<span class="sep">·</span>'+
+    '<span class="key">MC</span> '+esc(v.MC||'—')+
+    (v.Physical_State ? '<span class="sep">·</span>'+esc(v.Physical_State) : '');
+}
+
+// ── Risk strip + KPI row ───────────────────────────────────────────────────
+function renderKpiRow(container, vals){
+  // Targets each .kpi card by order; reads label to confirm, then sets .kpi-value text.
+  var cards=container.querySelectorAll('.kpi');
+  var map=[
+    {label:'FMCSA Safety Rating', value:vals.safety,   sub:vals.safetySub||''},
+    {label:'CarrierOK Risk Score',value:vals.riskScore, sub:vals.riskScoreSub||''},
+    {label:'Insurance Status',    value:vals.insurance, sub:vals.insuranceSub||''},
+    {label:'IPQS Risk Level',     value:vals.ipqs,      sub:vals.ipqsSub||''}
   ];
-  var ipLoc = ipqs.ip_location;
-  var ipBad = ipLoc && !String(ipLoc).rstrip ? !/US$/.test(String(ipLoc).trim()) : false;
-  if (ipLoc) {
-    rows.push(
-      '<div class="signal-row">' +
-        '<span class="signal-label">Signup IP Location</span>' +
-        '<span class="signal-value ' + (ipBad ? 'signal-bad' : 'signal-good') + '">' +
-          '<span class="signal-icon">' + (ipBad ? '×' : '✓') + '</span>' + esc(ipLoc) +
-        '</span>' +
-      '</div>'
-    );
+  for(var i=0;i<cards.length&&i<map.length;i++){
+    var vEl=cards[i].querySelector('.kpi-value');
+    var sEl=cards[i].querySelector('.kpi-sub');
+    if(vEl) vEl.textContent=map[i].value;
+    if(sEl) sEl.textContent=map[i].sub;
   }
-  container.innerHTML = '<h2>Identity Signals</h2>' + rows.join('');
 }
 
-function renderVendorInternal(p) {
-  var container = document.getElementById('vendor-internal');
-  container.classList.add('section');
-  var v = p.vendor || {};
-  var fc = v.Factoring_Company;
-  var fcName = fc && typeof fc === 'object' ? (fc.display_value || fc.zc_display_value || fc.ID) : fc;
-  var fcId = fc && typeof fc === 'object' ? fc.ID : null;
-  var factorBadge = '';
-  if (fc) {
-    var fs = (v.Factor_Status || '').toLowerCase();
-    if (fs === 'denied') factorBadge = '<span class="pill pill-danger">Not Approved</span>';
-    else if (fs === 'pending') factorBadge = '<span class="pill pill-warning">Pending</span>';
-    else if (fs === 'approved') factorBadge = '<span class="pill pill-success">Approved</span>';
+function renderRiskStrip(p){
+  var tier=(p.risk&&p.risk.tier)||'Low';
+  var tierClass={Low:'low',Medium:'med',High:'high'}[tier]||'med';
+  var badge=document.getElementById('cp-risk-strip');
+  if(badge){
+    badge.className='verdict-badge '+tierClass;
+    badge.textContent=tier+' Risk';
   }
-  var dnu = v.DO_NOT_USE === true || v.DO_NOT_USE === 'true';
-  var rows = [
-    kvRow('Vendor Status', '<span class="pill pill-' + vendorStatusClass(v) + '">' + esc(vendorStatusLabel(v)) + '</span>'),
-    kvRow('Do Not Use', dnu ? '<span class="pill pill-danger">Yes</span>' : '<span style="color:#0a7a2a;">No</span>'),
-    kvRow('Payment Terms', esc(v.Payment_Terms || '—')),
-    kvRow('Factoring Company', fc ? (esc(fcName || '—') + ' ' + factorBadge) : '<span style="color:#999;">None</span>'),
+  var kpi=document.getElementById('cp-kpi-row');
+  if(kpi){
+    var co=p.carrierok||{};
+    var rf=(co.risk_factors&&co.risk_factors[0])||{};
+    var prob=_num(rf.risk_score_probability);
+    var safetyRating=esc(co.safety_rating||p.fmcsa_safety_rating||'—');
+    var riskScore=prob!=null?(prob*100).toFixed(0)+'%':'—';
+    var insStatus=esc(co.indicator_insurance||'—');
+    renderKpiRow(kpi,{
+      safety: safetyRating, safetySub: co.safety_rating_date?'As of '+esc(co.safety_rating_date):'FMCSA',
+      riskScore: riskScore, riskScoreSub: 'Probability of default',
+      insurance: insStatus, insuranceSub: co.pending_insurance_cancellation?'⚠ Cancellation pending':'FMCSA',
+      ipqs: 'Pending', ipqsSub: 'IPQS not yet wired'
+    });
+  }
+}
+
+// ── Recommendation ─────────────────────────────────────────────────────────
+function renderRecommendation(p){
+  var el=document.getElementById('cp-recommendation'); if(!el) return;
+  var rec=p.system_recommendation||'Hold';
+  var verdictEl=el.querySelector('.rec-verdict');
+  var metaEl=el.querySelector('.rec-meta');
+  if(verdictEl) verdictEl.innerHTML='<span class="rec-icon">'+(REC_ICON[rec]||'◐')+'</span> '+esc(rec);
+  if(metaEl) metaEl.textContent='Engine: risk_model · Based on the flags below';
+  var reasonsList=document.getElementById('cp-rec-reasons');
+  if(reasonsList){
+    var allFlags=(p.risk&&p.risk.flags)||[];
+    var SRANK={"Critical":3,"High":2,"Medium":1,"Low":0};
+    var sorted=allFlags.slice().sort(function(a,b){
+      return (SRANK[b.severity]||0)-(SRANK[a.severity]||0);
+    });
+    var top=sorted.slice(0,4);
+    if(top.length){
+      reasonsList.innerHTML=top.map(function(f){ return '<li>'+esc(f.label)+'</li>'; }).join('');
+    } else {
+      reasonsList.innerHTML='<li>No risk flags detected.</li>';
+    }
+  }
+}
+
+// ── Litigation Defense Checklist ───────────────────────────────────────────
+function renderLitigation(p){
+  var el=document.getElementById('cp-litigation'); if(!el) return;
+  el.innerHTML=FLAG_CATEGORIES.map(function(cat){
+    var fl=flagsByCategory(p,cat), w=worstSeverity(fl);
+    var iconCls,iconChar,pillCls,pillText;
+    if(w<0){     iconCls='good';iconChar='✓';pillCls='good';pillText='Clear'; }
+    else if(w>=2){iconCls='bad'; iconChar='✕';pillCls='bad'; pillText=w===3?'Critical':'High'; }
+    else{         iconCls='warn';iconChar='!';pillCls='warn';pillText='Caution'; }
+    return '<div class="check-row">'+
+      '<span class="check-icon '+iconCls+'">'+iconChar+'</span>'+
+      '<div class="check-text"><span class="q">'+esc(cat)+'</span>'+
+        (fl.length?'<span class="a">'+fl.length+' flag'+(fl.length>1?'s':'')+'</span>':'<span class="a">No issues found</span>')+
+      '</div>'+
+      '<span class="check-pill '+pillCls+'">'+pillText+'</span>'+
+    '</div>';
+  }).join('');
+}
+
+// ── Authority ──────────────────────────────────────────────────────────────
+function renderAuthority(p){
+  var el=document.getElementById('cp-authority'); if(!el) return;
+  var co=p.carrierok||{};
+  var rows=[
+    {label:'Common Authority', source:'CarrierOK', val:co.authority_common, good:'Active',bad:'Inactive'},
+    {label:'Contract Authority',source:'CarrierOK', val:co.authority_contract,good:'Active',bad:'Inactive'},
+    {label:'DOT Age (days)',   source:'FMCSA',     val:co.dot_age!=null?String(co.dot_age):null, good:null,bad:null}
   ];
-  if (v.Internal_Notes) {
-    rows.push('<div class="kv-row"><span class="kv-label">Internal Notes</span><span class="kv-value kv-notes">' + esc(v.Internal_Notes) + '</span></div>');
-  }
-  container.innerHTML = '<h2>Internal Vendor Data</h2>' + rows.join('');
-}
-
-function kvRow(label, valueHtml) {
-  return '<div class="kv-row">' +
-    '<span class="kv-label">' + esc(label) + '</span>' +
-    '<span class="kv-value">' + valueHtml + '</span>' +
-  '</div>';
-}
-
-function renderNoaHistory(p) {
-  var container = document.getElementById('noa-history');
-  container.classList.add('section');
-  var hist = (p.noa_history || []).slice().sort(function(a, b) {
-    return (a.Added_Time || '') < (b.Added_Time || '') ? 1 : -1;
-  });
-  if (!hist.length) {
-    container.innerHTML = '<h2>NOA / LOR History</h2><div class="empty">No NOA or LOR updates on record.</div>';
-    return;
-  }
-  var rows = hist.map(function(r) {
-    var date = (r.Added_Time || '').slice(0, 10) || '—';
-    var type = r.Update_Type || r.display_value || '—';
-    var status = r.Status || r.Approval_Status || '';
-    var statusPill = '';
-    var sl = status.toLowerCase();
-    if (sl === 'approved' || sl === 'completed') statusPill = '<span class="pill pill-success">' + esc(status) + '</span>';
-    else if (sl === 'denied' || sl === 'rejected') statusPill = '<span class="pill pill-danger">' + esc(status) + '</span>';
-    else if (sl === 'pending') statusPill = '<span class="pill pill-warning">Pending</span>';
-    else if (status) statusPill = '<span class="pill pill-neutral">' + esc(status) + '</span>';
-    return '<tr><td>' + esc(date) + '</td><td>' + esc(type) + '</td><td>' + statusPill + '</td></tr>';
-  }).join('');
-  container.innerHTML =
-    '<h2>NOA / LOR History (' + hist.length + ')</h2>' +
-    '<table class="data-table">' +
-      '<thead><tr><th>Date</th><th>Type</th><th>Status</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-    '</table>';
-}
-
-function renderRecentSubmissions(p) {
-  var container = document.getElementById('recent-submissions');
-  container.classList.add('section');
-  var subs = (p.submissions || []).slice(0, 15);
-  if (!subs.length) {
-    container.innerHTML = '<h2>Recent Submissions</h2><div class="empty">No invoice submissions for this carrier yet.</div>';
-    return;
-  }
-  var rows = subs.map(function(s) {
-    var date = (s.Added_Time || '').slice(0, 10) || '—';
-    var loadRef = s.Customer_Load_No || s.Load_Number || s.Reference_Number || s.ID || '—';
-    var amount = s.Invoice_Amount || s.Amount || '';
-    var amountText = amount ? '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
-    var status = s.Status || s.Approval_Status || '—';
-    var statusPill;
-    var sl = status.toLowerCase();
-    if (sl.indexOf('approved') !== -1 || sl.indexOf('purchased') !== -1) statusPill = '<span class="pill pill-success">' + esc(status) + '</span>';
-    else if (sl.indexOf('denied') !== -1 || sl.indexOf('rejected') !== -1) statusPill = '<span class="pill pill-danger">' + esc(status) + '</span>';
-    else if (sl.indexOf('pending') !== -1 || sl.indexOf('processing') !== -1) statusPill = '<span class="pill pill-warning">' + esc(status) + '</span>';
-    else statusPill = '<span class="pill pill-neutral">' + esc(status) + '</span>';
-    return '<tr><td>' + esc(date) + '</td><td>' + esc(loadRef) + '</td><td>' + esc(amountText) + '</td><td>' + statusPill + '</td></tr>';
-  }).join('');
-  var title = (p.submissions || []).length > 15
-    ? 'Recent Submissions (showing 15 of ' + p.submissions.length + ')'
-    : 'Recent Submissions (' + subs.length + ')';
-  container.innerHTML =
-    '<h2>' + esc(title) + '</h2>' +
-    '<table class="data-table">' +
-      '<thead><tr><th>Date</th><th>Load Ref</th><th>Amount</th><th>Status</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-    '</table>';
-}
-
-function renderActionBar(p) {
-  var v = p.vendor || {};
-  var dnu = v.DO_NOT_USE === true || v.DO_NOT_USE === 'true';
-  var approved = v.Vendor_Status === 'Approved';
-  var canInvoice = approved && !dnu;
-  var gateMsg = '';
-  if (!canInvoice) {
-    gateMsg = dnu ? 'Vendor is Do Not Use'
-                 : (v.Vendor_Status ? 'Vendor must be Approved (currently ' + v.Vendor_Status + ')'
-                                    : 'Vendor must be Approved');
-  }
-  var invoiceBtn = canInvoice
-    ? '<button class="btn btn-primary" id="btn-invoice">Submit Invoice</button>'
-    : '<button class="btn btn-disabled" disabled title="' + esc(gateMsg) + '">Submit Invoice</button>';
-  var html =
-    '<div class="card action-bar">' +
-      (gateMsg ? '<span class="btn-gate-msg">' + esc(gateMsg) + '</span>' : '') +
-      '<button class="btn btn-secondary" id="btn-noa">NOA / LOR Management</button>' +
-      invoiceBtn +
+  var flags=flagsByCategory(p,'Authority and Compliance');
+  el.innerHTML=rows.map(function(r){
+    var val=r.val!=null?r.val:'—';
+    var pillCls=r.good&&r.bad?(val===r.good?'good':val===r.bad?'bad':'neutral'):'neutral';
+    return '<div class="ind-row">'+
+      '<span class="ind-label">'+esc(r.label)+'</span>'+
+      '<span class="ind-source">'+esc(r.source)+'</span>'+
+      '<span class="ind-pill '+pillCls+'">'+esc(val)+'</span>'+
     '</div>';
-  document.getElementById('action-bar').innerHTML = html;
-  var noaBtn = document.getElementById('btn-noa');
-  if (noaBtn) noaBtn.addEventListener('click', function() { openNoaModal(); });
-  if (canInvoice) {
-    var invBtn = document.getElementById('btn-invoice');
-    if (invBtn) invBtn.addEventListener('click', function() {
-      navigateParent('#Page:Load_Details_NEW?vendor_id=' + encodeURIComponent(vendorId));
-    });
+  }).join('')+
+  (flags.length?flags.map(renderFlagRow).join(''):'<p style="color:var(--of-gray-500);font-size:12px;margin-top:8px;">No authority flags.</p>');
+}
+
+// ── Insurance ──────────────────────────────────────────────────────────────
+function renderInsurance(p){
+  var el=document.getElementById('cp-insurance'); if(!el) return;
+  var co=p.carrierok||{};
+  var histCount=Array.isArray(co.insurance_history)?co.insurance_history.length:0;
+  var rows=[
+    {label:'Insurance Indicator',    source:'FMCSA', val:co.indicator_insurance, good:'Active',bad:'Inactive'},
+    {label:'Pending Cancellation',   source:'FMCSA', val:co.pending_insurance_cancellation?'Yes':'No', good:'No',bad:'Yes'},
+    {label:'Insurance History Items',source:'FMCSA', val:histCount>0?String(histCount):'None', good:null,bad:null}
+  ];
+  var flags=flagsByCategory(p,'Insurance');
+  el.innerHTML=rows.map(function(r){
+    var val=r.val!=null?r.val:'—';
+    var pillCls=r.good&&r.bad?(val===r.good?'good':val===r.bad?'bad':'neutral'):'neutral';
+    return '<div class="ind-row">'+
+      '<span class="ind-label">'+esc(r.label)+'</span>'+
+      '<span class="ind-source">'+esc(r.source)+'</span>'+
+      '<span class="ind-pill '+pillCls+'">'+esc(val)+'</span>'+
+    '</div>';
+  }).join('')+
+  (flags.length?flags.map(renderFlagRow).join(''):'<p style="color:var(--of-gray-500);font-size:12px;margin-top:8px;">No insurance flags.</p>');
+}
+
+// ── Safety ─────────────────────────────────────────────────────────────────
+function renderSafety(p){
+  var el=document.getElementById('cp-safety'); if(!el) return;
+  var co=p.carrierok||{};
+  var selfPct=_num(co.inspections_driver_out_of_service_pct);
+  var avgPct=_num(co.natl_avg_oos_driver);
+  var units=_num(co.total_power_units);
+  var flags=flagsByCategory(p,'Operations and Safety');
+  var selfStr=selfPct!=null?selfPct.toFixed(1)+'%':'—';
+  var avgStr=avgPct!=null?avgPct.toFixed(1)+'%':'—';
+  var barPct=selfPct!=null&&avgPct!=null?Math.min(selfPct/Math.max(avgPct*2,0.01)*100,100):0;
+  var barCls=selfPct!=null&&avgPct!=null?(selfPct<=avgPct?'good':'bad'):'';
+  var avgPos=50;
+  el.innerHTML=
+    '<div class="stat-grid two" style="margin-bottom:16px;">'+
+      '<div class="stat"><div class="stat-label">Driver OOS %</div>'+
+        '<div class="stat-val '+(barCls||'')+'">'+esc(selfStr)+'</div>'+
+        '<div class="stat-sub">Carrier rate</div></div>'+
+      '<div class="stat"><div class="stat-label">National Avg OOS %</div>'+
+        '<div class="stat-val">'+esc(avgStr)+'</div>'+
+        '<div class="stat-sub">FMCSA benchmark</div></div>'+
+    '</div>'+
+    (selfPct!=null&&avgPct!=null?
+      '<div class="bench">'+
+        '<div class="bench-label"><span>Driver OOS vs National Avg</span><span>'+esc(selfStr)+'</span></div>'+
+        '<div class="bench-bars">'+
+          '<div class="bench-fill-self '+barCls+'" style="width:'+barPct.toFixed(1)+'%">'+esc(selfStr)+'</div>'+
+          '<div class="bench-marker" style="left:'+avgPos+'%"></div>'+
+        '</div>'+
+      '</div>':'')+
+    (units!=null?'<div style="margin-top:12px;font-size:12px;color:var(--of-gray-700);">Power units: <strong>'+esc(String(units))+'</strong></div>':'')+
+    (flags.length?'<div style="margin-top:12px;">'+flags.map(renderFlagRow).join('')+'</div>':'<p style="color:var(--of-gray-500);font-size:12px;margin-top:12px;">No safety flags.</p>');
+}
+
+// ── Crash ──────────────────────────────────────────────────────────────────
+function renderCrash(p){
+  var el=document.getElementById('cp-crash'); if(!el) return;
+  var co=p.carrierok||{};
+  var total=_num(co.crash_total), fatal=_num(co.crash_fatalities), inj=_num(co.crash_injuries);
+  var tow=total!=null&&fatal!=null&&inj!=null?_num(total-fatal-inj):null;
+  function crashCard(num,label){
+    var n=num!=null?String(num):'—';
+    var cls=num!=null&&num>0?(label==='Total'||label==='Injuries'?'warn':'bad'):'good';
+    return '<div class="crash-card"><div class="crash-num '+cls+'">'+esc(n)+'</div><div class="crash-label">'+esc(label)+'</div></div>';
   }
+  el.innerHTML=
+    crashCard(total,'Total')+
+    crashCard(fatal,'Fatalities')+
+    crashCard(inj,'Injuries')+
+    crashCard(tow,'Tow-Away');
 }
 
-var noaAction = 'update_noa';
-var noaBound = false;
-var noaSubmitting = false;
-
-function bindNoaModalOnce() {
-  if (noaBound) return;
-  noaBound = true;
-  document.getElementById('noa-close').addEventListener('click', closeNoaModal);
-  document.getElementById('noa-backdrop').addEventListener('click', closeNoaModal);
-  document.getElementById('noa-cancel').addEventListener('click', closeNoaModal);
-  document.getElementById('noa-pick-update').addEventListener('click', function() { setNoaAction('update_noa'); });
-  document.getElementById('noa-pick-lor').addEventListener('click', function() { setNoaAction('request_lor'); });
-  document.getElementById('noa-submit').addEventListener('click', submitNoaForm);
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && document.getElementById('noa-modal').classList.contains('show')) {
-      closeNoaModal();
-    }
-  });
+// ── Stability ──────────────────────────────────────────────────────────────
+function renderStability(p){
+  var el=document.getElementById('cp-stability'); if(!el) return;
+  var flags=flagsByCategory(p,'Identity and Signup Fraud');
+  el.innerHTML=flags.length
+    ? flags.map(renderFlagRow).join('')
+    : '<p style="color:var(--of-gray-500);font-size:12px;padding:4px 0;">No identity/stability flags.</p>';
 }
 
-function openNoaModal() {
-  bindNoaModalOnce();
-  document.getElementById('noa-modal').classList.add('show');
-  document.getElementById('noa-modal').setAttribute('aria-hidden', 'false');
-  setNoaAction(noaAction || 'update_noa');
-  document.getElementById('noa-feedback').innerHTML = '';
-}
+// ── Decision state / history / capture ────────────────────────────────────
+function _fmtDate(s){ if(!s) return '—'; var d=new Date(s); return isNaN(d)? String(s).slice(0,10) : d.toLocaleDateString(); }
 
-function closeNoaModal() {
-  document.getElementById('noa-modal').classList.remove('show');
-  document.getElementById('noa-modal').setAttribute('aria-hidden', 'true');
-}
-
-function setNoaAction(action) {
-  noaAction = action;
-  document.getElementById('noa-pick-update').classList.toggle('active', action === 'update_noa');
-  document.getElementById('noa-pick-lor').classList.toggle('active', action === 'request_lor');
-  var fields = document.getElementById('noa-fields');
-  if (action === 'update_noa') {
-    fields.innerHTML =
-      '<label>New Factor Name<input id="noa-new-factor" type="text" placeholder="e.g. Apex Capital" /></label>' +
-      '<label>New Factor Email<input id="noa-new-factor-email" type="email" placeholder="factor@example.com" /></label>' +
-      '<label>Effective Date<input id="noa-effective-date" type="date" /></label>' +
-      '<label>Notes<textarea id="noa-notes" placeholder="Anything OperFi should know about this NOA update"></textarea></label>';
+function renderDecisionState(p){
+  var av=p.account_vendor;
+  var pill=document.getElementById('cp-decision-pill');
+  var meta=document.getElementById('cp-decision-meta');
+  var banner=document.getElementById('cp-review-banner');
+  var bannerText=document.getElementById('cp-review-banner-text');
+  if(!av){
+    if(pill){ pill.className='decision-state-pill'; pill.textContent='No relationship yet'; }
+    if(meta) meta.textContent='Tender a load to this carrier to enable decision capture.';
+    if(banner) banner.style.display='none';
+    return;
+  }
+  var hd=av.Hiring_Decision||'Not Reviewed';
+  var cls=av.Broker_DNU?'bad':(av.Needs_Re_Review?'need-review':(hd==='Approve'?'approved':'caution'));
+  if(pill){ pill.className='decision-state-pill '+cls; pill.textContent=hd; }
+  if(meta) meta.textContent='Last decision: '+esc(hd)+
+    (av.Last_Reviewed_By?' by '+esc(av.Last_Reviewed_By):'')+
+    ' · '+esc(av.Loads_Tendered_Count||0)+' loads tendered';
+  if(av.Needs_Re_Review){
+    if(banner) banner.style.display='flex';
+    if(bannerText) bannerText.textContent=esc(av.Re_Review_Reason||'This carrier is flagged for re-review.');
   } else {
-    var currentFactor = '';
-    var fc = profilePayload && profilePayload.vendor && profilePayload.vendor.Factoring_Company;
-    if (fc) {
-      currentFactor = (typeof fc === 'object') ? (fc.display_value || fc.zc_display_value || '') : String(fc);
-    }
-    fields.innerHTML =
-      '<label>Current Factor<input id="lor-current-factor" type="text" value="' + esc(currentFactor) + '" /></label>' +
-      '<label>Reason for Request<textarea id="lor-reason" placeholder="Why is the carrier requesting a Letter of Release?"></textarea></label>';
+    if(banner) banner.style.display='none';
   }
 }
 
-function submitNoaForm() {
-  if (noaSubmitting) return;
-  var feedback = document.getElementById('noa-feedback');
-  feedback.innerHTML = '';
-  var data = {
-    Vendor: vendorId,
-    Update_Type: (noaAction === 'update_noa') ? 'Update NOA' : 'Request LOR'
-  };
-  if (noaAction === 'update_noa') {
-    var nf = (document.getElementById('noa-new-factor') || {}).value || '';
-    var nfe = (document.getElementById('noa-new-factor-email') || {}).value || '';
-    if (!nf.trim()) { feedback.innerHTML = '<div class="noa-error">New Factor Name is required.</div>'; return; }
-    data.New_Factor_Name = nf.trim();
-    data.New_Factor_Email = nfe.trim();
-    data.Effective_Date = (document.getElementById('noa-effective-date') || {}).value || '';
-    data.Notes = (document.getElementById('noa-notes') || {}).value || '';
-  } else {
-    var reason = (document.getElementById('lor-reason') || {}).value || '';
-    if (!reason.trim()) { feedback.innerHTML = '<div class="noa-error">Reason is required.</div>'; return; }
-    data.Current_Factor = (document.getElementById('lor-current-factor') || {}).value || '';
-    data.Reason = reason.trim();
-  }
-  noaSubmitting = true;
-  document.getElementById('noa-submit').disabled = true;
-  feedback.innerHTML = '<div style="color:#888;font-size:13px;">Submitting…</div>';
-
-  resolveBrokerContactId().then(function(contactId) {
-    if (contactId) data.Contact_Name = contactId;
-    return ZOHO.CREATOR.DATA.addRecords({
-      app_link_name: 'funding-portal',
-      form_name: 'NOA_LOR_Updates',
-      payload: { data: data }
-    });
-  }).then(function(res) {
-    noaSubmitting = false;
-    document.getElementById('noa-submit').disabled = false;
-    if (res && (res.code === 3000 || (res.result && res.result.length))) {
-      feedback.innerHTML = '<div class="noa-success">Submitted. OperFi will review.</div>';
-      setTimeout(function() { closeNoaModal(); loadProfile(); }, 800);
-    } else {
-      feedback.innerHTML = '<div class="noa-error">Submit failed. ' + esc(JSON.stringify(res || {})) + '</div>';
-    }
-  }).catch(function(err) {
-    noaSubmitting = false;
-    document.getElementById('noa-submit').disabled = false;
-    console.error('[CarrierProfile] NOA submit error', err);
-    feedback.innerHTML = '<div class="noa-error">Submit error: ' + esc(err && err.message ? err.message : String(err)) + '</div>';
-  });
-}
-
-function resolveBrokerContactId() {
-  if (!ZOHO.CREATOR.DATA || !ZOHO.CREATOR.DATA.getRecords) return Promise.resolve(null);
-  return ZOHO.CREATOR.DATA.getRecords({
-    app_link_name: 'funding-portal',
-    report_name: 'Authorized_Users',
-    page: 1, pageSize: 200
-  }).then(function(res) {
-    var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
-    var me = data.find(function(c) {
-      return (c.Email || '').toLowerCase() === brokerEmail.toLowerCase();
-    });
-    return me ? me.ID : null;
-  }).catch(function() { return null; });
-}
-
-function navigateParent(hash) {
-  var sp = new URLSearchParams(window.location.search);
-  var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
-  var url = origin.replace(/\/$/, '') + '/' + hash;
-  try { window.top.location.href = url; return; } catch (e) {}
-  try { window.parent.location.href = url; return; } catch (e) {}
-  try { window.open(url, '_top'); } catch (e) {}
-}
-
-function signalRow(label, value, badWhenTrue) {
-  var hasValue = value !== undefined && value !== null && value !== '';
-  var cls, icon, text;
-  if (!hasValue) { cls = 'signal-neutral'; icon = '?'; text = 'Unknown'; }
-  else {
-    var truthy = value === true || value === 'true' || value === 1;
-    var isBad = badWhenTrue ? truthy : !truthy;
-    cls = isBad ? 'signal-bad' : 'signal-good';
-    icon = isBad ? '×' : '✓';
-    text = truthy ? 'Yes' : 'No';
-  }
-  return '<div class="signal-row">' +
-    '<span class="signal-label">' + esc(label) + '</span>' +
-    '<span class="signal-value ' + cls + '">' +
-      '<span class="signal-icon">' + icon + '</span>' + text +
-    '</span>' +
-  '</div>';
-}
-
-function renderOperations(p) {
-  var container = document.getElementById('operations');
-  container.classList.add('section');
-  var c = p.carrierok || {};
-  if (!c.dot_number && (c.total_drivers === undefined && c.total_power_units === undefined)) {
-    container.innerHTML = '<h2>Operations and Safety</h2><div class="empty">No FMCSA operations data available.</div>';
-    return;
-  }
-  var html = '<h2>Operations and Safety</h2>' +
-    '<div class="kpi-row">' +
-      kpiTile('drivers', 'Drivers', fmtInt(c.total_drivers)) +
-      kpiTile('units', 'Power Units', fmtInt(c.total_power_units)) +
-      kpiTile('inspections', 'Inspections', fmtInt(c.inspections_total)) +
-      kpiTile('violations', 'Violations', fmtInt(c.violations_total)) +
-    '</div>' +
-    oosRow('Vehicle Out-of-Service Rate',
-           c.inspections_vehicle_out_of_service_pct, c.natl_avg_oos_vehicle) +
-    oosRow('Driver Out-of-Service Rate',
-           c.inspections_driver_out_of_service_pct, c.natl_avg_oos_driver);
-  container.innerHTML = html;
-}
-
-function kpiTile(cls, label, value) {
-  return '<div class="kpi ' + cls + '">' +
-    '<div class="kpi-label">' + esc(label) + '</div>' +
-    '<div class="kpi-value">' + esc(value) + '</div>' +
-  '</div>';
-}
-
-function oosRow(label, carrierPct, nationalPct) {
-  if (carrierPct === undefined || carrierPct === null) {
-    return '<div class="oos-row"><span class="oos-label">' + esc(label) + '</span>' +
-           '<span class="oos-vals"><span class="oos-carrier">—</span></span></div>';
-  }
-  var natl = (nationalPct || 0);
-  var cls = 'oos-carrier ' + (natl > 0 && carrierPct > natl ? 'above' : 'below');
-  var natlText = natl > 0 ? 'vs ' + Number(natl).toFixed(1) + '% national avg' : '';
-  return '<div class="oos-row">' +
-    '<span class="oos-label">' + esc(label) + '</span>' +
-    '<span class="oos-vals">' +
-      '<span class="' + cls + '">' + Number(carrierPct).toFixed(1) + '%</span>' +
-      (natlText ? '<span class="oos-natl">' + esc(natlText) + '</span>' : '') +
-    '</span>' +
-  '</div>';
-}
-
-function fmtInt(n) {
-  if (n === undefined || n === null || n === '') return '—';
-  var v = parseInt(n, 10);
-  if (isNaN(v)) return '—';
-  return v.toLocaleString();
-}
-
-function renderCrashHistory(p) {
-  var container = document.getElementById('crash-history');
-  container.classList.add('section');
-  var crashes = (p.carrierok || {}).crash_history || [];
-  if (!crashes.length) {
-    container.innerHTML = '<h2>Crash History</h2><div class="empty-good">No crashes on record.</div>';
-    return;
-  }
-  var sorted = crashes.slice().sort(function(a, b) {
-    return (a.report_date || '') < (b.report_date || '') ? 1 : -1;
-  });
-  var rows = sorted.map(function(c) {
-    var state = c.report_state || c.state || c.vehicle_license_state || '—';
-    var fatalities = parseInt(c.fatalities, 10) || 0;
-    var injuries = parseInt(c.injuries, 10) || 0;
-    var hazmat = c.hazmat_released === true || c.vehicle_hazmat_placard === true;
-    var towAway = c.tow_away === true;
-    return '<tr>' +
-      '<td>' + esc(c.report_date || '—') + '</td>' +
-      '<td>' + esc(state) + '</td>' +
-      '<td class="' + (fatalities > 0 ? 'num-bad' : 'num-zero') + '">' + fatalities + '</td>' +
-      '<td class="' + (injuries > 0 ? 'num-bad' : 'num-zero') + '">' + injuries + '</td>' +
-      '<td class="' + (hazmat ? 'yes' : 'no') + '">' + (hazmat ? 'Yes' : 'No') + '</td>' +
-      '<td class="' + (towAway ? 'yes' : 'no') + '">' + (towAway ? 'Yes' : 'No') + '</td>' +
-    '</tr>';
+function renderDecisionHistory(p){
+  var el=document.getElementById('cp-decision-history'); if(!el) return;
+  var rows=(p.risk_decisions||[]);
+  if(!rows.length){ el.innerHTML='<div class="muted" style="color:var(--of-gray-500);font-size:13px;">No decisions recorded yet.</div>'; return; }
+  el.innerHTML=rows.map(function(d){
+    var dec=d.Broker_Decision||'—';
+    var dotCls=dec==='Approve'?'good':(dec==='Decline'?'bad':'warn');
+    return '<div class="history-event">'+
+      '<div class="history-dot '+dotCls+'"></div>'+
+      '<div class="history-body">'+
+        '<div class="history-head">'+esc(dec)+
+          (d.Decision_Variance1?' <span class="check-pill warn">Variance</span>':'')+
+        '</div>'+
+        '<div class="history-meta">System rec: '+esc(d.System_Recommendation||'—')+
+          (d.Trigger_Type?' · '+esc(d.Trigger_Type):'')+
+        '</div>'+
+        (d.Decision_Notes?'<div class="history-note">'+esc(d.Decision_Notes)+'</div>':'')+
+      '</div>'+
+      '<div class="history-side">'+esc(_fmtDate(d.Reviewed_At))+'</div>'+
+    '</div>';
   }).join('');
-  container.innerHTML =
-    '<h2>Crash History (' + sorted.length + ')</h2>' +
-    '<table class="data-table">' +
-      '<thead><tr>' +
-        '<th>Date</th><th>State</th><th>Fatalities</th>' +
-        '<th>Injuries</th><th>Hazmat</th><th>Tow Away</th>' +
-      '</tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-    '</table>';
 }
 
-function renderInsuranceHistory(p) {
-  var container = document.getElementById('insurance-history');
-  container.classList.add('section');
-  var hist = (p.carrierok || {}).insurance_history || [];
-  if (!hist.length) {
-    container.innerHTML = '<h2>Insurance History</h2><div class="empty">No insurance history available.</div>';
-    return;
-  }
-  var sorted = hist.slice().sort(function(a, b) {
-    return (a.effective_date || '') < (b.effective_date || '') ? 1 : -1;
-  });
-  var html = '<h2>Insurance History</h2>';
-  sorted.forEach(function(h) {
-    var method = (h.cancel_method || '').toUpperCase();
-    var statusPill;
-    if (method === 'CANCELLED') {
-      statusPill = '<span class="pill pill-danger">Cancelled</span>';
-    } else if (method === 'REPLACED') {
-      statusPill = '<span class="pill pill-neutral">Replaced</span>';
-    } else {
-      statusPill = '<span class="pill pill-success">Active</span>';
+var DECISION_RANK = {"Approve":3,"Approve with Caution":2,"Hold":1,"Decline":0};
+var selectedDecision = null;
+
+function notesRequired(decision, systemRec){
+  if(decision==null) return false;
+  if(decision!=="Approve") return true;
+  return DECISION_RANK[decision] > (DECISION_RANK[systemRec]!=null?DECISION_RANK[systemRec]:3);
+}
+function openDecisionModal(){
+  if(!profilePayload||!profilePayload.account_vendor) return;
+  selectedDecision=null;
+  Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(o){ o.classList.remove('selected'); });
+  var notesEl=document.getElementById('cp-notes'); if(notesEl) notesEl.value='';
+  var reqEl=document.querySelector('.modal-notes-label .req'); if(reqEl) reqEl.style.display='none';
+  var m=document.getElementById('cp-modal'); if(m) m.style.display='block';
+}
+function closeDecisionModal(){
+  var m=document.getElementById('cp-modal'); if(m) m.style.display='none';
+  selectedDecision=null;
+}
+function buildDecisionPayload(){
+  var av=profilePayload.account_vendor;
+  var rec=profilePayload.system_recommendation||'Hold';
+  var notes=(document.getElementById('cp-notes')||{}).value||'';
+  var trigger=(profilePayload.risk_decisions||[]).length===0?'First Review':'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud';
+  return { Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
+}
+function resolveBrokerContactId(){
+  if(!window.ZOHO||!ZOHO.CREATOR||!ZOHO.CREATOR.DATA||!ZOHO.CREATOR.DATA.getRecords) return Promise.resolve(null);
+  return ZOHO.CREATOR.DATA.getRecords({app_link_name:'funding-portal',report_name:'Authorized_Users',page:1,pageSize:200})
+    .then(function(res){ var data=(res&&res.data)||[]; var me=data.find(function(c){return (c.Email||'').toLowerCase()===brokerEmail.toLowerCase();}); return me?me.ID:null; })
+    .catch(function(){ return null; });
+}
+function submitDecision(){
+  var fb=document.getElementById('cp-modal-feedback'); if(fb) fb.textContent='';
+  if(!selectedDecision){ if(fb) fb.textContent='Pick a decision.'; return; }
+  var rec=profilePayload.system_recommendation;
+  var notes=(document.getElementById('cp-notes')||{}).value||'';
+  if(notesRequired(selectedDecision,rec)&&!notes.trim()){ if(fb) fb.textContent='Decision Notes are required for this choice.'; return; }
+  var data=buildDecisionPayload();
+  var sb=document.getElementById('cp-submit'); if(sb) sb.disabled=true;
+  resolveBrokerContactId().then(function(cid){
+    if(!cid){
+      if(fb) fb.textContent='Could not resolve your contact — cannot record decision. Contact OperFi.';
+      if(sb) sb.disabled=false;
+      return;
     }
-    var policyLine = h.policy_number ? 'Policy ' + esc(h.policy_number) + ' · ' : '';
-    var coverage = h.minimum_coverage_amount ? ' · Min coverage $' + esc(h.minimum_coverage_amount) : '';
-    html += '<div class="timeline-row">' +
-      '<div class="title">' + esc(h.insurance_carrier || 'Insurer') + ' ' + statusPill + '</div>' +
-      '<div class="sub">' +
-        policyLine +
-        'Effective ' + esc(h.effective_date || '—') +
-        (h.cancel_effective_date ? ' · Cancelled ' + esc(h.cancel_effective_date) : '') +
-        coverage +
-      '</div></div>';
-  });
-  container.innerHTML = html;
-}
-
-function renderAuthorityHistory(p) {
-  var container = document.getElementById('authority-history');
-  container.classList.add('section');
-  var hist = (p.carrierok || {}).authority_history || [];
-  if (!hist.length) {
-    container.innerHTML = '<h2>Authority History</h2><div class="empty">No authority history available.</div>';
-    return;
-  }
-  var sorted = hist.slice().sort(function(a, b) {
-    return (a.original_served_date || '') < (b.original_served_date || '') ? 1 : -1;
-  });
-  var html = '<h2>Authority History</h2>';
-  sorted.forEach(function(a) {
-    var dispo = a.dispensation_action_desc
-      ? '<span class="auth-revoked">' + esc(a.dispensation_action_desc) +
-        ' on ' + esc(a.dispensation_served_date || '—') + '</span>'
-      : '<span class="auth-active">Active</span>';
-    html += '<div class="timeline-row">' +
-      '<div class="title">' + esc(a.authority_type_desc || 'Authority') + '</div>' +
-      '<div class="sub">' +
-        esc(a.original_action_desc || 'Granted') + ' on ' +
-        esc(a.original_served_date || '—') + ' · ' + dispo +
-      '</div></div>';
-  });
-  container.innerHTML = html;
-}
-
-function renderRiskStrip(p) {
-  var r = p.risk || { tier: 'Low', flags: [] };
-  var counts = countBySeverity(r.flags);
-  document.getElementById('risk-strip').innerHTML =
-    '<div class="risk-strip-row">' +
-      '<span class="tier tier-' + esc((r.tier || 'low').toLowerCase()) + '">' + esc(r.tier || 'Low') + '</span>' +
-      '<span class="risk-counts">' +
-        counts.Critical + ' Critical · ' +
-        counts.High + ' High · ' +
-        counts.Medium + ' Medium' +
-      '</span>' +
-    '</div>';
-}
-
-function renderRiskFlags(p) {
-  var flags = ((p.risk || {}).flags) || [];
-  var container = document.getElementById('risk-flags');
-  container.classList.add('risk-flags');
-  if (!flags.length) {
-    container.innerHTML = '<div class="no-flags">No risk flags detected.</div>';
-    return;
-  }
-  var grouped = {};
-  var order = [];
-  flags.forEach(function(f) {
-    if (!grouped[f.category]) { grouped[f.category] = []; order.push(f.category); }
-    grouped[f.category].push(f);
-  });
-  var html = '<h2>Risk Flags</h2>';
-  order.forEach(function(cat) {
-    html += '<h3>' + esc(cat) + '</h3>';
-    grouped[cat].forEach(function(f) { html += renderFlagRow(f); });
-  });
-  container.innerHTML = html;
-}
-
-function renderFlagRow(f) {
-  var sev = (f.severity || 'low').toLowerCase();
-  return '<div class="flag-row flag-' + esc(sev) + '">' +
-    '<span class="flag-dot"></span>' +
-    '<div style="flex:1;">' +
-      '<span class="flag-label">' + esc(f.label) + '</span>' +
-      '<span class="flag-sev">' + esc(f.severity) + '</span>' +
-      (f.explanation ? '<div class="flag-explanation">' + esc(f.explanation) + '</div>' : '') +
-      (f.data_point ? '<div class="flag-data">' + esc(f.data_point) + '</div>' : '') +
-    '</div></div>';
-}
-
-function countBySeverity(flags) {
-  var c = { Critical: 0, High: 0, Medium: 0, Low: 0 };
-  (flags || []).forEach(function(f) {
-    if (c[f.severity] !== undefined) c[f.severity] += 1;
-  });
-  return c;
-}
-
-function renderHero(p) {
-  var v = p.vendor || {};
-  var c = p.carrierok || {};
-  var name = v.Vendor_Name || c.legal_name || 'Carrier';
-  document.getElementById('hero').innerHTML =
-    '<div class="hero-row">' +
-      '<div>' +
-        '<h1>' + esc(name) + '</h1>' +
-        '<div class="meta">DOT ' + esc(v.USDOT || c.dot_number || '—') +
-          ' &nbsp;·&nbsp; MC ' + esc(v.MC || c.docket_number || '—') + '</div>' +
-      '</div>' +
-      '<div class="hero-pills">' +
-        pill(vendorStatusLabel(v), vendorStatusClass(v)) +
-        pill(paymentLabel(v), 'neutral') +
-        factorBadgeHtml(v) +
-      '</div>' +
-    '</div>';
-}
-
-function pill(text, cls) {
-  return '<span class="pill pill-' + cls + '">' + esc(text) + '</span>';
-}
-
-function vendorStatusLabel(v) {
-  if (v.DO_NOT_USE === true || v.DO_NOT_USE === 'true') return 'Do Not Use';
-  return v.Vendor_Status || 'Unknown';
-}
-
-function vendorStatusClass(v) {
-  if (v.DO_NOT_USE === true || v.DO_NOT_USE === 'true') return 'danger';
-  switch ((v.Vendor_Status || '').toLowerCase()) {
-    case 'approved': return 'success';
-    case 'denied': return 'danger';
-    case 'pending': return 'warning';
-    case 'payment change': return 'info';
-    default: return 'neutral';
-  }
-}
-
-function paymentLabel(v) {
-  if (v.Factoring_Company) return 'Factoring';
-  if ((v.Payment_Terms || '').toLowerCase().indexOf('quick pay') !== -1) return 'Quick Pay';
-  return v.Payment_Terms || '—';
-}
-
-function factorBadgeHtml(v) {
-  if (!v.Factoring_Company) return '';
-  var status = (v.Factor_Status || '').toLowerCase();
-  if (status === 'denied') return pill('Factor Not Approved', 'danger');
-  if (status === 'pending') return pill('Factor Pending', 'warning');
-  return '';
-}
-
-function showError(title, msg) {
-  document.getElementById('hero').innerHTML =
-    '<div class="state error"><strong>' + esc(title) + '</strong><br>' + esc(msg) + '</div>';
-}
-
-function esc(s) {
-  if (s === null || s === undefined) return '';
-  return String(s).replace(/[&<>"']/g, function(ch) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    data.Reviewed_By=cid;
+    return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}});
+  }).then(function(res){
+    if(!res) return;
+    if(sb) sb.disabled=false;
+    if(res&&(res.code===3000||(res.result&&res.result.length))){ closeDecisionModal(); loadProfile(); }
+    else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
+  }).catch(function(err){
+    if(sb) sb.disabled=false;
+    if(fb) fb.textContent='Submit error: '+esc(String(err));
   });
 }
+function wireDecisionCapture(p){
+  var av=p.account_vendor;
+  Array.prototype.forEach.call(document.querySelectorAll('.review-cta, .decision-bar-actions .btn-primary'), function(btn){
+    if(!av){ btn.setAttribute('disabled','disabled'); btn.title='Tender a load to enable decision capture.'; }
+    else { btn.removeAttribute('disabled'); btn.onclick=openDecisionModal; }
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(opt){
+    opt.onclick=function(){
+      Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(o){ o.classList.remove('selected'); });
+      opt.classList.add('selected');
+      selectedDecision=opt.getAttribute('data-decision');
+      var lbl=document.querySelector('.modal-notes-label .req');
+      if(lbl) lbl.style.display=notesRequired(selectedDecision,p.system_recommendation)?'inline':'none';
+    };
+  });
+  var sb=document.getElementById('cp-submit'); if(sb) sb.onclick=submitDecision;
+  var cb=document.getElementById('cp-cancel'); if(cb) cb.onclick=closeDecisionModal;
+  var mr=document.querySelector('#cp-modal .modal-recommendation');
+  if(mr) mr.innerHTML='System recommendation: <strong>'+esc(p.system_recommendation||'Hold')+'</strong>';
+  var pb=document.querySelector('.decision-bar-actions .btn-secondary'); if(pb) pb.onclick=function(){ window.print(); };
+}
 
-})();
+document.addEventListener('DOMContentLoaded', boot);
 </script>
+
 </body>
 </html>

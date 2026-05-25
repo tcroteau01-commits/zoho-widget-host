@@ -707,5 +707,70 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   </div>
 </div>
 
+
+<script>
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var brokerEmail = '';
+var vendorId = '';
+var profilePayload = null;
+
+function showLoading(on) {
+  var el = document.getElementById('cp-loading');
+  if (el) el.style.display = on ? 'block' : 'none';
+}
+function showError(title, detail) {
+  var el = document.getElementById('cp-error');
+  if (el) { el.style.display = 'block'; el.textContent = title + (detail ? ' — ' + detail : ''); }
+}
+
+function boot() {
+  var u = new URL(window.location.href);
+  vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
+  if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
+    showError('SDK unavailable', 'getInitParams is not available.');
+    return;
+  }
+  function gotParams(params) {
+    brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+    if (!brokerEmail) { showError('No broker identity', 'login user missing'); return; }
+    if (!vendorId && params && params.Vendor_ID) vendorId = String(params.Vendor_ID);
+    if (!vendorId) { showError('No vendor', 'vendor_id missing'); return; }
+    loadProfile();
+  }
+  try {
+    var result = ZOHO.CREATOR.UTIL.getInitParams();
+    if (result && typeof result.then === 'function') {
+      result.then(gotParams).catch(function(err) { showError('Init failed', String(err)); });
+    } else { gotParams(result); }
+  } catch (err) { showError('Init threw', String(err)); }
+}
+
+function loadProfile() {
+  showLoading(true);
+  var qs = new URLSearchParams({ email: brokerEmail, vendor_id: vendorId });
+  fetch(BROKER_API_BASE + '/carrier-profile?' + qs.toString())
+    .then(function(res) {
+      if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
+      return res.json();
+    })
+    .then(function(payload) { profilePayload = payload; showLoading(false); renderProfile(payload); })
+    .catch(function(err) { showLoading(false); showError('Failed to load profile', String(err)); });
+}
+
+function renderProfile(p) {
+  renderHero(p); renderRiskStrip(p); renderRecommendation(p); renderLitigation(p);
+  renderAuthority(p); renderInsurance(p); renderSafety(p); renderCrash(p); renderStability(p);
+  renderDecisionState(p); renderDecisionHistory(p); wireDecisionCapture(p);
+}
+
+// Stubs filled in later tasks — defined now so renderProfile never throws.
+function renderHero(p){} function renderRiskStrip(p){} function renderRecommendation(p){}
+function renderLitigation(p){} function renderAuthority(p){} function renderInsurance(p){}
+function renderSafety(p){} function renderCrash(p){} function renderStability(p){}
+function renderDecisionState(p){} function renderDecisionHistory(p){} function wireDecisionCapture(p){}
+
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+
 </body>
 </html>

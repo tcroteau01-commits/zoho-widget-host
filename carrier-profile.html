@@ -649,7 +649,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   </div>
 
   <!-- Decision Modal Preview -->
-  <div id="cp-modal" class="modal-preview">
+  <div id="cp-modal" class="modal-preview" style="display:none">
     <div class="modal-head">Document Hiring Decision</div>
     <div class="modal-sub">Your decision is recorded in the audit log along with a snapshot of the risk data shown above. Notes are required for any decision other than Approve.</div>
 
@@ -658,22 +658,22 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
 
     <div class="decision-options">
-      <div class="decision-option good">
+      <div class="decision-option good" data-decision="Approve">
         <span class="decision-option-icon">✓</span>
         <div class="decision-option-name">Approve</div>
         <div class="decision-option-desc">Clean profile, normal use.</div>
       </div>
-      <div class="decision-option warn selected">
+      <div class="decision-option warn" data-decision="Approve with Caution">
         <span class="decision-option-icon">◐</span>
         <div class="decision-option-name">Approve with Caution</div>
         <div class="decision-option-desc">Saw flags, accepting risk. Notes required.</div>
       </div>
-      <div class="decision-option amber">
+      <div class="decision-option amber" data-decision="Hold">
         <span class="decision-option-icon">⏸</span>
         <div class="decision-option-name">Hold</div>
         <div class="decision-option-desc">Need more info. Pauses use.</div>
       </div>
-      <div class="decision-option bad">
+      <div class="decision-option bad" data-decision="Decline">
         <span class="decision-option-icon">✕</span>
         <div class="decision-option-name">Decline</div>
         <div class="decision-option-desc">Won't use. Adds to your DNU list.</div>
@@ -681,11 +681,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
 
     <label class="modal-notes-label">Decision Notes <span class="req">*</span></label>
-    <textarea class="modal-notes-input" placeholder="Why are you choosing Approve with Caution over the system recommendation of Hold? (required when decision differs from system recommendation)">Insurance is pending cancellation but carrier confirmed payment processing and reinstatement is expected within 5 business days. They've moved 4 loads for us this quarter without issue. Continuing to use through the cancellation window with weekly check-ins on insurance status.</textarea>
+    <textarea id="cp-notes" class="modal-notes-input" placeholder="Why are you choosing Approve with Caution over the system recommendation of Hold? (required when decision differs from system recommendation)"></textarea>
 
     <div class="modal-actions">
-      <button class="modal-cancel">Cancel</button>
-      <button class="modal-submit">Save Decision &amp; Update Hiring Status</button>
+      <button id="cp-cancel" class="modal-cancel">Cancel</button>
+      <button id="cp-submit" class="modal-submit">Save Decision &amp; Update Hiring Status</button>
+      <div id="cp-modal-feedback" style="color:var(--of-red-text);font-size:12px;margin-top:6px;"></div>
     </div>
   </div>
 
@@ -1012,7 +1013,76 @@ function renderDecisionHistory(p){
   }).join('');
 }
 
-function wireDecisionCapture(p){}
+var DECISION_RANK = {"Approve":3,"Approve with Caution":2,"Hold":1,"Decline":0};
+var selectedDecision = null;
+
+function notesRequired(decision, systemRec){
+  if(decision==null) return false;
+  if(decision!=="Approve") return true;
+  return DECISION_RANK[decision] > (DECISION_RANK[systemRec]!=null?DECISION_RANK[systemRec]:3);
+}
+function openDecisionModal(){
+  if(!profilePayload||!profilePayload.account_vendor) return;
+  var m=document.getElementById('cp-modal'); if(m) m.style.display='block';
+}
+function closeDecisionModal(){
+  var m=document.getElementById('cp-modal'); if(m) m.style.display='none';
+  selectedDecision=null;
+}
+function buildDecisionPayload(){
+  var av=profilePayload.account_vendor;
+  var rec=profilePayload.system_recommendation||'Hold';
+  var notes=(document.getElementById('cp-notes')||{}).value||'';
+  var trigger=(profilePayload.risk_decisions||[]).length===0?'First Review':'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud';
+  return { Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
+}
+function resolveBrokerContactId(){
+  if(!window.ZOHO||!ZOHO.CREATOR||!ZOHO.CREATOR.DATA||!ZOHO.CREATOR.DATA.getRecords) return Promise.resolve(null);
+  return ZOHO.CREATOR.DATA.getRecords({app_link_name:'funding-portal',report_name:'Authorized_Users',page:1,pageSize:200})
+    .then(function(res){ var data=(res&&res.data)||[]; var me=data.find(function(c){return (c.Email||'').toLowerCase()===brokerEmail.toLowerCase();}); return me?me.ID:null; })
+    .catch(function(){ return null; });
+}
+function submitDecision(){
+  var fb=document.getElementById('cp-modal-feedback'); if(fb) fb.textContent='';
+  if(!selectedDecision){ if(fb) fb.textContent='Pick a decision.'; return; }
+  var rec=profilePayload.system_recommendation;
+  var notes=(document.getElementById('cp-notes')||{}).value||'';
+  if(notesRequired(selectedDecision,rec)&&!notes.trim()){ if(fb) fb.textContent='Decision Notes are required for this choice.'; return; }
+  var data=buildDecisionPayload();
+  var sb=document.getElementById('cp-submit'); if(sb) sb.disabled=true;
+  resolveBrokerContactId().then(function(cid){
+    if(cid) data.Reviewed_By=cid;
+    return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}});
+  }).then(function(res){
+    if(sb) sb.disabled=false;
+    if(res&&(res.code===3000||(res.result&&res.result.length))){ closeDecisionModal(); loadProfile(); }
+    else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
+  }).catch(function(err){
+    if(sb) sb.disabled=false;
+    if(fb) fb.textContent='Submit error: '+esc(String(err));
+  });
+}
+function wireDecisionCapture(p){
+  var av=p.account_vendor;
+  Array.prototype.forEach.call(document.querySelectorAll('.review-cta, .decision-bar-actions .btn-primary'), function(btn){
+    if(!av){ btn.setAttribute('disabled','disabled'); btn.title='Tender a load to enable decision capture.'; }
+    else { btn.removeAttribute('disabled'); btn.onclick=openDecisionModal; }
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(opt){
+    opt.onclick=function(){
+      Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(o){ o.classList.remove('selected'); });
+      opt.classList.add('selected');
+      selectedDecision=opt.getAttribute('data-decision');
+      var lbl=document.querySelector('.modal-notes-label .req');
+      if(lbl) lbl.style.display=notesRequired(selectedDecision,p.system_recommendation)?'inline':'none';
+    };
+  });
+  var sb=document.getElementById('cp-submit'); if(sb) sb.onclick=submitDecision;
+  var cb=document.getElementById('cp-cancel'); if(cb) cb.onclick=closeDecisionModal;
+  var mr=document.querySelector('#cp-modal .modal-recommendation');
+  if(mr) mr.innerHTML='System recommendation: <strong>'+esc(p.system_recommendation||'Hold')+'</strong>';
+  var pb=document.querySelector('.decision-bar-actions .btn-secondary'); if(pb) pb.onclick=function(){ window.print(); };
+}
 
 document.addEventListener('DOMContentLoaded', boot);
 </script>

@@ -98,6 +98,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .decision-state-pill.need-review { background: rgba(245,166,35,0.18); color: #fbc77f; border-color: rgba(245,166,35,0.3); }
 .decision-state-pill.approved { background: rgba(46,125,50,0.2); color: #8fd690; border-color: rgba(46,125,50,0.3); }
 .decision-state-pill.caution { background: rgba(245,166,35,0.18); color: #fbc77f; border-color: rgba(245,166,35,0.3); }
+.decision-state-pill.bad { background: rgba(198,40,40,0.22); color: #ff9a9a; border-color: rgba(198,40,40,0.35); }
 
 /* Sync bar */
 .sync-bar {
@@ -967,8 +968,51 @@ function renderStability(p){
     : '<p style="color:var(--of-gray-500);font-size:12px;padding:4px 0;">No identity/stability flags.</p>';
 }
 
-// ── Decision state / history / capture — stubs (wired in next task) ────────
-function renderDecisionState(p){} function renderDecisionHistory(p){} function wireDecisionCapture(p){}
+// ── Decision state / history / capture ────────────────────────────────────
+function _fmtDate(s){ if(!s) return '—'; var d=new Date(s); return isNaN(d)? String(s).slice(0,10) : d.toLocaleDateString(); }
+
+function renderDecisionState(p){
+  var av=p.account_vendor;
+  var pill=document.getElementById('cp-decision-pill');
+  var meta=document.getElementById('cp-decision-meta');
+  if(!av){
+    if(pill) pill.innerHTML='<span class="decision-state-pill">No relationship yet</span>';
+    if(meta) meta.textContent='Tender a load to this carrier to enable decision capture.';
+    return;
+  }
+  var hd=av.Hiring_Decision||'Not Reviewed';
+  var cls=av.Broker_DNU?'bad':(av.Needs_Re_Review?'need-review':(hd==='Approve'?'approved':'caution'));
+  if(pill) pill.innerHTML='<span class="decision-state-pill '+cls+'">'+esc(hd)+'</span>'+
+    (av.Needs_Re_Review?' <span class="decision-state-pill need-review">Needs Re-review</span>':'');
+  if(meta) meta.textContent='Last decision: '+esc(hd)+
+    (av.Last_Reviewed_By?' by '+esc(av.Last_Reviewed_By):'')+
+    ' · '+esc(av.Loads_Tendered_Count||0)+' loads tendered';
+}
+
+function renderDecisionHistory(p){
+  var el=document.getElementById('cp-decision-history'); if(!el) return;
+  var rows=(p.risk_decisions||[]);
+  if(!rows.length){ el.innerHTML='<div class="muted" style="color:var(--of-gray-500);font-size:13px;">No decisions recorded yet.</div>'; return; }
+  el.innerHTML=rows.map(function(d){
+    var dec=d.Broker_Decision||'—';
+    var dotCls=dec==='Approve'?'good':(dec==='Decline'?'bad':'warn');
+    return '<div class="history-event">'+
+      '<div class="history-dot '+dotCls+'"></div>'+
+      '<div class="history-body">'+
+        '<div class="history-head">'+esc(dec)+
+          (d.Decision_Variance1?' <span class="check-pill warn">Variance</span>':'')+
+        '</div>'+
+        '<div class="history-meta">System rec: '+esc(d.System_Recommendation||'—')+
+          (d.Trigger_Type?' · '+esc(d.Trigger_Type):'')+
+        '</div>'+
+        (d.Decision_Notes?'<div class="history-note">'+esc(d.Decision_Notes)+'</div>':'')+
+      '</div>'+
+      '<div class="history-side">'+esc(_fmtDate(d.Reviewed_At))+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function wireDecisionCapture(p){}
 
 document.addEventListener('DOMContentLoaded', boot);
 </script>

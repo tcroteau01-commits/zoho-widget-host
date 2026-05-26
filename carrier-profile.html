@@ -608,8 +608,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <!-- Digital Footprint (IPQS) -->
   <div class="card">
-    <div class="card-title">Digital Footprint <span class="tag">IPQualityScore</span> <span class="tag" style="background:var(--of-amber-soft);color:var(--of-amber-text);">Coming soon — pending IPQS integration</span></div>
-    <div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">Not yet wired — placeholder.</div>
+    <div class="card-title">Digital Footprint <span class="tag">IPQualityScore</span></div>
+    <div id="cp-digital-footprint"></div>
   </div>
 
   <!-- Bank-check -->
@@ -804,7 +804,7 @@ function loadProfile() {
 }
 
 function renderProfile(p) {
-  renderHero(p); renderRiskStrip(p); renderRecommendation(p); renderLitigation(p);
+  renderHero(p); renderRiskStrip(p); renderDigitalFootprint(p); renderRecommendation(p); renderLitigation(p);
   renderAuthority(p); renderInsurance(p); renderSafety(p); renderCrash(p); renderStability(p);
   renderDecisionState(p); renderDecisionHistory(p); wireDecisionCapture(p);
 }
@@ -874,9 +874,42 @@ function renderRiskStrip(p){
       safety: safetyRating, safetySub: co.safety_rating_date?'As of '+esc(co.safety_rating_date):'FMCSA',
       riskScore: riskScore, riskScoreSub: 'Probability of default',
       insurance: insStatus, insuranceSub: co.pending_insurance_cancellation?'⚠ Cancellation pending':'FMCSA',
-      ipqs: 'Pending', ipqsSub: 'IPQS not yet wired'
+      ipqs: (p.ipqs&&p.ipqs.risk_level&&p.ipqs.risk_level!=='Unknown')?p.ipqs.risk_level:'—',
+      ipqsSub: (p.ipqs&&p.ipqs.risk_level&&p.ipqs.risk_level!=='Unknown')
+                 ? ('Composite score '+(p.ipqs.risk_score!=null?p.ipqs.risk_score:'—'))
+                 : 'Not yet checked'
     });
   }
+}
+
+function renderDigitalFootprint(p){
+  var el=document.getElementById('cp-digital-footprint'); if(!el) return;
+  var q=p.ipqs||{};
+  if(!q.risk_level || q.risk_level==='Unknown'){
+    el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">'+
+      'No digital-footprint check on file yet.</div>';
+    return;
+  }
+  // Factual signals, neutral language. Each is present/absent only.
+  var signals=[
+    ['VPN at signup', q.vpn_detected],
+    ['Tor at signup', q.tor_detected],
+    ['VOIP phone', q.voip_number],
+    ['Disposable email', q.email_disposable],
+    ['Spam-trap email', (q.spam_trap_flag&&q.spam_trap_flag!=='none')]
+  ];
+  var chips=signals.map(function(s){
+    var on=!!s[1];
+    // ipqs-flag pill: .bad (red) when the signal is present, .good (green) when absent.
+    return '<span class="ipqs-flag '+(on?'bad':'good')+'">'+esc(s[0])+': '+(on?'Yes':'No')+'</span>';
+  }).join('');
+  var ipLine = q.ip_checked
+    ? ('<div class="flag-exp">IP location: '+esc(q.ip_location||'—')+'</div>')
+    : '<div class="flag-exp">Signup IP not on file — IP-based checks unavailable.</div>';
+  var fs=function(v){ return esc(v!=null?v:'—'); };
+  var scores='<div class="flag-exp">Fraud scores — phone '+fs(q.fraud_score_phone)+
+    ' · ip '+fs(q.fraud_score_ip)+' · email '+fs(q.fraud_score_email)+'</div>';
+  el.innerHTML='<div class="ipqs-flags" style="margin-bottom:8px;">'+chips+'</div>'+ipLine+scores;
 }
 
 // ── Recommendation ─────────────────────────────────────────────────────────

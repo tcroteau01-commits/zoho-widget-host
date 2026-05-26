@@ -864,8 +864,9 @@ function renderRiskStrip(p){
   var kpi=document.getElementById('cp-kpi-row');
   if(kpi){
     var co=p.carrierok||{};
-    var rf=(co.risk_factors&&co.risk_factors[0])||{};
-    var prob=_num(rf.risk_score_probability);
+    // CarrierOK exposes the default-probability + tier at the TOP level of the
+    // profile object, not inside risk_factors[0].
+    var prob=_num(co.risk_score_probability);
     var safetyRating=esc(co.safety_rating||p.fmcsa_safety_rating||'—');
     var riskScore=prob!=null?(prob*100).toFixed(0)+'%':'—';
     var insStatus=esc(co.indicator_insurance||'—');

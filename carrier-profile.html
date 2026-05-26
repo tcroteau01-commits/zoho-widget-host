@@ -874,7 +874,7 @@ function renderRiskStrip(p){
       safety: safetyRating, safetySub: co.safety_rating_date?'As of '+esc(co.safety_rating_date):'FMCSA',
       riskScore: riskScore, riskScoreSub: 'Probability of default',
       insurance: insStatus, insuranceSub: co.pending_insurance_cancellation?'⚠ Cancellation pending':'FMCSA',
-      ipqs: (p.ipqs&&p.ipqs.risk_level)||'—',
+      ipqs: (p.ipqs&&p.ipqs.risk_level&&p.ipqs.risk_level!=='Unknown')?p.ipqs.risk_level:'—',
       ipqsSub: (p.ipqs&&p.ipqs.risk_level&&p.ipqs.risk_level!=='Unknown')
                  ? ('Composite score '+(p.ipqs.risk_score!=null?p.ipqs.risk_score:'—'))
                  : 'Not yet checked'

@@ -900,15 +900,16 @@ function renderDigitalFootprint(p){
   ];
   var chips=signals.map(function(s){
     var on=!!s[1];
-    return '<span class="flag-row sev-'+(on?'high':'low')+'" style="display:inline-block;margin:2px 6px 2px 0;">'+
-      esc(s[0])+': '+(on?'Yes':'No')+'</span>';
+    // ipqs-flag pill: .bad (red) when the signal is present, .good (green) when absent.
+    return '<span class="ipqs-flag '+(on?'bad':'good')+'">'+esc(s[0])+': '+(on?'Yes':'No')+'</span>';
   }).join('');
   var ipLine = q.ip_checked
     ? ('<div class="flag-exp">IP location: '+esc(q.ip_location||'—')+'</div>')
     : '<div class="flag-exp">Signup IP not on file — IP-based checks unavailable.</div>';
-  var scores='<div class="flag-exp">Fraud scores — phone '+esc(q.fraud_score_phone)+
-    ' · ip '+esc(q.fraud_score_ip)+' · email '+esc(q.fraud_score_email)+'</div>';
-  el.innerHTML='<div style="margin-bottom:6px;">'+chips+'</div>'+ipLine+scores;
+  var fs=function(v){ return esc(v!=null?v:'—'); };
+  var scores='<div class="flag-exp">Fraud scores — phone '+fs(q.fraud_score_phone)+
+    ' · ip '+fs(q.fraud_score_ip)+' · email '+fs(q.fraud_score_email)+'</div>';
+  el.innerHTML='<div class="ipqs-flags" style="margin-bottom:8px;">'+chips+'</div>'+ipLine+scores;
 }
 
 // ── Recommendation ─────────────────────────────────────────────────────────

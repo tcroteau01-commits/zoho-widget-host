@@ -614,8 +614,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <!-- Bank-check -->
   <div class="card">
-    <div class="card-title">Bank &amp; Routing Intelligence <span class="tag">FedACH · OperFi Network</span> <span class="tag" style="background:var(--of-amber-soft);color:var(--of-amber-text);">Coming soon — pending FedACH integration</span></div>
-    <div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">Not yet wired — placeholder.</div>
+    <div class="card-title">Bank &amp; Routing Intelligence <span class="tag">FedACH · OperFi Network</span></div>
+    <div id="cp-bank-routing"></div>
   </div>
 
   <!-- Stability & Contact -->
@@ -804,7 +804,7 @@ function loadProfile() {
 }
 
 function renderProfile(p) {
-  renderHero(p); renderRiskStrip(p); renderDigitalFootprint(p); renderRecommendation(p); renderLitigation(p);
+  renderHero(p); renderRiskStrip(p); renderDigitalFootprint(p); renderBankRouting(p); renderRecommendation(p); renderLitigation(p);
   renderAuthority(p); renderInsurance(p); renderSafety(p); renderCrash(p); renderStability(p);
   renderDecisionState(p); renderDecisionHistory(p); wireDecisionCapture(p);
 }
@@ -910,6 +910,33 @@ function renderDigitalFootprint(p){
   var scores='<div class="flag-exp">Fraud scores — phone '+fs(q.fraud_score_phone)+
     ' · ip '+fs(q.fraud_score_ip)+' · email '+fs(q.fraud_score_email)+'</div>';
   el.innerHTML='<div class="ipqs-flags" style="margin-bottom:8px;">'+chips+'</div>'+ipLine+scores;
+}
+
+function renderBankRouting(p){
+  var el=document.getElementById('cp-bank-routing'); if(!el) return;
+  var b=p.bank||{};
+  if(!b.has_bank_info){
+    el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">'+
+      'No direct bank account on file (factored or not yet provided).</div>';
+    return;
+  }
+  // bad=true means the signal is a problem (red pill); else green.
+  var rows=[];
+  if(b.routing_present) rows.push(['Routing number valid', !b.routing_valid]);
+  rows.push(['Bank name matches routing', !!b.name_mismatch]);
+  rows.push(['Routing region matches carrier state', !!b.state_mismatch]);
+  rows.push(['Account linked to another carrier', !!b.account_shared]);
+  rows.push(['Linked to a flagged vendor', !!b.bad_actor]);
+  var chips=rows.map(function(r){
+    var bad=!!r[1];
+    return '<span class="ipqs-flag '+(bad?'bad':'good')+'">'+esc(r[0])+': '+(bad?'⚠':'OK')+'</span>';
+  }).join('');
+  var detail='<div class="flag-exp">Account '+esc(b.masked_account||'—');
+  if(b.fedach_bank_name) detail+=' · '+esc(b.fedach_bank_name);
+  if(b.routing_region) detail+=' · routing region '+esc(b.routing_region);
+  if(b.carrier_state) detail+=' · carrier '+esc(b.carrier_state);
+  detail+='</div>';
+  el.innerHTML='<div class="ipqs-flags" style="margin-bottom:8px;">'+chips+'</div>'+detail;
 }
 
 // ── Recommendation ─────────────────────────────────────────────────────────

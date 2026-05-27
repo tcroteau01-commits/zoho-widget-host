@@ -632,21 +632,22 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <!-- Vendor Comments -->
   <div class="card">
-    <div class="card-title">Comments &amp; Notes <span class="tag">Visible only to Marek LLC</span> <span class="tag" style="background:var(--of-amber-soft);color:var(--of-amber-text);">Coming soon — pending Comments module</span></div>
+    <div class="card-title">Comments &amp; Notes <span class="tag">Visible to your team and OperFi</span></div>
 
     <div class="comment-input">
-      <textarea disabled placeholder="Add a comment about this carrier… (visible only to your team)"></textarea>
+      <textarea id="cp-comment-text" placeholder="Add a comment about this carrier… (visible to your team)"></textarea>
       <div class="comment-input-actions">
-        <select class="comment-type-select" disabled>
-          <option>General</option>
-          <option>Operational</option>
-          <option>Risk</option>
-          <option>Payment</option>
+        <select id="cp-comment-type" class="comment-type-select">
+          <option value="General">General</option>
+          <option value="Operational">Operational</option>
+          <option value="Risk">Risk</option>
+          <option value="Payment">Payment</option>
         </select>
-        <button class="comment-submit" disabled>Add Comment</button>
+        <button id="cp-comment-submit" class="comment-submit">Add Comment</button>
       </div>
     </div>
-    <div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">Not yet wired — placeholder.</div>
+    <div id="cp-comment-feedback" style="color:var(--of-red-text);font-size:12px;min-height:14px;"></div>
+    <div id="cp-comments"></div>
   </div>
 
   <!-- Decision Modal Preview -->
@@ -806,7 +807,7 @@ function loadProfile() {
 function renderProfile(p) {
   renderHero(p); renderRiskStrip(p); renderDigitalFootprint(p); renderBankRouting(p); renderRecommendation(p); renderLitigation(p);
   renderAuthority(p); renderInsurance(p); renderSafety(p); renderCrash(p); renderStability(p);
-  renderDecisionState(p); renderDecisionHistory(p); wireDecisionCapture(p);
+  renderDecisionState(p); renderDecisionHistory(p); renderComments(p); wireDecisionCapture(p);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1327,6 +1328,59 @@ function renderStability(p){
 
 // ── Decision state / history / capture ────────────────────────────────────
 function _fmtDate(s){ if(!s) return '—'; var d=new Date(s); return isNaN(d)? String(s).slice(0,10) : d.toLocaleDateString(); }
+
+var COMMENT_TYPE_CLASS = {"General":"general","Operational":"ops","Risk":"risk","Payment":"payment"};
+function _truthy(v){ return v===true || v==='true'; }
+function _initials(name){
+  var parts=String(name||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '?';
+  return (parts[0][0]+(parts.length>1?parts[parts.length-1][0]:'')).toUpperCase();
+}
+function _fmtDateTime(s){
+  if(!s) return '';
+  var d=new Date(s);
+  if(isNaN(d)) return String(s);            // Creator display-format: show as-is
+  return d.toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+}
+function renderComments(p){
+  var av=p.account_vendor;
+  // Compose form enable/disable mirrors decision capture: needs a relationship.
+  var ta=document.getElementById('cp-comment-text');
+  var sel=document.getElementById('cp-comment-type');
+  var btn=document.getElementById('cp-comment-submit');
+  var hasAv=!!(av&&av.av_id);
+  [ta,sel,btn].forEach(function(el){
+    if(!el) return;
+    if(hasAv){ el.removeAttribute('disabled'); el.removeAttribute('title'); }
+    else { el.setAttribute('disabled','disabled'); el.title='Tender a load to this carrier to add comments.'; }
+  });
+  if(btn) btn.onclick=hasAv?addComment:null;
+
+  var el=document.getElementById('cp-comments'); if(!el) return;
+  var rows=(p.comments||[]).slice();
+  // Pinned first; backend already provides newest-first within each group.
+  rows.sort(function(a,b){ return (_truthy(b.Pinned)?1:0)-(_truthy(a.Pinned)?1:0); });
+  if(!rows.length){
+    el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">No comments yet — add the first note above.</div>';
+    return;
+  }
+  el.innerHTML=rows.map(function(c){
+    var cls=COMMENT_TYPE_CLASS[c.Comment_Type]||'general';
+    return '<div class="comment">'+
+      '<div class="comment-avatar">'+esc(_initials(c.Author_Name))+'</div>'+
+      '<div class="comment-body">'+
+        '<div class="comment-head">'+
+          '<span class="comment-author">'+esc(c.Author_Name||'Unknown')+'</span>'+
+          '<span class="comment-date">'+esc(_fmtDateTime(c.Added_Time))+'</span>'+
+          '<span class="comment-type-pill '+cls+'">'+esc(c.Comment_Type||'General')+'</span>'+
+          (_truthy(c.Pinned)?'<span class="comment-pinned-marker">📌 Pinned</span>':'')+
+        '</div>'+
+        '<div class="comment-text">'+esc(c.Comment_Text||'')+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+function addComment(){ /* implemented in Task 5 */ }
 
 function renderDecisionState(p){
   var av=p.account_vendor;

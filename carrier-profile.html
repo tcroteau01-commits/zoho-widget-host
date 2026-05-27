@@ -1380,7 +1380,36 @@ function renderComments(p){
     '</div>';
   }).join('');
 }
-function addComment(){ /* implemented in Task 5 */ }
+function addComment(){
+  var fb=document.getElementById('cp-comment-feedback'); if(fb) fb.textContent='';
+  var p=profilePayload||{};
+  var av=p.account_vendor;
+  if(!av||!av.av_id){ if(fb) fb.textContent='No relationship with this carrier yet.'; return; }
+  var ta=document.getElementById('cp-comment-text');
+  var text=((ta&&ta.value)||'').trim();
+  if(!text){ if(fb) fb.textContent='Enter a comment before submitting.'; return; }
+  var type=(document.getElementById('cp-comment-type')||{}).value||'General';
+  var vendorId=(p.vendor&&p.vendor.ID)||'';
+  var btn=document.getElementById('cp-comment-submit'); if(btn) btn.disabled=true;
+  return resolveBrokerContact().then(function(who){
+    if(!who||!who.id){
+      if(fb) fb.textContent='Could not resolve your contact — cannot post. Contact OperFi.';
+      if(btn) btn.disabled=false;
+      return;
+    }
+    var data={ Account_Vendor:av.av_id, Vendor:vendorId, Comment_Text:text,
+               Comment_Type:type, Author_Contact:who.id, Author_Name:who.name };
+    return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Comment',payload:{data:data}})
+      .then(function(res){
+        if(btn) btn.disabled=false;
+        if(res&&(res.code===3000||(res.result&&res.result.length))){ if(ta) ta.value=''; loadProfile(); }
+        else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
+      });
+  }).catch(function(err){
+    if(btn) btn.disabled=false;
+    if(fb) fb.textContent='Submit error: '+esc(String(err));
+  });
+}
 
 function renderDecisionState(p){
   var av=p.account_vendor;

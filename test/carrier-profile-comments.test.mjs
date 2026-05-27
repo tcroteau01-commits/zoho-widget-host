@@ -28,9 +28,11 @@ function makeWidget() {
 }
 
 // comments[] is the backend-normalized shape (flat Author_Name, Comment, Created_At).
+// broker_contact_id is the logged-in broker's Contact ID, resolved server-side.
 const RICH = {
   account_vendor: { av_id: 'av_1' },
   vendor: { ID: '9001' },
+  broker_contact_id: 'c_77',
   comments: [
     { ID: '200', Comment: 'Newer note', Comment_Type: 'Risk',
       Author_Name: 'Sarah Kobylinski', Created_At: '20-May-2026 09:00:00', Pinned: 'false' },
@@ -96,9 +98,6 @@ test('addComment builds the correct ADD payload', async () => {
   const { window, addCalls } = makeWidget();
   window.profilePayload = RICH;
   window.renderComments(RICH);
-  window.brokerEmail = 'broker@op.com';
-  // Stub the contact resolver so we do not depend on getRecords matching.
-  window.resolveBrokerContact = () => Promise.resolve({ id: 'c_77', name: 'Test Broker' });
   window.document.getElementById('cp-comment-text').value = 'Reliable on PA->NJ runs';
   window.document.getElementById('cp-comment-type').value = 'Operational';
   await window.addComment();
@@ -108,16 +107,16 @@ test('addComment builds the correct ADD payload', async () => {
   assert.equal(d.Account_Vendor, 'av_1');
   assert.equal(d.Comment, 'Reliable on PA->NJ runs');
   assert.equal(d.Comment_Type, 'Operational');
-  assert.equal(d.Author, 'c_77');
+  assert.equal(d.Author, 'c_77');   // from payload broker_contact_id, not a client lookup
   assert.equal(window.document.getElementById('cp-comment-text').value, '');
 });
 
-test('addComment surfaces an error and does not write when the contact cannot be resolved', async () => {
+test('addComment surfaces an error and does not write when broker_contact_id is missing', async () => {
   const { window, addCalls } = makeWidget();
-  window.profilePayload = RICH;
-  window.renderComments(RICH);
-  window.brokerEmail = 'broker@op.com';
-  window.resolveBrokerContact = () => Promise.resolve(null);
+  // Payload with a relationship but no resolved contact id (e.g. stale backend).
+  const p = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001' }, comments: [] };
+  window.profilePayload = p;
+  window.renderComments(p);
   window.document.getElementById('cp-comment-text').value = 'Some note';
   await window.addComment();
   assert.equal(addCalls.length, 0);

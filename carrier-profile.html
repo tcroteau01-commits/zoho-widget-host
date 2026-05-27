@@ -1398,25 +1398,20 @@ function addComment(){
   var ta=document.getElementById('cp-comment-text');
   var text=((ta&&ta.value)||'').trim();
   if(!text){ if(fb) fb.textContent='Enter a comment before submitting.'; return; }
+  var authorId=p.broker_contact_id||'';
+  if(!authorId){ if(fb) fb.textContent='Could not resolve your contact — cannot post. Contact OperFi.'; return; }
   var type=(document.getElementById('cp-comment-type')||{}).value||'General';
   var btn=document.getElementById('cp-comment-submit'); if(btn) btn.disabled=true;
-  return resolveBrokerContact().then(function(who){
-    if(!who||!who.id){
-      if(fb) fb.textContent='Could not resolve your contact — cannot post. Contact OperFi.';
+  var data={ Account_Vendor:av.av_id, Author:authorId, Comment:text, Comment_Type:type };
+  return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Vendor_Comments',payload:{data:data}})
+    .then(function(res){
       if(btn) btn.disabled=false;
-      return;
-    }
-    var data={ Account_Vendor:av.av_id, Author:who.id, Comment:text, Comment_Type:type };
-    return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Vendor_Comments',payload:{data:data}})
-      .then(function(res){
-        if(btn) btn.disabled=false;
-        if(res&&(res.code===3000||(res.result&&res.result.length))){ if(ta) ta.value=''; loadProfile(); }
-        else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
-      });
-  }).catch(function(err){
-    if(btn) btn.disabled=false;
-    if(fb) fb.textContent='Submit error: '+esc(String(err));
-  });
+      if(res&&(res.code===3000||(res.result&&res.result.length))){ if(ta) ta.value=''; loadProfile(); }
+      else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
+    }).catch(function(err){
+      if(btn) btn.disabled=false;
+      if(fb) fb.textContent='Submit error: '+esc(String(err));
+    });
 }
 
 function renderDecisionState(p){
@@ -1505,42 +1500,26 @@ function buildDecisionPayload(){
   var trigger=(profilePayload.risk_decisions||[]).length===0?'First Review':'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud';
   return { Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
 }
-function resolveBrokerContact(){
-  if(!window.ZOHO||!ZOHO.CREATOR||!ZOHO.CREATOR.DATA||!ZOHO.CREATOR.DATA.getRecords) return Promise.resolve(null);
-  return ZOHO.CREATOR.DATA.getRecords({app_link_name:'funding-portal',report_name:'Authorized_Users',page:1,pageSize:200})
-    .then(function(res){
-      var data=(res&&res.data)||[];
-      var me=data.find(function(c){return (c.Email||'').toLowerCase()===brokerEmail.toLowerCase();});
-      if(!me) return null;
-      return { id: me.ID, name: (me.Contact_Name||me.Email||'').trim() };
-    })
-    .catch(function(){ return null; });
-}
 function submitDecision(){
   var fb=document.getElementById('cp-modal-feedback'); if(fb) fb.textContent='';
   if(!selectedDecision){ if(fb) fb.textContent='Pick a decision.'; return; }
   var rec=profilePayload.system_recommendation;
   var notes=(document.getElementById('cp-notes')||{}).value||'';
   if(notesRequired(selectedDecision,rec)&&!notes.trim()){ if(fb) fb.textContent='Decision Notes are required for this choice.'; return; }
+  var cid=(profilePayload&&profilePayload.broker_contact_id)||'';
+  if(!cid){ if(fb) fb.textContent='Could not resolve your contact — cannot record decision. Contact OperFi.'; return; }
   var data=buildDecisionPayload();
+  data.Reviewed_By=cid;
   var sb=document.getElementById('cp-submit'); if(sb) sb.disabled=true;
-  resolveBrokerContact().then(function(who){
-    if(!who||!who.id){
-      if(fb) fb.textContent='Could not resolve your contact — cannot record decision. Contact OperFi.';
+  return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}})
+    .then(function(res){
       if(sb) sb.disabled=false;
-      return;
-    }
-    data.Reviewed_By=who.id;
-    return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}});
-  }).then(function(res){
-    if(!res) return;
-    if(sb) sb.disabled=false;
-    if(res&&(res.code===3000||(res.result&&res.result.length))){ closeDecisionModal(); loadProfile(); }
-    else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
-  }).catch(function(err){
-    if(sb) sb.disabled=false;
-    if(fb) fb.textContent='Submit error: '+esc(String(err));
-  });
+      if(res&&(res.code===3000||(res.result&&res.result.length))){ closeDecisionModal(); loadProfile(); }
+      else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
+    }).catch(function(err){
+      if(sb) sb.disabled=false;
+      if(fb) fb.textContent='Submit error: '+esc(String(err));
+    });
 }
 function wireDecisionCapture(p){
   var av=p.account_vendor;

@@ -70,3 +70,12 @@ test('compose form is disabled when there is no account_vendor', () => {
   assert.equal(window.document.getElementById('cp-comment-text').disabled, true);
   assert.equal(window.document.getElementById('cp-comment-submit').disabled, true);
 });
+
+test('compose form is enabled and wired when account_vendor is present', () => {
+  const { window } = makeWidget();
+  window.profilePayload = RICH;
+  window.renderComments(RICH);
+  assert.equal(window.document.getElementById('cp-comment-text').disabled, false);
+  assert.equal(window.document.getElementById('cp-comment-submit').disabled, false);
+  assert.equal(window.document.getElementById('cp-comment-submit').onclick, window.addComment);
+});

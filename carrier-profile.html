@@ -821,33 +821,92 @@ function renderFlagRow(f){
     '<span class="flag-label">'+esc(f.label)+'</span>'+
     '<span class="flag-exp">'+esc(f.explanation)+'</span></div>';
 }
+function hasFlag(p,id){ return ((p.risk&&p.risk.flags)||[]).some(function(f){return f.id===id;}); }
+function _years(days){ var n=_num(days); return n!=null?(n/365).toFixed(1)+' years':null; }
+function _relTime(s){
+  if(!s) return '';
+  var d=new Date(s); if(isNaN(d)) return String(s).slice(0,10);
+  var days=Math.floor((Date.now()-d.getTime())/86400000);
+  if(days<=0) return 'today';
+  if(days===1) return '1 day ago';
+  if(days<60) return days+' days ago';
+  var mo=Math.floor(days/30);
+  if(mo<24) return mo+' months ago';
+  return Math.floor(days/365)+' years ago';
+}
+function _money(v){
+  var n=_num(v); if(n==null||n===0) return null;
+  if(n>=1e6) return '$'+(n/1e6).toFixed(1).replace(/\.0$/,'')+'M';
+  if(n>=1e3) return '$'+Math.round(n/1e3)+'K';
+  return '$'+n;
+}
+function indRow(label,source,value,cls){
+  return '<div class="ind-row"><span class="ind-label">'+esc(label)+'</span>'+
+    '<span class="ind-source">'+esc(source)+'</span>'+
+    '<span class="ind-pill '+(cls||'neutral')+'">'+esc(value)+'</span></div>';
+}
+function _revocationCount(co){
+  var h=(co&&co.authority_history)||[],n=0;
+  for(var i=0;i<h.length;i++){ if((h[i].dispensation_action_desc||'')==='Revoked') n++; }
+  return n;
+}
+function _authorityAge(co){
+  var h=(co&&co.authority_history)||[],earliest=null;
+  for(var i=0;i<h.length;i++){
+    var d=new Date(h[i].original_served_date||''); if(isNaN(d)) continue;
+    if(earliest==null||d<earliest) earliest=d;
+  }
+  if(!earliest) return null;
+  return ((Date.now()-earliest.getTime())/(365*86400000)).toFixed(1)+' years';
+}
+function _authorityActive(co){
+  return [co.authority_common,co.authority_contract,co.authority_broker]
+    .some(function(a){ return a==='Active'||a==='Authorized'; });
+}
+function _forHire(co){
+  if(co.authority_for_hire!=null) return !!co.authority_for_hire;
+  return /for hire/i.test(co.operation_classification_desc||'');
+}
+function _hasNetworkGraph(co){
+  var rf=(co&&co.risk_factors&&co.risk_factors[0])||{};
+  return !!(rf.indicator_network_graph_phone||rf.indicator_network_graph_address);
+}
 
 // ── Hero ───────────────────────────────────────────────────────────────────
 function renderHero(p){
-  var v=p.vendor||{};
+  var v=p.vendor||{}, co=p.carrierok||{};
   var nameEl=document.querySelector('#cp-hero .hero-name');
   var metaEl=document.querySelector('#cp-hero .hero-meta');
   if(nameEl) nameEl.textContent=v.Vendor_Name||v.Name1||'Carrier';
-  if(metaEl) metaEl.innerHTML=
-    '<span class="key">USDOT</span> '+esc(v.USDOT||'—')+
-    '<span class="sep">·</span>'+
-    '<span class="key">MC</span> '+esc(v.MC||'—')+
-    (v.Physical_State ? '<span class="sep">·</span>'+esc(v.Physical_State) : '');
+  var parts=[
+    '<span><span class="key">MC#</span> '+esc(v.MC||'—')+'</span>',
+    '<span><span class="key">DOT</span> '+esc(v.USDOT||'—')+'</span>'
+  ];
+  var authAge=_authorityAge(co); if(authAge) parts.push('<span>Authority age: '+esc(authAge)+'</span>');
+  var dotAge=_years(co.dot_age); if(dotAge) parts.push('<span>DOT age: '+esc(dotAge)+'</span>');
+  var loc=[co.physical_address_city||'', co.physical_address_state||v.Physical_State||'']
+            .filter(function(x){return x;}).join(', ');
+  if(loc) parts.push('<span>Based in '+esc(loc)+'</span>');
+  if(metaEl) metaEl.innerHTML=parts.join('<span class="sep">·</span>');
 }
 
 // ── Risk strip + KPI row ───────────────────────────────────────────────────
 function renderKpiRow(container, vals){
-  // Targets each .kpi card by order; reads label to confirm, then sets .kpi-value text.
+  // Targets each .kpi card by order, sets value + sub, and applies the
+  // good/warn/bad accent class to both the card (left bar) and the value text.
   var cards=container.querySelectorAll('.kpi');
   var map=[
-    {label:'FMCSA Safety Rating', value:vals.safety,   sub:vals.safetySub||''},
-    {label:'CarrierOK Risk Score',value:vals.riskScore, sub:vals.riskScoreSub||''},
-    {label:'Insurance Status',    value:vals.insurance, sub:vals.insuranceSub||''},
-    {label:'IPQS Risk Level',     value:vals.ipqs,      sub:vals.ipqsSub||''}
+    {value:vals.safety,    sub:vals.safetySub||'',    cls:vals.safetyCls},
+    {value:vals.riskScore, sub:vals.riskScoreSub||'', cls:vals.riskScoreCls},
+    {value:vals.insurance, sub:vals.insuranceSub||'', cls:vals.insuranceCls},
+    {value:vals.ipqs,      sub:vals.ipqsSub||'',      cls:vals.ipqsCls}
   ];
   for(var i=0;i<cards.length&&i<map.length;i++){
     var vEl=cards[i].querySelector('.kpi-value');
     var sEl=cards[i].querySelector('.kpi-sub');
+    cards[i].classList.remove('good','warn','bad');
+    if(vEl) vEl.classList.remove('good','warn','bad');
+    if(map[i].cls){ cards[i].classList.add(map[i].cls); if(vEl) vEl.classList.add(map[i].cls); }
     if(vEl) vEl.textContent=map[i].value;
     if(sEl) sEl.textContent=map[i].sub;
   }
@@ -864,20 +923,45 @@ function renderRiskStrip(p){
   var kpi=document.getElementById('cp-kpi-row');
   if(kpi){
     var co=p.carrierok||{};
-    // CarrierOK exposes the default-probability + tier at the TOP level of the
-    // profile object, not inside risk_factors[0].
+
+    // KPI 1 — FMCSA safety rating
+    var rating=(co.safety_rating||p.fmcsa_safety_rating||'').toString();
+    var safetyVal=rating?rating.toUpperCase():'NOT RATED';
+    var rUp=rating.toUpperCase();
+    var safetyCls=rUp==='SATISFACTORY'?'good':((rUp==='CONDITIONAL'||rUp==='UNSATISFACTORY')?'bad':'');
+
+    // KPI 2 — CarrierOK risk score. CarrierOK exposes risk_score (a categorical
+    // TIER string) + risk_score_probability (a fraction) at the profile top level.
+    // Headline = whole-number probability; subtitle = precise probability + tier.
     var prob=_num(co.risk_score_probability);
-    var safetyRating=esc(co.safety_rating||p.fmcsa_safety_rating||'—');
-    var riskScore=prob!=null?(prob*100).toFixed(0)+'%':'—';
-    var insStatus=esc(co.indicator_insurance||'—');
+    var cokTier=(co.risk_score||'').toString();
+    var scoreVal=prob!=null?String(Math.round(prob*100)):'—';
+    var scoreSub=prob!=null
+      ? ('Probability '+(prob*100).toFixed(1)+'%'+(cokTier?' · '+cokTier+' tier':''))
+      : 'Not scored';
+    var tU=cokTier.toUpperCase();
+    var scoreCls=tU==='HIGH'?'bad':(tU==='MEDIUM'?'warn':(tU==='LOW'?'good':(prob!=null?(prob>=0.7?'bad':(prob>=0.4?'warn':'good')):'')));
+
+    // KPI 3 — Insurance status (composed multi-word)
+    var pendCancel=!!co.pending_insurance_cancellation;
+    var hasIns=co.indicator_insurance===false?false:!!co.indicator_insurance;
+    var cancelCount=_num(co.insurance_cancel_count);
+    var insVal=pendCancel?'PENDING CANCELLATION':(hasIns?'ACTIVE':'NOT ON FILE');
+    var insSub=pendCancel?('Cancellation pending'+(cancelCount?' · cancel count: '+cancelCount:''))
+              :(hasIns?'On file with FMCSA':'No active policy');
+    var insCls=pendCancel?'warn':(hasIns?'good':'bad');
+
+    // KPI 4 — IPQS risk level
+    var ipqsLvl=(p.ipqs&&p.ipqs.risk_level&&p.ipqs.risk_level!=='Unknown')?p.ipqs.risk_level:'';
+    var ipqsCls=ipqsLvl==='High'?'bad':(ipqsLvl==='Medium'?'warn':(ipqsLvl==='Low'?'good':''));
+
     renderKpiRow(kpi,{
-      safety: safetyRating, safetySub: co.safety_rating_date?'As of '+esc(co.safety_rating_date):'FMCSA',
-      riskScore: riskScore, riskScoreSub: 'Probability of default',
-      insurance: insStatus, insuranceSub: co.pending_insurance_cancellation?'⚠ Cancellation pending':'FMCSA',
-      ipqs: (p.ipqs&&p.ipqs.risk_level&&p.ipqs.risk_level!=='Unknown')?p.ipqs.risk_level:'—',
-      ipqsSub: (p.ipqs&&p.ipqs.risk_level&&p.ipqs.risk_level!=='Unknown')
-                 ? ('Composite score '+(p.ipqs.risk_score!=null?p.ipqs.risk_score:'—'))
-                 : 'Not yet checked'
+      safety: safetyVal, safetySub: co.safety_rating_date?'Issued '+esc(co.safety_rating_date):'FMCSA', safetyCls: safetyCls,
+      riskScore: scoreVal, riskScoreSub: scoreSub, riskScoreCls: scoreCls,
+      insurance: insVal, insuranceSub: insSub, insuranceCls: insCls,
+      ipqs: ipqsLvl||'—',
+      ipqsSub: ipqsLvl ? ('Composite score '+((p.ipqs&&p.ipqs.risk_score!=null)?p.ipqs.risk_score:'—')) : 'Not yet checked',
+      ipqsCls: ipqsCls
     });
   }
 }
@@ -1003,128 +1087,242 @@ function renderRecommendation(p){
 }
 
 // ── Litigation Defense Checklist ───────────────────────────────────────────
+// 10-item named checklist per Montgomery v. Caribe Transport II. Two items
+// (English-Language Proficiency, Non-Domiciled CDL) are dropped — that data is
+// not exposed by CarrierOK/FMCSA. The remaining 8 are wired from the payload.
+function _checkRow(q, aHtml, meta, verdict){
+  var iconChar=verdict==='good'?'✓':'!';
+  var pillText=verdict==='good'?'OK':(verdict==='bad'?'Flag':'Caution');
+  return '<div class="check-row">'+
+    '<span class="check-icon '+verdict+'">'+iconChar+'</span>'+
+    '<div class="check-text"><div class="q">'+esc(q)+'</div>'+
+      '<div class="a">'+aHtml+'</div>'+
+      '<div class="meta">'+esc(meta)+'</div></div>'+
+    '<span class="check-pill '+verdict+'">'+esc(pillText)+'</span></div>';
+}
 function renderLitigation(p){
   var el=document.getElementById('cp-litigation'); if(!el) return;
-  el.innerHTML=FLAG_CATEGORIES.map(function(cat){
-    var fl=flagsByCategory(p,cat), w=worstSeverity(fl);
-    var iconCls,iconChar,pillCls,pillText;
-    if(w<0){     iconCls='good';iconChar='✓';pillCls='good';pillText='Clear'; }
-    else if(w>=2){iconCls='bad'; iconChar='✕';pillCls='bad'; pillText=w===3?'Critical':'High'; }
-    else{         iconCls='warn';iconChar='!';pillCls='warn';pillText='Caution'; }
-    return '<div class="check-row">'+
-      '<span class="check-icon '+iconCls+'">'+iconChar+'</span>'+
-      '<div class="check-text"><span class="q">'+esc(cat)+'</span>'+
-        (fl.length?'<span class="a">'+fl.length+' flag'+(fl.length>1?'s':'')+'</span>':'<span class="a">No issues found</span>')+
-      '</div>'+
-      '<span class="check-pill '+pillCls+'">'+pillText+'</span>'+
-    '</div>';
-  }).join('');
+  var co=p.carrierok||{}, v=p.vendor||{}, bank=p.bank||{};
+  var out=[];
+
+  // 1. FMCSA Safety Rating
+  var rating=(co.safety_rating||'').toString(), rUp=rating.toUpperCase();
+  var rv=rUp==='SATISFACTORY'?'good':((rUp==='CONDITIONAL'||rUp==='UNSATISFACTORY')?'bad':'good');
+  out.push(_checkRow('FMCSA Safety Rating',
+    rating?('<strong>'+esc(rating)+'</strong>'+(co.safety_rating_date?' — issued '+esc(co.safety_rating_date):''))
+          :'No adverse rating on file', 'FMCSA', rv));
+
+  // 2. Recently Reinstated Authority
+  var reinstated=hasFlag(p,'recent_revocation')||!!co.authority_common_review;
+  out.push(_checkRow('Recently Reinstated Authority',
+    reinstated?'Recent reinstatement or authority under review':'No recent reinstatement',
+    'CarrierOK', reinstated?'warn':'good'));
+
+  // 3. Active Out-of-Service Orders
+  var oosActive=!!(co.out_of_service_flag||co.oos_alert_driver||co.oos_alert_vehicle||co.oos_alert_hazmat);
+  out.push(_checkRow('Active Out-of-Service Orders',
+    oosActive?'Active OOS order on file':'None active', 'FMCSA', oosActive?'bad':'good'));
+
+  // 4. Recent Crashes (24 mo)
+  var fatal=_num(co.crash_fatalities), inj=_num(co.crash_injuries), prev=_num(co.crash_preventable);
+  var ctotal=_num(co.crash_total); if(ctotal==null&&Array.isArray(co.crash_history)) ctotal=co.crash_history.length;
+  var crashV=(fatal!=null&&fatal>0)?'bad':((ctotal!=null&&ctotal>0)?'warn':'good');
+  out.push(_checkRow('Recent Crashes (24 mo)',
+    (ctotal!=null&&ctotal>0)
+      ? (esc(String(ctotal))+' reported · '+(fatal||0)+' fatalities · '+(inj||0)+' injuries'+(prev!=null?' · '+prev+' preventable':''))
+      : 'No crashes on record', 'FMCSA', crashV));
+
+  // 5. Insurance Adequate & Current
+  var hasIns=co.indicator_insurance===false?false:!!co.indicator_insurance;
+  var pend=!!co.pending_insurance_cancellation, cancel=_num(co.insurance_cancel_count);
+  var liab=_money(co.insurance_liability_limit||((co.insurance_history||[])[0]||{}).minimum_coverage_amount);
+  var insV=!hasIns?'bad':(pend?'warn':'good');
+  out.push(_checkRow('Insurance Adequate &amp; Current',
+    !hasIns?'No insurance on file'
+      :((liab?esc(liab)+' liability on file':'On file')+(pend?' · <strong>pending cancellation</strong>':'')+(cancel?' · cancel count '+cancel:'')),
+    'FMCSA', insV));
+
+  // 6. Authority Active & Authorized For Hire
+  var active=_authorityActive(co), forHire=_forHire(co);
+  out.push(_checkRow('Authority Active &amp; Authorized For Hire',
+    active?('Active'+(forHire?' · authorized for hire':'')+(co.boc3_on_file?' · BOC-3 on file':'')):'No active authority',
+    'CarrierOK', active?'good':'bad'));
+
+  // 7. Carrier-Bank State Match
+  if(!bank.has_bank_info){
+    out.push(_checkRow('Carrier-Bank State Match','No direct bank account on file (factored)','FedACH Directory','good'));
+  } else if(bank.state_mismatch){
+    out.push(_checkRow('Carrier-Bank State Match',
+      'Carrier '+esc(bank.carrier_state||'?')+' · Bank '+esc(bank.routing_region||'?')+' — <strong>mismatch</strong>',
+      'FedACH Directory · OperFi Network','bad'));
+  } else {
+    out.push(_checkRow('Carrier-Bank State Match','Carrier and bank region match','FedACH Directory','good'));
+  }
+
+  // 8. Factoring Company Status
+  var fs=(v.Factor_Status||'').toString();
+  var fsV=fs==='Approved'?'good':(fs==='Denied'?'bad':(fs?'warn':'good'));
+  out.push(_checkRow('Factoring Company Status',
+    v.Factoring_Company?('Factor status: <strong>'+esc(fs||'Unknown')+'</strong>'):'No factoring company on file (direct pay)',
+    'OperFi · Factor_Status', fsV));
+
+  el.innerHTML=out.join('');
 }
 
 // ── Authority ──────────────────────────────────────────────────────────────
 function renderAuthority(p){
   var el=document.getElementById('cp-authority'); if(!el) return;
   var co=p.carrierok||{};
-  var rows=[
-    {label:'Common Authority', source:'CarrierOK', val:co.authority_common, good:'Active',bad:'Inactive'},
-    {label:'Contract Authority',source:'CarrierOK', val:co.authority_contract,good:'Active',bad:'Inactive'},
-    {label:'DOT Age (days)',   source:'FMCSA',     val:co.dot_age!=null?String(co.dot_age):null, good:null,bad:null}
-  ];
-  var flags=flagsByCategory(p,'Authority and Compliance');
-  el.innerHTML=rows.map(function(r){
-    var val=r.val!=null?r.val:'—';
-    var pillCls=r.good&&r.bad?(val===r.good?'good':val===r.bad?'bad':'neutral'):'neutral';
-    return '<div class="ind-row">'+
-      '<span class="ind-label">'+esc(r.label)+'</span>'+
-      '<span class="ind-source">'+esc(r.source)+'</span>'+
-      '<span class="ind-pill '+pillCls+'">'+esc(val)+'</span>'+
-    '</div>';
-  }).join('')+
-  (flags.length?flags.map(renderFlagRow).join(''):'<p style="color:var(--of-gray-500);font-size:12px;margin-top:8px;">No authority flags.</p>');
+  var active=_authorityActive(co), forHire=_forHire(co);
+  var reinstated=hasFlag(p,'recent_revocation')||!!co.authority_common_review;
+  var revs=_revocationCount(co);
+  var boc3=co.boc3_on_file;
+  var chain=_hasNetworkGraph(co);
+  var authAge=_authorityAge(co)||_years(co.dot_age);
+  el.innerHTML=
+    indRow('Active Authority','CarrierOK',active?'Yes':'No',active?'good':'bad')+
+    indRow('Authorized For Hire','CarrierOK',forHire?'Yes':'No',forHire?'good':'bad')+
+    indRow('Authority Reinstated (last 6 mo)','CarrierOK',reinstated?'⚠ Yes':'No',reinstated?'warn':'good')+
+    indRow('Prior Revocations','FMCSA',String(revs),revs>0?'warn':'good')+
+    indRow('BOC-3 On File','CarrierOK',boc3===false?'No':(boc3?'Yes':'—'),boc3===false?'bad':(boc3?'good':'neutral'))+
+    indRow('USDOT-MC Chain of Title','FMCSA',chain?'Review':'Unchanged',chain?'warn':'good')+
+    indRow('Last MCS-150 Filing','FMCSA',co.mcs150_date||'—','neutral')+
+    indRow('Authority Age','CarrierOK',authAge||'—','neutral');
 }
 
 // ── Insurance ──────────────────────────────────────────────────────────────
 function renderInsurance(p){
   var el=document.getElementById('cp-insurance'); if(!el) return;
   var co=p.carrierok||{};
-  var histCount=Array.isArray(co.insurance_history)?co.insurance_history.length:0;
-  var rows=[
-    {label:'Insurance Indicator',    source:'FMCSA', val:co.indicator_insurance, good:'Active',bad:'Inactive'},
-    {label:'Pending Cancellation',   source:'FMCSA', val:co.pending_insurance_cancellation?'Yes':'No', good:'No',bad:'Yes'},
-    {label:'Insurance History Items',source:'FMCSA', val:histCount>0?String(histCount):'None', good:null,bad:null}
-  ];
-  var flags=flagsByCategory(p,'Insurance');
-  el.innerHTML=rows.map(function(r){
-    var val=r.val!=null?r.val:'—';
-    var pillCls=r.good&&r.bad?(val===r.good?'good':val===r.bad?'bad':'neutral'):'neutral';
-    return '<div class="ind-row">'+
-      '<span class="ind-label">'+esc(r.label)+'</span>'+
-      '<span class="ind-source">'+esc(r.source)+'</span>'+
-      '<span class="ind-pill '+pillCls+'">'+esc(val)+'</span>'+
-    '</div>';
-  }).join('')+
-  (flags.length?flags.map(renderFlagRow).join(''):'<p style="color:var(--of-gray-500);font-size:12px;margin-top:8px;">No insurance flags.</p>');
+  var hist=Array.isArray(co.insurance_history)?co.insurance_history.slice():[];
+  hist.sort(function(a,b){ return String(b.effective_date||'').localeCompare(String(a.effective_date||'')); });
+  var h0=hist[0]||{};
+  var liab=_money(co.insurance_liability_limit||h0.minimum_coverage_amount||h0.liability_limit);
+  var cargo=_money(co.insurance_cargo_limit||h0.cargo_limit);
+  var covType=co.insurance_type||(cargo?'Liability + Cargo':(liab?'Liability':''));
+  var carrier=h0.insurance_carrier||co.insurance_carrier||'';
+  var eff=h0.effective_date||'';
+  var pend=!!co.pending_insurance_cancellation;
+  var cancel=_num(co.insurance_cancel_count);
+  var hazmat=!!co.hazardous_material;
+  el.innerHTML=
+    indRow('Coverage Type','FMCSA',covType||'—','neutral')+
+    indRow('Liability Limit','FMCSA',liab||'—',liab?'good':'neutral')+
+    indRow('Cargo Limit','FMCSA',cargo||'—',cargo?'good':'neutral')+
+    indRow('Insurance Carrier','FMCSA',carrier||'—','neutral')+
+    indRow('Effective Date','FMCSA',eff||'—','neutral')+
+    indRow('Pending Cancellation','FMCSA',pend?'⚠ Yes':'No',pend?'warn':'good')+
+    indRow('Cancel Count (lifetime)','FMCSA',cancel!=null?String(cancel):'—',cancel>0?'warn':'good')+
+    indRow('Hazmat Coverage','OperFi',hazmat?'Required':'N/A (no hazmat)','neutral');
 }
 
 // ── Safety ─────────────────────────────────────────────────────────────────
+// CarrierOK returns OOS rates as fractions (0.238 == 23.8%); display ×100.
+function _benchBar(title, selfFrac, avgFrac){
+  if(selfFrac==null||avgFrac==null) return '';
+  var selfPct=selfFrac*100, avgPct=avgFrac*100;
+  var cls=selfFrac<=avgFrac?'good':'bad';
+  var width=Math.min(avgFrac>0?(selfFrac/(avgFrac*2))*100:(selfFrac>0?100:0),100);
+  return '<div class="bench">'+
+    '<div class="bench-label"><span>'+esc(title)+'</span>'+
+      '<span><strong>'+selfPct.toFixed(1)+'%</strong> · National avg: '+avgPct.toFixed(1)+'%</span></div>'+
+    '<div class="bench-bars">'+
+      '<div class="bench-fill-self '+cls+'" style="width:'+width.toFixed(1)+'%">'+selfPct.toFixed(1)+'%</div>'+
+      '<div class="bench-marker" style="left:50%"></div>'+
+    '</div></div>';
+}
+function _statCell(label,val,sub,cls){
+  return '<div class="stat"><div class="stat-label">'+esc(label)+'</div>'+
+    '<div class="stat-val '+(cls||'')+'">'+esc(val)+'</div>'+
+    (sub?'<div class="stat-sub">'+esc(sub)+'</div>':'')+'</div>';
+}
+function _oosPill(label,active){
+  return '<span class="ind-pill '+(active?'bad':'good')+'">'+esc(label)+': '+(active?'Active':'Clear')+'</span>';
+}
 function renderSafety(p){
   var el=document.getElementById('cp-safety'); if(!el) return;
   var co=p.carrierok||{};
-  var selfPct=_num(co.inspections_driver_out_of_service_pct);
-  var avgPct=_num(co.natl_avg_oos_driver);
-  var units=_num(co.total_power_units);
   var flags=flagsByCategory(p,'Operations and Safety');
-  var selfStr=selfPct!=null?selfPct.toFixed(1)+'%':'—';
-  var avgStr=avgPct!=null?avgPct.toFixed(1)+'%':'—';
-  var barPct=selfPct!=null&&avgPct!=null?Math.min(selfPct/Math.max(avgPct*2,0.01)*100,100):0;
-  var barCls=selfPct!=null&&avgPct!=null?(selfPct<=avgPct?'good':'bad'):'';
-  var avgPos=50;
-  el.innerHTML=
-    '<div class="stat-grid two" style="margin-bottom:16px;">'+
-      '<div class="stat"><div class="stat-label">Driver OOS %</div>'+
-        '<div class="stat-val '+(barCls||'')+'">'+esc(selfStr)+'</div>'+
-        '<div class="stat-sub">Carrier rate</div></div>'+
-      '<div class="stat"><div class="stat-label">National Avg OOS %</div>'+
-        '<div class="stat-val">'+esc(avgStr)+'</div>'+
-        '<div class="stat-sub">FMCSA benchmark</div></div>'+
-    '</div>'+
-    (selfPct!=null&&avgPct!=null?
-      '<div class="bench">'+
-        '<div class="bench-label"><span>Driver OOS vs National Avg</span><span>'+esc(selfStr)+'</span></div>'+
-        '<div class="bench-bars">'+
-          '<div class="bench-fill-self '+barCls+'" style="width:'+barPct.toFixed(1)+'%">'+esc(selfStr)+'</div>'+
-          '<div class="bench-marker" style="left:'+avgPos+'%"></div>'+
-        '</div>'+
-      '</div>':'')+
-    (units!=null?'<div style="margin-top:12px;font-size:12px;color:var(--of-gray-700);">Power units: <strong>'+esc(String(units))+'</strong></div>':'')+
-    (flags.length?'<div style="margin-top:12px;">'+flags.map(renderFlagRow).join('')+'</div>':'<p style="color:var(--of-gray-500);font-size:12px;margin-top:12px;">No safety flags.</p>');
+  var units=_num(co.total_power_units), inspUnits=_num(co.inspected_power_units);
+  var drivers=_num(co.total_drivers), insp=_num(co.inspections_total), viol=_num(co.violations_total);
+  var vDrv=_num(co.violations_driver_fitness), vVeh=_num(co.violations_vehicle_maintence);
+
+  var unitsSub=(units!=null&&inspUnits!=null&&units>0)
+    ? (inspUnits+' inspected ('+(inspUnits/units*100).toFixed(1)+'%)') : 'FMCSA registered';
+  var inspSub=co.last_inspection_date?('Last inspection '+co.last_inspection_date):'24-month window';
+  var violSub=(vDrv!=null||vVeh!=null)?((vDrv||0)+' driver fitness · '+(vVeh||0)+' vehicle'):'24-month window';
+  var ratioOk=(units!=null&&inspUnits!=null&&units>0)?(inspUnits>0):null;
+  var contactOk=!_hasNetworkGraph(co);
+
+  var statsHtml='<div class="stat-grid">'+
+    _statCell('Total Power Units', units!=null?String(units):'—', unitsSub)+
+    _statCell('Total Drivers', drivers!=null?String(drivers):'—', 'FMCSA registered')+
+    _statCell('Total Inspections (24mo)', insp!=null?String(insp):'—', inspSub)+
+    _statCell('Total Violations', viol!=null?String(viol):'—', violSub, viol!=null&&viol>0?'warn':'')+
+    _statCell('Power Unit Ratio Match', ratioOk==null?'—':(ratioOk?'✓ Pass':'Review'),
+              ratioOk==null?'Insufficient data':'Within FMCSA benchmark', ratioOk?'good':'')+
+    _statCell('Contact Match (CarrierGraph)', contactOk?'✓ Pass':'Review',
+              contactOk?'Verified records':'Shared contact detected', contactOk?'good':'warn')+
+  '</div>';
+
+  var bars=_benchBar('Vehicle Out-of-Service Rate',
+              _num(co.inspections_vehicle_out_of_service_pct), _num(co.natl_avg_oos_vehicle))+
+           _benchBar('Driver Out-of-Service Rate',
+              _num(co.inspections_driver_out_of_service_pct), _num(co.natl_avg_oos_driver));
+
+  var alerts='<div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--of-gray-100);">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--of-charcoal);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Active OOS Alerts</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+      _oosPill('DOT', !!co.out_of_service_flag)+_oosPill('Vehicle', !!co.oos_alert_vehicle)+
+      _oosPill('Driver', !!co.oos_alert_driver)+_oosPill('Hazmat', !!co.oos_alert_hazmat)+
+    '</div></div>';
+
+  var flagsHtml=flags.length?'<div style="margin-top:16px;">'+flags.map(renderFlagRow).join('')+'</div>':'';
+  el.innerHTML=statsHtml+bars+alerts+flagsHtml;
 }
 
 // ── Crash ──────────────────────────────────────────────────────────────────
+// Mockup order: Fatalities · Injuries · Preventable · Total Crashes.
 function renderCrash(p){
   var el=document.getElementById('cp-crash'); if(!el) return;
   var co=p.carrierok||{};
-  var total=_num(co.crash_total), fatal=_num(co.crash_fatalities), inj=_num(co.crash_injuries);
-  var tow=total!=null&&fatal!=null&&inj!=null?_num(total-fatal-inj):null;
-  function crashCard(num,label){
+  var fatal=_num(co.crash_fatalities), inj=_num(co.crash_injuries), prev=_num(co.crash_preventable);
+  var total=_num(co.crash_total);
+  if(total==null&&Array.isArray(co.crash_history)) total=co.crash_history.length;
+  function card(num,label,cls){
     var n=num!=null?String(num):'—';
-    var cls=num!=null&&num>0?(label==='Total'||label==='Injuries'?'warn':'bad'):'good';
-    return '<div class="crash-card"><div class="crash-num '+cls+'">'+esc(n)+'</div><div class="crash-label">'+esc(label)+'</div></div>';
+    return '<div class="crash-card"><div class="crash-num '+(cls||'')+'">'+esc(n)+'</div><div class="crash-label">'+esc(label)+'</div></div>';
   }
   el.innerHTML=
-    crashCard(total,'Total')+
-    crashCard(fatal,'Fatalities')+
-    crashCard(inj,'Injuries')+
-    crashCard(tow,'Tow-Away');
+    card(fatal,'Fatalities',fatal!=null&&fatal>0?'bad':'good')+
+    card(inj,'Injuries',inj!=null&&inj>0?'warn':'good')+
+    card(prev,'Preventable',prev!=null&&prev>0?'warn':(prev===0?'good':''))+
+    card(total,'Total Crashes',total!=null&&total>0?'warn':'good');
 }
 
-// ── Stability ──────────────────────────────────────────────────────────────
+// ── Stability & Contact History ────────────────────────────────────────────
 function renderStability(p){
   var el=document.getElementById('cp-stability'); if(!el) return;
-  var flags=flagsByCategory(p,'Identity and Signup Fraud');
-  el.innerHTML=flags.length
-    ? flags.map(renderFlagRow).join('')
-    : '<p style="color:var(--of-gray-500);font-size:12px;padding:4px 0;">No identity/stability flags.</p>';
+  var co=p.carrierok||{};
+  var phone=_num(co.phone_change_count!=null?co.phone_change_count:co.indicator_network_graph_phone_change_count);
+  var email=_num(co.email_change_count!=null?co.email_change_count:co.indicator_network_graph_email_change_count);
+  var addr=_num(co.address_change_count!=null?co.address_change_count:co.indicator_network_graph_address_change_count);
+  var rf=(co.risk_factors&&co.risk_factors[0])||{};
+  var recentChange=!!(rf.stability_name_history||rf.stability_email_history||rf.stability_phone_history||
+                      rf.stability_address_history||rf.stability_contact_history);
+  var ageReview=hasFlag(p,'new_authority');
+  function countRow(label,val,cls){
+    return '<div class="flag-row"><div class="label">'+esc(label)+'</div>'+
+      '<div class="count '+(cls||'')+'">'+esc(val)+'</div></div>';
+  }
+  var intro='<div style="font-size:12px;color:var(--of-gray-700);line-height:1.5;margin-bottom:14px;">'+
+    'Frequent contact info changes are a fraud indicator. Legitimate carriers rarely update phone, email, or address more than once per year.</div>';
+  el.innerHTML=intro+
+    countRow('Phone Number Changes (lifetime)', phone!=null?String(phone):'—', phone>1?'warn':'')+
+    countRow('Email Changes (lifetime)', email!=null?String(email):'—', email>1?'warn':'')+
+    countRow('Address Changes (lifetime)', addr!=null?String(addr):'—', addr>1?'warn':'')+
+    countRow('Contact Info Changed in Last 30 Days', recentChange?'Yes':'No', recentChange?'warn':'')+
+    countRow('Carrier Entity Age vs Authority Age', ageReview?'Review':'Match', ageReview?'warn':'');
 }
 
 // ── Decision state / history / capture ────────────────────────────────────
@@ -1145,12 +1343,21 @@ function renderDecisionState(p){
   var hd=av.Hiring_Decision||'Not Reviewed';
   var cls=av.Broker_DNU?'bad':(av.Needs_Re_Review?'need-review':(hd==='Approve'?'approved':'caution'));
   if(pill){ pill.className='decision-state-pill '+cls; pill.textContent=hd; }
-  if(meta) meta.textContent='Last decision: '+esc(hd)+
-    (av.Last_Reviewed_By?' by '+esc(av.Last_Reviewed_By):'')+
-    ' · '+esc(av.Loads_Tendered_Count||0)+' loads tendered';
+  var lastDec=(p.risk_decisions||[])[0]||null;
+  var lastAt=lastDec?lastDec.Reviewed_At:null;
+  var rel=lastAt?_relTime(lastAt):'';
+  var by=av.Last_Reviewed_By?esc(av.Last_Reviewed_By):'';
+  var loads=esc(av.Loads_Tendered_Count||0);
+  if(meta) meta.innerHTML='Last decision: <strong>'+esc(hd)+'</strong>'+
+    (by?' · '+by:'')+(rel?' · '+esc(rel):'')+' · '+loads+' loads tendered since';
   if(av.Needs_Re_Review){
     if(banner) banner.style.display='flex';
-    if(bannerText) bannerText.textContent=esc(av.Re_Review_Reason||'This carrier is flagged for re-review.');
+    if(bannerText){
+      var reason=esc(av.Re_Review_Reason||'This carrier is flagged for re-review.');
+      var metaLine='Last decision: '+esc(hd)+(lastAt?' on '+esc(_fmtDate(lastAt)):'')+
+        (by?' by '+by:'')+' · '+loads+' loads tendered since';
+      bannerText.innerHTML='⚠ '+reason+'<span class="meta">'+metaLine+'</span>';
+    }
   } else {
     if(banner) banner.style.display='none';
   }
@@ -1169,12 +1376,13 @@ function renderDecisionHistory(p){
         '<div class="history-head">'+esc(dec)+
           (d.Decision_Variance1?' <span class="check-pill warn">Variance</span>':'')+
         '</div>'+
-        '<div class="history-meta">System rec: '+esc(d.System_Recommendation||'—')+
+        '<div class="history-meta">'+esc(_fmtDate(d.Reviewed_At))+
+          ' · System rec: '+esc(d.System_Recommendation||'—')+
           (d.Trigger_Type?' · '+esc(d.Trigger_Type):'')+
         '</div>'+
         (d.Decision_Notes?'<div class="history-note">'+esc(d.Decision_Notes)+'</div>':'')+
       '</div>'+
-      '<div class="history-side">'+esc(_fmtDate(d.Reviewed_At))+'</div>'+
+      '<div class="history-side">'+esc(_relTime(d.Reviewed_At))+'</div>'+
     '</div>';
   }).join('');
 }

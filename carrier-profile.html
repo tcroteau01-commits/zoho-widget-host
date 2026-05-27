@@ -1336,10 +1336,20 @@ function _initials(name){
   if(!parts.length) return '?';
   return (parts[0][0]+(parts.length>1?parts[parts.length-1][0]:'')).toUpperCase();
 }
+function _parseCreatorDate(s){
+  // Creator returns datetimes as "dd-MMM-yyyy HH:mm:ss" (e.g. "27-May-2026 15:04:06").
+  var m=/^(\d{1,2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(String(s).trim());
+  if(!m) return null;
+  var key=m[2].charAt(0).toUpperCase()+m[2].slice(1).toLowerCase();
+  var mon={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11}[key];
+  if(mon==null) return null;
+  return new Date(+m[3],mon,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+}
 function _fmtDateTime(s){
   if(!s) return '';
   var d=new Date(s);
-  if(isNaN(d)) return String(s);            // Creator display-format: show as-is
+  if(isNaN(d)) d=_parseCreatorDate(s);      // Creator display-format fallback
+  if(!d||isNaN(d)) return String(s);        // last resort: show as-is
   return d.toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
 }
 function renderComments(p){
@@ -1371,11 +1381,11 @@ function renderComments(p){
       '<div class="comment-body">'+
         '<div class="comment-head">'+
           '<span class="comment-author">'+esc(c.Author_Name||'Unknown')+'</span>'+
-          '<span class="comment-date">'+esc(_fmtDateTime(c.Added_Time))+'</span>'+
+          '<span class="comment-date">'+esc(_fmtDateTime(c.Created_At))+'</span>'+
           '<span class="comment-type-pill '+cls+'">'+esc(c.Comment_Type||'General')+'</span>'+
           (_truthy(c.Pinned)?'<span class="comment-pinned-marker">📌 Pinned</span>':'')+
         '</div>'+
-        '<div class="comment-text">'+esc(c.Comment_Text||'')+'</div>'+
+        '<div class="comment-text">'+esc(c.Comment||'')+'</div>'+
       '</div>'+
     '</div>';
   }).join('');
@@ -1389,7 +1399,6 @@ function addComment(){
   var text=((ta&&ta.value)||'').trim();
   if(!text){ if(fb) fb.textContent='Enter a comment before submitting.'; return; }
   var type=(document.getElementById('cp-comment-type')||{}).value||'General';
-  var vendorId=(p.vendor&&p.vendor.ID)||'';
   var btn=document.getElementById('cp-comment-submit'); if(btn) btn.disabled=true;
   return resolveBrokerContact().then(function(who){
     if(!who||!who.id){
@@ -1397,9 +1406,8 @@ function addComment(){
       if(btn) btn.disabled=false;
       return;
     }
-    var data={ Account_Vendor:av.av_id, Vendor:vendorId, Comment_Text:text,
-               Comment_Type:type, Author_Contact:who.id, Author_Name:who.name };
-    return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Comment',payload:{data:data}})
+    var data={ Account_Vendor:av.av_id, Author:who.id, Comment:text, Comment_Type:type };
+    return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Vendor_Comments',payload:{data:data}})
       .then(function(res){
         if(btn) btn.disabled=false;
         if(res&&(res.code===3000||(res.result&&res.result.length))){ if(ta) ta.value=''; loadProfile(); }

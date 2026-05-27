@@ -27,14 +27,15 @@ function makeWidget() {
   return { window: dom.window, addCalls };
 }
 
+// comments[] is the backend-normalized shape (flat Author_Name, Comment, Created_At).
 const RICH = {
   account_vendor: { av_id: 'av_1' },
   vendor: { ID: '9001' },
   comments: [
-    { ID: '200', Comment_Text: 'Newer note', Comment_Type: 'Risk',
-      Author_Name: 'Sarah Kobylinski', Added_Time: '2026-05-20T09:00:00', Pinned: 'false' },
-    { ID: '100', Comment_Text: 'Pinned note', Comment_Type: 'Operational',
-      Author_Name: 'Mark Rinaldi', Added_Time: '2026-05-01T09:00:00', Pinned: 'true' }
+    { ID: '200', Comment: 'Newer note', Comment_Type: 'Risk',
+      Author_Name: 'Sarah Kobylinski', Created_At: '20-May-2026 09:00:00', Pinned: 'false' },
+    { ID: '100', Comment: 'Pinned note', Comment_Type: 'Operational',
+      Author_Name: 'Mark Rinaldi', Created_At: '01-May-2026 09:00:00', Pinned: 'true' }
   ]
 };
 
@@ -102,14 +103,12 @@ test('addComment builds the correct ADD payload', async () => {
   window.document.getElementById('cp-comment-type').value = 'Operational';
   await window.addComment();
   assert.equal(addCalls.length, 1);
-  assert.equal(addCalls[0].form_name, 'Carrier_Comment');
+  assert.equal(addCalls[0].form_name, 'Vendor_Comments');
   const d = addCalls[0].payload.data;
   assert.equal(d.Account_Vendor, 'av_1');
-  assert.equal(d.Vendor, '9001');
-  assert.equal(d.Comment_Text, 'Reliable on PA->NJ runs');
+  assert.equal(d.Comment, 'Reliable on PA->NJ runs');
   assert.equal(d.Comment_Type, 'Operational');
-  assert.equal(d.Author_Contact, 'c_77');
-  assert.equal(d.Author_Name, 'Test Broker');
+  assert.equal(d.Author, 'c_77');
   assert.equal(window.document.getElementById('cp-comment-text').value, '');
 });
 

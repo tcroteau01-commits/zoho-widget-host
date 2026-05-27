@@ -1414,10 +1414,15 @@ function buildDecisionPayload(){
   var trigger=(profilePayload.risk_decisions||[]).length===0?'First Review':'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud';
   return { Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
 }
-function resolveBrokerContactId(){
+function resolveBrokerContact(){
   if(!window.ZOHO||!ZOHO.CREATOR||!ZOHO.CREATOR.DATA||!ZOHO.CREATOR.DATA.getRecords) return Promise.resolve(null);
   return ZOHO.CREATOR.DATA.getRecords({app_link_name:'funding-portal',report_name:'Authorized_Users',page:1,pageSize:200})
-    .then(function(res){ var data=(res&&res.data)||[]; var me=data.find(function(c){return (c.Email||'').toLowerCase()===brokerEmail.toLowerCase();}); return me?me.ID:null; })
+    .then(function(res){
+      var data=(res&&res.data)||[];
+      var me=data.find(function(c){return (c.Email||'').toLowerCase()===brokerEmail.toLowerCase();});
+      if(!me) return null;
+      return { id: me.ID, name: (me.Contact_Name||me.Email||'').trim() };
+    })
     .catch(function(){ return null; });
 }
 function submitDecision(){
@@ -1428,13 +1433,13 @@ function submitDecision(){
   if(notesRequired(selectedDecision,rec)&&!notes.trim()){ if(fb) fb.textContent='Decision Notes are required for this choice.'; return; }
   var data=buildDecisionPayload();
   var sb=document.getElementById('cp-submit'); if(sb) sb.disabled=true;
-  resolveBrokerContactId().then(function(cid){
-    if(!cid){
+  resolveBrokerContact().then(function(who){
+    if(!who||!who.id){
       if(fb) fb.textContent='Could not resolve your contact — cannot record decision. Contact OperFi.';
       if(sb) sb.disabled=false;
       return;
     }
-    data.Reviewed_By=cid;
+    data.Reviewed_By=who.id;
     return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}});
   }).then(function(res){
     if(!res) return;

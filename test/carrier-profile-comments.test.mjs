@@ -110,4 +110,18 @@ test('addComment builds the correct ADD payload', async () => {
   assert.equal(d.Comment_Type, 'Operational');
   assert.equal(d.Author_Contact, 'c_77');
   assert.equal(d.Author_Name, 'Test Broker');
+  assert.equal(window.document.getElementById('cp-comment-text').value, '');
+});
+
+test('addComment surfaces an error and does not write when the contact cannot be resolved', async () => {
+  const { window, addCalls } = makeWidget();
+  window.profilePayload = RICH;
+  window.renderComments(RICH);
+  window.brokerEmail = 'broker@op.com';
+  window.resolveBrokerContact = () => Promise.resolve(null);
+  window.document.getElementById('cp-comment-text').value = 'Some note';
+  await window.addComment();
+  assert.equal(addCalls.length, 0);
+  assert.match(window.document.getElementById('cp-comment-feedback').textContent, /contact/i);
+  assert.equal(window.document.getElementById('cp-comment-submit').disabled, false);
 });

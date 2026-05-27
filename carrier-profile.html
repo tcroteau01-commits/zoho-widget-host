@@ -632,21 +632,22 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <!-- Vendor Comments -->
   <div class="card">
-    <div class="card-title">Comments &amp; Notes <span class="tag">Visible only to Marek LLC</span> <span class="tag" style="background:var(--of-amber-soft);color:var(--of-amber-text);">Coming soon — pending Comments module</span></div>
+    <div class="card-title">Comments &amp; Notes <span class="tag">Visible to your team and OperFi</span></div>
 
     <div class="comment-input">
-      <textarea disabled placeholder="Add a comment about this carrier… (visible only to your team)"></textarea>
+      <textarea id="cp-comment-text" placeholder="Add a comment about this carrier… (visible to your team)"></textarea>
       <div class="comment-input-actions">
-        <select class="comment-type-select" disabled>
-          <option>General</option>
-          <option>Operational</option>
-          <option>Risk</option>
-          <option>Payment</option>
+        <select id="cp-comment-type" class="comment-type-select">
+          <option value="General">General</option>
+          <option value="Operational">Operational</option>
+          <option value="Risk">Risk</option>
+          <option value="Payment">Payment</option>
         </select>
-        <button class="comment-submit" disabled>Add Comment</button>
+        <button id="cp-comment-submit" class="comment-submit">Add Comment</button>
       </div>
     </div>
-    <div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">Not yet wired — placeholder.</div>
+    <div id="cp-comment-feedback" style="color:var(--of-red-text);font-size:12px;min-height:14px;"></div>
+    <div id="cp-comments"></div>
   </div>
 
   <!-- Decision Modal Preview -->
@@ -806,7 +807,7 @@ function loadProfile() {
 function renderProfile(p) {
   renderHero(p); renderRiskStrip(p); renderDigitalFootprint(p); renderBankRouting(p); renderRecommendation(p); renderLitigation(p);
   renderAuthority(p); renderInsurance(p); renderSafety(p); renderCrash(p); renderStability(p);
-  renderDecisionState(p); renderDecisionHistory(p); wireDecisionCapture(p);
+  renderDecisionState(p); renderDecisionHistory(p); renderComments(p); wireDecisionCapture(p);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1328,6 +1329,96 @@ function renderStability(p){
 // ── Decision state / history / capture ────────────────────────────────────
 function _fmtDate(s){ if(!s) return '—'; var d=new Date(s); return isNaN(d)? String(s).slice(0,10) : d.toLocaleDateString(); }
 
+var COMMENT_TYPE_CLASS = {"General":"general","Operational":"ops","Risk":"risk","Payment":"payment"};
+function _truthy(v){ return v===true || v==='true'; }
+function _initials(name){
+  var parts=String(name||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '?';
+  return (parts[0][0]+(parts.length>1?parts[parts.length-1][0]:'')).toUpperCase();
+}
+function _parseCreatorDate(s){
+  // Creator returns datetimes as "dd-MMM-yyyy HH:mm:ss" (e.g. "27-May-2026 15:04:06").
+  var m=/^(\d{1,2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(String(s).trim());
+  if(!m) return null;
+  var key=m[2].charAt(0).toUpperCase()+m[2].slice(1).toLowerCase();
+  var mon={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11}[key];
+  if(mon==null) return null;
+  return new Date(+m[3],mon,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+}
+function _fmtDateTime(s){
+  if(!s) return '';
+  var d=new Date(s);
+  if(isNaN(d)) d=_parseCreatorDate(s);      // Creator display-format fallback
+  if(!d||isNaN(d)) return String(s);        // last resort: show as-is
+  return d.toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+}
+function renderComments(p){
+  var av=p.account_vendor;
+  // Compose form enable/disable mirrors decision capture: needs a relationship.
+  var ta=document.getElementById('cp-comment-text');
+  var sel=document.getElementById('cp-comment-type');
+  var btn=document.getElementById('cp-comment-submit');
+  var hasAv=!!(av&&av.av_id);
+  [ta,sel,btn].forEach(function(el){
+    if(!el) return;
+    if(hasAv){ el.removeAttribute('disabled'); el.removeAttribute('title'); }
+    else { el.setAttribute('disabled','disabled'); el.title='Tender a load to this carrier to add comments.'; }
+  });
+  if(btn) btn.onclick=hasAv?addComment:null;
+
+  var el=document.getElementById('cp-comments'); if(!el) return;
+  var rows=(p.comments||[]).slice();
+  // Pinned first; backend already provides newest-first within each group.
+  rows.sort(function(a,b){ return (_truthy(b.Pinned)?1:0)-(_truthy(a.Pinned)?1:0); });
+  if(!rows.length){
+    el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">No comments yet — add the first note above.</div>';
+    return;
+  }
+  el.innerHTML=rows.map(function(c){
+    var cls=COMMENT_TYPE_CLASS[c.Comment_Type]||'general';
+    return '<div class="comment">'+
+      '<div class="comment-avatar">'+esc(_initials(c.Author_Name))+'</div>'+
+      '<div class="comment-body">'+
+        '<div class="comment-head">'+
+          '<span class="comment-author">'+esc(c.Author_Name||'Unknown')+'</span>'+
+          '<span class="comment-date">'+esc(_fmtDateTime(c.Created_At))+'</span>'+
+          '<span class="comment-type-pill '+cls+'">'+esc(c.Comment_Type||'General')+'</span>'+
+          (_truthy(c.Pinned)?'<span class="comment-pinned-marker">📌 Pinned</span>':'')+
+        '</div>'+
+        '<div class="comment-text">'+esc(c.Comment||'')+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+function addComment(){
+  var fb=document.getElementById('cp-comment-feedback'); if(fb) fb.textContent='';
+  var p=profilePayload||{};
+  var av=p.account_vendor;
+  if(!av||!av.av_id){ if(fb) fb.textContent='No relationship with this carrier yet.'; return; }
+  var ta=document.getElementById('cp-comment-text');
+  var text=((ta&&ta.value)||'').trim();
+  if(!text){ if(fb) fb.textContent='Enter a comment before submitting.'; return; }
+  var type=(document.getElementById('cp-comment-type')||{}).value||'General';
+  var btn=document.getElementById('cp-comment-submit'); if(btn) btn.disabled=true;
+  return resolveBrokerContact().then(function(who){
+    if(!who||!who.id){
+      if(fb) fb.textContent='Could not resolve your contact — cannot post. Contact OperFi.';
+      if(btn) btn.disabled=false;
+      return;
+    }
+    var data={ Account_Vendor:av.av_id, Author:who.id, Comment:text, Comment_Type:type };
+    return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Vendor_Comments',payload:{data:data}})
+      .then(function(res){
+        if(btn) btn.disabled=false;
+        if(res&&(res.code===3000||(res.result&&res.result.length))){ if(ta) ta.value=''; loadProfile(); }
+        else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
+      });
+  }).catch(function(err){
+    if(btn) btn.disabled=false;
+    if(fb) fb.textContent='Submit error: '+esc(String(err));
+  });
+}
+
 function renderDecisionState(p){
   var av=p.account_vendor;
   var pill=document.getElementById('cp-decision-pill');
@@ -1414,10 +1505,15 @@ function buildDecisionPayload(){
   var trigger=(profilePayload.risk_decisions||[]).length===0?'First Review':'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud';
   return { Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
 }
-function resolveBrokerContactId(){
+function resolveBrokerContact(){
   if(!window.ZOHO||!ZOHO.CREATOR||!ZOHO.CREATOR.DATA||!ZOHO.CREATOR.DATA.getRecords) return Promise.resolve(null);
   return ZOHO.CREATOR.DATA.getRecords({app_link_name:'funding-portal',report_name:'Authorized_Users',page:1,pageSize:200})
-    .then(function(res){ var data=(res&&res.data)||[]; var me=data.find(function(c){return (c.Email||'').toLowerCase()===brokerEmail.toLowerCase();}); return me?me.ID:null; })
+    .then(function(res){
+      var data=(res&&res.data)||[];
+      var me=data.find(function(c){return (c.Email||'').toLowerCase()===brokerEmail.toLowerCase();});
+      if(!me) return null;
+      return { id: me.ID, name: (me.Contact_Name||me.Email||'').trim() };
+    })
     .catch(function(){ return null; });
 }
 function submitDecision(){
@@ -1428,13 +1524,13 @@ function submitDecision(){
   if(notesRequired(selectedDecision,rec)&&!notes.trim()){ if(fb) fb.textContent='Decision Notes are required for this choice.'; return; }
   var data=buildDecisionPayload();
   var sb=document.getElementById('cp-submit'); if(sb) sb.disabled=true;
-  resolveBrokerContactId().then(function(cid){
-    if(!cid){
+  resolveBrokerContact().then(function(who){
+    if(!who||!who.id){
       if(fb) fb.textContent='Could not resolve your contact — cannot record decision. Contact OperFi.';
       if(sb) sb.disabled=false;
       return;
     }
-    data.Reviewed_By=cid;
+    data.Reviewed_By=who.id;
     return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}});
   }).then(function(res){
     if(!res) return;

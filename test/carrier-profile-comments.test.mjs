@@ -123,3 +123,58 @@ test('addComment surfaces an error and does not write when broker_contact_id is 
   assert.match(window.document.getElementById('cp-comment-feedback').textContent, /contact/i);
   assert.equal(window.document.getElementById('cp-comment-submit').disabled, false);
 });
+
+// dd-MMM-yyyy HH:mm:ss — the Creator datetime input/display format that
+// _parseCreatorDate round-trips on read.
+const CREATOR_DT = /^\d{2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4} \d{2}:\d{2}:\d{2}$/;
+
+test('addComment stamps Created_At in Creator datetime format (form default does not fire on API add)', async () => {
+  const { window, addCalls } = makeWidget();
+  window.profilePayload = RICH;
+  window.renderComments(RICH);
+  window.document.getElementById('cp-comment-text').value = 'Stamped note';
+  await window.addComment();
+  assert.equal(addCalls.length, 1);
+  assert.match(addCalls[0].payload.data.Created_At, CREATOR_DT);
+});
+
+test('addComment forwards CRM IDs when the relationship carries them, omits them otherwise', async () => {
+  // With CRM IDs on the Account_Vendor row.
+  let w = makeWidget();
+  const withIds = { account_vendor: { av_id: 'av_1', Account_CRM_ID: '5005550001', Vendor_CRM_ID: '5005559999' },
+                    vendor: { ID: '9001' }, broker_contact_id: 'c_77', comments: [] };
+  w.window.profilePayload = withIds;
+  w.window.renderComments(withIds);
+  w.window.document.getElementById('cp-comment-text').value = 'note';
+  await w.window.addComment();
+  let d = w.addCalls[0].payload.data;
+  assert.equal(d.Account_CRM_ID, '5005550001');
+  assert.equal(d.Vendor_CRM_ID, '5005559999');
+
+  // Without CRM IDs: keys are not sent (no empty-string writes).
+  w = makeWidget();
+  w.window.profilePayload = RICH;
+  w.window.renderComments(RICH);
+  w.window.document.getElementById('cp-comment-text').value = 'note';
+  await w.window.addComment();
+  d = w.addCalls[0].payload.data;
+  assert.ok(!('Account_CRM_ID' in d));
+  assert.ok(!('Vendor_CRM_ID' in d));
+});
+
+test('submitDecision stamps Reviewed_At + Reviewed_By and forwards CRM IDs', async () => {
+  const { window, addCalls } = makeWidget();
+  const p = { account_vendor: { av_id: 'av_1', Account_CRM_ID: '5005550001', Vendor_CRM_ID: '5005559999' },
+              vendor: { ID: '9001' }, broker_contact_id: 'c_77',
+              system_recommendation: 'Approve', risk_decisions: [], comments: [] };
+  window.profilePayload = p;
+  window.selectedDecision = 'Approve';   // notes not required for Approve == rec
+  await window.submitDecision();
+  assert.equal(addCalls.length, 1);
+  assert.equal(addCalls[0].form_name, 'Carrier_Risk_Decision');
+  const d = addCalls[0].payload.data;
+  assert.equal(d.Reviewed_By, 'c_77');
+  assert.match(d.Reviewed_At, CREATOR_DT);
+  assert.equal(d.Account_CRM_ID, '5005550001');
+  assert.equal(d.Vendor_CRM_ID, '5005559999');
+});

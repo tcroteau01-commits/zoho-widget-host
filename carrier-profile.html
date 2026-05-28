@@ -1345,6 +1345,15 @@ function _parseCreatorDate(s){
   if(mon==null) return null;
   return new Date(+m[3],mon,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));
 }
+function _creatorNow(){
+  // Creator datetime input/display format: "dd-MMM-yyyy HH:mm:ss". The form's
+  // ${zoho.currenttime} initial value does NOT fire on an API addRecords write,
+  // so we stamp Created_At / Reviewed_At client-side. Round-trips with
+  // _parseCreatorDate on read.
+  var d=new Date(),M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function p(n){ return (n<10?'0':'')+n; }
+  return p(d.getDate())+'-'+M[d.getMonth()]+'-'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+}
 function _fmtDateTime(s){
   if(!s) return '';
   var d=new Date(s);
@@ -1402,7 +1411,9 @@ function addComment(){
   if(!authorId){ if(fb) fb.textContent='Could not resolve your contact — cannot post. Contact OperFi.'; return; }
   var type=(document.getElementById('cp-comment-type')||{}).value||'General';
   var btn=document.getElementById('cp-comment-submit'); if(btn) btn.disabled=true;
-  var data={ Account_Vendor:av.av_id, Author:authorId, Comment:text, Comment_Type:type };
+  var data={ Account_Vendor:av.av_id, Author:authorId, Comment:text, Comment_Type:type, Created_At:_creatorNow() };
+  if(av.Account_CRM_ID) data.Account_CRM_ID=av.Account_CRM_ID;
+  if(av.Vendor_CRM_ID) data.Vendor_CRM_ID=av.Vendor_CRM_ID;
   return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Vendor_Comments',payload:{data:data}})
     .then(function(res){
       if(btn) btn.disabled=false;
@@ -1498,7 +1509,10 @@ function buildDecisionPayload(){
   var rec=profilePayload.system_recommendation||'Hold';
   var notes=(document.getElementById('cp-notes')||{}).value||'';
   var trigger=(profilePayload.risk_decisions||[]).length===0?'First Review':'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud';
-  return { Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
+  var d={ Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
+  if(av.Account_CRM_ID) d.Account_CRM_ID=av.Account_CRM_ID;
+  if(av.Vendor_CRM_ID) d.Vendor_CRM_ID=av.Vendor_CRM_ID;
+  return d;
 }
 function submitDecision(){
   var fb=document.getElementById('cp-modal-feedback'); if(fb) fb.textContent='';
@@ -1510,6 +1524,7 @@ function submitDecision(){
   if(!cid){ if(fb) fb.textContent='Could not resolve your contact — cannot record decision. Contact OperFi.'; return; }
   var data=buildDecisionPayload();
   data.Reviewed_By=cid;
+  data.Reviewed_At=_creatorNow();   // form ${zoho.currenttime} default doesn't fire on API add
   var sb=document.getElementById('cp-submit'); if(sb) sb.disabled=true;
   return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}})
     .then(function(res){

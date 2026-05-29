@@ -5,13 +5,15 @@ import { JSDOM } from 'jsdom';
 
 const HTML = readFileSync(new URL('../noa-management.html', import.meta.url), 'utf8');
 
-const STATUS = { allow_add_carrier: false, carriers: [
+const STATUS = { allow_add_carrier: false, total_carriers: 2, carriers: [
   { vendor_id: '1001', carrier_name: 'ROADWAY EXPRESS', mc: '89765', dot: '897123',
     factoring_company: 'Triumph', pay_term: 'Factoring Company',
+    submission_type: 'NOA Update', submitted_at: '10-May-2026 09:00:00',
     doc_on_file: { record_id: 'n1', type: 'NOA Update', has_doc: true }, status: 'verified' },
   { vendor_id: '1002', carrier_name: 'MIDWEST HAUL', mc: '774120', dot: '2891044',
     factoring_company: '', pay_term: 'Factoring Company',
-    doc_on_file: null, status: 'noa_needed' },
+    submission_type: 'LOR Update', submitted_at: '12-May-2026 09:00:00',
+    doc_on_file: null, status: 'verifying' },
 ]};
 
 export function makeWidget() {
@@ -35,9 +37,11 @@ test('renderStatusList renders a row per carrier with status chip and doc link',
   window.renderStatusList(STATUS);
   const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
   assert.equal(rows.length, 2);
-  assert.match(rows[1].textContent, /MIDWEST HAUL/);
-  assert.ok(rows[1].querySelector('.chip.alert'));        // noa_needed -> alert chip
-  assert.ok(rows[0].querySelector('.doc-link'));          // verified row has a doc link
+  // Type column shows submission_type
+  assert.match(rows[0].textContent, /NOA Update/);
+  assert.match(rows[1].textContent, /LOR Update/);
+  // doc link exists on the verified (has_doc) row
+  assert.ok(rows[0].querySelector('.doc-link'));
 });
 
 test('_acquireNoaTarget recovers vendorId from sessionStorage on reload', () => {
@@ -123,15 +127,16 @@ test('runEngine no-ops without a recordId', async () => {
 test('renderStatusList sets KPIs from data and shows the truncation banner', () => {
   const { window } = makeWidget();
   const p = { allow_add_carrier: false, total_carriers: 207, truncated: true, carriers: [
-    { vendor_id: '1', carrier_name: 'A', mc: '1', dot: '1', factoring_company: 'X', pay_term: 'Factoring Company', doc_on_file: null, status: 'noa_needed' },
-    { vendor_id: '2', carrier_name: 'B', mc: '2', dot: '2', factoring_company: 'Y', pay_term: 'Quick Pay', doc_on_file: {record_id:'n',type:'NOA Update',has_doc:true}, status: 'verified' },
-    { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', factoring_company: '', pay_term: 'Quick Pay - LOR', doc_on_file: {record_id:'n2',type:'LOR Update',has_doc:true}, status: 'verifying' },
+    { vendor_id: '1', carrier_name: 'A', mc: '1', dot: '1', factoring_company: 'X', pay_term: 'Factoring Company', submission_type: 'NOA Update', submitted_at: '01-May-2026 08:00:00', doc_on_file: null, status: 'verifying' },
+    { vendor_id: '2', carrier_name: 'B', mc: '2', dot: '2', factoring_company: 'Y', pay_term: 'Quick Pay', submission_type: 'NOA Update', submitted_at: '02-May-2026 08:00:00', doc_on_file: {record_id:'n',type:'NOA Update',has_doc:true}, status: 'verified' },
+    { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', factoring_company: '', pay_term: 'Quick Pay - LOR', submission_type: 'LOR Update', submitted_at: '03-May-2026 08:00:00', doc_on_file: {record_id:'n2',type:'LOR Update',has_doc:true}, status: 'verifying' },
   ]};
   window.renderStatusList(p);
   assert.equal(window.document.getElementById('kpi-active').textContent, '207');     // total_carriers
-  assert.equal(window.document.getElementById('kpi-attention').textContent, '1');    // noa_needed
-  assert.equal(window.document.getElementById('kpi-pending').textContent, '1');      // verifying
-  assert.equal(window.document.getElementById('kpi-verified').textContent, '1');     // verified
+  assert.equal(window.document.getElementById('kpi-attention').textContent, '2');    // verifying count
+  assert.equal(window.document.getElementById('kpi-verified').textContent, '1');     // verified count
+  // kpi-pending is removed; confirm it's gone from the DOM
+  assert.equal(window.document.getElementById('kpi-pending'), null);
   const banner = window.document.getElementById('noa-trunc-banner');
   assert.equal(banner.classList.contains('hidden'), false);
   assert.match(banner.textContent, /207/);
@@ -174,11 +179,11 @@ test('loadFactoringCompanies populates the factoring dropdown', async () => {
   assert.match(sel.textContent, /OTR Solutions/);
 });
 
-test('filter pill Need Attention shows only noa_needed carriers', () => {
+test('Verifying filter shows only verifying carriers', () => {
   const { window } = makeWidget();
   window.statusPayload = STATUS;
   window.renderStatusList(STATUS);
-  window.activeFilter = 'attention';
+  window.activeFilter = 'verifying';
   window.applyCarrierFilters();
   const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
   assert.equal(rows.length, 1);

@@ -35,7 +35,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 /* ============ MANAGEMENT LANDING VIEW ============ */
 
 /* KPI summary strip */
-.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+.kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
 .kpi {
   background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 16px 18px;
 }
@@ -236,10 +236,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
     <!-- KPI summary -->
     <div class="kpi-row">
-      <div class="kpi"><div id="kpi-active" class="kpi-num">0</div><div class="kpi-label">Active Carriers</div></div>
-      <div class="kpi"><div id="kpi-attention" class="kpi-num alert">0</div><div class="kpi-label">Need Attention</div></div>
-      <div class="kpi"><div id="kpi-pending" class="kpi-num warn">0</div><div class="kpi-label">Pending Verification</div></div>
-      <div class="kpi"><div id="kpi-verified" class="kpi-num">0</div><div class="kpi-label">Verified &amp; Active</div></div>
+      <div class="kpi"><div id="kpi-active" class="kpi-num">0</div><div class="kpi-label">Carriers</div></div>
+      <div class="kpi"><div id="kpi-attention" class="kpi-num warn">0</div><div class="kpi-label">Verifying</div></div>
+      <div class="kpi"><div id="kpi-verified" class="kpi-num">0</div><div class="kpi-label">Verified</div></div>
     </div>
 
     <div id="noa-trunc-banner" class="hidden" style="background:#fff4e0;border:1px solid #f0d9a8;border-left:4px solid #e8a020;color:#8a5a00;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:600;margin-bottom:12px;"></div>
@@ -249,8 +248,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <input class="search-input" placeholder="Search by carrier name, MC, or DOT...">
       <div class="filter-pills">
         <div class="filter-pill active" data-filter="all">All</div>
-        <div class="filter-pill" data-filter="attention">Need Attention</div>
-        <div class="filter-pill" data-filter="pending">Pending</div>
+        <div class="filter-pill" data-filter="verifying">Verifying</div>
+        <div class="filter-pill" data-filter="verified">Verified</div>
       </div>
     </div>
 
@@ -260,9 +259,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <thead>
           <tr>
             <th style="padding-left:14px;">Carrier</th>
-            <th>Factoring Company</th>
+            <th>Type</th>
             <th>Pay Term</th>
-            <th>Docs on File</th>
+            <th>Doc</th>
+            <th>Submitted</th>
             <th>Status</th>
             <th></th>
           </tr>
@@ -662,9 +662,10 @@ function renderCarrierRows(list) {
     return '<tr' + attn + '>' +
       '<td><div class="carrier-name">' + esc(c.carrier_name) + '</div>' +
         '<div class="carrier-meta">MC# ' + esc(c.mc) + ' · DOT ' + esc(c.dot) + '</div></td>' +
-      '<td>' + (esc(c.factoring_company) || '<span class="doc-none">— direct pay —</span>') + '</td>' +
+      '<td>' + esc(c.submission_type || '') + '</td>' +
       '<td><span class="term-val">' + esc(c.pay_term) + '</span></td>' +
       '<td>' + doc + '</td>' +
+      '<td>' + esc(c.submitted_at || '') + '</td>' +
       '<td><span class="chip ' + chip[0] + '">' + esc(chip[1]) + '</span></td>' +
       '<td><button class="btn small" data-vendor="' + esc(c.vendor_id) + '">Update</button></td>' +
       '</tr>';
@@ -678,8 +679,8 @@ function renderCarrierRows(list) {
 function applyCarrierFilters() {
   var carriers = (statusPayload && statusPayload.carriers) || [];
   var filtered = carriers.filter(function(c){
-    if (activeFilter === 'attention' && c.status !== 'noa_needed') return false;
-    if (activeFilter === 'pending'   && c.status !== 'verifying')  return false;
+    if (activeFilter === 'verifying' && c.status !== 'verifying') return false;
+    if (activeFilter === 'verified'  && c.status !== 'verified')  return false;
     if (searchTerm) {
       var term = searchTerm.toLowerCase();
       var name = String(c.carrier_name || '').toLowerCase();
@@ -722,13 +723,12 @@ function renderStatusList(p) {
   // populate the carrier dropdown (Part A)
   populateCarrierSelect();
   // KPIs
-  var counts = { noa_needed: 0, verifying: 0, verified: 0 };
+  var counts = { verifying: 0, verified: 0 };
   carriers.forEach(function(c){ if (counts[c.status] != null) counts[c.status]++; });
   var total = (p && typeof p.total_carriers === 'number') ? p.total_carriers : carriers.length;
   var setNum = function(id, n){ var el = document.getElementById(id); if (el) el.textContent = String(n); };
   setNum('kpi-active', total);
-  setNum('kpi-attention', counts.noa_needed);
-  setNum('kpi-pending', counts.verifying);
+  setNum('kpi-attention', counts.verifying);
   setNum('kpi-verified', counts.verified);
   var banner = document.getElementById('noa-trunc-banner');
   if (banner) {

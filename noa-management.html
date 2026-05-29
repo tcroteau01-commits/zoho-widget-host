@@ -536,7 +536,44 @@ function boot() {
   }
 }
 
-function loadStatus() { /* implemented in a later task */ }
+var CHIP = { verified: ['ok','✓ Verified'], verifying: ['pending','⏳ Verifying'], noa_needed: ['alert','⚠ NOA Needed'] };
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+function loadStatus() {
+  if (!brokerEmail) return;
+  var qs = new URLSearchParams({ email: brokerEmail });
+  return fetch(BROKER_API_BASE + '/noa-status?' + qs.toString())
+    .then(function(r){ return r.json(); })
+    .then(function(p){ statusPayload = p; renderStatusList(p); });
+}
+
+function renderStatusList(p) {
+  var tbody = document.querySelector('#view-list .tbl tbody');
+  if (!tbody) return;
+  var carriers = (p && p.carriers) || [];
+  tbody.innerHTML = carriers.map(function(c){
+    var chip = CHIP[c.status] || ['neutral', c.status || ''];
+    var attn = c.status === 'noa_needed' ? ' class="attention"' : '';
+    var doc = (c.doc_on_file && c.doc_on_file.has_doc)
+      ? '<a class="doc-link" href="' + BROKER_API_BASE + '/noa-doc?email=' + encodeURIComponent(brokerEmail) +
+        '&record_id=' + encodeURIComponent(c.doc_on_file.record_id) + '" target="_blank">' +
+        esc((c.doc_on_file.type||'').indexOf('LOR')>=0?'LOR':'NOA') + ' ↗</a>'
+      : '<span class="doc-none">none</span>';
+    return '<tr' + attn + '>' +
+      '<td><div class="carrier-name">' + esc(c.carrier_name) + '</div>' +
+        '<div class="carrier-meta">MC# ' + esc(c.mc) + ' · DOT ' + esc(c.dot) + '</div></td>' +
+      '<td>' + (esc(c.factoring_company) || '<span class="doc-none">— direct pay —</span>') + '</td>' +
+      '<td><span class="term-val">' + esc(c.pay_term) + '</span></td>' +
+      '<td>' + doc + '</td>' +
+      '<td><span class="chip ' + chip[0] + '">' + esc(chip[1]) + '</span></td>' +
+      '<td><button class="btn small" data-vendor="' + esc(c.vendor_id) + '">Update</button></td>' +
+      '</tr>';
+  }).join('');
+  Array.prototype.forEach.call(tbody.querySelectorAll('button[data-vendor]'), function(b){
+    b.onclick = function(){ if (typeof openSubmitFor === 'function') openSubmitFor(b.getAttribute('data-vendor')); };
+  });
+}
 </script>
 
 </body>

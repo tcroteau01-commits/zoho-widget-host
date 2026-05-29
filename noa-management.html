@@ -236,11 +236,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
     <!-- KPI summary -->
     <div class="kpi-row">
-      <div class="kpi"><div class="kpi-num">24</div><div class="kpi-label">Active Carriers</div></div>
-      <div class="kpi"><div class="kpi-num alert">2</div><div class="kpi-label">Need Attention</div></div>
-      <div class="kpi"><div class="kpi-num warn">3</div><div class="kpi-label">Pending Verification</div></div>
-      <div class="kpi"><div class="kpi-num">19</div><div class="kpi-label">Verified &amp; Active</div></div>
+      <div class="kpi"><div id="kpi-active" class="kpi-num">0</div><div class="kpi-label">Active Carriers</div></div>
+      <div class="kpi"><div id="kpi-attention" class="kpi-num alert">0</div><div class="kpi-label">Need Attention</div></div>
+      <div class="kpi"><div id="kpi-pending" class="kpi-num warn">0</div><div class="kpi-label">Pending Verification</div></div>
+      <div class="kpi"><div id="kpi-verified" class="kpi-num">0</div><div class="kpi-label">Verified &amp; Active</div></div>
     </div>
+
+    <div id="noa-trunc-banner" class="hidden" style="background:#fff4e0;border:1px solid #f0d9a8;border-left:4px solid #e8a020;color:#8a5a00;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:600;margin-bottom:12px;"></div>
 
     <!-- Toolbar -->
     <div class="toolbar">
@@ -651,6 +653,23 @@ function renderStatusList(p) {
   Array.prototype.forEach.call(tbody.querySelectorAll('button[data-vendor]'), function(b){
     b.onclick = function(){ if (typeof openSubmitFor === 'function') openSubmitFor(b.getAttribute('data-vendor')); };
   });
+  var counts = { noa_needed: 0, verifying: 0, verified: 0 };
+  carriers.forEach(function(c){ if (counts[c.status] != null) counts[c.status]++; });
+  var total = (p && typeof p.total_carriers === 'number') ? p.total_carriers : carriers.length;
+  var setNum = function(id, n){ var el = document.getElementById(id); if (el) el.textContent = String(n); };
+  setNum('kpi-active', total);
+  setNum('kpi-attention', counts.noa_needed);
+  setNum('kpi-pending', counts.verifying);
+  setNum('kpi-verified', counts.verified);
+  var banner = document.getElementById('noa-trunc-banner');
+  if (banner) {
+    if (p && p.truncated) {
+      banner.textContent = 'Showing the first ' + carriers.length + ' of ' + total + ' carriers. Use search to find a specific carrier.';
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
 }
 
 // ---- Submit form state ----

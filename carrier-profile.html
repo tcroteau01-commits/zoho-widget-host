@@ -733,23 +733,41 @@ function showError(title, detail) {
 // (1) the iframe URL, (2) a same-origin localStorage handoff that View Vendors /
 // Carrier Onboarding write just before navigating, and (3) a postMessage from the
 // parent page's HTML Snippet. Whichever arrives first wins.
-window.addEventListener('load', function() {
-  var u = new URL(window.location.href);
-  vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
-  profileAction = u.searchParams.get('Modal') || u.searchParams.get('action') || '';
-  if (!vendorId) {
+// Resolve the target Vendor_ID/action from, in order: (1) the iframe URL query,
+// (2) the same-origin localStorage handoff that View Vendors / Carrier Onboarding
+// write just before navigating (30s TTL, single-use), (3) sessionStorage, which
+// loadProfile() stamps on every successful load so a page RELOAD recovers the
+// vendor (the parent's hash isn't readable cross-origin, so without this a reload
+// shows "Missing vendor"). Returns { vendorId, action }.
+function _acquireVendorTarget() {
+  var out = { vendorId: '', action: '' };
+  try {
+    var u = new URL(window.location.href);
+    out.vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
+    out.action = u.searchParams.get('Modal') || u.searchParams.get('action') || '';
+  } catch (e) { /* ignore */ }
+  if (!out.vendorId) {
     try {
       var stored = localStorage.getItem('carrierProfileTarget');
       if (stored) {
         var t = JSON.parse(stored);
         if (t && t.ts && (Date.now() - t.ts) < 30000) {
-          vendorId = t.Vendor_ID || vendorId;
-          profileAction = t.Modal || profileAction;
+          out.vendorId = t.Vendor_ID || out.vendorId;
+          out.action = t.Modal || out.action;
         }
         localStorage.removeItem('carrierProfileTarget');
       }
     } catch (e) { /* ignore */ }
   }
+  if (!out.vendorId) {
+    try { out.vendorId = sessionStorage.getItem('carrierProfileVendorId') || ''; } catch (e) { /* ignore */ }
+  }
+  return out;
+}
+window.addEventListener('load', function() {
+  var t = _acquireVendorTarget();
+  vendorId = t.vendorId;
+  profileAction = t.action;
   boot();
 });
 
@@ -793,6 +811,9 @@ function boot() {
 
 function loadProfile() {
   var ee=document.getElementById('cp-error'); if(ee){ee.style.display='none';ee.textContent='';}
+  // Persist the vendor so a page reload (which can't read the parent hash
+  // cross-origin) can recover it via _acquireVendorTarget's sessionStorage branch.
+  try { if (vendorId) sessionStorage.setItem('carrierProfileVendorId', vendorId); } catch (e) { /* ignore */ }
   showLoading(true);
   var qs = new URLSearchParams({ email: brokerEmail, vendor_id: vendorId });
   fetch(BROKER_API_BASE + '/carrier-profile?' + qs.toString())

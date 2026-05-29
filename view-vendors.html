@@ -680,7 +680,7 @@ function renderPanel() {
   var noa = document.getElementById('p-noa');
   if (noa) noa.addEventListener('click', function() {
     stashNoaTarget(r.ID);
-    navigateParent('#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
+    navigateParent('#Page:NOA_Management_New?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
   });
 }
 

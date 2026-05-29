@@ -196,3 +196,74 @@ test('submitDecision stamps Reviewed_At + Reviewed_By and forwards CRM IDs', asy
   assert.equal(d.Account_CRM_ID, '5005550001');
   assert.equal(d.Vendor_CRM_ID, '5005559999');
 });
+
+// ── UX fix 1: "↻ Refresh all data" button was a dead button (no handler) ──────
+
+test('refresh button is wired to refreshAll after render', () => {
+  const { window } = makeWidget();
+  window.wireDecisionCapture({ account_vendor: null });   // wiring is independent of relationship
+  const btn = window.document.querySelector('.refresh-btn');
+  assert.equal(btn.onclick, window.refreshAll);
+});
+
+test('loadProfile(true) force-refreshes with refresh=1; loadProfile() does not', () => {
+  const { window } = makeWidget();
+  const urls = [];
+  window.fetch = (u) => { urls.push(u); return new Promise(() => {}); };
+  window.brokerEmail = 'broker@op.com';
+  window.vendorId = 'v_42';
+
+  window.loadProfile(true);
+  assert.match(urls[0], /[?&]refresh=1\b/);
+
+  window.loadProfile();
+  assert.ok(!/[?&]refresh=1\b/.test(urls[1]));
+});
+
+test('refreshAll disables the button, shows a refreshing label, and force-loads', () => {
+  const { window } = makeWidget();
+  window.wireDecisionCapture({ account_vendor: null });
+  let forced = null;
+  window.loadProfile = (f) => { forced = f; return new Promise(() => {}); };
+  const btn = window.document.querySelector('.refresh-btn');
+
+  window.refreshAll();
+
+  assert.equal(btn.disabled, true);
+  assert.match(btn.textContent, /refresh/i);
+  assert.equal(forced, true);
+});
+
+// ── UX fix 2: decision modal was an inline block near page bottom (invisible) ─
+
+test('openDecisionModal opens a fixed overlay (modal + backdrop get the open class)', () => {
+  const { window } = makeWidget();
+  window.profilePayload = RICH;
+  window.openDecisionModal();
+  const modal = window.document.getElementById('cp-modal');
+  const backdrop = window.document.getElementById('cp-modal-backdrop');
+  assert.ok(modal.classList.contains('open'));
+  assert.ok(backdrop && backdrop.classList.contains('open'));
+});
+
+test('closeDecisionModal removes the open class from modal and backdrop', () => {
+  const { window } = makeWidget();
+  window.profilePayload = RICH;
+  window.openDecisionModal();
+  window.closeDecisionModal();
+  const modal = window.document.getElementById('cp-modal');
+  const backdrop = window.document.getElementById('cp-modal-backdrop');
+  assert.ok(!modal.classList.contains('open'));
+  assert.ok(!backdrop.classList.contains('open'));
+});
+
+test('clicking the backdrop closes the modal', () => {
+  const { window } = makeWidget();
+  window.profilePayload = RICH;
+  window.wireDecisionCapture(RICH);
+  window.openDecisionModal();
+  const backdrop = window.document.getElementById('cp-modal-backdrop');
+  assert.equal(typeof backdrop.onclick, 'function');
+  backdrop.onclick();
+  assert.ok(!window.document.getElementById('cp-modal').classList.contains('open'));
+});

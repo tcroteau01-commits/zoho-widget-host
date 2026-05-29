@@ -24,7 +24,7 @@ export function makeWidget() {
         UTIL: { getInitParams: () => new Promise(() => {}) },
         DATA: { addRecords: (a) => { addCalls.push(a); return Promise.resolve({ code: 3000, result: [{ ID: 'rec_1' }] }); } },
       }};
-      window.fetch = () => new Promise(() => {});
+      window.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
     }
   });
   return { window: dom.window, addCalls };
@@ -98,4 +98,24 @@ test('submitNoa builds the ADD payload without private fields', async () => {
   assert.equal(d.Factoring_Company, 'fc_9');
   assert.ok(!('FV_Client_ID' in d));   // private, derived server-side
   assert.ok(!('DOT' in d));            // private, derived server-side
+});
+
+test('runEngine posts the new record id to /noa-submit', async () => {
+  const { window } = makeWidget();
+  const calls = [];
+  window.fetch = (u, opts) => { calls.push([u, opts]); return Promise.resolve({ json: () => Promise.resolve({ ok: true }) }); };
+  window.brokerEmail = 'broker@op.com';
+  await window.runEngine('rec_42');
+  assert.match(calls[0][0], /\/noa-submit/);
+  const sent = JSON.parse(calls[0][1].body);
+  assert.equal(sent.record_id, 'rec_42');
+  assert.equal(sent.email, 'broker@op.com');
+});
+
+test('runEngine no-ops without a recordId', async () => {
+  const { window } = makeWidget();
+  let called = false;
+  window.fetch = () => { called = true; return Promise.resolve({ json: () => Promise.resolve({}) }); };
+  await window.runEngine('');
+  assert.equal(called, false);
 });

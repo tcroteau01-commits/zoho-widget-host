@@ -705,7 +705,14 @@ function buildNoaPayload() {
   return d;   // NO FV_Client_ID / DOT / Carrier_Name — engine derives those.
 }
 
-function runEngine(recordId) { return Promise.resolve(recordId); }  // finalized after engine trigger spike
+function runEngine(recordId) {
+  if (!recordId) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/noa-submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, record_id: recordId })
+  }).then(function(r){ return r.json(); });
+}
 
 function submitNoa() {
   var fb = document.getElementById('noa-submit-feedback'); if (fb) fb.textContent = '';

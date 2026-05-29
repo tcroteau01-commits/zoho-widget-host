@@ -338,19 +338,19 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="type-label">What do you need to update?</div>
       <!-- NOTE: .gated class adds the 4th column. Toggle reflects Allow_Add_Carrier on the Account. -->
       <div class="type-grid gated">
-        <div class="type-card active">
+        <div class="type-card active" data-type="NOA Update">
           <div class="type-card-name">NOA Update</div>
           <div class="type-card-desc">New Notice of Assignment from the carrier's factoring company</div>
         </div>
-        <div class="type-card">
+        <div class="type-card" data-type="LOR Update">
           <div class="type-card-name">LOR Update</div>
           <div class="type-card-desc">Letter of Release &mdash; carrier moving off factoring to direct pay</div>
         </div>
-        <div class="type-card">
+        <div class="type-card" data-type="Factoring Company Change">
           <div class="type-card-name">Factoring Company Change</div>
           <div class="type-card-desc">Carrier switching to a different factoring company</div>
         </div>
-        <div class="type-card gated-card">
+        <div class="type-card gated-card" data-type="Add New Carrier">
           <span class="gate-badge">&#128274; Ascend / TMS</span>
           <div class="type-card-name">Add New Carrier</div>
           <div class="type-card-desc">New carrier with an approved factoring company + NOA</div>
@@ -441,12 +441,89 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         </div>
       </div>
 
+      <!-- LOR Update: bank detail fields -->
+      <div id="noa-bank-fields" class="hidden">
+        <div class="form-section">
+          <div class="section-head">
+            <div class="section-title">Bank Details</div>
+            <div class="section-sub">Carrier's direct-pay bank information for the LOR</div>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label class="field-label">Bank Name <span class="req">*</span></label>
+              <input class="field-input" id="lor-bank-name" placeholder="e.g. Wells Fargo">
+            </div>
+            <div class="field">
+              <label class="field-label">Business Name on Account <span class="req">*</span></label>
+              <input class="field-input" id="lor-business-name" placeholder="Legal business name">
+            </div>
+            <div class="field">
+              <label class="field-label">Account Number <span class="req">*</span></label>
+              <input class="field-input" id="lor-account-number" placeholder="Account number">
+            </div>
+            <div class="field">
+              <label class="field-label">Routing Number <span class="req">*</span></label>
+              <input class="field-input" id="lor-routing-number" placeholder="9-digit routing number">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Factoring Company Change: new factor + NOA upload -->
+      <div id="noa-new-factor" class="hidden">
+        <div class="form-section">
+          <div class="section-head">
+            <div class="section-title">New Factoring Company</div>
+            <div class="section-sub">The factoring company the carrier is switching to</div>
+          </div>
+          <div class="field-grid full">
+            <div class="field">
+              <label class="field-label">New Factoring Company <span class="req">*</span></label>
+              <select class="field-select" id="fc-change-select">
+                <option value="">Select a factoring company...</option>
+                <option>Triumph Business Capital</option>
+                <option>OTR Solutions</option>
+                <option>RTS Financial Services</option>
+                <option>WEX Fleetone</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field-label">New NOA Document <span class="req">*</span></label>
+              <div class="dropzone">
+                <div class="dropzone-icon">&#128206;</div>
+                <div class="dropzone-text">Drag NOA here or click to browse</div>
+                <div class="dropzone-sub">PDF, DOC, or image. Single file.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add New Carrier: USDOT search -->
+      <div id="noa-usdot-search" class="hidden">
+        <div class="form-section">
+          <div class="section-head">
+            <div class="section-title">Carrier USDOT Search</div>
+            <div class="section-sub">Look up the new carrier by DOT number</div>
+          </div>
+          <div class="field-grid full">
+            <div class="field">
+              <label class="field-label">USDOT Number <span class="req">*</span></label>
+              <input class="field-input" id="new-carrier-usdot" placeholder="Enter USDOT number to look up carrier">
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Footer -->
       <div class="form-footer">
-        <div class="helper">Required fields marked with <span style="color:#c62828; font-weight:700;">*</span></div>
+        <div class="helper">
+          Required fields marked with <span style="color:#c62828; font-weight:700;">*</span>
+          <div id="noa-submit-feedback" style="color:#c62828;font-size:12px;"></div>
+        </div>
         <div class="btn-group">
           <button class="btn" onclick="showList()">Cancel</button>
-          <button class="btn primary" onclick="showTrack()">Submit NOA Update</button>
+          <button class="btn primary" id="noa-submit-btn">Submit NOA Update</button>
         </div>
       </div>
 
@@ -522,6 +599,7 @@ window.addEventListener('load', function() {
   var t = _acquireNoaTarget();
   vendorId = t.vendorId;
   noaAction = t.action;
+  wireForm();
   boot();
 });
 
@@ -573,6 +651,82 @@ function renderStatusList(p) {
   Array.prototype.forEach.call(tbody.querySelectorAll('button[data-vendor]'), function(b){
     b.onclick = function(){ if (typeof openSubmitFor === 'function') openSubmitFor(b.getAttribute('data-vendor')); };
   });
+}
+
+// ---- Submit form state ----
+var selectedType = null;
+var selectedVendorId = null;
+var selectedFactoringId = null;
+var selectedNewFactoringId = null;
+
+function applyGating(p) {
+  var gated = document.querySelector('.type-card.gated-card');
+  if (!gated) return;
+  if (p && p.allow_add_carrier) { gated.classList.remove('hidden'); }
+  else { gated.classList.add('hidden'); }
+}
+
+function showOnFile(carrier) {
+  var grid = document.querySelector('.onfile .onfile-grid');
+  if (!grid || !carrier) return;
+  grid.innerHTML =
+    '<div class="onfile-row"><span class="lbl">Factoring Company:</span> <span class="val">' + esc(carrier.factoring_company || '—') + '</span></div>' +
+    '<div class="onfile-row"><span class="lbl">Your Pay Term:</span> <span class="val">' + esc(carrier.pay_term || '—') + '</span></div>';
+}
+
+function selectType(t) {
+  selectedType = t;
+  var bank = document.getElementById('noa-bank-fields');
+  var newf = document.getElementById('noa-new-factor');
+  var usdot = document.getElementById('noa-usdot-search');
+  [bank, newf, usdot].forEach(function(el){ if (el) el.classList.add('hidden'); });
+  if (t === 'LOR Update' && bank) bank.classList.remove('hidden');
+  if (t === 'Factoring Company Change' && newf) newf.classList.remove('hidden');
+  if (t === 'Add New Carrier' && usdot) usdot.classList.remove('hidden');
+  // reflect active card
+  Array.prototype.forEach.call(document.querySelectorAll('#view-form .type-card'), function(card){
+    card.classList.toggle('active', card.getAttribute('data-type') === t);
+  });
+}
+
+function openSubmitFor(vid) {
+  selectedVendorId = vid;
+  var carrier = ((statusPayload && statusPayload.carriers) || []).filter(function(c){ return String(c.vendor_id) === String(vid); })[0];
+  if (carrier) showOnFile(carrier);
+  applyGating(statusPayload);
+  if (typeof showForm === 'function') showForm();
+}
+
+function buildNoaPayload() {
+  var d = { Submission_Type: selectedType };
+  if (selectedVendorId) d.Carrier_Name_MC_or_DOT = selectedVendorId;
+  if (selectedFactoringId) d.Factoring_Company = selectedFactoringId;
+  if (selectedType === 'Factoring Company Change' && selectedNewFactoringId) d.New_Factoring_Company = selectedNewFactoringId;
+  return d;   // NO FV_Client_ID / DOT / Carrier_Name — engine derives those.
+}
+
+function runEngine(recordId) { return Promise.resolve(recordId); }  // finalized after engine trigger spike
+
+function submitNoa() {
+  var fb = document.getElementById('noa-submit-feedback'); if (fb) fb.textContent = '';
+  if (!selectedType) { if (fb) fb.textContent = 'Pick an update type.'; return; }
+  var data = buildNoaPayload();
+  return ZOHO.CREATOR.DATA.addRecords({ app_link_name: 'funding-portal', form_name: 'NOA_LOR_Updates', payload: { data: data } })
+    .then(function(res){
+      var recId = res && res.result && res.result[0] && res.result[0].ID;
+      return runEngine(recId).then(function(){ if (typeof showTrack === 'function') showTrack(); });
+    })
+    .catch(function(err){ if (fb) fb.textContent = 'Submit error: ' + String(err); });
+}
+
+function wireForm() {
+  // Wire type-card clicks
+  Array.prototype.forEach.call(document.querySelectorAll('#view-form .type-card'), function(card){
+    card.onclick = function(){ selectType(card.getAttribute('data-type')); };
+  });
+  // Wire submit button
+  var submitBtn = document.getElementById('noa-submit-btn');
+  if (submitBtn) { submitBtn.onclick = submitNoa; }
 }
 </script>
 

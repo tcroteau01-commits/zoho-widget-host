@@ -47,3 +47,55 @@ test('_acquireNoaTarget recovers vendorId from sessionStorage on reload', () => 
   const t = window._acquireNoaTarget();
   assert.equal(t.vendorId, 'v_77');
 });
+
+test('gated Add New Carrier card is hidden unless allow_add_carrier', () => {
+  const { window } = makeWidget();
+  window.applyGating(STATUS);                       // allow_add_carrier:false
+  const gated = window.document.querySelector('.type-card.gated-card');
+  assert.equal(gated.classList.contains('hidden'), true);
+  window.applyGating(Object.assign({}, STATUS, { allow_add_carrier: true }));
+  assert.equal(gated.classList.contains('hidden'), false);
+});
+
+test('showOnFile renders the currently-on-file guard from the carrier', () => {
+  const { window } = makeWidget();
+  window.statusPayload = STATUS;
+  window.showOnFile(STATUS.carriers[0]);
+  const onfile = window.document.querySelector('.onfile');
+  assert.match(onfile.textContent, /Triumph/);
+  assert.match(onfile.textContent, /Factoring Company/);
+});
+
+test('selectType LOR shows bank fields; NOA hides them', () => {
+  const { window } = makeWidget();
+  window.selectType('LOR Update');
+  assert.equal(window.document.getElementById('noa-bank-fields').classList.contains('hidden'), false);
+  window.selectType('NOA Update');
+  assert.equal(window.document.getElementById('noa-bank-fields').classList.contains('hidden'), true);
+});
+
+test('openSubmitFor switches to the form view, sets the vendor, and shows on-file', () => {
+  const { window } = makeWidget();
+  window.statusPayload = STATUS;
+  window.openSubmitFor('1001');
+  assert.equal(window.selectedVendorId, '1001');
+  assert.equal(window.document.getElementById('view-form').classList.contains('hidden'), false);
+  assert.match(window.document.querySelector('.onfile').textContent, /Triumph/);
+});
+
+test('submitNoa builds the ADD payload without private fields', async () => {
+  const { window, addCalls } = makeWidget();
+  window.statusPayload = STATUS;
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  window.selectedFactoringId = 'fc_9';
+  await window.submitNoa();
+  assert.equal(addCalls.length, 1);
+  assert.equal(addCalls[0].form_name, 'NOA_LOR_Updates');
+  const d = addCalls[0].payload.data;
+  assert.equal(d.Submission_Type, 'NOA Update');
+  assert.equal(d.Carrier_Name_MC_or_DOT, '1001');
+  assert.equal(d.Factoring_Company, 'fc_9');
+  assert.ok(!('FV_Client_ID' in d));   // private, derived server-side
+  assert.ok(!('DOT' in d));            // private, derived server-side
+});

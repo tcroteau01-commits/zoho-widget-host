@@ -403,6 +403,19 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   padding: 24px 28px; margin-bottom: 14px;
   border-top: 4px solid var(--of-orange);
 }
+/* Opened as a fixed, centered overlay so it pops regardless of scroll position
+   (it lives near the bottom of a long profile; an inline reveal was invisible). */
+.modal-preview.open {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 200; margin: 0;
+  width: calc(100% - 48px); max-width: 720px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.28);
+}
+#cp-modal-backdrop {
+  display: none; position: fixed; inset: 0;
+  background: rgba(20,20,20,0.45); z-index: 150;
+}
+#cp-modal-backdrop.open { display: block; }
 .modal-head { font-size: 18px; font-weight: 700; color: var(--of-charcoal); letter-spacing: -0.3px; margin-bottom: 6px; }
 .modal-sub { font-size: 12px; color: var(--of-gray-700); margin-bottom: 16px; }
 .modal-recommendation {
@@ -651,6 +664,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   </div>
 
   <!-- Decision Modal Preview -->
+  <div id="cp-modal-backdrop"></div>
   <div id="cp-modal" class="modal-preview" style="display:none">
     <div class="modal-head">Document Hiring Decision</div>
     <div class="modal-sub">Your decision is recorded in the audit log along with a snapshot of the risk data shown above. Notes are required for any decision other than Approve.</div>
@@ -809,20 +823,36 @@ function boot() {
   } catch (err) { showError('Initialization failed', String(err)); }
 }
 
-function loadProfile() {
+// force=true busts the backend's cached CarrierOK/IPQS payload (adds refresh=1);
+// the "↻ Refresh all data" button passes it via refreshAll().
+function loadProfile(force) {
   var ee=document.getElementById('cp-error'); if(ee){ee.style.display='none';ee.textContent='';}
   // Persist the vendor so a page reload (which can't read the parent hash
   // cross-origin) can recover it via _acquireVendorTarget's sessionStorage branch.
   try { if (vendorId) sessionStorage.setItem('carrierProfileVendorId', vendorId); } catch (e) { /* ignore */ }
   showLoading(true);
-  var qs = new URLSearchParams({ email: brokerEmail, vendor_id: vendorId });
-  fetch(BROKER_API_BASE + '/carrier-profile?' + qs.toString())
+  var params = { email: brokerEmail, vendor_id: vendorId };
+  if (force) params.refresh = '1';
+  var qs = new URLSearchParams(params);
+  return fetch(BROKER_API_BASE + '/carrier-profile?' + qs.toString())
     .then(function(res) {
       if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
       return res.json();
     })
     .then(function(payload) { profilePayload = payload; showLoading(false); renderProfile(payload); })
     .catch(function(err) { showLoading(false); showError('Failed to load profile', String(err)); });
+}
+
+// Wired to the sync-bar "↻ Refresh all data" button. Force-refetches the profile
+// (refresh=1 busts the backend cache) with a visible disabled/loading state.
+function refreshAll() {
+  var btn = document.querySelector('.refresh-btn');
+  var orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
+  var restore = function() { if (btn) { btn.disabled = false; btn.textContent = orig; } };
+  var pr = loadProfile(true);
+  if (pr && pr.then) pr.then(restore, restore);
+  return pr;
 }
 
 function renderProfile(p) {
@@ -1519,10 +1549,12 @@ function openDecisionModal(){
   Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(o){ o.classList.remove('selected'); });
   var notesEl=document.getElementById('cp-notes'); if(notesEl) notesEl.value='';
   var reqEl=document.querySelector('.modal-notes-label .req'); if(reqEl) reqEl.style.display='none';
-  var m=document.getElementById('cp-modal'); if(m) m.style.display='block';
+  var m=document.getElementById('cp-modal'); if(m){ m.style.display='block'; m.classList.add('open'); }
+  var bd=document.getElementById('cp-modal-backdrop'); if(bd) bd.classList.add('open');
 }
 function closeDecisionModal(){
-  var m=document.getElementById('cp-modal'); if(m) m.style.display='none';
+  var m=document.getElementById('cp-modal'); if(m){ m.style.display='none'; m.classList.remove('open'); }
+  var bd=document.getElementById('cp-modal-backdrop'); if(bd) bd.classList.remove('open');
   selectedDecision=null;
 }
 function buildDecisionPayload(){
@@ -1574,9 +1606,11 @@ function wireDecisionCapture(p){
   });
   var sb=document.getElementById('cp-submit'); if(sb) sb.onclick=submitDecision;
   var cb=document.getElementById('cp-cancel'); if(cb) cb.onclick=closeDecisionModal;
+  var bd=document.getElementById('cp-modal-backdrop'); if(bd) bd.onclick=closeDecisionModal;
   var mr=document.querySelector('#cp-modal .modal-recommendation');
   if(mr) mr.innerHTML='System recommendation: <strong>'+esc(p.system_recommendation||'Hold')+'</strong>';
   var pb=document.querySelector('.decision-bar-actions .btn-secondary'); if(pb) pb.onclick=function(){ window.print(); };
+  var rb=document.querySelector('.refresh-btn'); if(rb) rb.onclick=refreshAll;
 }
 
 // boot() is invoked by the window 'load' handler above, after Vendor_ID acquisition.

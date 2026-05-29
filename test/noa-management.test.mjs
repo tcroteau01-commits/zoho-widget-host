@@ -119,3 +119,27 @@ test('runEngine no-ops without a recordId', async () => {
   await window.runEngine('');
   assert.equal(called, false);
 });
+
+test('renderStatusList sets KPIs from data and shows the truncation banner', () => {
+  const { window } = makeWidget();
+  const p = { allow_add_carrier: false, total_carriers: 207, truncated: true, carriers: [
+    { vendor_id: '1', carrier_name: 'A', mc: '1', dot: '1', factoring_company: 'X', pay_term: 'Factoring Company', doc_on_file: null, status: 'noa_needed' },
+    { vendor_id: '2', carrier_name: 'B', mc: '2', dot: '2', factoring_company: 'Y', pay_term: 'Quick Pay', doc_on_file: {record_id:'n',type:'NOA Update',has_doc:true}, status: 'verified' },
+    { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', factoring_company: '', pay_term: 'Quick Pay - LOR', doc_on_file: {record_id:'n2',type:'LOR Update',has_doc:true}, status: 'verifying' },
+  ]};
+  window.renderStatusList(p);
+  assert.equal(window.document.getElementById('kpi-active').textContent, '207');     // total_carriers
+  assert.equal(window.document.getElementById('kpi-attention').textContent, '1');    // noa_needed
+  assert.equal(window.document.getElementById('kpi-pending').textContent, '1');      // verifying
+  assert.equal(window.document.getElementById('kpi-verified').textContent, '1');     // verified
+  const banner = window.document.getElementById('noa-trunc-banner');
+  assert.equal(banner.classList.contains('hidden'), false);
+  assert.match(banner.textContent, /207/);
+});
+
+test('renderStatusList hides the banner when not truncated', () => {
+  const { window } = makeWidget();
+  window.renderStatusList({ allow_add_carrier:false, total_carriers:2, truncated:false, carriers: STATUS.carriers });
+  assert.equal(window.document.getElementById('noa-trunc-banner').classList.contains('hidden'), true);
+  assert.equal(window.document.getElementById('kpi-active').textContent, '2');
+});

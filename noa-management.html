@@ -248,9 +248,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div class="toolbar">
       <input class="search-input" placeholder="Search by carrier name, MC, or DOT...">
       <div class="filter-pills">
-        <div class="filter-pill active">All</div>
-        <div class="filter-pill">Need Attention</div>
-        <div class="filter-pill">Pending</div>
+        <div class="filter-pill active" data-filter="all">All</div>
+        <div class="filter-pill" data-filter="attention">Need Attention</div>
+        <div class="filter-pill" data-filter="pending">Pending</div>
       </div>
     </div>
 
@@ -380,9 +380,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <div class="field-grid full">
           <div class="field">
             <label class="field-label">Carrier <span class="req">*</span></label>
-            <select class="field-select">
-              <option>Search by carrier name, MC, or DOT...</option>
-              <option selected>ROADWAY EXPRESS LOGISTICS &mdash; MC# 89765 &mdash; DOT 897123</option>
+            <select id="noa-carrier-select" class="field-select">
+              <option value="">Select a carrier&hellip;</option>
             </select>
           </div>
         </div>
@@ -413,12 +412,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <div class="field-grid full">
           <div class="field">
             <label class="field-label">Factoring Company <span class="req">*</span></label>
-            <select class="field-select">
-              <option>Select a factoring company...</option>
-              <option>Triumph Business Capital</option>
-              <option>OTR Solutions</option>
-              <option>RTS Financial Services</option>
-              <option>WEX Fleetone</option>
+            <select id="noa-factoring-select" class="field-select">
+              <option value="">Select a factoring company&hellip;</option>
             </select>
             <div class="field-help">Only Approved factoring companies are listed. Don't see yours? Contact <a href="mailto:vendors@operfi.com" style="color:#b86e00; font-weight:600; text-decoration:none;">vendors@operfi.com</a>.</div>
           </div>
@@ -571,6 +566,10 @@ var vendorId = '';
 var noaAction = '';
 var statusPayload = null;
 
+// ---- Filter / search state ----
+var activeFilter = 'all';
+var searchTerm = '';
+
 function _acquireNoaTarget() {
   var out = { vendorId: '', action: '' };
   try {
@@ -602,6 +601,7 @@ window.addEventListener('load', function() {
   vendorId = t.vendorId;
   noaAction = t.action;
   wireForm();
+  wireFilters();
   boot();
 });
 
@@ -612,6 +612,7 @@ function boot() {
     result.then(function(params) {
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
       loadStatus();
+      loadFactoringCompanies();
     });
   }
 }
@@ -628,11 +629,29 @@ function loadStatus() {
     .then(function(p){ statusPayload = p; renderStatusList(p); });
 }
 
-function renderStatusList(p) {
+// Part B: fetch factoring companies from the API and populate the select
+function loadFactoringCompanies() {
+  var sel = document.getElementById('noa-factoring-select');
+  if (!sel) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/factoring-companies?email=' + encodeURIComponent(brokerEmail))
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var companies = (data && data.companies) || [];
+      companies.forEach(function(fc){
+        var opt = document.createElement('option');
+        opt.value = fc.id;
+        opt.textContent = fc.name;
+        sel.appendChild(opt);
+      });
+      sel.onchange = function(){ selectedFactoringId = sel.value; };
+    });
+}
+
+// Part C: extract row-building into its own function
+function renderCarrierRows(list) {
   var tbody = document.querySelector('#view-list .tbl tbody');
   if (!tbody) return;
-  var carriers = (p && p.carriers) || [];
-  tbody.innerHTML = carriers.map(function(c){
+  tbody.innerHTML = list.map(function(c){
     var chip = CHIP[c.status] || ['neutral', c.status || ''];
     var attn = c.status === 'noa_needed' ? ' class="attention"' : '';
     var doc = (c.doc_on_file && c.doc_on_file.has_doc)
@@ -653,6 +672,56 @@ function renderStatusList(p) {
   Array.prototype.forEach.call(tbody.querySelectorAll('button[data-vendor]'), function(b){
     b.onclick = function(){ if (typeof openSubmitFor === 'function') openSubmitFor(b.getAttribute('data-vendor')); };
   });
+}
+
+// Part C: filter the carrier list and re-render rows
+function applyCarrierFilters() {
+  var carriers = (statusPayload && statusPayload.carriers) || [];
+  var filtered = carriers.filter(function(c){
+    if (activeFilter === 'attention' && c.status !== 'noa_needed') return false;
+    if (activeFilter === 'pending'   && c.status !== 'verifying')  return false;
+    if (searchTerm) {
+      var term = searchTerm.toLowerCase();
+      var name = String(c.carrier_name || '').toLowerCase();
+      var mc   = String(c.mc   || '').toLowerCase();
+      var dot  = String(c.dot  || '').toLowerCase();
+      if (name.indexOf(term) < 0 && mc.indexOf(term) < 0 && dot.indexOf(term) < 0) return false;
+    }
+    return true;
+  });
+  renderCarrierRows(filtered);
+}
+
+// Part C: wire filter pills and search box (idempotent — safe to call multiple times)
+var _filtersWired = false;
+function wireFilters() {
+  if (_filtersWired) return;
+  _filtersWired = true;
+  Array.prototype.forEach.call(document.querySelectorAll('.filter-pill[data-filter]'), function(pill){
+    pill.onclick = function(){
+      activeFilter = pill.getAttribute('data-filter');
+      Array.prototype.forEach.call(document.querySelectorAll('.filter-pill[data-filter]'), function(p){
+        p.classList.toggle('active', p === pill);
+      });
+      applyCarrierFilters();
+    };
+  });
+  var searchInput = document.querySelector('.search-input');
+  if (searchInput) {
+    searchInput.oninput = function(){
+      searchTerm = searchInput.value.trim();
+      applyCarrierFilters();
+    };
+  }
+}
+
+function renderStatusList(p) {
+  var carriers = (p && p.carriers) || [];
+  // render rows via the extracted helper
+  renderCarrierRows(carriers);
+  // populate the carrier dropdown (Part A)
+  populateCarrierSelect();
+  // KPIs
   var counts = { noa_needed: 0, verifying: 0, verified: 0 };
   carriers.forEach(function(c){ if (counts[c.status] != null) counts[c.status]++; });
   var total = (p && typeof p.total_carriers === 'number') ? p.total_carriers : carriers.length;
@@ -670,6 +739,26 @@ function renderStatusList(p) {
       banner.classList.add('hidden');
     }
   }
+}
+
+// Part A: populate the carrier select from statusPayload
+function populateCarrierSelect() {
+  var sel = document.getElementById('noa-carrier-select');
+  if (!sel) return;
+  // clear all options except the default placeholder
+  while (sel.options.length > 1) sel.remove(1);
+  var carriers = (statusPayload && statusPayload.carriers) || [];
+  carriers.forEach(function(c){
+    var opt = document.createElement('option');
+    opt.value = String(c.vendor_id);
+    opt.textContent = esc(c.carrier_name) + ' — MC ' + esc(c.mc) + ' — DOT ' + esc(c.dot);
+    sel.appendChild(opt);
+  });
+  sel.onchange = function(){
+    selectedVendorId = sel.value;
+    var carrier = ((statusPayload && statusPayload.carriers) || []).filter(function(c){ return String(c.vendor_id) === String(sel.value); })[0];
+    if (carrier) showOnFile(carrier);
+  };
 }
 
 // ---- Submit form state ----
@@ -712,6 +801,9 @@ function openSubmitFor(vid) {
   selectedVendorId = vid;
   var carrier = ((statusPayload && statusPayload.carriers) || []).filter(function(c){ return String(c.vendor_id) === String(vid); })[0];
   if (carrier) showOnFile(carrier);
+  // Part A: pre-select the carrier in the dropdown
+  var sel = document.getElementById('noa-carrier-select');
+  if (sel) sel.value = String(vid);
   applyGating(statusPayload);
   if (typeof showForm === 'function') showForm();
 }

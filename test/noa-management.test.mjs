@@ -143,3 +143,55 @@ test('renderStatusList hides the banner when not truncated', () => {
   assert.equal(window.document.getElementById('noa-trunc-banner').classList.contains('hidden'), true);
   assert.equal(window.document.getElementById('kpi-active').textContent, '2');
 });
+
+test('populateCarrierSelect fills options from statusPayload', () => {
+  const { window } = makeWidget();
+  window.statusPayload = STATUS;
+  window.renderStatusList(STATUS);
+  const opts = window.document.getElementById('noa-carrier-select').querySelectorAll('option');
+  // default + 2 carriers
+  assert.equal(opts.length, 3);
+  assert.match(window.document.getElementById('noa-carrier-select').textContent, /ROADWAY/);
+});
+
+test('openSubmitFor preselects the carrier in the dropdown', () => {
+  const { window } = makeWidget();
+  window.statusPayload = STATUS;
+  window.renderStatusList(STATUS);
+  window.openSubmitFor('1002');
+  assert.equal(window.document.getElementById('noa-carrier-select').value, '1002');
+  assert.equal(window.selectedVendorId, '1002');
+});
+
+test('loadFactoringCompanies populates the factoring dropdown', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ companies: [
+    { id: 'f1', name: 'OTR Solutions' }, { id: 'f2', name: 'Triumph' } ] }) });
+  await window.loadFactoringCompanies();
+  const sel = window.document.getElementById('noa-factoring-select');
+  assert.equal(sel.querySelectorAll('option').length, 3); // default + 2
+  assert.match(sel.textContent, /OTR Solutions/);
+});
+
+test('filter pill Need Attention shows only noa_needed carriers', () => {
+  const { window } = makeWidget();
+  window.statusPayload = STATUS;
+  window.renderStatusList(STATUS);
+  window.activeFilter = 'attention';
+  window.applyCarrierFilters();
+  const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /MIDWEST/);
+});
+
+test('search filters carriers by name', () => {
+  const { window } = makeWidget();
+  window.statusPayload = STATUS;
+  window.renderStatusList(STATUS);
+  window.searchTerm = 'roadway';
+  window.applyCarrierFilters();
+  const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /ROADWAY/);
+});

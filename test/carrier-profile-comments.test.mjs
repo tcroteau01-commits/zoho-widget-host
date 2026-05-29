@@ -267,3 +267,14 @@ test('clicking the backdrop closes the modal', () => {
   backdrop.onclick();
   assert.ok(!window.document.getElementById('cp-modal').classList.contains('open'));
 });
+
+test('renderNoaCard shows factoring + pay term and a Manage button with a handler', () => {
+  const { window } = makeWidget();
+  const carrier = { vendor_id: '1001', factoring_company: 'Triumph', pay_term: 'Factoring Company',
+                    doc_on_file: { record_id: 'n1', type: 'NOA Update', has_doc: true }, status: 'verified' };
+  window.renderNoaCard(carrier);
+  const card = window.document.getElementById('cp-noa-card');
+  assert.match(card.textContent, /Triumph/);
+  assert.match(card.textContent, /Factoring Company/);
+  assert.equal(typeof window.document.getElementById('cp-noa-manage').onclick, 'function');
+});

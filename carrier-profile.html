@@ -643,6 +643,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div id="cp-decision-history" class="history-timeline"></div>
   </div>
 
+  <!-- Factoring / NOA -->
+  <div id="cp-noa-card" class="card"></div>
+
   <!-- Vendor Comments -->
   <div class="card">
     <div class="card-title">Comments &amp; Notes <span class="tag">Visible to your team and OperFi</span></div>
@@ -859,6 +862,11 @@ function renderProfile(p) {
   renderHero(p); renderRiskStrip(p); renderDigitalFootprint(p); renderBankRouting(p); renderRecommendation(p); renderLitigation(p);
   renderAuthority(p); renderInsurance(p); renderSafety(p); renderCrash(p); renderStability(p);
   renderDecisionState(p); renderDecisionHistory(p); renderComments(p); wireDecisionCapture(p);
+  // Non-blocking NOA status card — degrades silently if endpoint unavailable
+  fetch(BROKER_API_BASE + '/noa-status?email=' + encodeURIComponent(brokerEmail) + '&vendor_id=' + encodeURIComponent(vendorId))
+    .then(function(r){ return r.json(); })
+    .then(function(p){ if (p && p.carriers && p.carriers[0]) renderNoaCard(p.carriers[0]); })
+    .catch(function(){});
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1474,6 +1482,24 @@ function addComment(){
       if(btn) btn.disabled=false;
       if(fb) fb.textContent='Submit error: '+esc(String(err));
     });
+}
+
+function renderNoaCard(c) {
+  var card = document.getElementById('cp-noa-card');
+  if (!card || !c) return;
+  card.innerHTML =
+    '<div class="rec-label">Factoring / NOA</div>' +
+    '<div>Factoring: <strong>' + esc(c.factoring_company || 'Direct pay') + '</strong></div>' +
+    '<div>Pay term: <strong>' + esc(c.pay_term || '—') + '</strong></div>' +
+    (c.doc_on_file && c.doc_on_file.has_doc
+      ? '<a class="doc-link" target="_blank" href="' + BROKER_API_BASE + '/noa-doc?email=' +
+        encodeURIComponent(brokerEmail) + '&record_id=' + encodeURIComponent(c.doc_on_file.record_id) + '">View doc ↗</a>'
+      : '') +
+    '<button id="cp-noa-manage" class="btn-secondary" style="margin-top:10px;">Manage NOA / LOR</button>';
+  document.getElementById('cp-noa-manage').onclick = function(){
+    try { localStorage.setItem('noaManagementTarget', JSON.stringify({ Vendor_ID: String(vendorId), action: '', ts: Date.now() })); } catch(e){}
+    if (window.top) { window.top.location.href = window.top.location.origin + '/#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(vendorId); }
+  };
 }
 
 function renderDecisionState(p){

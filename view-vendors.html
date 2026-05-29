@@ -679,8 +679,8 @@ function renderPanel() {
   });
   var noa = document.getElementById('p-noa');
   if (noa) noa.addEventListener('click', function() {
-    stashCarrierProfileTarget(r.ID, 'noa');
-    navigateParent('#Page:Carrier_Profile?Vendor_ID=' + encodeURIComponent(r.ID) + '&Modal=noa');
+    stashNoaTarget(r.ID);
+    navigateParent('#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
   });
 }
 
@@ -692,6 +692,14 @@ function stashCarrierProfileTarget(vendorId, modal) {
       Vendor_ID: String(vendorId),
       Modal: modal || '',
       ts: Date.now()
+    }));
+  } catch (e) {}
+}
+
+function stashNoaTarget(vendorId) {
+  try {
+    localStorage.setItem('noaManagementTarget', JSON.stringify({
+      Vendor_ID: String(vendorId), action: 'submit', ts: Date.now()
     }));
   } catch (e) {}
 }

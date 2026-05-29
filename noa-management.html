@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOA / LOR Management</title>
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
+.page { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+
+.head { margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.sub { font-size: 12px; color: #888; margin-top: 4px; }
+
+.btn {
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 8px;
+  padding: 11px 22px; font-size: 13px; font-weight: 600; color: #444;
+  cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.btn.primary { background: #e8a020; color: #fff; border-color: #e8a020; }
+.btn.primary:hover { background: #d49018; border-color: #d49018; }
+.btn.small { padding: 7px 14px; font-size: 12px; }
+
+.card {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 12px;
+  padding: 22px 26px;
+  margin-bottom: 18px;
+}
+
+/* ============ MANAGEMENT LANDING VIEW ============ */
+
+/* KPI summary strip */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+.kpi {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 16px 18px;
+}
+.kpi-num { font-size: 24px; font-weight: 700; color: #272727; letter-spacing: -0.5px; }
+.kpi-num.warn { color: #b86e00; }
+.kpi-num.alert { color: #c62828; }
+.kpi-label { font-size: 11px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 4px; }
+
+/* Toolbar */
+.toolbar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; }
+.search-input {
+  flex: 1; border: 1px solid #d8d8d8; border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; font-family: inherit; background: #fff; outline: none;
+}
+.search-input:focus { border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.filter-pills { display: flex; gap: 6px; }
+.filter-pill {
+  border: 1px solid #d8d8d8; background: #fff; border-radius: 20px; padding: 8px 14px;
+  font-size: 12px; font-weight: 600; color: #666; cursor: pointer;
+}
+.filter-pill.active { background: #272727; color: #fff; border-color: #272727; }
+
+/* Carrier status table */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl thead th {
+  text-align: left; font-size: 10px; font-weight: 700; color: #999;
+  text-transform: uppercase; letter-spacing: 0.5px; padding: 0 14px 10px;
+  border-bottom: 1px solid #ececec;
+}
+.tbl tbody tr { border-bottom: 1px solid #f3f1ea; }
+.tbl tbody tr:hover { background: #fafaf6; }
+.tbl tbody tr.attention { background: #fdf6f6; }
+.tbl tbody tr.attention:hover { background: #fbeeee; }
+.tbl td { padding: 14px; vertical-align: middle; font-size: 13px; }
+.carrier-name { font-weight: 700; color: #272727; }
+.carrier-meta { font-size: 11px; color: #999; margin-top: 2px; }
+.term-val { font-weight: 600; color: #444; }
+
+/* Status chips */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.chip.ok      { background: #e9f6ed; color: #1b7e3c; }
+.chip.pending { background: #fff4e0; color: #b86e00; }
+.chip.alert   { background: #fdecec; color: #c62828; }
+.chip.neutral { background: #f0efe9; color: #777; }
+
+/* Doc link */
+.doc-link { color: #b86e00; font-weight: 600; text-decoration: none; font-size: 12px; }
+.doc-link:hover { text-decoration: underline; }
+.doc-none { color: #c0c0c0; font-size: 12px; font-style: italic; }
+
+/* ============ SUBMISSION TYPE SELECTOR ============ */
+.type-section { margin-bottom: 18px; }
+.type-label {
+  font-size: 11px; font-weight: 700; color: #272727;
+  text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 10px;
+}
+.type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.type-grid.gated { grid-template-columns: repeat(4, 1fr); }
+.type-card {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
+  padding: 14px 16px; cursor: pointer; transition: all 0.15s;
+  position: relative; text-align: left;
+}
+.type-card:hover { border-color: #c8c4b6; background: #fafaf6; }
+.type-card.active {
+  border-color: #e8a020; background: #fff8e6;
+  box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.12);
+}
+.type-card-name { font-size: 13px; font-weight: 700; color: #272727; margin-bottom: 3px; }
+.type-card-desc { font-size: 11px; color: #888; line-height: 1.4; }
+.type-card.active .type-card-name { color: #b86e00; }
+
+/* Gated (Add New Carrier) card */
+.type-card.gated-card { border-style: dashed; opacity: 0.92; }
+.gate-badge {
+  position: absolute; top: 10px; right: 10px;
+  font-size: 9px; font-weight: 700; color: #8a6d3b; background: #fbf0d8;
+  border: 1px solid #ecd9ab; border-radius: 5px; padding: 2px 6px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.gate-note {
+  font-size: 11px; color: #8a6d3b; background: #fbf7ee; border: 1px dashed #e3d4ad;
+  border-radius: 8px; padding: 8px 12px; margin: 8px 0 0; line-height: 1.4;
+}
+
+/* Form sections */
+.form-section { margin-bottom: 22px; padding-bottom: 22px; border-bottom: 1px solid #f0efe9; }
+.form-section:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+.section-head { margin-bottom: 14px; }
+.section-title { font-size: 14px; font-weight: 700; color: #272727; letter-spacing: -0.1px; }
+.section-sub { font-size: 12px; color: #888; margin-top: 3px; }
+
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.field-grid.full > .field { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 11px; color: #555; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.field-label .req { color: #c62828; margin-left: 2px; }
+.field-help { font-size: 11px; color: #888; margin-top: -2px; line-height: 1.4; }
+.field-input, .field-select {
+  border: 1px solid #d8d8d8; border-radius: 8px; padding: 11px 14px;
+  font-size: 14px; font-family: inherit; background: #fff; outline: none; transition: all 0.15s;
+}
+.field-input:focus, .field-select:focus { border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+
+/* Type-specific note (red callout) */
+.type-note {
+  background: #fdf2f2; border: 1px solid #f0c6c6; border-left: 4px solid #c62828;
+  color: #a31818; border-radius: 8px; padding: 12px 14px; font-size: 12px;
+  font-weight: 600; margin-bottom: 18px; line-height: 1.5;
+}
+
+/* Currently-on-file panel (stale-update guard) */
+.onfile {
+  background: #fafaf6; border: 1px solid #f0efe9; border-radius: 8px;
+  padding: 16px 18px; margin-top: 8px;
+}
+.onfile-label { font-size: 11px; font-weight: 700; color: #272727; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px; }
+.onfile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; }
+.onfile-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+.onfile-row .lbl { color: #888; font-weight: 500; }
+.onfile-row .val { color: #272727; font-weight: 600; }
+.stale-warn {
+  background: #fff4e0; border: 1px solid #f0d9a8; border-left: 4px solid #e8a020;
+  color: #8a5a00; border-radius: 8px; padding: 11px 14px; font-size: 12px;
+  font-weight: 600; margin-top: 12px; line-height: 1.5;
+}
+
+/* Dropzone */
+.dropzone {
+  border: 2px dashed #d8d8d8; background: #fafaf6; border-radius: 10px;
+  padding: 28px; text-align: center; cursor: pointer; transition: all 0.15s;
+}
+.dropzone:hover { border-color: #e8a020; background: #fff8e6; }
+.dropzone-text { font-size: 13px; color: #555; font-weight: 600; }
+.dropzone-sub { font-size: 11px; color: #888; margin-top: 4px; }
+.dropzone-icon { font-size: 24px; color: #aaa; margin-bottom: 6px; }
+
+/* Footer */
+.form-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 22px; padding-top: 22px; border-top: 1px solid #f0efe9; }
+.form-footer .helper { font-size: 11px; color: #888; }
+.btn-group { display: flex; gap: 8px; }
+
+/* Back link */
+.back-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #888; cursor: pointer; margin-bottom: 12px; }
+.back-link:hover { color: #555; }
+
+/* Post-submit track state */
+.track {
+  background: #fff; border: 1px solid #e6e3da; border-radius: 12px;
+  padding: 30px 28px; text-align: center;
+}
+.track-icon { font-size: 34px; margin-bottom: 8px; }
+.track-title { font-size: 18px; font-weight: 700; color: #272727; }
+.track-sub { font-size: 13px; color: #888; margin-top: 6px; line-height: 1.5; max-width: 520px; margin-left: auto; margin-right: auto; }
+.track-steps { display: flex; justify-content: center; gap: 0; margin: 22px 0 8px; }
+.track-step { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; padding: 0 26px; }
+.track-step:not(:last-child)::after { content: ""; position: absolute; top: 11px; right: -2px; width: 52px; height: 2px; background: #e6e3da; }
+.track-dot { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.track-dot.done { background: #1b7e3c; color: #fff; }
+.track-dot.now  { background: #e8a020; color: #fff; }
+.track-dot.todo { background: #ececec; color: #aaa; }
+.track-step-label { font-size: 11px; color: #777; font-weight: 600; }
+
+.hidden { display: none !important; }
+
+@media (max-width: 800px) {
+  .kpi-row { grid-template-columns: 1fr 1fr; }
+  .type-grid, .type-grid.gated { grid-template-columns: 1fr 1fr; }
+  .field-grid { grid-template-columns: 1fr; }
+  .onfile-grid { grid-template-columns: 1fr; }
+  .tbl thead { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div id="noa-loading" style="display:none">Loading&hellip;</div>
+  <div id="noa-error" style="display:none;color:#c62828"></div>
+
+  <!-- ============================================================= -->
+  <!-- VIEW 1: MANAGEMENT LANDING (default)                          -->
+  <!-- ============================================================= -->
+  <div id="view-list">
+
+    <div class="head">
+      <div>
+        <div class="title">NOA &amp; LOR Management</div>
+        <div class="sub">Your carriers' factoring assignments, payment terms, and documents on file</div>
+      </div>
+      <button class="btn primary" onclick="showForm()">+ New Update</button>
+    </div>
+
+    <!-- KPI summary -->
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-num">24</div><div class="kpi-label">Active Carriers</div></div>
+      <div class="kpi"><div class="kpi-num alert">2</div><div class="kpi-label">Need Attention</div></div>
+      <div class="kpi"><div class="kpi-num warn">3</div><div class="kpi-label">Pending Verification</div></div>
+      <div class="kpi"><div class="kpi-num">19</div><div class="kpi-label">Verified &amp; Active</div></div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <input class="search-input" placeholder="Search by carrier name, MC, or DOT...">
+      <div class="filter-pills">
+        <div class="filter-pill active">All</div>
+        <div class="filter-pill">Need Attention</div>
+        <div class="filter-pill">Pending</div>
+      </div>
+    </div>
+
+    <!-- Carrier status table -->
+    <div class="card" style="padding: 18px 8px;">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="padding-left:14px;">Carrier</th>
+            <th>Factoring Company</th>
+            <th>Pay Term</th>
+            <th>Docs on File</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="attention">
+            <td>
+              <div class="carrier-name">MIDWEST HAUL CO</div>
+              <div class="carrier-meta">MC# 774120 &middot; DOT 2891044</div>
+            </td>
+            <td><span class="doc-none">&mdash; none &mdash;</span></td>
+            <td><span class="term-val">Factoring Company</span></td>
+            <td><span class="doc-none">NOA missing</span></td>
+            <td><span class="chip alert">&#9888; NOA Needed</span></td>
+            <td><button class="btn small" onclick="showForm()">Update</button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="carrier-name">ILTS LOGISTICS LLC</div>
+              <div class="carrier-meta">MC# 1550411 &middot; DOT 4077466</div>
+            </td>
+            <td>OTR Solutions</td>
+            <td><span class="term-val">Quick Pay - LOR</span></td>
+            <td><a class="doc-link" href="#">LOR &#8599;</a></td>
+            <td><span class="chip pending">&#8987; Verifying</span></td>
+            <td><button class="btn small" onclick="showForm()">Update</button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="carrier-name">ROADWAY EXPRESS LOGISTICS</div>
+              <div class="carrier-meta">MC# 89765 &middot; DOT 897123</div>
+            </td>
+            <td>Triumph Business Capital</td>
+            <td><span class="term-val">Factoring Company</span></td>
+            <td><a class="doc-link" href="#">NOA &#8599;</a></td>
+            <td><span class="chip ok">&#10003; Verified</span></td>
+            <td><button class="btn small" onclick="showForm()">Update</button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="carrier-name">BLUE RIDGE FREIGHT INC</div>
+              <div class="carrier-meta">MC# 663201 &middot; DOT 3120877</div>
+            </td>
+            <td><span class="doc-none">&mdash; direct pay &mdash;</span></td>
+            <td><span class="term-val">Quick Pay</span></td>
+            <td><a class="doc-link" href="#">Bank Doc &#8599;</a></td>
+            <td><span class="chip ok">&#10003; Verified</span></td>
+            <td><button class="btn small" onclick="showForm()">Update</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="font-size: 11px; color: #888; padding: 0 4px; line-height: 1.5;">
+      Payment terms and factoring assignments shown here reflect what OperFi has on file. Submit a new update to change a carrier's NOA, request an LOR, or switch factoring companies.
+    </div>
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- VIEW 2: SUBMIT AN UPDATE                                      -->
+  <!-- ============================================================= -->
+  <div id="view-form" class="hidden">
+
+    <div class="back-link" onclick="showList()">&#8249; Back to all carriers</div>
+
+    <div class="head">
+      <div>
+        <div class="title">New NOA / LOR Update</div>
+        <div class="sub">Update carrier payment information, factoring assignments, or request a release</div>
+      </div>
+    </div>
+
+    <!-- Submission Type selector (3 types default; 4th is entitlement-gated) -->
+    <div class="type-section">
+      <div class="type-label">What do you need to update?</div>
+      <!-- NOTE: .gated class adds the 4th column. Toggle reflects Allow_Add_Carrier on the Account. -->
+      <div class="type-grid gated">
+        <div class="type-card active" data-type="NOA Update">
+          <div class="type-card-name">NOA Update</div>
+          <div class="type-card-desc">New Notice of Assignment from the carrier's factoring company</div>
+        </div>
+        <div class="type-card" data-type="LOR Update">
+          <div class="type-card-name">LOR Update</div>
+          <div class="type-card-desc">Letter of Release &mdash; carrier moving off factoring to direct pay</div>
+        </div>
+        <div class="type-card" data-type="Factoring Company Change">
+          <div class="type-card-name">Factoring Company Change</div>
+          <div class="type-card-desc">Carrier switching to a different factoring company</div>
+        </div>
+        <div class="type-card gated-card" data-type="Add New Carrier">
+          <span class="gate-badge">&#128274; Ascend / TMS</span>
+          <div class="type-card-name">Add New Carrier</div>
+          <div class="type-card-desc">New carrier with an approved factoring company + NOA</div>
+        </div>
+      </div>
+      <div class="gate-note">
+        <b>Add New Carrier</b> is hidden by default. It appears only for Ascend and TMS-integrated accounts (<code>Allow_Add_Carrier</code> on). Normal brokers act only on carriers already vetted through onboarding, so OperFi always captures banking and the fraud footprint directly from the carrier.
+      </div>
+    </div>
+
+    <!-- Form card (NOA Update flow shown as example) -->
+    <div class="card">
+
+      <div class="type-note">
+        Choose this option if the carrier originally selected Quick Pay or their NOA was not correct.
+      </div>
+
+      <!-- Section: Carrier -->
+      <div class="form-section">
+        <div class="section-head">
+          <div class="section-title">Select Carrier</div>
+          <div class="section-sub">Pick the carrier this update applies to</div>
+        </div>
+
+        <div class="field-grid full">
+          <div class="field">
+            <label class="field-label">Carrier <span class="req">*</span></label>
+            <select class="field-select">
+              <option>Search by carrier name, MC, or DOT...</option>
+              <option selected>ROADWAY EXPRESS LOGISTICS &mdash; MC# 89765 &mdash; DOT 897123</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Currently on file (stale-update guard): factoring + term + FV status + bank -->
+        <div class="onfile">
+          <div class="onfile-label">Currently on File for This Carrier</div>
+          <div class="onfile-grid">
+            <div class="onfile-row"><span class="lbl">Factoring Company:</span> <span class="val">Triumph Business Capital</span></div>
+            <div class="onfile-row"><span class="lbl">Bank Name:</span> <span class="val">Wells Fargo</span></div>
+            <div class="onfile-row"><span class="lbl">Your Pay Term:</span> <span class="val">Factoring Company</span></div>
+            <div class="onfile-row"><span class="lbl">Account Number:</span> <span class="val">****8421</span></div>
+            <div class="onfile-row"><span class="lbl">Routing Number:</span> <span class="val">121000248</span></div>
+          </div>
+          <div class="stale-warn">
+            This carrier already has <b>Triumph Business Capital</b> on file with a verified NOA. Only submit an NOA Update if the factoring company or document has actually changed.
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Factoring -->
+      <div class="form-section">
+        <div class="section-head">
+          <div class="section-title">New Factoring Company</div>
+          <div class="section-sub">Where should we send payments going forward?</div>
+        </div>
+
+        <div class="field-grid full">
+          <div class="field">
+            <label class="field-label">Factoring Company <span class="req">*</span></label>
+            <select class="field-select">
+              <option>Select a factoring company...</option>
+              <option>Triumph Business Capital</option>
+              <option>OTR Solutions</option>
+              <option>RTS Financial Services</option>
+              <option>WEX Fleetone</option>
+            </select>
+            <div class="field-help">Only Approved factoring companies are listed. Don't see yours? Contact <a href="mailto:vendors@operfi.com" style="color:#b86e00; font-weight:600; text-decoration:none;">vendors@operfi.com</a>.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: NOA Upload -->
+      <div class="form-section">
+        <div class="section-head">
+          <div class="section-title">Upload NOA Document</div>
+          <div class="section-sub">Notice of Assignment from the factoring company</div>
+        </div>
+
+        <div class="field-grid full">
+          <div class="field">
+            <div class="dropzone">
+              <div class="dropzone-icon">&#128206;</div>
+              <div class="dropzone-text">Drag NOA here or click to browse</div>
+              <div class="dropzone-sub">PDF, DOC, or image. Single file.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOR Update: bank detail fields -->
+      <div id="noa-bank-fields" class="hidden">
+        <div class="form-section">
+          <div class="section-head">
+            <div class="section-title">Bank Details</div>
+            <div class="section-sub">Carrier's direct-pay bank information for the LOR</div>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label class="field-label">Bank Name <span class="req">*</span></label>
+              <input class="field-input" id="lor-bank-name" placeholder="e.g. Wells Fargo">
+            </div>
+            <div class="field">
+              <label class="field-label">Business Name on Account <span class="req">*</span></label>
+              <input class="field-input" id="lor-business-name" placeholder="Legal business name">
+            </div>
+            <div class="field">
+              <label class="field-label">Account Number <span class="req">*</span></label>
+              <input class="field-input" id="lor-account-number" placeholder="Account number">
+            </div>
+            <div class="field">
+              <label class="field-label">Routing Number <span class="req">*</span></label>
+              <input class="field-input" id="lor-routing-number" placeholder="9-digit routing number">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Factoring Company Change: new factor + NOA upload -->
+      <div id="noa-new-factor" class="hidden">
+        <div class="form-section">
+          <div class="section-head">
+            <div class="section-title">New Factoring Company</div>
+            <div class="section-sub">The factoring company the carrier is switching to</div>
+          </div>
+          <div class="field-grid full">
+            <div class="field">
+              <label class="field-label">New Factoring Company <span class="req">*</span></label>
+              <select class="field-select" id="fc-change-select">
+                <option value="">Select a factoring company...</option>
+                <option>Triumph Business Capital</option>
+                <option>OTR Solutions</option>
+                <option>RTS Financial Services</option>
+                <option>WEX Fleetone</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field-label">New NOA Document <span class="req">*</span></label>
+              <div class="dropzone">
+                <div class="dropzone-icon">&#128206;</div>
+                <div class="dropzone-text">Drag NOA here or click to browse</div>
+                <div class="dropzone-sub">PDF, DOC, or image. Single file.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add New Carrier: USDOT search -->
+      <div id="noa-usdot-search" class="hidden">
+        <div class="form-section">
+          <div class="section-head">
+            <div class="section-title">Carrier USDOT Search</div>
+            <div class="section-sub">Look up the new carrier by DOT number</div>
+          </div>
+          <div class="field-grid full">
+            <div class="field">
+              <label class="field-label">USDOT Number <span class="req">*</span></label>
+              <input class="field-input" id="new-carrier-usdot" placeholder="Enter USDOT number to look up carrier">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="form-footer">
+        <div class="helper">
+          Required fields marked with <span style="color:#c62828; font-weight:700;">*</span>
+          <div id="noa-submit-feedback" style="color:#c62828;font-size:12px;"></div>
+        </div>
+        <div class="btn-group">
+          <button class="btn" onclick="showList()">Cancel</button>
+          <button class="btn primary" id="noa-submit-btn">Submit NOA Update</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="font-size: 11px; color: #888; padding: 0 4px; line-height: 1.5;">
+      On submit, the document is filed to OperFi WorkDrive, the carrier's CRM payment terms are updated, and the OperFi team is notified to verify and apply the change.
+    </div>
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- VIEW 3: POST-SUBMIT TRACK STATE                               -->
+  <!-- ============================================================= -->
+  <div id="view-track" class="hidden">
+    <div class="back-link" onclick="showList()">&#8249; Back to all carriers</div>
+    <div class="track">
+      <div class="track-icon">&#9989;</div>
+      <div class="track-title">Update Received</div>
+      <div class="track-sub">Your NOA Update for <b>ROADWAY EXPRESS LOGISTICS</b> has been recorded and the document filed. The OperFi team has been notified to verify and apply the payment change.</div>
+      <div class="track-steps">
+        <div class="track-step"><div class="track-dot done">&#10003;</div><div class="track-step-label">Submitted</div></div>
+        <div class="track-step"><div class="track-dot now">2</div><div class="track-step-label">OperFi Verifying</div></div>
+        <div class="track-step"><div class="track-dot todo">3</div><div class="track-step-label">Terms Updated</div></div>
+      </div>
+      <div style="margin-top: 18px;">
+        <button class="btn primary" onclick="showList()">Back to Carriers</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function showForm()  { document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
+function showList()  { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-list').classList.remove('hidden'); window.scrollTo(0,0); }
+function showTrack() { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.remove('hidden'); window.scrollTo(0,0); }
+</script>
+
+<script>
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var brokerEmail = '';
+var vendorId = '';
+var noaAction = '';
+var statusPayload = null;
+
+function _acquireNoaTarget() {
+  var out = { vendorId: '', action: '' };
+  try {
+    var u = new URL(window.location.href);
+    out.vendorId = u.searchParams.get('Vendor_ID') || u.searchParams.get('vendor_id') || '';
+    out.action = u.searchParams.get('action') || u.searchParams.get('Modal') || '';
+  } catch (e) {}
+  if (!out.vendorId) {
+    try {
+      var stored = localStorage.getItem('noaManagementTarget');
+      if (stored) {
+        var t = JSON.parse(stored);
+        if (t && t.ts && (Date.now() - t.ts) < 30000) {
+          out.vendorId = t.Vendor_ID || out.vendorId;
+          out.action = t.action || out.action;
+        }
+        localStorage.removeItem('noaManagementTarget');
+      }
+    } catch (e) {}
+  }
+  if (!out.vendorId) {
+    try { out.vendorId = sessionStorage.getItem('noaManagementVendorId') || ''; } catch (e) {}
+  }
+  return out;
+}
+
+window.addEventListener('load', function() {
+  var t = _acquireNoaTarget();
+  vendorId = t.vendorId;
+  noaAction = t.action;
+  wireForm();
+  boot();
+});
+
+function boot() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) { return; }
+  var result = ZOHO.CREATOR.UTIL.getInitParams();
+  if (result && typeof result.then === 'function') {
+    result.then(function(params) {
+      brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      loadStatus();
+    });
+  }
+}
+
+var CHIP = { verified: ['ok','✓ Verified'], verifying: ['pending','⏳ Verifying'], noa_needed: ['alert','⚠ NOA Needed'] };
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+function loadStatus() {
+  if (!brokerEmail) return;
+  var qs = new URLSearchParams({ email: brokerEmail });
+  return fetch(BROKER_API_BASE + '/noa-status?' + qs.toString())
+    .then(function(r){ return r.json(); })
+    .then(function(p){ statusPayload = p; renderStatusList(p); });
+}
+
+function renderStatusList(p) {
+  var tbody = document.querySelector('#view-list .tbl tbody');
+  if (!tbody) return;
+  var carriers = (p && p.carriers) || [];
+  tbody.innerHTML = carriers.map(function(c){
+    var chip = CHIP[c.status] || ['neutral', c.status || ''];
+    var attn = c.status === 'noa_needed' ? ' class="attention"' : '';
+    var doc = (c.doc_on_file && c.doc_on_file.has_doc)
+      ? '<a class="doc-link" href="' + BROKER_API_BASE + '/noa-doc?email=' + encodeURIComponent(brokerEmail) +
+        '&record_id=' + encodeURIComponent(c.doc_on_file.record_id) + '" target="_blank">' +
+        esc((c.doc_on_file.type||'').indexOf('LOR')>=0?'LOR':'NOA') + ' ↗</a>'
+      : '<span class="doc-none">none</span>';
+    return '<tr' + attn + '>' +
+      '<td><div class="carrier-name">' + esc(c.carrier_name) + '</div>' +
+        '<div class="carrier-meta">MC# ' + esc(c.mc) + ' · DOT ' + esc(c.dot) + '</div></td>' +
+      '<td>' + (esc(c.factoring_company) || '<span class="doc-none">— direct pay —</span>') + '</td>' +
+      '<td><span class="term-val">' + esc(c.pay_term) + '</span></td>' +
+      '<td>' + doc + '</td>' +
+      '<td><span class="chip ' + chip[0] + '">' + esc(chip[1]) + '</span></td>' +
+      '<td><button class="btn small" data-vendor="' + esc(c.vendor_id) + '">Update</button></td>' +
+      '</tr>';
+  }).join('');
+  Array.prototype.forEach.call(tbody.querySelectorAll('button[data-vendor]'), function(b){
+    b.onclick = function(){ if (typeof openSubmitFor === 'function') openSubmitFor(b.getAttribute('data-vendor')); };
+  });
+}
+
+// ---- Submit form state ----
+var selectedType = null;
+var selectedVendorId = null;
+var selectedFactoringId = null;
+var selectedNewFactoringId = null;
+
+function applyGating(p) {
+  var gated = document.querySelector('.type-card.gated-card');
+  if (!gated) return;
+  if (p && p.allow_add_carrier) { gated.classList.remove('hidden'); }
+  else { gated.classList.add('hidden'); }
+}
+
+function showOnFile(carrier) {
+  var grid = document.querySelector('.onfile .onfile-grid');
+  if (!grid || !carrier) return;
+  grid.innerHTML =
+    '<div class="onfile-row"><span class="lbl">Factoring Company:</span> <span class="val">' + esc(carrier.factoring_company || '—') + '</span></div>' +
+    '<div class="onfile-row"><span class="lbl">Your Pay Term:</span> <span class="val">' + esc(carrier.pay_term || '—') + '</span></div>';
+}
+
+function selectType(t) {
+  selectedType = t;
+  var bank = document.getElementById('noa-bank-fields');
+  var newf = document.getElementById('noa-new-factor');
+  var usdot = document.getElementById('noa-usdot-search');
+  [bank, newf, usdot].forEach(function(el){ if (el) el.classList.add('hidden'); });
+  if (t === 'LOR Update' && bank) bank.classList.remove('hidden');
+  if (t === 'Factoring Company Change' && newf) newf.classList.remove('hidden');
+  if (t === 'Add New Carrier' && usdot) usdot.classList.remove('hidden');
+  // reflect active card
+  Array.prototype.forEach.call(document.querySelectorAll('#view-form .type-card'), function(card){
+    card.classList.toggle('active', card.getAttribute('data-type') === t);
+  });
+}
+
+function openSubmitFor(vid) {
+  selectedVendorId = vid;
+  var carrier = ((statusPayload && statusPayload.carriers) || []).filter(function(c){ return String(c.vendor_id) === String(vid); })[0];
+  if (carrier) showOnFile(carrier);
+  applyGating(statusPayload);
+  if (typeof showForm === 'function') showForm();
+}
+
+function buildNoaPayload() {
+  var d = { Submission_Type: selectedType };
+  if (selectedVendorId) d.Carrier_Name_MC_or_DOT = selectedVendorId;
+  if (selectedFactoringId) d.Factoring_Company = selectedFactoringId;
+  if (selectedType === 'Factoring Company Change' && selectedNewFactoringId) d.New_Factoring_Company = selectedNewFactoringId;
+  return d;   // NO FV_Client_ID / DOT / Carrier_Name — engine derives those.
+}
+
+function runEngine(recordId) {
+  if (!recordId) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/noa-submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, record_id: recordId })
+  }).then(function(r){ return r.json(); });
+}
+
+function submitNoa() {
+  var fb = document.getElementById('noa-submit-feedback'); if (fb) fb.textContent = '';
+  if (!selectedType) { if (fb) fb.textContent = 'Pick an update type.'; return; }
+  var data = buildNoaPayload();
+  return ZOHO.CREATOR.DATA.addRecords({ app_link_name: 'funding-portal', form_name: 'NOA_LOR_Updates', payload: { data: data } })
+    .then(function(res){
+      var recId = res && res.result && res.result[0] && res.result[0].ID;
+      return runEngine(recId).then(function(){ if (typeof showTrack === 'function') showTrack(); });
+    })
+    .catch(function(err){ if (fb) fb.textContent = 'Submit error: ' + String(err); });
+}
+
+function wireForm() {
+  // Wire type-card clicks
+  Array.prototype.forEach.call(document.querySelectorAll('#view-form .type-card'), function(card){
+    card.onclick = function(){ selectType(card.getAttribute('data-type')); };
+  });
+  // Wire submit button
+  var submitBtn = document.getElementById('noa-submit-btn');
+  if (submitBtn) { submitBtn.onclick = submitNoa; }
+}
+</script>
+
+</body>
+</html>

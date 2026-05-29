@@ -11,6 +11,7 @@ function makeWidget() {
   const addCalls = [];
   const dom = new JSDOM(HTML, {
     runScripts: 'dangerously',
+    url: 'https://tcroteau01-commits.github.io/carrier-profile.html', // real origin → enables localStorage/sessionStorage
     beforeParse(window) {
       window.ZOHO = {
         CREATOR: {
@@ -160,6 +161,23 @@ test('addComment forwards CRM IDs when the relationship carries them, omits them
   d = w.addCalls[0].payload.data;
   assert.ok(!('Account_CRM_ID' in d));
   assert.ok(!('Vendor_CRM_ID' in d));
+});
+
+test('_acquireVendorTarget recovers vendorId from sessionStorage on reload (URL + localStorage empty)', () => {
+  const { window } = makeWidget();
+  window.localStorage.clear();
+  window.sessionStorage.setItem('carrierProfileVendorId', 'v_reload_9');
+  const t = window._acquireVendorTarget();
+  assert.equal(t.vendorId, 'v_reload_9');
+});
+
+test('loadProfile persists vendorId to sessionStorage so a reload can recover it', () => {
+  const { window } = makeWidget();
+  window.sessionStorage.removeItem('carrierProfileVendorId');
+  window.vendorId = 'v_42';
+  window.brokerEmail = 'broker@op.com';
+  window.loadProfile();   // fetch is stubbed (never resolves); persistence is synchronous
+  assert.equal(window.sessionStorage.getItem('carrierProfileVendorId'), 'v_42');
 });
 
 test('submitDecision stamps Reviewed_At + Reviewed_By and forwards CRM IDs', async () => {

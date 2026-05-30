@@ -44,6 +44,23 @@ test('renderStatusList renders a row per carrier with status chip and doc link',
   assert.ok(rows[0].querySelector('.doc-link'));
 });
 
+test('initial table shows a loading placeholder, not hardcoded carrier rows', () => {
+  const { window } = makeWidget();
+  const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /Loading/i);
+  // none of the old mockup carriers are baked into the markup
+  assert.doesNotMatch(window.document.body.textContent, /BLUE RIDGE FREIGHT|ILTS LOGISTICS/);
+});
+
+test('empty carrier list renders an empty-state row, not a blank table', () => {
+  const { window } = makeWidget();
+  window.renderStatusList({ allow_add_carrier: false, total_carriers: 0, carriers: [] });
+  const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /No carriers on file yet/i);
+});
+
 test('_acquireNoaTarget recovers vendorId from sessionStorage on reload', () => {
   const { window } = makeWidget();
   window.localStorage.clear();

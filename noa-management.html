@@ -268,49 +268,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           </tr>
         </thead>
         <tbody>
-          <tr class="attention">
-            <td>
-              <div class="carrier-name">MIDWEST HAUL CO</div>
-              <div class="carrier-meta">MC# 774120 &middot; DOT 2891044</div>
-            </td>
-            <td><span class="doc-none">&mdash; none &mdash;</span></td>
-            <td><span class="term-val">Factoring Company</span></td>
-            <td><span class="doc-none">NOA missing</span></td>
-            <td><span class="chip alert">&#9888; NOA Needed</span></td>
-            <td><button class="btn small" onclick="showForm()">Update</button></td>
-          </tr>
-          <tr>
-            <td>
-              <div class="carrier-name">ILTS LOGISTICS LLC</div>
-              <div class="carrier-meta">MC# 1550411 &middot; DOT 4077466</div>
-            </td>
-            <td>OTR Solutions</td>
-            <td><span class="term-val">Quick Pay - LOR</span></td>
-            <td><a class="doc-link" href="#">LOR &#8599;</a></td>
-            <td><span class="chip pending">&#8987; Verifying</span></td>
-            <td><button class="btn small" onclick="showForm()">Update</button></td>
-          </tr>
-          <tr>
-            <td>
-              <div class="carrier-name">ROADWAY EXPRESS LOGISTICS</div>
-              <div class="carrier-meta">MC# 89765 &middot; DOT 897123</div>
-            </td>
-            <td>Triumph Business Capital</td>
-            <td><span class="term-val">Factoring Company</span></td>
-            <td><a class="doc-link" href="#">NOA &#8599;</a></td>
-            <td><span class="chip ok">&#10003; Verified</span></td>
-            <td><button class="btn small" onclick="showForm()">Update</button></td>
-          </tr>
-          <tr>
-            <td>
-              <div class="carrier-name">BLUE RIDGE FREIGHT INC</div>
-              <div class="carrier-meta">MC# 663201 &middot; DOT 3120877</div>
-            </td>
-            <td><span class="doc-none">&mdash; direct pay &mdash;</span></td>
-            <td><span class="term-val">Quick Pay</span></td>
-            <td><a class="doc-link" href="#">Bank Doc &#8599;</a></td>
-            <td><span class="chip ok">&#10003; Verified</span></td>
-            <td><button class="btn small" onclick="showForm()">Update</button></td>
+          <tr id="noa-list-placeholder">
+            <td colspan="7" style="text-align:center; padding:28px 14px; color:#888;">Loading your carriers&hellip;</td>
           </tr>
         </tbody>
       </table>
@@ -651,6 +610,13 @@ function loadFactoringCompanies() {
 function renderCarrierRows(list) {
   var tbody = document.querySelector('#view-list .tbl tbody');
   if (!tbody) return;
+  if (!list || !list.length) {
+    var msg = (searchTerm || activeFilter !== 'all')
+      ? 'No carriers match your search or filter.'
+      : 'No carriers on file yet. Use “+ New Update” to submit an NOA, LOR, or factoring change.';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:28px 14px; color:#888;">' + msg + '</td></tr>';
+    return;
+  }
   tbody.innerHTML = list.map(function(c){
     var chip = CHIP[c.status] || ['neutral', c.status || ''];
     var attn = c.status === 'noa_needed' ? ' class="attention"' : '';

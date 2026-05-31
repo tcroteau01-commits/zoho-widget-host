@@ -927,6 +927,14 @@ function runEngine(recordId) {
 function submitNoa() {
   var fb = document.getElementById('noa-submit-feedback'); if (fb) fb.textContent = '';
   if (!selectedType) { if (fb) fb.textContent = 'Pick an update type.'; return; }
+  // Document required for every type (the form's NOA_or_LOR_Upload is no longer
+  // form-mandatory, since the file uploads after the API create; enforce it here).
+  var docFile = (selectedType === 'Factoring Company Change') ? selectedNewNoaFile : selectedDocFile;
+  if (!docFile) {
+    var docLabel = (selectedType === 'LOR Update') ? 'LOR' : 'NOA';
+    if (fb) fb.textContent = 'Please attach the ' + docLabel + ' document before submitting.';
+    return;
+  }
   var btn = document.getElementById('noa-submit-btn');
   var fail = function (msg) {
     if (fb) fb.textContent = msg;

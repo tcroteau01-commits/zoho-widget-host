@@ -406,23 +406,35 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
             <div class="section-title">Bank Details</div>
             <div class="section-sub">Carrier's direct-pay bank information for the LOR</div>
           </div>
-          <div class="field-grid">
-            <div class="field">
-              <label class="field-label">Bank Name <span class="req">*</span></label>
-              <input class="field-input" id="lor-bank-name" placeholder="e.g. Wells Fargo">
+          <div class="field" style="margin-bottom:14px;">
+            <label class="field-label">Do you have the carrier's banking details?</label>
+            <div class="filter-pills" id="lor-bank-choice">
+              <button type="button" class="filter-pill active" data-bank="yes">Yes, I'll enter them</button>
+              <button type="button" class="filter-pill" data-bank="no">No, email the carrier a link</button>
             </div>
-            <div class="field">
-              <label class="field-label">Business Name on Account <span class="req">*</span></label>
-              <input class="field-input" id="lor-business-name" placeholder="Legal business name">
+          </div>
+          <div id="lor-bank-inputs">
+            <div class="field-grid">
+              <div class="field">
+                <label class="field-label">Bank Name <span class="req">*</span></label>
+                <input class="field-input" id="lor-bank-name" placeholder="e.g. Wells Fargo">
+              </div>
+              <div class="field">
+                <label class="field-label">Business Name on Account <span class="req">*</span></label>
+                <input class="field-input" id="lor-business-name" placeholder="Legal business name">
+              </div>
+              <div class="field">
+                <label class="field-label">Account Number <span class="req">*</span></label>
+                <input class="field-input" id="lor-account-number" placeholder="Account number">
+              </div>
+              <div class="field">
+                <label class="field-label">Routing Number <span class="req">*</span></label>
+                <input class="field-input" id="lor-routing-number" placeholder="9-digit routing number">
+              </div>
             </div>
-            <div class="field">
-              <label class="field-label">Account Number <span class="req">*</span></label>
-              <input class="field-input" id="lor-account-number" placeholder="Account number">
-            </div>
-            <div class="field">
-              <label class="field-label">Routing Number <span class="req">*</span></label>
-              <input class="field-input" id="lor-routing-number" placeholder="9-digit routing number">
-            </div>
+          </div>
+          <div id="lor-paylink-note" class="gate-note hidden">
+            We'll email the carrier a secure link to provide their banking details. You don't need to enter them here.
           </div>
         </div>
       </div>
@@ -522,7 +534,7 @@ function resetSelectedFiles() {
     var t = z.querySelector('.dropzone-text'); if (t) t.textContent = 'Drag NOA here or click to browse';
   });
 }
-function showForm()  { resetSelectedFiles(); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
+function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
 function showList()  { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-list').classList.remove('hidden'); window.scrollTo(0,0); }
 function showTrack() { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.remove('hidden'); window.scrollTo(0,0); }
 </script>
@@ -784,6 +796,7 @@ function selectCarrier(c) {
 // ---- Submit form state ----
 var selectedType = null;
 var selectedVendorId = null;
+var lorBankChoice = 'yes';
 var selectedFactoringId = null;
 var selectedNewFactoringId = null;
 var selectedDocFile = null;
@@ -816,6 +829,17 @@ function hideOnFile() {
   var grid = panel.querySelector('.onfile-grid');
   if (grid) grid.innerHTML = '';
   panel.classList.add('hidden');
+}
+
+function setLorBankChoice(choice) {
+  lorBankChoice = (choice === 'no') ? 'no' : 'yes';
+  var inputs = document.getElementById('lor-bank-inputs');
+  var note = document.getElementById('lor-paylink-note');
+  if (inputs) inputs.classList.toggle('hidden', lorBankChoice === 'no');
+  if (note) note.classList.toggle('hidden', lorBankChoice !== 'no');
+  Array.prototype.forEach.call(document.querySelectorAll('#lor-bank-choice [data-bank]'), function (b) {
+    b.classList.toggle('active', b.getAttribute('data-bank') === lorBankChoice);
+  });
 }
 
 function selectType(t) {
@@ -863,10 +887,13 @@ function buildNoaPayload() {
   if (selectedType === 'Factoring Company Change' && selectedNewFactoringId) d.New_Factoring_Company = selectedNewFactoringId;
   var val = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
   if (selectedType === 'LOR Update') {
-    var bn = val('lor-bank-name'); if (bn) d.Bank_Name = bn;
-    var biz = val('lor-business-name'); if (biz) d.Business_Name_Listed_on_Account = biz;
-    var acct = val('lor-account-number'); if (acct) d.Account_Number = acct;
-    var rt = val('lor-routing-number'); if (rt) d.Routing_Number = rt;
+    d.Bank_Document_Upload = (lorBankChoice === 'no') ? 'No' : 'Yes';
+    if (lorBankChoice === 'yes') {
+      var bn = val('lor-bank-name'); if (bn) d.Bank_Name = bn;
+      var biz = val('lor-business-name'); if (biz) d.Business_Name_Listed_on_Account = biz;
+      var acct = val('lor-account-number'); if (acct) d.Account_Number = acct;
+      var rt = val('lor-routing-number'); if (rt) d.Routing_Number = rt;
+    }
   }
   if (selectedType === 'Add New Carrier') {
     var dot = val('new-carrier-usdot'); if (dot) d.USDOT_Search = dot;
@@ -945,6 +972,10 @@ function wireForm() {
       _carrierSearchTimer = setTimeout(function () { searchCarriers(v); }, 250);
     };
   }
+  // Wire LOR have-bank choice
+  Array.prototype.forEach.call(document.querySelectorAll('#lor-bank-choice [data-bank]'), function (b) {
+    b.onclick = function () { setLorBankChoice(b.getAttribute('data-bank')); };
+  });
   // Wire dropzones
   wireDropzone('dropzone-main', 'file-main', function (f) { selectedDocFile = f; });
   wireDropzone('dropzone-newfactor', 'file-newfactor', function (f) { selectedNewNoaFile = f; });

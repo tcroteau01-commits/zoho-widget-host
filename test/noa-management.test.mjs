@@ -346,6 +346,32 @@ test('buildNoaPayload includes LOR bank fields', () => {
   assert.equal(d.Business_Name_Listed_on_Account, 'ROADWAY EXPRESS');
 });
 
+test('LOR "No bank" hides inputs, shows note, payload sends Bank_Document_Upload=No without bank fields', () => {
+  const { window } = makeWidget();
+  window.selectType('LOR Update');
+  window.selectedType = 'LOR Update';
+  window.selectedVendorId = '1001';
+  window.setLorBankChoice('no');
+  assert.equal(window.document.getElementById('lor-bank-inputs').classList.contains('hidden'), true);
+  assert.equal(window.document.getElementById('lor-paylink-note').classList.contains('hidden'), false);
+  const d = window.buildNoaPayload();
+  assert.equal(d.Bank_Document_Upload, 'No');
+  assert.ok(!('Bank_Name' in d));
+});
+
+test('LOR "Yes bank" shows inputs and payload includes bank fields + Bank_Document_Upload=Yes', () => {
+  const { window } = makeWidget();
+  window.selectType('LOR Update');
+  window.selectedType = 'LOR Update';
+  window.selectedVendorId = '1001';
+  window.setLorBankChoice('yes');
+  window.document.getElementById('lor-bank-name').value = 'Wells Fargo';
+  assert.equal(window.document.getElementById('lor-bank-inputs').classList.contains('hidden'), false);
+  const d = window.buildNoaPayload();
+  assert.equal(d.Bank_Document_Upload, 'Yes');
+  assert.equal(d.Bank_Name, 'Wells Fargo');
+});
+
 test('buildNoaPayload includes USDOT_Search for Add New Carrier', () => {
   const { window } = makeWidget();
   window.selectedType = 'Add New Carrier';

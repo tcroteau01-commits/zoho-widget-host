@@ -330,3 +330,57 @@ test('worklist row shows the linked date', () => {
   ]});
   assert.match(window.document.querySelector('#view-list .tbl tbody').textContent, /Linked Mar 2024/);
 });
+
+test('buildNoaPayload includes LOR bank fields', () => {
+  const { window } = makeWidget();
+  window.selectedType = 'LOR Update';
+  window.selectedVendorId = '1001';
+  window.document.getElementById('lor-bank-name').value = 'Wells Fargo';
+  window.document.getElementById('lor-account-number').value = '8421';
+  window.document.getElementById('lor-routing-number').value = '121000248';
+  window.document.getElementById('lor-business-name').value = 'ROADWAY EXPRESS';
+  const d = window.buildNoaPayload();
+  assert.equal(d.Bank_Name, 'Wells Fargo');
+  assert.equal(d.Account_Number, '8421');
+  assert.equal(d.Routing_Number, '121000248');
+  assert.equal(d.Business_Name_Listed_on_Account, 'ROADWAY EXPRESS');
+});
+
+test('buildNoaPayload includes USDOT_Search for Add New Carrier', () => {
+  const { window } = makeWidget();
+  window.selectedType = 'Add New Carrier';
+  window.document.getElementById('new-carrier-usdot').value = '3899999';
+  const d = window.buildNoaPayload();
+  assert.equal(d.USDOT_Search, '3899999');
+});
+
+test('submitNoa uploads the doc to /upload-doc then runs the engine', async () => {
+  const { window, addCalls } = makeWidget();
+  const calls = [];
+  window.fetch = (u, opts) => { calls.push([u, opts]); return Promise.resolve({ json: () => Promise.resolve({ code: 3000 }) }); };
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  window.selectedFactoringId = 'fc_9';
+  window.selectedDocFile = { name: 'noa.pdf' };
+  await window.submitNoa();
+  assert.equal(addCalls.length, 1);
+  const up = calls.find((c) => /\/upload-doc/.test(c[0]));
+  assert.ok(up, 'expected an /upload-doc POST');
+  const eng = calls.find((c) => /\/noa-submit/.test(c[0]));
+  assert.ok(eng, 'expected the engine call after upload');
+});
+
+test('submitNoa skips upload when no file selected', async () => {
+  const { window } = makeWidget();
+  const calls = [];
+  window.fetch = (u) => { calls.push(u); return Promise.resolve({ json: () => Promise.resolve({ code: 3000, ok: true }) }); };
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  window.selectedDocFile = null;
+  await window.submitNoa();
+  assert.equal(calls.filter((u) => /\/upload-doc/.test(u)).length, 0);
+});

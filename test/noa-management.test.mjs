@@ -141,6 +141,36 @@ test('runEngine no-ops without a recordId', async () => {
   assert.equal(called, false);
 });
 
+test('submitNoa surfaces an addRecords failure instead of faking success', async () => {
+  const { window } = makeWidget();
+  window.ZOHO.CREATOR.DATA.addRecords = function () {
+    return Promise.resolve({ code: 3002, message: 'Mandatory column value not found: NOA or LOR Upload' });
+  };
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  await window.submitNoa();
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /failed/i);
+  assert.equal(window.document.getElementById('view-track').classList.contains('hidden'), true);
+});
+
+test('submitNoa surfaces an engine failure (ok:false) instead of success', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  window.selectedDocFile = null;
+  window.fetch = function (u) {
+    if (/noa-submit/.test(u)) return Promise.resolve({ json: () => Promise.resolve({ ok: false, status: 'Rejected', message: 'Unauthorized' }) });
+    return Promise.resolve({ json: () => Promise.resolve({}) });
+  };
+  await window.submitNoa();
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /processing failed|Unauthorized/i);
+  assert.equal(window.document.getElementById('view-track').classList.contains('hidden'), true);
+});
+
 test('renderStatusList sets KPIs from data and shows the truncation banner', () => {
   const { window } = makeWidget();
   const p = { allow_add_carrier: false, total_carriers: 207, truncated: true, carriers: [

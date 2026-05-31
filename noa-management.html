@@ -338,7 +338,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       </div>
 
       <!-- Section: Carrier -->
-      <div class="form-section">
+      <div id="sec-carrier" class="form-section">
         <div class="section-head">
           <div class="section-title">Select Carrier</div>
           <div class="section-sub">Pick the carrier this update applies to</div>
@@ -353,26 +353,17 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           </div>
         </div>
 
-        <!-- Currently on file (stale-update guard): factoring + term + FV status + bank -->
-        <div class="onfile">
+        <!-- Currently on file (stale-update guard): rendered from real data by showOnFile -->
+        <div id="noa-onfile" class="onfile hidden">
           <div class="onfile-label">Currently on File for This Carrier</div>
-          <div class="onfile-grid">
-            <div class="onfile-row"><span class="lbl">Factoring Company:</span> <span class="val">Triumph Business Capital</span></div>
-            <div class="onfile-row"><span class="lbl">Bank Name:</span> <span class="val">Wells Fargo</span></div>
-            <div class="onfile-row"><span class="lbl">Your Pay Term:</span> <span class="val">Factoring Company</span></div>
-            <div class="onfile-row"><span class="lbl">Account Number:</span> <span class="val">****8421</span></div>
-            <div class="onfile-row"><span class="lbl">Routing Number:</span> <span class="val">121000248</span></div>
-          </div>
-          <div class="stale-warn">
-            This carrier already has <b>Triumph Business Capital</b> on file with a verified NOA. Only submit an NOA Update if the factoring company or document has actually changed.
-          </div>
+          <div class="onfile-grid"></div>
         </div>
       </div>
 
       <!-- Section: Factoring -->
-      <div class="form-section">
+      <div id="sec-factoring" class="form-section">
         <div class="section-head">
-          <div class="section-title">New Factoring Company</div>
+          <div class="section-title">Factoring Company</div>
           <div class="section-sub">Where should we send payments going forward?</div>
         </div>
 
@@ -388,9 +379,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       </div>
 
       <!-- Section: NOA Upload -->
-      <div class="form-section">
+      <div id="sec-upload" class="form-section">
         <div class="section-head">
-          <div class="section-title">Upload NOA Document</div>
+          <div id="sec-upload-title" class="section-title">Upload NOA Document</div>
           <div class="section-sub">Notice of Assignment from the factoring company</div>
         </div>
 
@@ -445,10 +436,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
               <label class="field-label">New Factoring Company <span class="req">*</span></label>
               <select class="field-select" id="fc-change-select">
                 <option value="">Select a factoring company...</option>
-                <option>Triumph Business Capital</option>
-                <option>OTR Solutions</option>
-                <option>RTS Financial Services</option>
-                <option>WEX Fleetone</option>
               </select>
             </div>
             <div class="field">
@@ -597,6 +584,12 @@ var ATTENTION = { noa_needed: 1, bank_doc: 1, bank_info: 1, review: 1 };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
+function _linkedLabel(s) {
+  if (!s) return '';
+  var m = String(s).match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
+  return m ? (' · Linked ' + m[2] + ' ' + m[3]) : '';
+}
+
 function loadStatus() {
   if (!brokerEmail) return;
   var qs = new URLSearchParams({ email: brokerEmail });
@@ -605,21 +598,27 @@ function loadStatus() {
     .then(function(p){ statusPayload = p; renderStatusList(p); });
 }
 
-// Part B: fetch factoring companies from the API and populate the select
+// Part B: fetch factoring companies from the API and populate the selects
+function _fillFactoringSelect(id, companies, onchange) {
+  var sel = document.getElementById(id);
+  if (!sel) return;
+  companies.forEach(function(fc){
+    var opt = document.createElement('option');
+    opt.value = fc.id;
+    opt.textContent = fc.name;
+    sel.appendChild(opt);
+  });
+  sel.onchange = function(){ onchange(sel.value); };
+}
+
 function loadFactoringCompanies() {
-  var sel = document.getElementById('noa-factoring-select');
-  if (!sel) return Promise.resolve();
+  if (!document.getElementById('noa-factoring-select')) return Promise.resolve();
   return fetch(BROKER_API_BASE + '/factoring-companies?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); })
     .then(function(data){
       var companies = (data && data.companies) || [];
-      companies.forEach(function(fc){
-        var opt = document.createElement('option');
-        opt.value = fc.id;
-        opt.textContent = fc.name;
-        sel.appendChild(opt);
-      });
-      sel.onchange = function(){ selectedFactoringId = sel.value; };
+      _fillFactoringSelect('noa-factoring-select', companies, function(v){ selectedFactoringId = v; });
+      _fillFactoringSelect('fc-change-select', companies, function(v){ selectedNewFactoringId = v; });
     });
 }
 
@@ -644,7 +643,7 @@ function renderCarrierRows(list) {
       : '<span class="doc-none">none</span>';
     return '<tr' + attn + '>' +
       '<td><div class="carrier-name">' + esc(c.carrier_name) + '</div>' +
-        '<div class="carrier-meta">MC# ' + esc(c.mc) + ' · DOT ' + esc(c.dot) + '</div></td>' +
+        '<div class="carrier-meta">MC# ' + esc(c.mc) + ' · DOT ' + esc(c.dot) + _linkedLabel(c.linked_date) + '</div></td>' +
       '<td>' + esc(c.submission_type || '') + '</td>' +
       '<td><span class="term-val">' + esc(c.pay_term) + '</span></td>' +
       '<td>' + doc + '</td>' +
@@ -782,23 +781,47 @@ function applyGating(p) {
 }
 
 function showOnFile(carrier) {
-  var grid = document.querySelector('.onfile .onfile-grid');
-  if (!grid || !carrier) return;
-  grid.innerHTML =
-    '<div class="onfile-row"><span class="lbl">Factoring Company:</span> <span class="val">' + esc(carrier.factoring_company || '—') + '</span></div>' +
-    '<div class="onfile-row"><span class="lbl">Your Pay Term:</span> <span class="val">' + esc(carrier.pay_term || '—') + '</span></div>';
+  var panel = document.getElementById('noa-onfile');
+  var grid = panel ? panel.querySelector('.onfile-grid') : null;
+  if (!panel || !grid || !carrier) return;
+  var rows = [
+    ['Factoring Company', carrier.factoring_company || '—'],
+    ['Your Pay Term', carrier.pay_term || '—']
+  ];
+  grid.innerHTML = rows.map(function(r){
+    return '<div class="onfile-row"><span class="lbl">' + r[0] + ':</span> <span class="val">' + esc(r[1]) + '</span></div>';
+  }).join('');
+  panel.classList.remove('hidden');
+}
+
+function hideOnFile() {
+  var panel = document.getElementById('noa-onfile');
+  if (!panel) return;
+  var grid = panel.querySelector('.onfile-grid');
+  if (grid) grid.innerHTML = '';
+  panel.classList.add('hidden');
 }
 
 function selectType(t) {
   selectedType = t;
-  var bank = document.getElementById('noa-bank-fields');
-  var newf = document.getElementById('noa-new-factor');
-  var usdot = document.getElementById('noa-usdot-search');
-  [bank, newf, usdot].forEach(function(el){ if (el) el.classList.add('hidden'); });
-  if (t === 'LOR Update' && bank) bank.classList.remove('hidden');
-  if (t === 'Factoring Company Change' && newf) newf.classList.remove('hidden');
-  if (t === 'Add New Carrier' && usdot) usdot.classList.remove('hidden');
-  // reflect active card
+  var MATRIX = {
+    'NOA Update': ['sec-carrier','sec-factoring','sec-upload'],
+    'LOR Update': ['sec-carrier','noa-bank-fields','sec-upload'],
+    'Factoring Company Change': ['sec-carrier','noa-new-factor'],
+    'Add New Carrier': ['noa-usdot-search','sec-factoring','sec-upload']
+  };
+  var ALL = ['sec-carrier','sec-factoring','sec-upload','noa-bank-fields','noa-new-factor','noa-usdot-search'];
+  var show = MATRIX[t] || [];
+  ALL.forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', show.indexOf(id) < 0);
+  });
+  // on-file lives inside sec-carrier; reset it when no carrier is selected
+  if (!selectedVendorId) hideOnFile();
+  // upload section label: LOR uploads an LOR, others an NOA
+  var ut = document.getElementById('sec-upload-title');
+  if (ut) ut.textContent = (t === 'LOR Update') ? 'Upload LOR Document' : 'Upload NOA Document';
+  // reflect active type card
   Array.prototype.forEach.call(document.querySelectorAll('#view-form .type-card'), function(card){
     card.classList.toggle('active', card.getAttribute('data-type') === t);
   });

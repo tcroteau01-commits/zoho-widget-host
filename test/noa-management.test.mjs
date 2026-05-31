@@ -149,11 +149,9 @@ test('renderStatusList sets KPIs from data and shows the truncation banner', () 
     { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', factoring_company: '', pay_term: 'Quick Pay - LOR', submission_type: 'LOR Update', submitted_at: '03-May-2026 08:00:00', doc_on_file: {record_id:'n2',type:'LOR Update',has_doc:true}, status: 'verifying' },
   ]};
   window.renderStatusList(p);
-  assert.equal(window.document.getElementById('kpi-active').textContent, '207');     // total_carriers
-  assert.equal(window.document.getElementById('kpi-attention').textContent, '2');    // verifying count
+  assert.equal(window.document.getElementById('kpi-attention').textContent, '0');    // needs-attention count
+  assert.equal(window.document.getElementById('kpi-pending').textContent, '0');      // pending count (statuses are verifying/verified, not pending)
   assert.equal(window.document.getElementById('kpi-verified').textContent, '1');     // verified count
-  // kpi-pending is removed; confirm it's gone from the DOM
-  assert.equal(window.document.getElementById('kpi-pending'), null);
   const banner = window.document.getElementById('noa-trunc-banner');
   assert.equal(banner.classList.contains('hidden'), false);
   assert.match(banner.textContent, /207/);
@@ -163,7 +161,7 @@ test('renderStatusList hides the banner when not truncated', () => {
   const { window } = makeWidget();
   window.renderStatusList({ allow_add_carrier:false, total_carriers:2, truncated:false, carriers: STATUS.carriers });
   assert.equal(window.document.getElementById('noa-trunc-banner').classList.contains('hidden'), true);
-  assert.equal(window.document.getElementById('kpi-active').textContent, '2');
+  assert.equal(window.document.getElementById('kpi-verified').textContent, '1');
 });
 
 test('populateCarrierSelect fills options from statusPayload', () => {
@@ -196,15 +194,57 @@ test('loadFactoringCompanies populates the factoring dropdown', async () => {
   assert.match(sel.textContent, /OTR Solutions/);
 });
 
-test('Verifying filter shows only verifying carriers', () => {
+test('Verified filter shows only verified carriers', () => {
   const { window } = makeWidget();
   window.statusPayload = STATUS;
   window.renderStatusList(STATUS);
-  window.activeFilter = 'verifying';
+  window.activeFilter = 'verified';
   window.applyCarrierFilters();
   const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
   assert.equal(rows.length, 1);
-  assert.match(rows[0].textContent, /MIDWEST/);
+  assert.match(rows[0].textContent, /ROADWAY/);
+});
+
+test('renders the new status chips from worklist data', () => {
+  const { window } = makeWidget();
+  window.renderStatusList({ total_carriers: 3, carriers: [
+    { vendor_id: '1', carrier_name: 'A', mc: '1', dot: '1', pay_term: 'Factoring Company',
+      doc_on_file: null, status: 'noa_needed' },
+    { vendor_id: '2', carrier_name: 'B', mc: '2', dot: '2', pay_term: 'Quick Pay',
+      doc_on_file: null, status: 'pending' },
+    { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', pay_term: 'Factoring Company',
+      doc_on_file: null, status: 'verified' },
+  ]});
+  const text = window.document.querySelector('#view-list .tbl tbody').textContent;
+  assert.match(text, /NOA Needed/);
+  assert.match(text, /Pending/);
+  assert.match(text, /Verified/);
+});
+
+test('KPIs count needs-attention, pending, verified', () => {
+  const { window } = makeWidget();
+  window.renderStatusList({ total_carriers: 4, carriers: [
+    { vendor_id: '1', carrier_name: 'A', status: 'noa_needed', doc_on_file: null },
+    { vendor_id: '2', carrier_name: 'B', status: 'bank_doc', doc_on_file: null },
+    { vendor_id: '3', carrier_name: 'C', status: 'pending', doc_on_file: null },
+    { vendor_id: '4', carrier_name: 'D', status: 'verified', doc_on_file: null },
+  ]});
+  assert.equal(window.document.getElementById('kpi-attention').textContent, '2');
+  assert.equal(window.document.getElementById('kpi-pending').textContent, '1');
+  assert.equal(window.document.getElementById('kpi-verified').textContent, '1');
+});
+
+test('Needs Attention filter shows only hold statuses', () => {
+  const { window } = makeWidget();
+  window.statusPayload = { carriers: [
+    { vendor_id: '1', carrier_name: 'A', status: 'noa_needed', doc_on_file: null },
+    { vendor_id: '2', carrier_name: 'B', status: 'verified', doc_on_file: null },
+  ]};
+  window.activeFilter = 'attention';
+  window.applyCarrierFilters();
+  const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /A/);
 });
 
 test('search filters carriers by name', () => {

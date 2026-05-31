@@ -236,8 +236,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
     <!-- KPI summary -->
     <div class="kpi-row">
-      <div class="kpi"><div id="kpi-active" class="kpi-num">0</div><div class="kpi-label">Carriers</div></div>
-      <div class="kpi"><div id="kpi-attention" class="kpi-num warn">0</div><div class="kpi-label">Verifying</div></div>
+      <div class="kpi"><div id="kpi-attention" class="kpi-num alert">0</div><div class="kpi-label">Needs Attention</div></div>
+      <div class="kpi"><div id="kpi-pending" class="kpi-num warn">0</div><div class="kpi-label">Pending</div></div>
       <div class="kpi"><div id="kpi-verified" class="kpi-num">0</div><div class="kpi-label">Verified</div></div>
     </div>
 
@@ -248,7 +248,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <input class="search-input" placeholder="Search by carrier name, MC, or DOT...">
       <div class="filter-pills">
         <div class="filter-pill active" data-filter="all">All</div>
-        <div class="filter-pill" data-filter="verifying">Verifying</div>
+        <div class="filter-pill" data-filter="attention">Needs Attention</div>
+        <div class="filter-pill" data-filter="pending">Pending</div>
         <div class="filter-pill" data-filter="verified">Verified</div>
       </div>
     </div>
@@ -576,7 +577,16 @@ function boot() {
   }
 }
 
-var CHIP = { verified: ['ok','✓ Verified'], verifying: ['pending','⏳ Verifying'], noa_needed: ['alert','⚠ NOA Needed'] };
+var CHIP = {
+  noa_needed: ['alert', '⚠ NOA Needed'],
+  bank_doc:   ['alert', '⚠ Bank Doc Needed'],
+  bank_info:  ['alert', '⚠ Bank Info Needed'],
+  review:     ['alert', '⚠ On Hold – Review'],
+  pending:    ['pending', '⌛ Pending'],
+  verified:   ['ok', '✓ Verified'],
+  denied:     ['neutral', 'Denied']
+};
+var ATTENTION = { noa_needed: 1, bank_doc: 1, bank_info: 1, review: 1 };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
@@ -619,7 +629,7 @@ function renderCarrierRows(list) {
   }
   tbody.innerHTML = list.map(function(c){
     var chip = CHIP[c.status] || ['neutral', c.status || ''];
-    var attn = c.status === 'noa_needed' ? ' class="attention"' : '';
+    var attn = ATTENTION[c.status] ? ' class="attention"' : '';
     var doc = (c.doc_on_file && c.doc_on_file.has_doc)
       ? '<a class="doc-link" href="' + BROKER_API_BASE + '/noa-doc?email=' + encodeURIComponent(brokerEmail) +
         '&record_id=' + encodeURIComponent(c.doc_on_file.record_id) + '" target="_blank">' +
@@ -645,8 +655,9 @@ function renderCarrierRows(list) {
 function applyCarrierFilters() {
   var carriers = (statusPayload && statusPayload.carriers) || [];
   var filtered = carriers.filter(function(c){
-    if (activeFilter === 'verifying' && c.status !== 'verifying') return false;
-    if (activeFilter === 'verified'  && c.status !== 'verified')  return false;
+    if (activeFilter === 'attention' && !ATTENTION[c.status]) return false;
+    if (activeFilter === 'pending'  && c.status !== 'pending')  return false;
+    if (activeFilter === 'verified' && c.status !== 'verified') return false;
     if (searchTerm) {
       var term = searchTerm.toLowerCase();
       var name = String(c.carrier_name || '').toLowerCase();
@@ -689,12 +700,16 @@ function renderStatusList(p) {
   // populate the carrier dropdown (Part A)
   populateCarrierSelect();
   // KPIs
-  var counts = { verifying: 0, verified: 0 };
-  carriers.forEach(function(c){ if (counts[c.status] != null) counts[c.status]++; });
+  var counts = { attention: 0, pending: 0, verified: 0 };
+  carriers.forEach(function (c) {
+    if (ATTENTION[c.status]) counts.attention++;
+    else if (c.status === 'pending') counts.pending++;
+    else if (c.status === 'verified') counts.verified++;
+  });
   var total = (p && typeof p.total_carriers === 'number') ? p.total_carriers : carriers.length;
-  var setNum = function(id, n){ var el = document.getElementById(id); if (el) el.textContent = String(n); };
-  setNum('kpi-active', total);
-  setNum('kpi-attention', counts.verifying);
+  var setNum = function (id, n) { var el = document.getElementById(id); if (el) el.textContent = String(n); };
+  setNum('kpi-attention', counts.attention);
+  setNum('kpi-pending', counts.pending);
   setNum('kpi-verified', counts.verified);
   var banner = document.getElementById('noa-trunc-banner');
   if (banner) {

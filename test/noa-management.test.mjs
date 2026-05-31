@@ -164,22 +164,12 @@ test('renderStatusList hides the banner when not truncated', () => {
   assert.equal(window.document.getElementById('kpi-verified').textContent, '1');
 });
 
-test('populateCarrierSelect fills options from statusPayload', () => {
-  const { window } = makeWidget();
-  window.statusPayload = STATUS;
-  window.renderStatusList(STATUS);
-  const opts = window.document.getElementById('noa-carrier-select').querySelectorAll('option');
-  // default + 2 carriers
-  assert.equal(opts.length, 3);
-  assert.match(window.document.getElementById('noa-carrier-select').textContent, /ROADWAY/);
-});
-
-test('openSubmitFor preselects the carrier in the dropdown', () => {
+test('openSubmitFor fills the carrier search box and sets the vendor', () => {
   const { window } = makeWidget();
   window.statusPayload = STATUS;
   window.renderStatusList(STATUS);
   window.openSubmitFor('1002');
-  assert.equal(window.document.getElementById('noa-carrier-select').value, '1002');
+  assert.match(window.document.getElementById('noa-carrier-search').value, /MIDWEST HAUL/);
   assert.equal(window.selectedVendorId, '1002');
 });
 
@@ -256,4 +246,41 @@ test('search filters carriers by name', () => {
   const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');
   assert.equal(rows.length, 1);
   assert.match(rows[0].textContent, /ROADWAY/);
+});
+
+test('carrier search queries /noa-carriers and renders results', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  const calls = [];
+  window.fetch = (u) => {
+    calls.push(u);
+    return Promise.resolve({ json: () => Promise.resolve({ carriers: [
+      { vendor_id: '1001', carrier_name: 'ROADWAY EXPRESS', mc: '89765', dot: '897123' }
+    ]})});
+  };
+  await window.searchCarriers('road');
+  assert.ok(calls.some((u) => /\/noa-carriers\?.*q=road/.test(u)));
+  const results = window.document.getElementById('noa-carrier-results').textContent;
+  assert.match(results, /ROADWAY EXPRESS/);
+});
+
+test('selecting a search result sets the vendor and fills the search box', () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ carriers: [] })});
+  window.selectCarrier({ vendor_id: '1001', carrier_name: 'ROADWAY EXPRESS', mc: '89765', dot: '897123' });
+  assert.equal(window.selectedVendorId, '1001');
+  assert.match(window.document.getElementById('noa-carrier-search').value, /ROADWAY EXPRESS/);
+  // results cleared after selection
+  assert.equal(window.document.getElementById('noa-carrier-results').textContent.trim(), '');
+});
+
+test('short query clears results and does not fetch', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  let fetched = false;
+  window.fetch = () => { fetched = true; return Promise.resolve({ json: () => Promise.resolve({carriers:[]}) }); };
+  await window.searchCarriers('r');
+  assert.equal(fetched, false);
+  assert.equal(window.document.getElementById('noa-carrier-results').textContent.trim(), '');
 });

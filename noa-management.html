@@ -144,6 +144,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 }
 .field-input:focus, .field-select:focus { border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
 
+/* Type-to-search carrier results */
+.search-results { border: 1px solid #e6e3da; border-top: none; border-radius: 0 0 8px 8px; max-height: 220px; overflow-y: auto; }
+.search-results:empty { border: none; }
+.search-results .opt { padding: 9px 13px; cursor: pointer; border-bottom: 1px solid #f3f1ea; font-size: 13px; }
+.search-results .opt:last-child { border-bottom: none; }
+.search-results .opt:hover { background: #fafaf6; }
+
 /* Type-specific note (red callout) */
 .type-note {
   background: #fdf2f2; border: 1px solid #f0c6c6; border-left: 4px solid #c62828;
@@ -340,9 +347,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <div class="field-grid full">
           <div class="field">
             <label class="field-label">Carrier <span class="req">*</span></label>
-            <select id="noa-carrier-select" class="field-select">
-              <option value="">Select a carrier&hellip;</option>
-            </select>
+            <input id="noa-carrier-search" class="field-input" type="text" autocomplete="off"
+                   placeholder="Search your carriers by name, MC, or DOT&hellip;" />
+            <div id="noa-carrier-results" class="search-results"></div>
           </div>
         </div>
 
@@ -697,8 +704,6 @@ function renderStatusList(p) {
   var carriers = (p && p.carriers) || [];
   // render rows via the extracted helper
   renderCarrierRows(carriers);
-  // populate the carrier dropdown (Part A)
-  populateCarrierSelect();
   // KPIs
   var counts = { attention: 0, pending: 0, verified: 0 };
   carriers.forEach(function (c) {
@@ -722,24 +727,45 @@ function renderStatusList(p) {
   }
 }
 
-// Part A: populate the carrier select from statusPayload
-function populateCarrierSelect() {
-  var sel = document.getElementById('noa-carrier-select');
-  if (!sel) return;
-  // clear all options except the default placeholder
-  while (sel.options.length > 1) sel.remove(1);
-  var carriers = (statusPayload && statusPayload.carriers) || [];
-  carriers.forEach(function(c){
-    var opt = document.createElement('option');
-    opt.value = String(c.vendor_id);
-    opt.textContent = esc(c.carrier_name) + ' — MC ' + esc(c.mc) + ' — DOT ' + esc(c.dot);
-    sel.appendChild(opt);
-  });
-  sel.onchange = function(){
-    selectedVendorId = sel.value;
-    var carrier = ((statusPayload && statusPayload.carriers) || []).filter(function(c){ return String(c.vendor_id) === String(sel.value); })[0];
-    if (carrier) showOnFile(carrier);
-  };
+// Type-to-search against /noa-carriers (worklist is small, so we can't use a dropdown of all carriers)
+var _carrierSearchTimer = null;
+
+function searchCarriers(q) {
+  q = (q || '').trim();
+  var box = document.getElementById('noa-carrier-results');
+  if (!box) return Promise.resolve();
+  if (q.length < 2) { box.innerHTML = ''; return Promise.resolve(); }
+  return fetch(BROKER_API_BASE + '/noa-carriers?email=' + encodeURIComponent(brokerEmail) +
+               '&q=' + encodeURIComponent(q))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var list = (data && data.carriers) || [];
+      box.innerHTML = list.map(function (c) {
+        return '<div class="opt" data-vid="' + esc(c.vendor_id) + '">' +
+               esc(c.carrier_name) + ' — MC ' + esc(c.mc) + ' — DOT ' + esc(c.dot) + '</div>';
+      }).join('');
+      Array.prototype.forEach.call(box.querySelectorAll('.opt'), function (el) {
+        el.onclick = function () {
+          var c = list.filter(function (x) { return String(x.vendor_id) === el.getAttribute('data-vid'); })[0];
+          if (c) selectCarrier(c);
+        };
+      });
+    });
+}
+
+function selectCarrier(c) {
+  selectedVendorId = String(c.vendor_id);
+  var input = document.getElementById('noa-carrier-search');
+  if (input) input.value = c.carrier_name + ' — MC ' + c.mc + ' — DOT ' + c.dot;
+  var box = document.getElementById('noa-carrier-results');
+  if (box) box.innerHTML = '';
+  fetch(BROKER_API_BASE + '/noa-status?email=' + encodeURIComponent(brokerEmail) +
+        '&vendor_id=' + encodeURIComponent(selectedVendorId))
+    .then(function (r) { return r.json(); })
+    .then(function (p) {
+      var carrier = p && p.carriers && p.carriers[0];
+      if (carrier && typeof showOnFile === 'function') showOnFile(carrier);
+    });
 }
 
 // ---- Submit form state ----
@@ -779,12 +805,14 @@ function selectType(t) {
 }
 
 function openSubmitFor(vid) {
-  selectedVendorId = vid;
-  var carrier = ((statusPayload && statusPayload.carriers) || []).filter(function(c){ return String(c.vendor_id) === String(vid); })[0];
-  if (carrier) showOnFile(carrier);
-  // Part A: pre-select the carrier in the dropdown
-  var sel = document.getElementById('noa-carrier-select');
-  if (sel) sel.value = String(vid);
+  selectedVendorId = String(vid);
+  var carrier = ((statusPayload && statusPayload.carriers) || [])
+    .filter(function (c) { return String(c.vendor_id) === String(vid); })[0];
+  if (carrier) {
+    if (typeof showOnFile === 'function') showOnFile(carrier);
+    var input = document.getElementById('noa-carrier-search');
+    if (input) input.value = (carrier.carrier_name || '') + ' — MC ' + (carrier.mc || '') + ' — DOT ' + (carrier.dot || '');
+  }
   applyGating(statusPayload);
   if (typeof showForm === 'function') showForm();
 }
@@ -823,6 +851,15 @@ function wireForm() {
   Array.prototype.forEach.call(document.querySelectorAll('#view-form .type-card'), function(card){
     card.onclick = function(){ selectType(card.getAttribute('data-type')); };
   });
+  // Wire carrier type-to-search (debounced)
+  var csearch = document.getElementById('noa-carrier-search');
+  if (csearch) {
+    csearch.oninput = function () {
+      clearTimeout(_carrierSearchTimer);
+      var v = csearch.value;
+      _carrierSearchTimer = setTimeout(function () { searchCarriers(v); }, 250);
+    };
+  }
   // Wire submit button
   var submitBtn = document.getElementById('noa-submit-btn');
   if (submitBtn) { submitBtn.onclick = submitNoa; }

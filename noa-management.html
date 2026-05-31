@@ -513,7 +513,16 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 </div>
 
 <script>
-function showForm()  { document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
+function resetSelectedFiles() {
+  selectedDocFile = null; selectedNewNoaFile = null;
+  ['file-main','file-newfactor'].forEach(function(id){ var i = document.getElementById(id); if (i) try { i.value = ''; } catch (_) {} });
+  ['dropzone-main','dropzone-newfactor'].forEach(function(id){
+    var z = document.getElementById(id); if (!z) return;
+    z.classList.remove('has-file');
+    var t = z.querySelector('.dropzone-text'); if (t) t.textContent = 'Drag NOA here or click to browse';
+  });
+}
+function showForm()  { resetSelectedFiles(); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
 function showList()  { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-list').classList.remove('hidden'); window.scrollTo(0,0); }
 function showTrack() { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.remove('hidden'); window.scrollTo(0,0); }
 </script>
@@ -873,8 +882,7 @@ function uploadNoaDoc(recordId) {
   fd.append('record_id', recordId);
   fd.append('field_name', field);
   fd.append('report_name', 'NOA_LOR_Updates_Report');
-  try { fd.append('file', file, file.name); }
-  catch (_) { fd.append('file_name', file.name || ''); }
+  fd.append('file', file, file.name);
   return fetch(BROKER_API_BASE + '/upload-doc', { method: 'POST', body: fd })
     .then(function (r) { return r.json(); })
     .catch(function () { return null; });

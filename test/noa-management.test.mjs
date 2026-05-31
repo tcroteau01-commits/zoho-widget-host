@@ -363,7 +363,9 @@ test('submitNoa uploads the doc to /upload-doc then runs the engine', async () =
   window.selectedType = 'NOA Update';
   window.selectedVendorId = '1001';
   window.selectedFactoringId = 'fc_9';
-  window.selectedDocFile = { name: 'noa.pdf' };
+  window.selectedDocFile = window.File
+    ? new window.File(['x'], 'noa.pdf', { type: 'application/pdf' })
+    : Object.assign(new window.Blob(['x'], { type: 'application/pdf' }), { name: 'noa.pdf' });
   await window.submitNoa();
   assert.equal(addCalls.length, 1);
   const up = calls.find((c) => /\/upload-doc/.test(c[0]));

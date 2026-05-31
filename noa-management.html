@@ -927,15 +927,36 @@ function runEngine(recordId) {
 function submitNoa() {
   var fb = document.getElementById('noa-submit-feedback'); if (fb) fb.textContent = '';
   if (!selectedType) { if (fb) fb.textContent = 'Pick an update type.'; return; }
+  var btn = document.getElementById('noa-submit-btn');
+  var fail = function (msg) {
+    if (fb) fb.textContent = msg;
+    if (btn) { btn.disabled = false; }
+  };
+  if (btn) { btn.disabled = true; }
   var data = buildNoaPayload();
   return ZOHO.CREATOR.DATA.addRecords({ app_link_name: 'funding-portal', form_name: 'NOA_LOR_Updates', payload: { data: data } })
     .then(function(res){
       var recId = res && res.result && res.result[0] && res.result[0].ID;
+      if (!recId || (res && typeof res.code !== 'undefined' && res.code !== 3000)) {
+        // Surface the real Creator error instead of faking success.
+        var rr = res && res.result && res.result[0];
+        var msg = (rr && (rr.message || (rr.error && rr.error.message))) ||
+                  (res && res.message) || ('Creator returned code ' + (res && res.code));
+        fail('Submission failed: ' + msg);
+        return;
+      }
       return uploadNoaDoc(recId)
         .then(function(){ return runEngine(recId); })
-        .then(function(){ if (typeof showTrack === 'function') showTrack(); });
+        .then(function(engRes){
+          // The engine reports CRM/scope problems as { ok:false, message }.
+          if (engRes && engRes.ok === false) {
+            fail('Submitted, but processing failed: ' + (engRes.message || engRes.status || 'engine error'));
+            return;
+          }
+          if (typeof showTrack === 'function') showTrack();
+        });
     })
-    .catch(function(err){ if (fb) fb.textContent = 'Submit error: ' + String(err); });
+    .catch(function(err){ fail('Submit error: ' + String(err)); });
 }
 
 function wireDropzone(zoneId, inputId, setFile) {

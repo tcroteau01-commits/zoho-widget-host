@@ -110,6 +110,7 @@ test('submitNoa builds the ADD payload without private fields', async () => {
   window.selectedType = 'NOA Update';
   window.selectedVendorId = '1001';
   window.selectedFactoringId = 'fc_9';
+  window.selectedDocFile = new window.File(['x'], 'noa.pdf', { type: 'application/pdf' });
   await window.submitNoa();
   assert.equal(addCalls.length, 1);
   assert.equal(addCalls[0].form_name, 'NOA_LOR_Updates');
@@ -150,6 +151,7 @@ test('submitNoa surfaces an addRecords failure instead of faking success', async
   window.statusPayload = { carriers: [] };
   window.selectedType = 'NOA Update';
   window.selectedVendorId = '1001';
+  window.selectedDocFile = { name: 'noa.pdf' };
   await window.submitNoa();
   assert.match(window.document.getElementById('noa-submit-feedback').textContent, /failed/i);
   assert.equal(window.document.getElementById('view-track').classList.contains('hidden'), true);
@@ -161,7 +163,7 @@ test('submitNoa surfaces an engine failure (ok:false) instead of success', async
   window.statusPayload = { carriers: [] };
   window.selectedType = 'NOA Update';
   window.selectedVendorId = '1001';
-  window.selectedDocFile = null;
+  window.selectedDocFile = new window.File(['x'], 'noa.pdf', { type: 'application/pdf' });
   window.fetch = function (u) {
     if (/noa-submit/.test(u)) return Promise.resolve({ json: () => Promise.resolve({ ok: false, status: 'Rejected', message: 'Unauthorized' }) });
     return Promise.resolve({ json: () => Promise.resolve({}) });
@@ -430,15 +432,40 @@ test('submitNoa uploads the doc to /upload-doc then runs the engine', async () =
   assert.ok(eng, 'expected the engine call after upload');
 });
 
-test('submitNoa skips upload when no file selected', async () => {
-  const { window } = makeWidget();
-  const calls = [];
-  window.fetch = (u) => { calls.push(u); return Promise.resolve({ json: () => Promise.resolve({ code: 3000, ok: true }) }); };
+test('submitNoa blocks and prompts for a document when none is attached (NOA Update)', async () => {
+  const { window, addCalls } = makeWidget();
   window.brokerEmail = 'b@op.com';
   window.statusPayload = { carriers: [] };
   window.selectedType = 'NOA Update';
   window.selectedVendorId = '1001';
   window.selectedDocFile = null;
+  window.selectedNewNoaFile = null;
   await window.submitNoa();
-  assert.equal(calls.filter((u) => /\/upload-doc/.test(u)).length, 0);
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /attach the NOA/i);
+  assert.equal(addCalls.length, 0);   // never reached the create call
+});
+
+test('submitNoa LOR with no document prompts for the LOR doc', async () => {
+  const { window, addCalls } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'LOR Update';
+  window.selectedVendorId = '1001';
+  window.selectedDocFile = null;
+  await window.submitNoa();
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /attach the LOR/i);
+  assert.equal(addCalls.length, 0);
+});
+
+test('submitNoa Factoring Company Change requires the New NOA file specifically', async () => {
+  const { window, addCalls } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'Factoring Company Change';
+  window.selectedVendorId = '1001';
+  window.selectedDocFile = { name: 'wrong-slot.pdf' };  // main slot set, but FC Change needs the new-factor slot
+  window.selectedNewNoaFile = null;
+  await window.submitNoa();
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /attach the NOA/i);
+  assert.equal(addCalls.length, 0);
 });

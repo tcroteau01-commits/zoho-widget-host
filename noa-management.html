@@ -814,10 +814,15 @@ function showOnFile(carrier) {
   var grid = panel ? panel.querySelector('.onfile-grid') : null;
   if (!panel || !grid || !carrier) return;
   var rows = [
-    ['Factoring Company', carrier.factoring_company || '—'],
-    ['Your Pay Term', carrier.pay_term || '—']
-  ];
-  grid.innerHTML = rows.map(function(r){
+    ['Factoring Company', carrier.factoring_company],
+    ['Your Pay Term', carrier.pay_term],
+    ['Bank Name', carrier.bank_name],
+    ['Name on Account', carrier.name_on_account],
+    ['Account Number', carrier.account_last4],
+    ['Routing Number', carrier.routing_number]
+  ].filter(function (r) { return r[1]; });   // only fields we actually have
+  if (!rows.length) rows = [['Factoring Company', '—'], ['Your Pay Term', '—']];
+  grid.innerHTML = rows.map(function (r) {
     return '<div class="onfile-row"><span class="lbl">' + r[0] + ':</span> <span class="val">' + esc(r[1]) + '</span></div>';
   }).join('');
   panel.classList.remove('hidden');

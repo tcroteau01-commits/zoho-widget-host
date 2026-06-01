@@ -111,6 +111,15 @@ test('on-file panel omits banking rows when not present (factoring only)', () =>
   assert.doesNotMatch(t, /Bank Name/);
 });
 
+test('opening the form defaults to NOA Update so Submission_Type is always set', () => {
+  const { window } = makeWidget();
+  window.selectedType = null;
+  window.selectedVendorId = null;
+  window.showForm();
+  assert.equal(window.selectedType, 'NOA Update');
+  assert.equal(window.document.getElementById('sec-factoring').classList.contains('hidden'), false);
+});
+
 test('selectType LOR shows bank fields; NOA hides them', () => {
   const { window } = makeWidget();
   window.selectType('LOR Update');

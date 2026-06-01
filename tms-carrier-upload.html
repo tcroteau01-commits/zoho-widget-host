@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Upload Documents</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
+.page { max-width: 640px; margin: 0 auto; padding: 24px 18px 60px; }
+.brand { font-size: 16px; font-weight: 700; color: #F97316; margin-bottom: 14px; }
+.card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 20px 22px; margin-bottom: 16px; }
+.hidden { display: none; }
+.title { font-size: 20px; font-weight: 700; color: #272727; }
+.sub { font-size: 12px; color: #888; margin-top: 4px; }
+.kv { font-size: 13px; color: #444; margin-top: 6px; }
+.kv b { color: #272727; }
+.sec-h { font-size: 11px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.4px; margin: 14px 0 8px; }
+.stop { font-size: 12px; color: #444; padding: 6px 0; border-bottom: 1px solid #f3f1ea; }
+label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px; }
+select, input[type=file] { width: 100%; border: 1px solid #d8d8d8; border-radius: 8px; padding: 11px 12px; font-size: 13px; font-family: inherit; background: #fff; margin-bottom: 12px; }
+.btn { background: #F97316; color: #fff; border: none; border-radius: 8px; padding: 12px 20px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; font-family: inherit; }
+.btn:disabled { opacity: 0.6; }
+.status { font-size: 13px; font-weight: 600; margin-top: 10px; }
+.status.ok { color: #2e7d32; } .status.err { color: #c62828; }
+.uploaded { font-size: 12px; color: #2e7d32; padding: 5px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand">OperFi</div>
+  <div class="card" id="summary"><div class="sub">Loading…</div></div>
+  <div class="card hidden" id="upload-card">
+    <div class="sec-h">Upload a document</div>
+    <label>Document type</label>
+    <select id="ctype"></select>
+    <label>File</label>
+    <input type="file" id="cfile" accept="application/pdf,image/*">
+    <button class="btn" id="cupload">Upload</button>
+    <div class="status" id="cstatus"></div>
+    <div id="uploaded-list"></div>
+  </div>
+</div>
+<script>
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+function getToken() {
+  try { return new URL(window.location.href).searchParams.get('token') || ''; } catch (e) { return ''; }
+}
+
+function status(msg, cls) {
+  var el = document.getElementById('cstatus');
+  if (el) { el.textContent = msg || ''; el.className = 'status ' + (cls || ''); }
+}
+
+function renderSummary(s) {
+  var box = document.getElementById('summary');
+  if (!box) return;
+  var stops = (s.stops || []).map(function(st){
+    return '<div class="stop"><b>' + esc(st.type) + '</b> ' + esc(st.company_name) + ' — ' + esc(st.address) +
+           (st.appointment ? ' @ ' + esc(st.appointment) : '') + (st.reference_no ? ' (Ref ' + esc(st.reference_no) + ')' : '') + '</div>';
+  }).join('');
+  box.innerHTML =
+    '<div class="title">Load ' + esc(s.load_number) + '</div>' +
+    '<div class="sub">' + esc(s.status) + '</div>' +
+    '<div class="kv"><b>Broker:</b> ' + esc(s.broker_company) + '</div>' +
+    (s.carrier_name ? '<div class="kv"><b>Carrier:</b> ' + esc(s.carrier_name) + '</div>' : '') +
+    (s.lane ? '<div class="kv"><b>Lane:</b> ' + esc(s.lane) + '</div>' : '') +
+    (stops ? '<div class="sec-h">Stops</div>' + stops : '');
+  var sel = document.getElementById('ctype');
+  if (sel) {
+    sel.innerHTML = '';
+    (s.upload_doc_types || ['POD', 'BOL', 'Other']).forEach(function(t){
+      var o = document.createElement('option'); o.value = t; o.textContent = t; sel.appendChild(o);
+    });
+  }
+  var card = document.getElementById('upload-card');
+  if (card) card.classList.remove('hidden');
+}
+
+function uploadFile(docType, file) {
+  if (!file) { status('Choose a file first.', 'err'); return Promise.resolve(); }
+  var token = getToken();
+  status('Uploading…', '');
+  var btn = document.getElementById('cupload');
+  if (btn) btn.disabled = true;
+  var fd = new FormData();
+  fd.append('doc_type', docType);
+  fd.append('file', file);
+  return fetch(BROKER_API_BASE + '/tms-public/upload?token=' + encodeURIComponent(token), { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      if (btn) btn.disabled = false;
+      if (p && p.ok) {
+        status('Uploaded ' + docType + '. You can add another.', 'ok');
+        var list = document.getElementById('uploaded-list');
+        if (list) { var d = document.createElement('div'); d.className = 'uploaded'; d.textContent = '✓ ' + docType + ' uploaded'; list.appendChild(d); }
+        var fi = document.getElementById('cfile'); if (fi) fi.value = '';
+      } else { status((p && p.error) || 'Upload failed.', 'err'); }
+    })
+    .catch(function(){ if (btn) btn.disabled = false; status('Network error.', 'err'); });
+}
+
+function loadSummary() {
+  var token = getToken();
+  fetch(BROKER_API_BASE + '/tms-public/load?token=' + encodeURIComponent(token))
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      if (p && p.load_number !== undefined && !p.error) renderSummary(p);
+      else document.getElementById('summary').innerHTML = '<div class="status err">This link is invalid or has expired. Ask the broker for a new link.</div>';
+    })
+    .catch(function(){ document.getElementById('summary').innerHTML = '<div class="status err">Could not load. Try again later.</div>'; });
+}
+
+function boot() {
+  if (!getToken()) {
+    document.getElementById('summary').innerHTML = '<div class="status err">Missing upload link token. Ask the broker to resend the link.</div>';
+    return;
+  }
+  loadSummary();
+}
+
+window.addEventListener('load', function(){
+  var b = document.getElementById('cupload');
+  if (b) b.addEventListener('click', function(){
+    var sel = document.getElementById('ctype');
+    var fi = document.getElementById('cfile');
+    uploadFile(sel ? sel.value : 'Other', fi && fi.files ? fi.files[0] : null);
+  });
+  boot();
+});
+
+// expose for tests
+window.renderSummary = renderSummary; window.getToken = getToken;
+window.uploadFile = uploadFile; window.boot = boot;
+</script>
+</body>
+</html>

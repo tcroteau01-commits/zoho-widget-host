@@ -38,6 +38,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .actions { display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: #f0efe9; padding: 14px 0; }
 .errline { color: #c62828; font-size: 12px; font-weight: 600; margin-right: auto; align-self: center; }
 .okline { color: #2e7d32; font-size: 12px; font-weight: 600; margin-right: auto; align-self: center; }
+.hidden { display: none; }
+.doc-gen-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f1ea; }
+.doc-gen-name { flex: 1; font-weight: 600; color: #272727; font-size: 13px; }
+.doc-to { width: 220px; border: 1px solid #d8d8d8; border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; }
+.doc-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 12px; border-bottom: 1px solid #f3f1ea; }
+.doc-item .src { color: #999; }
 </style>
 </head>
 <body>
@@ -109,6 +115,30 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <button class="btn small" id="add-pickup">+ Pickup</button>
       <button class="btn small" id="add-delivery">+ Delivery</button>
     </div>
+  </div>
+
+  <div class="card hidden" id="docs-card">
+    <h3>Documents</h3>
+    <div class="doc-gen-row" data-doc="rate_con">
+      <div class="doc-gen-name">Rate Confirmation <span class="muted">→ carrier</span></div>
+      <input class="doc-to" id="doc-to-rate_con" placeholder="carrier email">
+      <button class="btn small" data-act="preview" data-doc="rate_con">Preview</button>
+      <button class="btn small primary" data-act="send" data-doc="rate_con">Send</button>
+    </div>
+    <div class="doc-gen-row" data-doc="customer_po">
+      <div class="doc-gen-name">Customer PO <span class="muted">→ customer</span></div>
+      <input class="doc-to" id="doc-to-customer_po" placeholder="customer email">
+      <button class="btn small" data-act="preview" data-doc="customer_po">Preview</button>
+      <button class="btn small primary" data-act="send" data-doc="customer_po">Send</button>
+    </div>
+    <div class="doc-gen-row" data-doc="customer_invoice">
+      <div class="doc-gen-name">Customer Invoice <span class="muted">→ customer</span></div>
+      <input class="doc-to" id="doc-to-customer_invoice" placeholder="customer email">
+      <button class="btn small" data-act="preview" data-doc="customer_invoice">Preview</button>
+      <button class="btn small primary" data-act="send" data-doc="customer_invoice">Send</button>
+    </div>
+    <div id="doc-status" class="muted" style="margin-top:8px"></div>
+    <div id="doc-list" style="margin-top:12px"></div>
   </div>
 
   <div class="actions">
@@ -263,7 +293,7 @@ function saveLoad() {
     .then(function(r){ return r.json(); })
     .then(function(p){
       if (btn) { btn.disabled = false; btn.textContent = 'Save Load'; }
-      if (p && p.ok) { loadId = p.id; showOk('Saved.'); }
+      if (p && p.ok) { loadId = p.id; showOk('Saved.'); refreshDocCard(); }
       else showError((p && p.error) || 'Save failed.');
     })
     .catch(function(){ if (btn) { btn.disabled = false; btn.textContent = 'Save Load'; } showError('Network error saving load.'); });
@@ -329,6 +359,7 @@ function hydrate(load) {
   });
   onCarrierChange();
   recomputeMargin();
+  refreshDocCard();
 }
 
 function loadExisting() {
@@ -373,14 +404,85 @@ window.addEventListener('load', function(){
   document.getElementById('back-btn').addEventListener('click', function(){
     try { window.top.location.href = window.location.origin + '/tms-load-board'; } catch (e) {}
   });
+  wireDocButtons();
+  refreshDocCard();
   boot();
 });
+
+function refreshDocCard() {
+  var card = document.getElementById('docs-card');
+  if (!card) return;
+  if (loadId) { card.classList.remove('hidden'); loadDocList(); }
+  else { card.classList.add('hidden'); }
+}
+
+function loadDocList() {
+  if (!loadId || !brokerEmail) return;
+  fetch(BROKER_API_BASE + '/tms-docs?email=' + encodeURIComponent(brokerEmail) + '&load_id=' + encodeURIComponent(loadId))
+    .then(function(r){ return r.json(); })
+    .then(function(p){ renderDocList((p && p.documents) || []); });
+}
+
+function renderDocList(docs) {
+  var box = document.getElementById('doc-list');
+  if (!box) return;
+  if (!docs.length) { box.innerHTML = '<div class="muted">No documents generated yet.</div>'; return; }
+  box.innerHTML = '';
+  docs.forEach(function(d){
+    var el = document.createElement('div');
+    el.className = 'doc-item';
+    el.innerHTML = '<span>' + esc(d.document_type) + '</span><span class="src">' + esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
+    box.appendChild(el);
+  });
+}
+
+function _downloadPdf(b64, name) {
+  try {
+    var bin = atob(b64); var len = bin.length; var arr = new Uint8Array(len);
+    for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    var blob = new Blob([arr], { type: 'application/pdf' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  } catch (e) {}
+}
+
+function _docStatus(msg) { var el = document.getElementById('doc-status'); if (el) el.textContent = msg || ''; }
+
+function generateDoc(docType, send) {
+  if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
+  var toEl = document.getElementById('doc-to-' + docType);
+  var recipient = toEl ? toEl.value : '';
+  _docStatus(send ? 'Sending…' : 'Generating…');
+  return fetch(BROKER_API_BASE + '/tms-doc/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_type: docType,
+                             send: !!send, recipient_email: recipient }) })
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      if (!p || !p.ok) { _docStatus((p && p.error) || 'Failed.'); return; }
+      if (send) { _docStatus(p.emailed ? 'Sent.' : ('Generated. ' + (p.email_error || 'Not emailed.'))); }
+      else { _docStatus('Generated.'); if (p.pdf_base64) _downloadPdf(p.pdf_base64, docType + '.pdf'); }
+      loadDocList();
+    })
+    .catch(function(){ _docStatus('Network error.'); });
+}
+
+function wireDocButtons() {
+  var card = document.getElementById('docs-card');
+  if (!card) return;
+  card.querySelectorAll('button[data-act]').forEach(function(b){
+    b.addEventListener('click', function(){ generateDoc(b.getAttribute('data-doc'), b.getAttribute('data-act') === 'send'); });
+  });
+}
 
 // expose for tests
 window.addStop = addStop; window.removeStop = removeStop; window.recomputeMargin = recomputeMargin;
 window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers;
 window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; window.saveLoad = saveLoad;
 window.applyTemplate = applyTemplate; window.hydrate = hydrate;
+window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
+window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf;
 </script>
 </body>
 </html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Load Board</title>
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
+.page { max-width: 1180px; margin: 0 auto; padding: 20px 24px 60px; }
+.head { margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.sub { font-size: 12px; color: #888; margin-top: 4px; }
+.btn { background: #fff; border: 1px solid #d8d8d8; border-radius: 8px; padding: 11px 22px; font-size: 13px; font-weight: 600; color: #444; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+.btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.btn.primary { background: #e8a020; color: #fff; border-color: #e8a020; }
+.btn.primary:hover { background: #d49018; border-color: #d49018; }
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+.kpi { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 16px 18px; }
+.kpi-num { font-size: 24px; font-weight: 700; color: #272727; letter-spacing: -0.5px; }
+.kpi-label { font-size: 11px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 4px; }
+.toolbar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
+.search-input { flex: 1; min-width: 200px; border: 1px solid #d8d8d8; border-radius: 8px; padding: 10px 14px; font-size: 13px; font-family: inherit; background: #fff; outline: none; }
+.search-input:focus { border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-pill { border: 1px solid #d8d8d8; background: #fff; border-radius: 20px; padding: 8px 14px; font-size: 12px; font-weight: 600; color: #666; cursor: pointer; }
+.filter-pill.active { background: #272727; color: #fff; border-color: #272727; }
+.card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 6px 0; }
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl thead th { text-align: left; font-size: 10px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 16px 10px; border-bottom: 1px solid #ececec; }
+.tbl tbody tr { border-bottom: 1px solid #f3f1ea; cursor: pointer; }
+.tbl tbody tr:hover { background: #fafaf6; }
+.tbl td { padding: 14px 16px; vertical-align: middle; font-size: 13px; }
+.ld-num { font-weight: 700; color: #272727; }
+.muted { color: #999; font-size: 11px; margin-top: 2px; }
+.pos { color: #2e7d32; font-weight: 700; }
+.neg { color: #c62828; font-weight: 700; }
+.chip { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.chip.draft { background: #eee; color: #777; }
+.chip.booked { background: #fff3e0; color: #b86e00; }
+.chip.covered { background: #e3f2fd; color: #1565c0; }
+.chip.dispatched, .chip.intransit { background: #ede7f6; color: #5e35b1; }
+.chip.delivered, .chip.podreceived { background: #e8f5e9; color: #2e7d32; }
+.chip.submitted { background: #272727; color: #fff; }
+.empty { text-align: center; color: #999; padding: 40px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <div>
+      <div class="title">Load Board</div>
+      <div class="sub" id="sub">Loading…</div>
+    </div>
+    <button class="btn primary" id="new-load-btn">+ New Load</button>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-num" id="kpi-active">–</div><div class="kpi-label">Active Loads</div></div>
+    <div class="kpi"><div class="kpi-num" id="kpi-revenue">–</div><div class="kpi-label">Total Invoice</div></div>
+    <div class="kpi"><div class="kpi-num" id="kpi-margin">–</div><div class="kpi-label">Total Margin</div></div>
+    <div class="kpi"><div class="kpi-num" id="kpi-tosubmit">–</div><div class="kpi-label">Ready to Submit</div></div>
+  </div>
+  <div class="toolbar">
+    <input class="search-input" id="search" placeholder="Search load #, customer, carrier…">
+    <div class="filter-pills" id="pills"></div>
+  </div>
+  <div class="card">
+    <table class="tbl">
+      <thead><tr><th>Load</th><th>Status</th><th>Customer</th><th>Lane</th><th>Carrier</th><th style="text-align:right">Invoice</th><th style="text-align:right">Margin</th></tr></thead>
+      <tbody id="board-body"><tr><td colspan="7" class="empty">Loading loads…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+<script>
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var brokerEmail = '';
+var allLoads = [];
+var activeStatus = 'all';
+var searchTerm = '';
+
+var STATUSES = ['all', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Submitted'];
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function money(n){ var v = Number(n)||0; return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function chipClass(s){ return 'chip ' + String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
+
+function renderPills() {
+  var box = document.getElementById('pills');
+  if (!box) return;
+  box.innerHTML = '';
+  STATUSES.forEach(function(s){
+    var b = document.createElement('button');
+    b.className = 'filter-pill' + (s === activeStatus ? ' active' : '');
+    b.textContent = s === 'all' ? 'All' : s;
+    b.onclick = function(){ activeStatus = s; renderPills(); applyFilters(); };
+    box.appendChild(b);
+  });
+}
+
+function applyFilters() {
+  var rows = allLoads.filter(function(l){
+    if (activeStatus !== 'all' && l.status !== activeStatus) return false;
+    if (searchTerm) {
+      var hay = (l.load_number + ' ' + l.customer_name + ' ' + l.carrier_name + ' ' + l.lane).toLowerCase();
+      if (hay.indexOf(searchTerm.toLowerCase()) === -1) return false;
+    }
+    return true;
+  });
+  renderRows(rows);
+}
+
+function renderRows(rows) {
+  var body = document.getElementById('board-body');
+  if (!body) return;
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="7" class="empty">No loads match.</td></tr>';
+    return;
+  }
+  body.innerHTML = '';
+  rows.forEach(function(l){
+    var tr = document.createElement('tr');
+    tr.onclick = function(){ selectLoad(l.id); };
+    var mcls = (Number(l.margin)||0) >= 0 ? 'pos' : 'neg';
+    tr.innerHTML =
+      '<td><div class="ld-num">' + esc(l.load_number) + '</div></td>' +
+      '<td><span class="' + chipClass(l.status) + '">' + esc(l.status) + '</span></td>' +
+      '<td>' + esc(l.customer_name) + '</td>' +
+      '<td>' + esc(l.lane) + '</td>' +
+      '<td>' + esc(l.carrier_name || '—') + '</td>' +
+      '<td style="text-align:right">' + money(l.invoice_amount) + '</td>' +
+      '<td style="text-align:right" class="' + mcls + '">' + money(l.margin) + '</td>';
+    body.appendChild(tr);
+  });
+}
+
+function renderBoard(payload) {
+  allLoads = (payload && payload.loads) || [];
+  var active = allLoads.filter(function(l){ return l.status !== 'Submitted' && l.status !== 'Draft'; });
+  var toSubmit = allLoads.filter(function(l){ return l.status === 'POD Received'; });
+  var rev = allLoads.reduce(function(a,l){ return a + (Number(l.invoice_amount)||0); }, 0);
+  var marg = allLoads.reduce(function(a,l){ return a + (Number(l.margin)||0); }, 0);
+  setText('kpi-active', active.length);
+  setText('kpi-revenue', money(rev));
+  setText('kpi-margin', money(marg));
+  setText('kpi-tosubmit', toSubmit.length);
+  setText('sub', allLoads.length + ' load' + (allLoads.length === 1 ? '' : 's'));
+  applyFilters();
+}
+function setText(id, v){ var el = document.getElementById(id); if (el) el.textContent = v; }
+
+function selectLoad(loadId) {
+  try { localStorage.setItem('tmsLoadTarget', JSON.stringify({ load_id: loadId, mode: 'edit', ts: Date.now() })); } catch (e) {}
+  try { sessionStorage.setItem('tmsLoadId', loadId); } catch (e) {}
+  navigateToDetail();
+}
+function newLoad() {
+  try { localStorage.setItem('tmsLoadTarget', JSON.stringify({ load_id: '', mode: 'new', ts: Date.now() })); } catch (e) {}
+  try { sessionStorage.removeItem('tmsLoadId'); } catch (e) {}
+  navigateToDetail();
+}
+function navigateToDetail() {
+  try {
+    var origin = window.location.origin;
+    // Creator page that hosts tms-load-detail; adjust link name if Tom names it differently.
+    window.top.location.href = origin + '/tms-load-detail';
+  } catch (e) {}
+}
+
+function loadBoard() {
+  if (!brokerEmail) return;
+  return fetch(BROKER_API_BASE + '/tms-loads?email=' + encodeURIComponent(brokerEmail))
+    .then(function(r){ return r.json(); })
+    .then(function(p){ renderBoard(p); })
+    .catch(function(){ setText('sub', 'Could not load the board.'); });
+}
+
+function boot() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) return;
+  var result = ZOHO.CREATOR.UTIL.getInitParams();
+  if (result && typeof result.then === 'function') {
+    result.then(function(params){
+      brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      loadBoard();
+    });
+  }
+}
+
+window.addEventListener('load', function(){
+  renderPills();
+  var s = document.getElementById('search');
+  if (s) s.addEventListener('input', function(){ searchTerm = s.value; applyFilters(); });
+  var nb = document.getElementById('new-load-btn');
+  if (nb) nb.addEventListener('click', newLoad);
+  boot();
+});
+
+// expose for tests
+window.renderBoard = renderBoard;
+window.applyFilters = applyFilters;
+window.selectLoad = selectLoad;
+window.newLoad = newLoad;
+</script>
+</body>
+</html>

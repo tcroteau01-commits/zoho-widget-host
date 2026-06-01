@@ -157,6 +157,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div id="doc-list" style="margin-top:12px"></div>
   </div>
 
+  <div id="submit-panel"></div>
+
   <div class="actions">
     <span class="errline" id="form-error"></span>
     <span class="okline" id="form-ok"></span>
@@ -376,6 +378,8 @@ function hydrate(load) {
   onCarrierChange();
   recomputeMargin();
   refreshDocCard();
+  window._currentLoad = load;
+  renderSubmitPanel(load, window._loadedDocs || []);
 }
 
 function loadExisting() {
@@ -441,6 +445,8 @@ function loadDocList() {
 }
 
 function renderDocList(docs) {
+  window._loadedDocs = docs;
+  if (window._currentLoad) renderSubmitPanel(window._currentLoad, docs);
   var box = document.getElementById('doc-list');
   if (!box) return;
   if (!docs.length) { box.innerHTML = '<div class="muted">No documents generated yet.</div>'; return; }
@@ -534,6 +540,107 @@ function wireUploadControls() {
   });
   var cb = document.getElementById('carrier-link-btn');
   if (cb) cb.addEventListener('click', fetchCarrierLink);
+}
+
+function _docSide(t) {
+  return (['Rate Con', 'Signed Rate Con', 'Carrier Invoice'].indexOf((t || '').trim()) >= 0)
+    ? 'carrier' : 'customer';
+}
+
+function _gateFailures(load, docs) {
+  var f = [];
+  if ((load.status || '') !== 'POD Received')
+    f.push("Load must be at 'POD Received' (currently '" + (load.status || '-') + "').");
+  var sides = {};
+  (docs || []).forEach(function (d) { sides[_docSide(d.document_type)] = true; });
+  if (!sides.customer) f.push('At least one customer-side document is required.');
+  if (!sides.carrier) f.push('At least one carrier-side document is required.');
+  var inv = document.getElementById('f-factoring-invoice');
+  if (!inv || !inv.value.trim()) f.push('Carrier/Factoring Invoice # is required.');
+  return f;
+}
+
+function _vettingWarnings(load) {
+  var w = [], v = load.vetting || {};
+  if (v.authority_active === false) w.push('Carrier authority is not active.');
+  if (v.risk_flag) w.push('Carrier risk flag: ' + v.risk_flag);
+  return w;
+}
+
+function renderSubmitPanel(load, docs) {
+  var panel = document.getElementById('submit-panel');
+  if (!panel || !load) return;
+  if ((load.status || '') === 'Submitted') {
+    panel.innerHTML = '<div class="card"><h3>Submitted</h3>' +
+      (load.funding_portal_link
+        ? '<p>Funding record: <a href="' + load.funding_portal_link + '" target="_blank">open</a></p>'
+        : '<p>This load has been submitted for factoring.</p>') + '</div>';
+    return;
+  }
+  var warnings = _vettingWarnings(load);
+  panel.innerHTML =
+    '<div class="card"><h3>Submit for Factoring</h3>' +
+    '<ul id="gate-list" class="muted" style="margin:6px 0;padding-left:18px"></ul>' +
+    (warnings.length
+      ? '<div id="override-wrap" style="margin:6px 0"><label><input type="checkbox" id="chk-override"> ' +
+        'Override carrier vetting warning and submit anyway</label></div>'
+      : '') +
+    '<label>Carrier / Factoring Invoice # ' +
+    '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></label>' +
+    '<button id="btn-submit-factoring" disabled>Submit for Factoring</button>' +
+    '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
+
+  _refreshGates(load, docs, warnings);
+  var inv = document.getElementById('f-factoring-invoice');
+  if (inv) inv.oninput = function () { _refreshGates(load, docs, warnings); };
+  var btn = document.getElementById('btn-submit-factoring');
+  if (btn) btn.onclick = function () { submitForFactoring(load); };
+}
+
+function _refreshGates(load, docs, warnings) {
+  var failures = _gateFailures(load, docs);
+  var ul = document.getElementById('gate-list');
+  if (ul) {
+    var lines = failures.map(function (x) { return '<li>✗ ' + x + '</li>'; })
+      .concat((warnings || []).map(function (x) { return '<li>⚠ ' + x + '</li>'; }));
+    ul.innerHTML = lines.length ? lines.join('') : '<li>✓ Ready to submit</li>';
+  }
+  var btn = document.getElementById('btn-submit-factoring');
+  if (btn) btn.disabled = failures.length > 0;
+}
+
+function submitForFactoring(load) {
+  var inv = document.getElementById('f-factoring-invoice');
+  var ov = document.getElementById('chk-override');
+  var res = document.getElementById('submit-result');
+  if (res) res.textContent = 'Submitting…';
+  var btn = document.getElementById('btn-submit-factoring');
+  if (btn) btn.disabled = true;
+  return fetch(BROKER_API_BASE + '/tms-submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: window.brokerEmail, load_id: load.id,
+      carrier_factoring_invoice: inv ? inv.value.trim() : '',
+      override: !!(ov && ov.checked),
+    }),
+  }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (o) {
+      if (o.ok && o.j.ok) {
+        if (res) res.innerHTML = 'Submitted. <a href="' + (o.j.funding_link || '#') +
+          '" target="_blank">Open funding record</a>';
+      } else if (o.j.vetting_warnings) {
+        if (res) res.textContent = 'Vetting warning — check override to proceed.';
+        if (btn) btn.disabled = false;
+      } else {
+        if (res) res.textContent = (o.j.gate_failures || [o.j.error || 'Submit failed']).join(' ');
+        if (btn) btn.disabled = false;
+      }
+    });
+}
+
+if (typeof window !== 'undefined') {
+  window.renderSubmitPanel = renderSubmitPanel;
+  window.submitForFactoring = submitForFactoring;
 }
 
 // expose for tests

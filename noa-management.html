@@ -951,11 +951,19 @@ function submitNoa() {
     .then(function(res){
       var recId = res && res.result && res.result[0] && res.result[0].ID;
       if (!recId || (res && typeof res.code !== 'undefined' && res.code !== 3000)) {
-        // Surface the real Creator error instead of faking success.
+        // Surface the real Creator error instead of faking success. Creator puts the
+        // detail in different places (top-level message, per-record result error, etc.),
+        // so gather what we can and include the raw response for diagnosis.
         var rr = res && res.result && res.result[0];
-        var msg = (rr && (rr.message || (rr.error && rr.error.message))) ||
-                  (res && res.message) || ('Creator returned code ' + (res && res.code));
-        fail('Submission failed: ' + msg);
+        var parts = [];
+        if (rr && rr.message) parts.push(rr.message);
+        if (rr && rr.error) parts.push(typeof rr.error === 'string' ? rr.error : JSON.stringify(rr.error));
+        if (res && res.message) parts.push(res.message);
+        if (res && res.error) parts.push(typeof res.error === 'string' ? res.error : JSON.stringify(res.error));
+        var msg = parts.length ? parts.join(' | ') : ('code ' + (res && res.code));
+        var raw = '';
+        try { raw = ' [raw: ' + JSON.stringify(res).slice(0, 400) + ']'; } catch (e) {}
+        fail('Submission failed: ' + msg + raw);
         return;
       }
       return uploadNoaDoc(recId)

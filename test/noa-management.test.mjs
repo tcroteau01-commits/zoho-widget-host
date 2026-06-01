@@ -87,6 +87,30 @@ test('showOnFile renders the currently-on-file guard from the carrier', () => {
   assert.match(onfile.textContent, /Factoring Company/);
 });
 
+test('on-file panel shows factoring, pay term, and banking when present', () => {
+  const { window } = makeWidget();
+  window.showOnFile({
+    factoring_company: 'Triumph Business Capital', pay_term: 'Factoring Company',
+    bank_name: 'Wells Fargo', name_on_account: 'ROADWAY EXPRESS',
+    account_last4: '****8421', routing_number: '121000248'
+  });
+  const t = window.document.getElementById('noa-onfile').textContent;
+  assert.match(t, /Triumph Business Capital/);
+  assert.match(t, /Factoring Company/);
+  assert.match(t, /Wells Fargo/);
+  assert.match(t, /\*\*\*\*8421/);
+  assert.match(t, /121000248/);
+  assert.equal(window.document.getElementById('noa-onfile').classList.contains('hidden'), false);
+});
+
+test('on-file panel omits banking rows when not present (factoring only)', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ factoring_company: 'OTR Solutions', pay_term: 'Quick Pay' });
+  const t = window.document.getElementById('noa-onfile').textContent;
+  assert.match(t, /OTR Solutions/);
+  assert.doesNotMatch(t, /Bank Name/);
+});
+
 test('selectType LOR shows bank fields; NOA hides them', () => {
   const { window } = makeWidget();
   window.selectType('LOR Update');

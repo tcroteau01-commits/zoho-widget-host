@@ -534,7 +534,7 @@ function resetSelectedFiles() {
     var t = z.querySelector('.dropzone-text'); if (t) t.textContent = 'Drag NOA here or click to browse';
   });
 }
-function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
+function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); if (typeof selectType === 'function' && !selectedType) selectType('NOA Update'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
 function showList()  { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-list').classList.remove('hidden'); window.scrollTo(0,0); }
 function showTrack() { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.remove('hidden'); window.scrollTo(0,0); }
 </script>

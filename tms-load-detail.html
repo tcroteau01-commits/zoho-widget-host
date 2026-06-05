@@ -391,12 +391,16 @@ function loadExisting() {
 
 function loadRefData() {
   if (!brokerEmail) return;
-  fetch(BROKER_API_BASE + '/tms-customers?email=' + encodeURIComponent(brokerEmail))
-    .then(function(r){ return r.json(); }).then(function(p){ populateCustomers((p && p.customers) || []); if (loadId) loadExisting(); });
-  fetch(BROKER_API_BASE + '/tms-carriers?email=' + encodeURIComponent(brokerEmail))
+  // Hydrate only AFTER both the customer AND carrier dropdowns are populated —
+  // otherwise setVal('f-carrier_id') runs before the (large) carrier <option> list
+  // exists and the saved carrier can't be selected (shows blank).
+  var pCust = fetch(BROKER_API_BASE + '/tms-customers?email=' + encodeURIComponent(brokerEmail))
+    .then(function(r){ return r.json(); }).then(function(p){ populateCustomers((p && p.customers) || []); });
+  var pCarr = fetch(BROKER_API_BASE + '/tms-carriers?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); }).then(function(p){ populateCarriers((p && p.carriers) || []); });
   fetch(BROKER_API_BASE + '/tms-templates?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); }).then(function(p){ populateTemplates((p && p.templates) || []); });
+  Promise.all([pCust, pCarr]).then(function(){ if (loadId) loadExisting(); });
 }
 
 function portalPageUrl(page) {

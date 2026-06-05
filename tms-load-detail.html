@@ -472,8 +472,26 @@ function renderView(load) {
   if (back) back.addEventListener('click', function(){ try{ window.top.location.href = portalPageUrl('TMS_Load_Board'); }catch(e){} });
 }
 
-// Stubs replaced in Tasks 5 and 7
-function renderStepper(load){ var el=document.getElementById('v-stepper'); if(el) el.textContent=''; }
+var TMS_STATUSES = ['Draft','Booked','Covered','Dispatched','In Transit','Delivered','POD Received','Submitted'];
+
+function renderStepper(load) {
+  var el = document.getElementById('v-stepper');
+  if (!el) return;
+  var cur = TMS_STATUSES.indexOf(load.status || 'Booked');
+  if (cur < 0) cur = 1;
+  var html = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips">';
+  TMS_STATUSES.forEach(function(s, i){
+    var cls = 'chip', click = '';
+    if (s === 'Submitted') { cls += ' locked'; }
+    else if (i < cur) { cls += ' done'; click = ' data-status="'+s+'"'; }
+    else if (i === cur) { cls += ' current'; }
+    else { cls += ' upcoming'; click = ' data-status="'+s+'"'; }
+    html += '<span class="'+cls+'"'+click+'>'+esc(s)+'</span>';
+  });
+  el.innerHTML = html + '</div>';
+}
+
+// Stub replaced in Task 7
 function renderViewActions(load){ var el=document.getElementById('v-actions'); if(el) el.textContent=''; }
 
 function loadExisting() {

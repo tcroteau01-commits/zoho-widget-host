@@ -43,3 +43,14 @@ test('renderView fills the read-only cards', () => {
   assert.match(txt, /\$2,000/);
   assert.match(txt, /Los Angeles, CA/);
 });
+
+test('stepper marks done/current/upcoming correctly', () => {
+  const w = boot('77');
+  w.renderView({ ...LOAD, status: 'In Transit' });
+  const chips = [...w.document.querySelectorAll('#v-stepper .chip')];
+  const byText = (t) => chips.find(c => c.textContent.includes(t));
+  assert.ok(byText('Booked').classList.contains('done'));
+  assert.ok(byText('In Transit').classList.contains('current'));
+  assert.ok(byText('Delivered').classList.contains('upcoming'));
+  assert.ok(byText('Submitted').classList.contains('locked')); // never click-to-set
+});

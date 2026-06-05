@@ -489,6 +489,29 @@ function renderStepper(load) {
     html += '<span class="'+cls+'"'+click+'>'+esc(s)+'</span>';
   });
   el.innerHTML = html + '</div>';
+  el.querySelectorAll('.chip[data-status]').forEach(function(chip){
+    chip.addEventListener('click', function(){ changeStatus(load, chip.getAttribute('data-status')); });
+  });
+}
+
+function showToast(msg) {
+  var t = document.getElementById('tms-toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(function(){ t.classList.add('hidden'); }, 2500);
+}
+
+function changeStatus(load, status) {
+  if (!status || !loadId || !brokerEmail) return;
+  fetch(BROKER_API_BASE + '/tms-status', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_id: loadId, status: status })
+  }).then(function(r){ return r.json(); }).then(function(p){
+    if (p && p.ok) { load.status = status; window._currentLoad = load; renderView(load); showToast('Status → ' + status); }
+    else { showToast((p && p.error) || 'Status update failed'); }
+  }).catch(function(){ showToast('Status update failed'); });
 }
 
 // Stub replaced in Task 7

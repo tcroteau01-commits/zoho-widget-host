@@ -54,3 +54,19 @@ test('stepper marks done/current/upcoming correctly', () => {
   assert.ok(byText('Delivered').classList.contains('upcoming'));
   assert.ok(byText('Submitted').classList.contains('locked')); // never click-to-set
 });
+
+test('clicking an upcoming chip posts status and re-renders; Submitted is inert', async () => {
+  const w = boot('77');
+  w.brokerEmail = 'b@op.com';
+  const calls = [];
+  w.fetch = (url, opts) => { calls.push({ url, body: JSON.parse(opts.body) });
+    return Promise.resolve({ json: () => Promise.resolve({ ok: true, status: JSON.parse(opts.body).status }) }); };
+  w.renderView({ ...LOAD, status: 'In Transit' });
+  // advance to Delivered
+  w.document.querySelector('#v-stepper .chip[data-status="Delivered"]').click();
+  await new Promise(r => setTimeout(r, 0));
+  assert.ok(calls.some(c => c.url.includes('/tms-status') && c.body.status === 'Delivered'));
+  assert.ok(w.document.querySelector('#v-stepper .chip.current').textContent.includes('Delivered'));
+  // Submitted has no data-status -> not clickable
+  assert.equal(w.document.querySelector('#v-stepper .chip[data-status="Submitted"]'), null);
+});

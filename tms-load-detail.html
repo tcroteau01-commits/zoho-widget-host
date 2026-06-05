@@ -422,7 +422,8 @@ window.addEventListener('load', function(){
   document.getElementById('save-btn').addEventListener('click', saveLoad);
   document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
   document.getElementById('back-btn').addEventListener('click', function(){
-    try { window.top.location.href = window.location.origin + '/tms-load-board'; } catch (e) {}
+    // Fragment-only nav to the parent portal's board page (works cross-origin).
+    try { window.top.location.href = '#Page:TMS_Load_Board'; } catch (e) {}
   });
   wireDocButtons();
   wireUploadControls();

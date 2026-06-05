@@ -439,6 +439,43 @@ function setMode(mode) {
   e.classList.toggle('hidden', mode === 'view');
 }
 
+function renderView(load) {
+  var lane = [load.origin, load.destination].filter(Boolean).join(' → ');
+  var inv = parseFloat(load.invoice_amount)||0, pay = parseFloat(load.carrier_pay)||0;
+  var margin = inv ? Math.round((inv-pay)/inv*1000)/10 : 0;
+  var stops = (load.stops||[]).map(function(s,i){
+    return '<div class="vrow"><b>'+(i+1)+' '+esc(s.stop_type||'')+'</b> &mdash; '+esc(s.company_name||'')+' '+esc(s.address||'')+' <span class="muted">'+esc(s.appointment||'')+'</span></div>';
+  }).join('') || '<div class="muted">No stops</div>';
+  var v = document.getElementById('view-mode');
+  v.innerHTML =
+    '<div class="vhead">'
+    + '<div class="vhead-top"><span class="vlink" id="v-back">← Board</span><span class="vtag">TMS LOAD</span></div>'
+    + '<div class="vtitle">'+esc(load.load_number||'')+' · '+esc(load.customer_name||'')+'</div>'
+    + '<div class="vsub">'+esc(lane)+'</div>'
+    + '<div id="v-stepper"></div>'
+    + '<div class="vactions" id="v-actions"></div>'
+    + '</div>'
+    + '<div class="vcards">'
+    +   '<div class="vcard wide"><div class="vlabel">RATES &amp; MARGIN</div><div class="vrates">'
+    +     '<div class="vstat"><span>CUSTOMER</span><b>'+money(inv)+'</b></div>'
+    +     '<div class="vstat"><span>CARRIER</span><b>'+money(pay)+'</b></div>'
+    +     '<div class="vstat good"><span>MARGIN</span><b>'+margin+'%</b></div>'
+    +   '</div></div>'
+    +   '<div class="vcard"><div class="vlabel">CUSTOMER</div><div class="vname">'+esc(load.customer_name||'')+'</div><div class="muted">Ref# '+esc(load.customer_reference||'')+' · '+esc(load.customer_payment_terms||'')+'</div></div>'
+    +   '<div class="vcard"><div class="vlabel">CARRIER</div><div class="vname">'+esc(load.carrier_name||'')+'</div><div class="muted">MC# '+esc(load.carrier_mc||'')+'</div></div>'
+    +   '<div class="vcard"><div class="vlabel">LANE &amp; STOPS</div>'+stops+'</div>'
+    +   '<div class="vcard"><div class="vlabel">LOAD DETAILS</div><div class="muted">'+[load.equipment,load.commodity,load.weight,load.bol_number].filter(Boolean).map(esc).join(' · ')+'</div></div>'
+    + '</div>';
+  renderStepper(load);                 // Task 5
+  renderViewActions(load);             // Task 7
+  var back = document.getElementById('v-back');
+  if (back) back.addEventListener('click', function(){ try{ window.top.location.href = portalPageUrl('TMS_Load_Board'); }catch(e){} });
+}
+
+// Stubs replaced in Tasks 5 and 7
+function renderStepper(load){ var el=document.getElementById('v-stepper'); if(el) el.textContent=''; }
+function renderViewActions(load){ var el=document.getElementById('v-actions'); if(el) el.textContent=''; }
+
 function loadExisting() {
   if (!loadId || !brokerEmail) return Promise.resolve(null);
   return fetch(BROKER_API_BASE + '/tms-load?email=' + encodeURIComponent(brokerEmail) + '&id=' + encodeURIComponent(loadId))
@@ -724,7 +761,7 @@ window.applyTemplate = applyTemplate; window.hydrate = hydrate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink;
-window.setMode = setMode;
+window.setMode = setMode; window.renderView = renderView;
 </script>
 </body>
 </html>

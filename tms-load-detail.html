@@ -47,6 +47,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 </style>
 </head>
 <body>
+<style>
+#tms-loading{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(255,255,255,.72);z-index:9999;color:#475467;font-size:14px}
+#tms-loading.show{display:flex}
+.tms-spin{width:38px;height:38px;border:4px solid #e4e7ec;border-top-color:#f97316;border-radius:50%;animation:tms-spin .8s linear infinite}
+@keyframes tms-spin{to{transform:rotate(360deg)}}
+</style>
+<div id="tms-loading"><div class="tms-spin"></div><div>Loading load…</div></div>
 <div class="page">
   <div class="head">
     <div>
@@ -382,25 +389,34 @@ function hydrate(load) {
   renderSubmitPanel(load, window._loadedDocs || []);
 }
 
+function showLoading(on) {
+  var el = document.getElementById('tms-loading');
+  if (el) el.classList.toggle('show', !!on);
+}
+
 function loadExisting() {
-  if (!loadId || !brokerEmail) return;
-  fetch(BROKER_API_BASE + '/tms-load?email=' + encodeURIComponent(brokerEmail) + '&id=' + encodeURIComponent(loadId))
+  if (!loadId || !brokerEmail) return Promise.resolve(null);
+  return fetch(BROKER_API_BASE + '/tms-load?email=' + encodeURIComponent(brokerEmail) + '&id=' + encodeURIComponent(loadId))
     .then(function(r){ return r.json(); })
-    .then(function(p){ if (p && p.load) hydrate(p.load); });
+    .then(function(p){ return (p && p.load) || null; })
+    .catch(function(){ return null; });
 }
 
 function loadRefData() {
   if (!brokerEmail) return;
-  // Hydrate only AFTER both the customer AND carrier dropdowns are populated —
-  // otherwise setVal('f-carrier_id') runs before the (large) carrier <option> list
-  // exists and the saved carrier can't be selected (shows blank).
+  // Fetch the load in parallel with ref data and hydrate as soon as the load + customer
+  // dropdown are ready (~1s) so the form fills fast. The large carrier list (up to 3000)
+  // loads separately; the saved carrier value is applied once it's populated — avoids a
+  // ~5s blank screen where a user might assume there's no data.
+  var pLoad = loadId ? loadExisting() : Promise.resolve(null);
   var pCust = fetch(BROKER_API_BASE + '/tms-customers?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); }).then(function(p){ populateCustomers((p && p.customers) || []); });
   var pCarr = fetch(BROKER_API_BASE + '/tms-carriers?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); }).then(function(p){ populateCarriers((p && p.carriers) || []); });
   fetch(BROKER_API_BASE + '/tms-templates?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); }).then(function(p){ populateTemplates((p && p.templates) || []); });
-  Promise.all([pCust, pCarr]).then(function(){ if (loadId) loadExisting(); });
+  Promise.all([pLoad, pCust]).then(function(res){ if (res[0]) hydrate(res[0]); showLoading(false); });
+  Promise.all([pLoad, pCarr]).then(function(res){ if (res[0]) { setVal('f-carrier_id', res[0].carrier_id || ''); onCarrierChange(); } });
 }
 
 function portalPageUrl(page) {
@@ -425,7 +441,7 @@ function boot() {
 window.addEventListener('load', function(){
   var t = _acquireTarget();
   loadId = t.load_id;
-  if (loadId) document.getElementById('page-title').textContent = 'Edit Load';
+  if (loadId) { document.getElementById('page-title').textContent = 'Edit Load'; showLoading(true); }
   document.getElementById('f-invoice_amount').addEventListener('input', recomputeMargin);
   document.getElementById('f-carrier_pay').addEventListener('input', recomputeMargin);
   document.getElementById('f-carrier_id').addEventListener('change', onCarrierChange);

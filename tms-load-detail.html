@@ -52,6 +52,37 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 #tms-loading.show{display:flex}
 .tms-spin{width:38px;height:38px;border:4px solid #e4e7ec;border-top-color:#f97316;border-radius:50%;animation:tms-spin .8s linear infinite}
 @keyframes tms-spin{to{transform:rotate(360deg)}}
+.hidden{display:none!important}
+#tms-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2a44;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:9999;box-shadow:0 8px 24px rgba(16,24,40,.3)}
+.vhead{background:linear-gradient(160deg,#1f2a44,#2b3a5e);color:#fff;padding:16px 22px 20px;border-radius:14px 14px 0 0}
+.vhead-top{display:flex;justify-content:space-between;align-items:center;color:#aeb8cc;font-size:13px}
+.vlink{cursor:pointer}
+.vtag{background:#14b8a6;color:#04201c;font-weight:700;font-size:11px;letter-spacing:.5px;padding:3px 9px;border-radius:6px}
+.vtitle{font-size:22px;font-weight:800;margin-top:12px}
+.vsub{color:#aeb8cc;font-size:12.5px;margin-top:5px}
+.vactions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center}
+.vcards{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px;background:#f7f8fa;border-radius:0 0 14px 14px}
+.vcard{background:#fff;border:1px solid #eaecf0;border-radius:12px;padding:14px 16px}
+.vcard.wide{grid-column:1 / -1}
+.vlabel{font-size:11px;color:#667085;letter-spacing:.5px;font-weight:700;margin-bottom:10px}
+.vrates{display:flex;gap:10px}
+.vstat{flex:1;background:#f9fafb;border-radius:9px;padding:10px}
+.vstat span{font-size:10.5px;color:#667085;display:block}
+.vstat b{font-size:17px;color:#101828}
+.vstat.good{background:#ecfdf3}.vstat.good span{color:#067647}.vstat.good b{color:#067647}
+.vname{font-size:14px;font-weight:600;color:#101828}
+.vrow{font-size:12.5px;color:#101828;margin-top:4px}
+.muted{color:#667085;font-size:12.5px}
+#v-stepper{margin-top:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.chip{font-size:12px;font-weight:600;padding:5px 11px;border-radius:20px}
+.chip.done{background:#0e3d36;color:#5eead4;cursor:pointer}
+.chip.current{background:#14b8a6;color:#04201c;font-weight:800;box-shadow:0 0 0 3px rgba(20,184,166,.25)}
+.chip.upcoming{background:#2a3550;color:#aeb8cc;cursor:pointer}
+.chip.locked{background:#2a3550;color:#8b97ad}
+.vbtn{border:0;font-weight:600;font-size:13px;padding:9px 16px;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block}
+.vbtn.light{background:#fff;color:#1f2a44}
+.vbtn.dark{background:#33425f;color:#fff}
 </style>
 <div id="tms-loading"><div class="tms-spin"></div><div>Loading load…</div></div>
 <div class="page">
@@ -62,6 +93,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
     <button class="btn small" id="back-btn">← Board</button>
   </div>
+
+  <div id="view-mode" class="hidden"></div>
+  <div id="tms-toast" class="hidden"></div>
+  <div id="edit-mode">
 
   <div class="card">
     <h3>Template</h3>
@@ -172,6 +207,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <button class="btn" id="save-template-btn">Save as Template</button>
     <button class="btn primary" id="save-btn">Save Load</button>
   </div>
+
+  </div><!-- /#edit-mode -->
 </div>
 <script>
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
@@ -392,6 +429,14 @@ function hydrate(load) {
 function showLoading(on) {
   var el = document.getElementById('tms-loading');
   if (el) el.classList.toggle('show', !!on);
+}
+
+function setMode(mode) {
+  var v = document.getElementById('view-mode');
+  var e = document.getElementById('edit-mode');
+  if (!v || !e) return;
+  v.classList.toggle('hidden', mode !== 'view');
+  e.classList.toggle('hidden', mode === 'view');
 }
 
 function loadExisting() {
@@ -679,6 +724,7 @@ window.applyTemplate = applyTemplate; window.hydrate = hydrate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink;
+window.setMode = setMode;
 </script>
 </body>
 </html>

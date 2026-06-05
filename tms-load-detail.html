@@ -399,6 +399,14 @@ function loadRefData() {
     .then(function(r){ return r.json(); }).then(function(p){ populateTemplates((p && p.templates) || []); });
 }
 
+function portalPageUrl(page) {
+  // Hosted on GH Pages, so window.top isn't the portal and a bare '#Page:' hash
+  // won't reach it. Creator passes the portal origin in ?serviceOrigin=.
+  var svc = '';
+  try { svc = new URLSearchParams(window.location.search).get('serviceOrigin') || ''; } catch (e) {}
+  return svc.replace(/\/+$/, '') + '/#Page:' + page;
+}
+
 function boot() {
   if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) return;
   var result = ZOHO.CREATOR.UTIL.getInitParams();
@@ -422,8 +430,7 @@ window.addEventListener('load', function(){
   document.getElementById('save-btn').addEventListener('click', saveLoad);
   document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
   document.getElementById('back-btn').addEventListener('click', function(){
-    // Fragment-only nav to the parent portal's board page (works cross-origin).
-    try { window.top.location.href = '#Page:TMS_Load_Board'; } catch (e) {}
+    try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}
   });
   wireDocButtons();
   wireUploadControls();

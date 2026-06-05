@@ -159,12 +159,16 @@ function newLoad() {
   try { sessionStorage.removeItem('tmsLoadId'); } catch (e) {}
   navigateToDetail();
 }
+function portalPageUrl(page) {
+  // These widgets are hosted on GH Pages, so window.top is NOT the portal and a
+  // bare '#Page:' hash won't reach it. Creator passes the portal origin in the
+  // ?serviceOrigin= param; build an absolute URL to the portal's hash route.
+  var svc = '';
+  try { svc = new URLSearchParams(window.location.search).get('serviceOrigin') || ''; } catch (e) {}
+  return svc.replace(/\/+$/, '') + '/#Page:' + page;
+}
 function navigateToDetail() {
-  // Fragment-only nav changes the parent portal's hash route (works cross-origin
-  // from the GH Pages iframe). Page link name = TMS_Load_Detail. Matches the
-  // proven pattern in aging/customer-approvals; the SDK navigateParentURL throws
-  // "Improper Configuration" in the v2.0 widget SDK.
-  try { window.top.location.href = '#Page:TMS_Load_Detail'; } catch (e) {}
+  try { window.top.location.href = portalPageUrl('TMS_Load_Detail'); } catch (e) {}
 }
 
 function loadBoard() {

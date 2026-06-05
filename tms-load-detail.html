@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Load Detail</title>
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
+.page { max-width: 980px; margin: 0 auto; padding: 20px 24px 80px; }
+.head { margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.sub { font-size: 12px; color: #888; margin-top: 4px; }
+.btn { background: #fff; border: 1px solid #d8d8d8; border-radius: 8px; padding: 11px 22px; font-size: 13px; font-weight: 600; color: #444; cursor: pointer; font-family: inherit; }
+.btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.btn.primary { background: #e8a020; color: #fff; border-color: #e8a020; }
+.btn.primary:hover { background: #d49018; }
+.btn.small { padding: 7px 12px; font-size: 12px; }
+.btn.ghost { background: transparent; border-color: transparent; color: #c62828; }
+.card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
+.card h3 { font-size: 13px; font-weight: 700; color: #272727; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 14px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.3px; }
+.field input, .field select, .field textarea { border: 1px solid #d8d8d8; border-radius: 8px; padding: 10px 12px; font-size: 13px; font-family: inherit; background: #fff; outline: none; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.stop-row { border: 1px solid #eee; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: #fbfaf6; }
+.stop-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.stop-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #5e35b1; letter-spacing: 0.4px; }
+.margin-box { display: flex; align-items: baseline; gap: 10px; margin-top: 8px; }
+.margin-box .lbl { font-size: 11px; color: #888; text-transform: uppercase; font-weight: 600; }
+#margin-display { font-size: 22px; font-weight: 700; color: #2e7d32; }
+.badge { display: inline-block; padding: 5px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-top: 6px; }
+.badge.warn { background: #fdecea; color: #c62828; }
+.badge.ok { background: #e8f5e9; color: #2e7d32; }
+.actions { display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: #f0efe9; padding: 14px 0; }
+.errline { color: #c62828; font-size: 12px; font-weight: 600; margin-right: auto; align-self: center; }
+.okline { color: #2e7d32; font-size: 12px; font-weight: 600; margin-right: auto; align-self: center; }
+.hidden { display: none; }
+.doc-gen-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f1ea; }
+.doc-gen-name { flex: 1; font-weight: 600; color: #272727; font-size: 13px; }
+.doc-to { width: 220px; border: 1px solid #d8d8d8; border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; }
+.doc-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 12px; border-bottom: 1px solid #f3f1ea; }
+.doc-item .src { color: #999; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <div>
+      <div class="title" id="page-title">New Load</div>
+      <div class="sub" id="sub">Book a load and assign a carrier</div>
+    </div>
+    <button class="btn small" id="back-btn">← Board</button>
+  </div>
+
+  <div class="card">
+    <h3>Template</h3>
+    <div class="field">
+      <label>Start from a saved template (optional)</label>
+      <select id="f-template"><option value="">— None —</option></select>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Customer (Shipper Leg)</h3>
+    <div class="grid">
+      <div class="field"><label>Customer *</label><select id="f-customer_id"><option value="">— Select —</option></select></div>
+      <div class="field"><label>Customer PO / Reference</label><input id="f-customer_reference"></div>
+      <div class="field"><label>Invoice Amount</label><input id="f-invoice_amount" type="number" step="0.01"></div>
+      <div class="field"><label>Customer Payment Terms</label><input id="f-customer_payment_terms"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Carrier (Carrier Leg)</h3>
+    <div class="grid">
+      <div class="field"><label>Carrier</label><select id="f-carrier_id"><option value="">— Select —</option></select></div>
+      <div class="field"><label>Carrier MC</label><input id="f-carrier_mc"></div>
+      <div class="field"><label>Carrier Pay</label><input id="f-carrier_pay" type="number" step="0.01"></div>
+      <div class="field"><label>Status</label>
+        <select id="f-status">
+          <option>Booked</option><option>Covered</option><option>Dispatched</option>
+          <option>In Transit</option><option>Delivered</option><option>POD Received</option>
+        </select>
+      </div>
+    </div>
+    <div id="vetting-badge"></div>
+    <div class="margin-box"><span class="lbl">Margin</span><span id="margin-display">$0</span></div>
+  </div>
+
+  <div class="card">
+    <h3>Load Details</h3>
+    <div class="grid three">
+      <div class="field"><label>Origin</label><input id="f-origin"></div>
+      <div class="field"><label>Destination</label><input id="f-destination"></div>
+      <div class="field"><label>Equipment</label><input id="f-equipment"></div>
+      <div class="field"><label>Commodity</label><input id="f-commodity"></div>
+      <div class="field"><label>Weight</label><input id="f-weight" type="number"></div>
+      <div class="field"><label>Piece / Pallet Count</label><input id="f-piece_count" type="number"></div>
+      <div class="field"><label>Temperature</label><input id="f-temperature"></div>
+      <div class="field"><label>BOL #</label><input id="f-bol_number"></div>
+      <div class="field"><label>PRO #</label><input id="f-pro_number"></div>
+    </div>
+    <div class="field" style="margin-top:14px"><label>Special Instructions</label><textarea id="f-special_instructions" rows="2"></textarea></div>
+    <div class="field" style="margin-top:14px"><label>Accessorials (free text)</label><textarea id="f-accessorials" rows="2"></textarea></div>
+  </div>
+
+  <div class="card">
+    <h3>Stops</h3>
+    <div id="stops"></div>
+    <div style="display:flex; gap:8px; margin-top:6px">
+      <button class="btn small" id="add-pickup">+ Pickup</button>
+      <button class="btn small" id="add-delivery">+ Delivery</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="docs-card">
+    <h3>Documents</h3>
+    <div class="doc-gen-row" data-doc="rate_con">
+      <div class="doc-gen-name">Rate Confirmation <span class="muted">→ carrier</span></div>
+      <input class="doc-to" id="doc-to-rate_con" placeholder="carrier email">
+      <button class="btn small" data-act="preview" data-doc="rate_con">Preview</button>
+      <button class="btn small primary" data-act="send" data-doc="rate_con">Send</button>
+    </div>
+    <div class="doc-gen-row" data-doc="customer_po">
+      <div class="doc-gen-name">Customer PO <span class="muted">→ customer</span></div>
+      <input class="doc-to" id="doc-to-customer_po" placeholder="customer email">
+      <button class="btn small" data-act="preview" data-doc="customer_po">Preview</button>
+      <button class="btn small primary" data-act="send" data-doc="customer_po">Send</button>
+    </div>
+    <div class="doc-gen-row" data-doc="customer_invoice">
+      <div class="doc-gen-name">Customer Invoice <span class="muted">→ customer</span></div>
+      <input class="doc-to" id="doc-to-customer_invoice" placeholder="customer email">
+      <button class="btn small" data-act="preview" data-doc="customer_invoice">Preview</button>
+      <button class="btn small primary" data-act="send" data-doc="customer_invoice">Send</button>
+    </div>
+    <div id="doc-status" class="muted" style="margin-top:8px"></div>
+    <div style="margin-top:14px; padding-top:14px; border-top:1px solid #f3f1ea;">
+      <div class="doc-gen-row" style="border:none;">
+        <div class="doc-gen-name">Upload a received document</div>
+        <select class="doc-to" id="upload-doc-type">
+          <option>POD</option><option>BOL</option><option>Lumper Receipt</option>
+          <option>Carrier Invoice</option><option>Signed Rate Con</option><option>Other</option>
+        </select>
+        <input type="file" id="upload-file" accept="application/pdf,image/*">
+        <button class="btn small primary" id="upload-btn">Upload</button>
+      </div>
+      <div class="doc-gen-row" style="border:none;">
+        <div class="doc-gen-name">Carrier upload link <span class="muted">(no login)</span></div>
+        <button class="btn small" id="carrier-link-btn">Get link</button>
+      </div>
+      <div id="carrier-link-box" class="muted" style="margin-top:6px; word-break:break-all;"></div>
+    </div>
+    <div id="doc-list" style="margin-top:12px"></div>
+  </div>
+
+  <div id="submit-panel"></div>
+
+  <div class="actions">
+    <span class="errline" id="form-error"></span>
+    <span class="okline" id="form-ok"></span>
+    <button class="btn" id="save-template-btn">Save as Template</button>
+    <button class="btn primary" id="save-btn">Save Load</button>
+  </div>
+</div>
+<script>
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var brokerEmail = '';
+var loadId = '';
+var carriersById = {};
+var stopSeq = 0;
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function val(id){ var el = document.getElementById(id); return el ? el.value : ''; }
+function setVal(id, v){ var el = document.getElementById(id); if (el) el.value = (v==null?'':v); }
+function money(n){ var v = Number(n)||0; return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
+
+function recomputeMargin() {
+  var m = (Number(val('f-invoice_amount'))||0) - (Number(val('f-carrier_pay'))||0);
+  var el = document.getElementById('margin-display');
+  if (el) { el.textContent = money(m); el.style.color = m >= 0 ? '#2e7d32' : '#c62828'; }
+}
+
+function _acquireTarget() {
+  var out = { load_id: '', mode: 'new' };
+  try {
+    var stored = localStorage.getItem('tmsLoadTarget');
+    if (stored) {
+      var t = JSON.parse(stored);
+      if (t && t.ts && (Date.now() - t.ts) < 30000) { out.load_id = t.load_id || ''; out.mode = t.mode || 'new'; }
+      localStorage.removeItem('tmsLoadTarget');
+    }
+  } catch (e) {}
+  if (!out.load_id) { try { out.load_id = sessionStorage.getItem('tmsLoadId') || ''; } catch (e) {} }
+  if (out.load_id) out.mode = 'edit';
+  return out;
+}
+
+function populateCustomers(customers) {
+  var sel = document.getElementById('f-customer_id');
+  if (!sel) return;
+  (customers || []).forEach(function(c){
+    var o = document.createElement('option');
+    o.value = c.customer_id; o.textContent = c.customer_name + (c.approval_status ? ' (' + c.approval_status + ')' : '');
+    sel.appendChild(o);
+  });
+}
+
+function populateCarriers(carriers) {
+  carriersById = {};
+  var sel = document.getElementById('f-carrier_id');
+  if (!sel) return;
+  (carriers || []).forEach(function(c){
+    carriersById[c.vendor_id] = c;
+    var o = document.createElement('option');
+    o.value = c.vendor_id; o.textContent = c.carrier_name + (c.mc ? ' · MC ' + c.mc : '') + (c.dnu ? ' ⚠' : '');
+    sel.appendChild(o);
+  });
+}
+
+function onCarrierChange() {
+  var c = carriersById[val('f-carrier_id')];
+  var badge = document.getElementById('vetting-badge');
+  if (!badge) return;
+  if (!c) { badge.innerHTML = ''; return; }
+  setVal('f-carrier_mc', c.mc || '');
+  if (c.dnu) badge.innerHTML = '<span class="badge warn">⚠ Do Not Use — submission will be soft-blocked</span>';
+  else badge.innerHTML = '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>';
+}
+
+function stopMarkup(type, seq) {
+  return '<div class="stop-row" data-seq="' + seq + '">' +
+    '<div class="stop-head"><span class="stop-tag">' + esc(type) + '</span>' +
+    '<button class="btn ghost small" data-remove="' + seq + '">Remove</button></div>' +
+    '<div class="grid three">' +
+    '<div class="field"><label>Company</label><input data-k="company_name"></div>' +
+    '<div class="field"><label>Appointment</label><input data-k="appointment" type="datetime-local"></div>' +
+    '<div class="field"><label>Reference #</label><input data-k="reference_no"></div>' +
+    '</div>' +
+    '<div class="field" style="margin-top:10px"><label>Address</label><input data-k="address"></div>' +
+    '<input type="hidden" data-k="stop_type" value="' + esc(type) + '">' +
+    '</div>';
+}
+
+function addStop(type) {
+  var box = document.getElementById('stops');
+  if (!box) return;
+  var seq = ++stopSeq;
+  var wrap = document.createElement('div');
+  wrap.innerHTML = stopMarkup(type, seq);
+  var row = wrap.firstChild;
+  box.appendChild(row);
+  var rm = row.querySelector('[data-remove]');
+  if (rm) rm.onclick = function(){ row.parentNode.removeChild(row); };
+}
+
+function removeStop(index) {
+  var rows = document.querySelectorAll('.stop-row');
+  if (rows[index]) rows[index].parentNode.removeChild(rows[index]);
+}
+
+function collectStops() {
+  var out = [];
+  var rows = document.querySelectorAll('.stop-row');
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var k = (function(rr){ return function(name){ var e = rr.querySelector('[data-k="' + name + '"]'); return e ? e.value : ''; }; })(r);
+    out.push({ stop_type: k('stop_type') || 'Pickup', sequence: i + 1,
+      company_name: k('company_name'), address: k('address'),
+      appointment: k('appointment'), reference_no: k('reference_no') });
+  }
+  return out;
+}
+
+function collectForm() {
+  return {
+    email: brokerEmail, id: loadId,
+    status: val('f-status') || 'Booked',
+    customer_id: val('f-customer_id'), customer_reference: val('f-customer_reference'),
+    invoice_amount: val('f-invoice_amount'), customer_payment_terms: val('f-customer_payment_terms'),
+    carrier_id: val('f-carrier_id'), carrier_mc: val('f-carrier_mc'), carrier_pay: val('f-carrier_pay'),
+    origin: val('f-origin'), destination: val('f-destination'), equipment: val('f-equipment'),
+    commodity: val('f-commodity'), weight: val('f-weight'), piece_count: val('f-piece_count'),
+    temperature: val('f-temperature'), bol_number: val('f-bol_number'), pro_number: val('f-pro_number'),
+    special_instructions: val('f-special_instructions'), accessorials: val('f-accessorials'),
+    vetting: _vettingFromCarrier(),
+    stops: collectStops()
+  };
+}
+
+function _vettingFromCarrier() {
+  var c = carriersById[val('f-carrier_id')];
+  if (!c) return {};
+  return { risk_flag: c.dnu ? 'DNU' : 'ok', checked_at: new Date().toISOString() };
+}
+
+function showError(msg){ var e = document.getElementById('form-error'); if (e) e.textContent = msg || ''; var o = document.getElementById('form-ok'); if (o) o.textContent = ''; }
+function showOk(msg){ var o = document.getElementById('form-ok'); if (o) o.textContent = msg || ''; var e = document.getElementById('form-error'); if (e) e.textContent = ''; }
+
+function saveLoad() {
+  showError('');
+  var body = collectForm();
+  if (!body.customer_id) { showError('Select a customer before saving.'); return Promise.resolve(); }
+  var btn = document.getElementById('save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  return fetch(BROKER_API_BASE + '/tms-load', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      if (btn) { btn.disabled = false; btn.textContent = 'Save Load'; }
+      if (p && p.ok) { loadId = p.id; showOk('Saved.'); refreshDocCard(); }
+      else showError((p && p.error) || 'Save failed.');
+    })
+    .catch(function(){ if (btn) { btn.disabled = false; btn.textContent = 'Save Load'; } showError('Network error saving load.'); });
+}
+
+function saveTemplate() {
+  if (!val('f-customer_id')) { showError('Pick a customer first to save a template.'); return; }
+  var name = (typeof window.prompt === 'function') ? window.prompt('Template name?') : '';
+  if (!name) return;
+  fetch(BROKER_API_BASE + '/tms-template', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: brokerEmail, template_name: name, customer_id: val('f-customer_id'),
+        origin: val('f-origin'), destination: val('f-destination'), equipment: val('f-equipment'),
+        commodity: val('f-commodity'), default_invoice_amount: val('f-invoice_amount'),
+        default_customer_payment_terms: val('f-customer_payment_terms') }) })
+    .then(function(r){ return r.json(); })
+    .then(function(p){ if (p && p.ok) showOk('Template saved.'); else showError('Could not save template.'); });
+}
+
+function applyTemplate(t) {
+  if (!t) return;
+  setVal('f-customer_id', t.customer_id || '');
+  setVal('f-origin', t.origin || '');
+  setVal('f-destination', t.destination || '');
+  setVal('f-equipment', t.equipment || '');
+  setVal('f-commodity', t.commodity || '');
+  setVal('f-invoice_amount', t.default_invoice_amount || '');
+  setVal('f-customer_payment_terms', t.default_customer_payment_terms || '');
+  recomputeMargin();
+}
+
+function populateTemplates(templates) {
+  var sel = document.getElementById('f-template');
+  if (!sel) return;
+  window._templates = {};
+  (templates || []).forEach(function(t){
+    window._templates[t.id] = t;
+    var o = document.createElement('option'); o.value = t.id; o.textContent = t.template_name; sel.appendChild(o);
+  });
+  sel.onchange = function(){ applyTemplate(window._templates[sel.value]); };
+}
+
+function hydrate(load) {
+  if (!load) return;
+  loadId = load.id || '';
+  document.getElementById('page-title').textContent = 'Load ' + (load.load_number || '');
+  setVal('f-status', load.status || 'Booked');
+  setVal('f-customer_id', load.customer_id || '');
+  setVal('f-customer_reference', load.customer_reference || '');
+  setVal('f-invoice_amount', load.invoice_amount || '');
+  setVal('f-customer_payment_terms', load.customer_payment_terms || '');
+  setVal('f-carrier_id', load.carrier_id || '');
+  setVal('f-carrier_mc', load.carrier_mc || '');
+  setVal('f-carrier_pay', load.carrier_pay || '');
+  ['origin','destination','equipment','commodity','weight','piece_count','temperature',
+   'bol_number','pro_number','special_instructions','accessorials'].forEach(function(k){ setVal('f-'+k, load[k]); });
+  (load.stops || []).forEach(function(s){
+    addStop(s.stop_type || 'Pickup');
+    var rows = document.querySelectorAll('.stop-row');
+    var r = rows[rows.length - 1];
+    ['company_name','address','appointment','reference_no'].forEach(function(kk){
+      var e = r.querySelector('[data-k="' + kk + '"]'); if (e) e.value = s[kk] || '';
+    });
+  });
+  onCarrierChange();
+  recomputeMargin();
+  refreshDocCard();
+  window._currentLoad = load;
+  renderSubmitPanel(load, window._loadedDocs || []);
+}
+
+function loadExisting() {
+  if (!loadId || !brokerEmail) return;
+  fetch(BROKER_API_BASE + '/tms-load?email=' + encodeURIComponent(brokerEmail) + '&id=' + encodeURIComponent(loadId))
+    .then(function(r){ return r.json(); })
+    .then(function(p){ if (p && p.load) hydrate(p.load); });
+}
+
+function loadRefData() {
+  if (!brokerEmail) return;
+  fetch(BROKER_API_BASE + '/tms-customers?email=' + encodeURIComponent(brokerEmail))
+    .then(function(r){ return r.json(); }).then(function(p){ populateCustomers((p && p.customers) || []); if (loadId) loadExisting(); });
+  fetch(BROKER_API_BASE + '/tms-carriers?email=' + encodeURIComponent(brokerEmail))
+    .then(function(r){ return r.json(); }).then(function(p){ populateCarriers((p && p.carriers) || []); });
+  fetch(BROKER_API_BASE + '/tms-templates?email=' + encodeURIComponent(brokerEmail))
+    .then(function(r){ return r.json(); }).then(function(p){ populateTemplates((p && p.templates) || []); });
+}
+
+function boot() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) return;
+  var result = ZOHO.CREATOR.UTIL.getInitParams();
+  if (result && typeof result.then === 'function') {
+    result.then(function(params){
+      brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      loadRefData();
+    });
+  }
+}
+
+window.addEventListener('load', function(){
+  var t = _acquireTarget();
+  loadId = t.load_id;
+  if (loadId) document.getElementById('page-title').textContent = 'Edit Load';
+  document.getElementById('f-invoice_amount').addEventListener('input', recomputeMargin);
+  document.getElementById('f-carrier_pay').addEventListener('input', recomputeMargin);
+  document.getElementById('f-carrier_id').addEventListener('change', onCarrierChange);
+  document.getElementById('add-pickup').addEventListener('click', function(){ addStop('Pickup'); });
+  document.getElementById('add-delivery').addEventListener('click', function(){ addStop('Delivery'); });
+  document.getElementById('save-btn').addEventListener('click', saveLoad);
+  document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
+  document.getElementById('back-btn').addEventListener('click', function(){
+    try { window.top.location.href = window.location.origin + '/tms-load-board'; } catch (e) {}
+  });
+  wireDocButtons();
+  wireUploadControls();
+  refreshDocCard();
+  boot();
+});
+
+function refreshDocCard() {
+  var card = document.getElementById('docs-card');
+  if (!card) return;
+  if (loadId) { card.classList.remove('hidden'); loadDocList(); }
+  else { card.classList.add('hidden'); }
+}
+
+function loadDocList() {
+  if (!loadId || !brokerEmail) return;
+  fetch(BROKER_API_BASE + '/tms-docs?email=' + encodeURIComponent(brokerEmail) + '&load_id=' + encodeURIComponent(loadId))
+    .then(function(r){ return r.json(); })
+    .then(function(p){ renderDocList((p && p.documents) || []); });
+}
+
+function renderDocList(docs) {
+  window._loadedDocs = docs;
+  if (window._currentLoad) renderSubmitPanel(window._currentLoad, docs);
+  var box = document.getElementById('doc-list');
+  if (!box) return;
+  if (!docs.length) { box.innerHTML = '<div class="muted">No documents generated yet.</div>'; return; }
+  box.innerHTML = '';
+  docs.forEach(function(d){
+    var el = document.createElement('div');
+    el.className = 'doc-item';
+    el.innerHTML = '<span>' + esc(d.document_type) + '</span><span class="src">' + esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
+    box.appendChild(el);
+  });
+}
+
+function _downloadPdf(b64, name) {
+  try {
+    var bin = atob(b64); var len = bin.length; var arr = new Uint8Array(len);
+    for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    var blob = new Blob([arr], { type: 'application/pdf' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  } catch (e) {}
+}
+
+function _docStatus(msg) { var el = document.getElementById('doc-status'); if (el) el.textContent = msg || ''; }
+
+function generateDoc(docType, send) {
+  if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
+  var toEl = document.getElementById('doc-to-' + docType);
+  var recipient = toEl ? toEl.value : '';
+  _docStatus(send ? 'Sending…' : 'Generating…');
+  return fetch(BROKER_API_BASE + '/tms-doc/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_type: docType,
+                             send: !!send, recipient_email: recipient }) })
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      if (!p || !p.ok) { _docStatus((p && p.error) || 'Failed.'); return; }
+      if (send) { _docStatus(p.emailed ? 'Sent.' : ('Generated. ' + (p.email_error || 'Not emailed.'))); }
+      else { _docStatus('Generated.'); if (p.pdf_base64) _downloadPdf(p.pdf_base64, docType + '.pdf'); }
+      loadDocList();
+    })
+    .catch(function(){ _docStatus('Network error.'); });
+}
+
+function wireDocButtons() {
+  var card = document.getElementById('docs-card');
+  if (!card) return;
+  card.querySelectorAll('button[data-act]').forEach(function(b){
+    b.addEventListener('click', function(){ generateDoc(b.getAttribute('data-doc'), b.getAttribute('data-act') === 'send'); });
+  });
+}
+
+function uploadBrokerDoc(docType, file) {
+  if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
+  if (!file) { _docStatus('Choose a file to upload.'); return Promise.resolve(); }
+  _docStatus('Uploading…');
+  var fd = new FormData();
+  fd.append('email', brokerEmail);
+  fd.append('load_id', loadId);
+  fd.append('doc_type', docType);
+  fd.append('file', file);
+  return fetch(BROKER_API_BASE + '/tms-doc/upload', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      if (p && p.ok) { _docStatus('Uploaded.'); loadDocList(); }
+      else _docStatus((p && p.error) || 'Upload failed.');
+    })
+    .catch(function(){ _docStatus('Network error uploading.'); });
+}
+
+function fetchCarrierLink() {
+  if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
+  return fetch(BROKER_API_BASE + '/tms-doc/upload-link?email=' + encodeURIComponent(brokerEmail) + '&load_id=' + encodeURIComponent(loadId))
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      var box = document.getElementById('carrier-link-box');
+      if (!box) return;
+      if (p && p.url) {
+        box.innerHTML = 'Send this to the carrier: <a href="' + esc(p.url) + '" target="_blank">' + esc(p.url) + '</a>';
+        try { if (navigator.clipboard) navigator.clipboard.writeText(p.url); } catch (e) {}
+      } else { box.textContent = (p && p.error) || 'Could not create a link.'; }
+    });
+}
+
+function wireUploadControls() {
+  var ub = document.getElementById('upload-btn');
+  if (ub) ub.addEventListener('click', function(){
+    var sel = document.getElementById('upload-doc-type');
+    var fi = document.getElementById('upload-file');
+    uploadBrokerDoc(sel ? sel.value : 'Other', fi && fi.files ? fi.files[0] : null);
+  });
+  var cb = document.getElementById('carrier-link-btn');
+  if (cb) cb.addEventListener('click', fetchCarrierLink);
+}
+
+function _docSide(t) {
+  return (['Rate Con', 'Signed Rate Con', 'Carrier Invoice'].indexOf((t || '').trim()) >= 0)
+    ? 'carrier' : 'customer';
+}
+
+function _gateFailures(load, docs) {
+  var f = [];
+  if ((load.status || '') !== 'POD Received')
+    f.push("Load must be at 'POD Received' (currently '" + (load.status || '-') + "').");
+  var sides = {};
+  (docs || []).forEach(function (d) { sides[_docSide(d.document_type)] = true; });
+  if (!sides.customer) f.push('At least one customer-side document is required.');
+  if (!sides.carrier) f.push('At least one carrier-side document is required.');
+  var inv = document.getElementById('f-factoring-invoice');
+  if (!inv || !inv.value.trim()) f.push('Carrier/Factoring Invoice # is required.');
+  return f;
+}
+
+function _vettingWarnings(load) {
+  var w = [], v = load.vetting || {};
+  if (v.authority_active === false) w.push('Carrier authority is not active.');
+  if (v.risk_flag) w.push('Carrier risk flag: ' + v.risk_flag);
+  return w;
+}
+
+function renderSubmitPanel(load, docs) {
+  var panel = document.getElementById('submit-panel');
+  if (!panel || !load) return;
+  if ((load.status || '') === 'Submitted') {
+    panel.innerHTML = '<div class="card"><h3>Submitted</h3>' +
+      (load.funding_portal_link
+        ? '<p>Funding record: <a href="' + load.funding_portal_link + '" target="_blank">open</a></p>'
+        : '<p>This load has been submitted for factoring.</p>') + '</div>';
+    return;
+  }
+  var warnings = _vettingWarnings(load);
+  panel.innerHTML =
+    '<div class="card"><h3>Submit for Factoring</h3>' +
+    '<ul id="gate-list" class="muted" style="margin:6px 0;padding-left:18px"></ul>' +
+    (warnings.length
+      ? '<div id="override-wrap" style="margin:6px 0"><label><input type="checkbox" id="chk-override"> ' +
+        'Override carrier vetting warning and submit anyway</label></div>'
+      : '') +
+    '<label>Carrier / Factoring Invoice # ' +
+    '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></label>' +
+    '<button id="btn-submit-factoring" disabled>Submit for Factoring</button>' +
+    '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
+
+  _refreshGates(load, docs, warnings);
+  var inv = document.getElementById('f-factoring-invoice');
+  if (inv) inv.oninput = function () { _refreshGates(load, docs, warnings); };
+  var btn = document.getElementById('btn-submit-factoring');
+  if (btn) btn.onclick = function () { submitForFactoring(load); };
+}
+
+function _refreshGates(load, docs, warnings) {
+  var failures = _gateFailures(load, docs);
+  var ul = document.getElementById('gate-list');
+  if (ul) {
+    var lines = failures.map(function (x) { return '<li>✗ ' + x + '</li>'; })
+      .concat((warnings || []).map(function (x) { return '<li>⚠ ' + x + '</li>'; }));
+    ul.innerHTML = lines.length ? lines.join('') : '<li>✓ Ready to submit</li>';
+  }
+  var btn = document.getElementById('btn-submit-factoring');
+  if (btn) btn.disabled = failures.length > 0;
+}
+
+function submitForFactoring(load) {
+  var inv = document.getElementById('f-factoring-invoice');
+  var ov = document.getElementById('chk-override');
+  var res = document.getElementById('submit-result');
+  if (res) res.textContent = 'Submitting…';
+  var btn = document.getElementById('btn-submit-factoring');
+  if (btn) btn.disabled = true;
+  return fetch(BROKER_API_BASE + '/tms-submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: window.brokerEmail, load_id: load.id,
+      carrier_factoring_invoice: inv ? inv.value.trim() : '',
+      override: !!(ov && ov.checked),
+    }),
+  }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (o) {
+      if (o.ok && o.j.ok) {
+        if (res) res.innerHTML = 'Submitted. <a href="' + (o.j.funding_link || '#') +
+          '" target="_blank">Open funding record</a>';
+      } else if (o.j.vetting_warnings) {
+        if (res) res.textContent = 'Vetting warning — check override to proceed.';
+        if (btn) btn.disabled = false;
+      } else {
+        if (res) res.textContent = (o.j.gate_failures || [o.j.error || 'Submit failed']).join(' ');
+        if (btn) btn.disabled = false;
+      }
+    });
+}
+
+if (typeof window !== 'undefined') {
+  window.renderSubmitPanel = renderSubmitPanel;
+  window.submitForFactoring = submitForFactoring;
+}
+
+// expose for tests
+window.addStop = addStop; window.removeStop = removeStop; window.recomputeMargin = recomputeMargin;
+window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers;
+window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; window.saveLoad = saveLoad;
+window.applyTemplate = applyTemplate; window.hydrate = hydrate;
+window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
+window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf;
+window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink;
+</script>
+</body>
+</html>

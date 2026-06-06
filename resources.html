@@ -339,6 +339,12 @@ html, body {
   .support-strip { padding: 12px 14px; gap: 10px; }
   .support-strip-grid { grid-template-columns: 1fr; }
 }
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { width: 100%; max-width: 100%; box-sizing: border-box; padding: 16px 12px 56px; }
+  .res-grid, .faq-grid, .support-strip-grid { grid-template-columns: 1fr !important; }
+  .res-card, .faq-card { width: 100%; max-width: 100%; box-sizing: border-box; }
+}
 </style>
 </head>
 <body>

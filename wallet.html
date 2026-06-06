@@ -195,6 +195,16 @@
     .reserve-value .cents { font-size: 18px; }
     .wallet-header { flex-direction: column; align-items: flex-start; }
   }
+
+  @media (max-width: 640px) {
+    html, body { overflow-x: hidden; }
+    .page { max-width: 100%; padding: 16px 12px 40px; }
+    .reserves, .form-grid { grid-template-columns: 1fr !important; }
+    .field-input, .field-select, input, select, textarea { font-size: 16px; }
+    .btn { min-height: 44px; }
+    .actions { flex-direction: column; }
+    .actions .btn { width: 100%; }
+  }
 </style>
 </head>
 <body>

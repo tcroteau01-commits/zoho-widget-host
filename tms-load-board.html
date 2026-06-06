@@ -44,6 +44,44 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .chip.delivered, .chip.podreceived { background: #e8f5e9; color: #2e7d32; }
 .chip.submitted { background: #272727; color: #fff; }
 .empty { text-align: center; color: #999; padding: 40px 0; }
+
+/* slide-out panel */
+.hidden { display: none !important; }
+#tms-backdrop { position: fixed; inset: 0; background: rgba(16,24,40,.35); z-index: 9998; }
+#tms-slideout { position: fixed; top: 0; right: 0; height: 100%; width: 480px; max-width: 92vw; background: #f7f8fa; box-shadow: -12px 0 40px rgba(16,24,40,.18); transform: translateX(100%); transition: transform .25s ease; z-index: 9999; overflow-y: auto; }
+#tms-slideout.open { transform: translateX(0); }
+#tms-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1f2a44; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; z-index: 10000; box-shadow: 0 8px 24px rgba(16,24,40,.3); }
+
+/* read-only detail (moved from the detail page) */
+#tms-slideout .vhead { background: linear-gradient(160deg,#1f2a44,#2b3a5e); color: #fff; padding: 16px 22px 20px; }
+#tms-slideout .vhead-top { display: flex; justify-content: space-between; align-items: center; color: #aeb8cc; font-size: 13px; }
+#tms-slideout .vlink { cursor: pointer; font-size: 18px; line-height: 1; }
+#tms-slideout .vtag { background: #14b8a6; color: #04201c; font-weight: 700; font-size: 11px; letter-spacing: .5px; padding: 3px 9px; border-radius: 6px; }
+#tms-slideout .vtitle { font-size: 22px; font-weight: 800; margin-top: 12px; }
+#tms-slideout .vsub { color: #aeb8cc; font-size: 12.5px; margin-top: 5px; }
+#tms-slideout .vactions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
+#tms-slideout .vcards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; background: #f7f8fa; }
+#tms-slideout .vcard { background: #fff; border: 1px solid #eaecf0; border-radius: 12px; padding: 14px 16px; }
+#tms-slideout .vcard.wide { grid-column: 1 / -1; }
+#tms-slideout .vlabel { font-size: 11px; color: #667085; letter-spacing: .5px; font-weight: 700; margin-bottom: 10px; }
+#tms-slideout .vrates { display: flex; gap: 10px; }
+#tms-slideout .vstat { flex: 1; background: #f9fafb; border-radius: 9px; padding: 10px; }
+#tms-slideout .vstat span { font-size: 10.5px; color: #667085; display: block; }
+#tms-slideout .vstat b { font-size: 17px; color: #101828; }
+#tms-slideout .vstat.good { background: #ecfdf3; } #tms-slideout .vstat.good span { color: #067647; } #tms-slideout .vstat.good b { color: #067647; }
+#tms-slideout .vname { font-size: 14px; font-weight: 600; color: #101828; }
+#tms-slideout .vrow { font-size: 12.5px; color: #101828; margin-top: 4px; }
+#tms-slideout .muted { color: #667085; font-size: 12.5px; }
+#tms-slideout #v-stepper { margin-top: 16px; }
+#tms-slideout .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+#tms-slideout .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 20px; }
+#tms-slideout .chip.done { background: #0e3d36; color: #5eead4; cursor: pointer; }
+#tms-slideout .chip.current { background: #14b8a6; color: #04201c; font-weight: 800; box-shadow: 0 0 0 3px rgba(20,184,166,.25); }
+#tms-slideout .chip.upcoming { background: #2a3550; color: #aeb8cc; cursor: pointer; }
+#tms-slideout .chip.locked { background: #2a3550; color: #8b97ad; }
+#tms-slideout .vbtn { border: 0; font-weight: 600; font-size: 13px; padding: 9px 16px; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; font-family: inherit; }
+#tms-slideout .vbtn.light { background: #fff; color: #1f2a44; }
+#tms-slideout .vbtn.dark { background: #33425f; color: #fff; }
 </style>
 </head>
 <body>
@@ -72,6 +110,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </table>
   </div>
 </div>
+<div id="tms-backdrop" class="hidden"></div>
+<div id="tms-slideout"><div id="tms-slideout-body"></div></div>
+<div id="tms-toast" class="hidden"></div>
 <script>
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
 var brokerEmail = '';
@@ -150,9 +191,7 @@ function renderBoard(payload) {
 function setText(id, v){ var el = document.getElementById(id); if (el) el.textContent = v; }
 
 function selectLoad(loadId) {
-  try { localStorage.setItem('tmsLoadTarget', JSON.stringify({ load_id: loadId, mode: 'edit', ts: Date.now() })); } catch (e) {}
-  try { sessionStorage.setItem('tmsLoadId', loadId); } catch (e) {}
-  navigateToDetail();
+  return openSlideout(loadId);
 }
 function newLoad() {
   try { localStorage.setItem('tmsLoadTarget', JSON.stringify({ load_id: '', mode: 'new', ts: Date.now() })); } catch (e) {}
@@ -169,6 +208,123 @@ function portalPageUrl(page) {
 }
 function navigateToDetail() {
   try { window.top.location.href = portalPageUrl('TMS_Load_Detail'); } catch (e) {}
+}
+
+/* ---- read-only slide-out (cards + lifecycle chip stepper) ---- */
+function showSlideout(on) {
+  var p = document.getElementById('tms-slideout'), b = document.getElementById('tms-backdrop');
+  if (!p || !b) return;
+  p.classList.toggle('open', !!on);
+  b.classList.toggle('hidden', !on);
+}
+function closeSlideout() { showSlideout(false); }
+
+function openSlideout(loadId) {
+  if (!loadId || !brokerEmail) return Promise.resolve();
+  showSlideout(true);
+  document.getElementById('tms-slideout-body').innerHTML = '<div style="padding:40px;text-align:center;color:#667085">Loading…</div>';
+  return fetch(BROKER_API_BASE + '/tms-load?email=' + encodeURIComponent(brokerEmail) + '&id=' + encodeURIComponent(loadId))
+    .then(function(r){ return r.json(); })
+    .then(function(p){ if (p && p.load) { window._slideoutLoad = p.load; renderView(p.load); } })
+    .catch(function(){ document.getElementById('tms-slideout-body').innerHTML = '<div style="padding:40px;text-align:center;color:#b42318">Could not load.</div>'; });
+}
+
+function renderView(load) {
+  window._slideoutLoad = load;
+  var lane = [load.origin, load.destination].filter(Boolean).join(' → ');
+  var inv = parseFloat(load.invoice_amount) || 0, pay = parseFloat(load.carrier_pay) || 0;
+  var margin = inv ? Math.round((inv - pay) / inv * 1000) / 10 : 0;
+  var stops = (load.stops || []).map(function(s, i){
+    return '<div class="vrow"><b>' + (i + 1) + ' ' + esc(s.stop_type || '') + '</b> &mdash; ' + esc(s.company_name || '') + ' ' + esc(s.address || '') + ' <span class="muted">' + esc(s.appointment || '') + '</span></div>';
+  }).join('') || '<div class="muted">No stops</div>';
+  var v = document.getElementById('tms-slideout-body');
+  if (!v) return;
+  v.innerHTML =
+    '<div class="vhead">'
+    + '<div class="vhead-top"><span class="vlink" id="v-close">&times;</span><span class="vtag">TMS LOAD</span></div>'
+    + '<div class="vtitle">' + esc(load.load_number || '') + ' · ' + esc(load.customer_name || '') + '</div>'
+    + '<div class="vsub">' + esc(lane) + '</div>'
+    + '<div id="v-stepper"></div>'
+    + '<div class="vactions" id="v-actions"></div>'
+    + '</div>'
+    + '<div class="vcards">'
+    +   '<div class="vcard wide"><div class="vlabel">RATES &amp; MARGIN</div><div class="vrates">'
+    +     '<div class="vstat"><span>CUSTOMER</span><b>' + money(inv) + '</b></div>'
+    +     '<div class="vstat"><span>CARRIER</span><b>' + money(pay) + '</b></div>'
+    +     '<div class="vstat good"><span>MARGIN</span><b>' + margin + '%</b></div>'
+    +   '</div></div>'
+    +   '<div class="vcard"><div class="vlabel">CUSTOMER</div><div class="vname">' + esc(load.customer_name || '') + '</div><div class="muted">Ref# ' + esc(load.customer_reference || '') + ' · ' + esc(load.customer_payment_terms || '') + '</div></div>'
+    +   '<div class="vcard"><div class="vlabel">CARRIER</div><div class="vname">' + esc(load.carrier_name || '') + '</div><div class="muted">MC# ' + esc(load.carrier_mc || '') + '</div></div>'
+    +   '<div class="vcard"><div class="vlabel">LANE &amp; STOPS</div>' + stops + '</div>'
+    +   '<div class="vcard"><div class="vlabel">LOAD DETAILS</div><div class="muted">' + [load.equipment, load.commodity, load.weight, load.bol_number].filter(Boolean).map(esc).join(' · ') + '</div></div>'
+    + '</div>';
+  renderStepper(load);
+  renderViewActions(load);
+  var close = document.getElementById('v-close');
+  if (close) close.addEventListener('click', closeSlideout);
+}
+
+var TMS_STATUSES = ['Draft', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Submitted'];
+
+function renderStepper(load) {
+  var el = document.getElementById('v-stepper');
+  if (!el) return;
+  var cur = TMS_STATUSES.indexOf(load.status || 'Booked');
+  if (cur < 0) cur = 1;
+  var html = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips">';
+  TMS_STATUSES.forEach(function(s, i){
+    var cls = 'chip', click = '';
+    if (s === 'Submitted') { cls += ' locked'; }
+    else if (i < cur) { cls += ' done'; click = ' data-status="' + s + '"'; }
+    else if (i === cur) { cls += ' current'; }
+    else { cls += ' upcoming'; click = ' data-status="' + s + '"'; }
+    html += '<span class="' + cls + '"' + click + '>' + esc(s) + '</span>';
+  });
+  el.innerHTML = html + '</div>';
+  el.querySelectorAll('.chip[data-status]').forEach(function(chip){
+    chip.addEventListener('click', function(){ changeStatus(load, chip.getAttribute('data-status')); });
+  });
+}
+
+function showToast(msg) {
+  var t = document.getElementById('tms-toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(function(){ t.classList.add('hidden'); }, 2500);
+}
+
+function changeStatus(load, status) {
+  var lid = (load && load.id) || (window._slideoutLoad && window._slideoutLoad.id) || '';
+  if (!status || !lid || !brokerEmail) return;
+  fetch(BROKER_API_BASE + '/tms-status', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_id: lid, status: status })
+  }).then(function(r){ return r.json(); }).then(function(p){
+    if (p && p.ok) { load.status = status; window._slideoutLoad = load; renderView(load); showToast('Status → ' + status); }
+    else { showToast((p && p.error) || 'Status update failed'); }
+  }).catch(function(){ showToast('Status update failed'); });
+}
+
+function renderViewActions(load) {
+  var el = document.getElementById('v-actions');
+  if (!el) return;
+  if (load.status === 'Submitted') {
+    var link = load.funding_portal_link || '';
+    el.innerHTML = link
+      ? '<a class="vbtn light" href="' + esc(link) + '" target="_blank">Open funding record ↗</a>'
+      : '<span class="muted" style="color:#aeb8cc">Submitted</span>';
+    return;
+  }
+  el.innerHTML = '<button class="vbtn light" id="v-edit">✎ Edit load</button>';
+  document.getElementById('v-edit').addEventListener('click', function(){ selectForEdit(load.id); });
+}
+
+function selectForEdit(loadId) {
+  try { localStorage.setItem('tmsLoadTarget', JSON.stringify({ load_id: loadId, mode: 'edit', ts: Date.now() })); } catch (e) {}
+  try { sessionStorage.setItem('tmsLoadId', loadId); } catch (e) {}
+  navigateToDetail();
 }
 
 function loadBoard() {
@@ -190,12 +346,16 @@ function boot() {
   }
 }
 
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeSlideout(); });
+
 window.addEventListener('load', function(){
   renderPills();
   var s = document.getElementById('search');
   if (s) s.addEventListener('input', function(){ searchTerm = s.value; applyFilters(); });
   var nb = document.getElementById('new-load-btn');
   if (nb) nb.addEventListener('click', newLoad);
+  var b = document.getElementById('tms-backdrop');
+  if (b) b.addEventListener('click', closeSlideout);
   boot();
 });
 
@@ -204,6 +364,13 @@ window.renderBoard = renderBoard;
 window.applyFilters = applyFilters;
 window.selectLoad = selectLoad;
 window.newLoad = newLoad;
+window.showSlideout = showSlideout;
+window.closeSlideout = closeSlideout;
+window.openSlideout = openSlideout;
+window.selectForEdit = selectForEdit;
+window.renderView = renderView;
+window.renderStepper = renderStepper;
+window.changeStatus = changeStatus;
 </script>
 </body>
 </html>

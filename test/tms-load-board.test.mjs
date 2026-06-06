@@ -74,11 +74,12 @@ test('search filters by load number / customer / carrier', () => {
   assert.match(rows[0].textContent, /L-2/);
 });
 
-test('selectLoad stores id in localStorage bridge for the detail widget', () => {
+test('selectForEdit stores id in localStorage bridge for the detail widget', () => {
   const { window } = makeWidget();
-  window.selectLoad('l1');
+  window.selectForEdit('l1');
   const stored = JSON.parse(window.localStorage.getItem('tmsLoadTarget'));
   assert.equal(stored.load_id, 'l1');
+  assert.equal(stored.mode, 'edit');
   assert.ok(stored.ts);
 });
 

@@ -160,6 +160,34 @@ tbody tr:hover { background: #fafaf6; }
   .chart-grid { grid-template-columns: 1fr; }
   .chart-wrap { height: 220px; }
 }
+
+/* ===== Mobile (<=640px): card reflow + stacking ===== */
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { padding: 14px 12px 40px; max-width: 100%; }
+
+  /* P2 — stack KPIs (chart-grid already 1-col via 700px rule) */
+  .kpi-strip { grid-template-columns: 1fr !important; }
+  .card { padding: 14px 14px 18px; }
+
+  /* P3 — monthly credit reports table reflows to cards */
+  .table-wrap { max-height: none; overflow: visible; border: none; }
+  .table-wrap table thead { display: none; }
+  .table-wrap table, .table-wrap tbody, .table-wrap tr, .table-wrap td { display: block; width: 100%; }
+  .table-wrap tbody tr {
+    border: 1px solid #ece9df; border-radius: 10px; background: #fff;
+    padding: 8px 12px; margin: 0 0 10px;
+  }
+  .table-wrap td {
+    display: flex; justify-content: space-between; gap: 12px;
+    text-align: right; padding: 5px 0; border: none;
+  }
+  .table-wrap td.cell-right { text-align: right; }
+  .table-wrap td[data-label]::before {
+    content: attr(data-label); font-weight: 700; color: #555;
+    text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: 0.4px;
+  }
+}
 </style>
 </head>
 <body>
@@ -474,12 +502,12 @@ function renderTable(debtors) {
   var multiDebtor = debtors.length > 1;
   tbody.innerHTML = rows.map(function(r) {
     return '<tr>' +
-      '<td>' + escapeHtml(r.monthLabel) + (multiDebtor ? ' <span class="cell-muted">· ' + escapeHtml(r.debtorName) + '</span>' : '') + '</td>' +
-      '<td>' + (typeof r.riskScore === 'number'
+      '<td data-label="Month">' + escapeHtml(r.monthLabel) + (multiDebtor ? ' <span class="cell-muted">· ' + escapeHtml(r.debtorName) + '</span>' : '') + '</td>' +
+      '<td data-label="Risk Score">' + (typeof r.riskScore === 'number'
                   ? '<span class="risk-pill ' + riskClass(Math.round(r.riskScore)) + '">' + Math.round(r.riskScore) + '</span>'
                   : '<span class="risk-pill risk-na">—</span>') + '</td>' +
-      '<td class="cell-right">' + (typeof r.daysToPay === 'number' ? Math.round(r.daysToPay) : '<span class="cell-muted">—</span>') + '</td>' +
-      '<td class="cell-right">' + (r.noData ? '<span class="cell-muted">—</span>' : fmtMoneyFull(r.arMonthlyBalance)) + '</td>' +
+      '<td class="cell-right" data-label="Days to Pay">' + (typeof r.daysToPay === 'number' ? Math.round(r.daysToPay) : '<span class="cell-muted">—</span>') + '</td>' +
+      '<td class="cell-right" data-label="Monthly AR">' + (r.noData ? '<span class="cell-muted">—</span>' : fmtMoneyFull(r.arMonthlyBalance)) + '</td>' +
     '</tr>';
   }).join('');
   document.getElementById('meta-table').textContent = rows.length + ' month' + (rows.length === 1 ? '' : 's');

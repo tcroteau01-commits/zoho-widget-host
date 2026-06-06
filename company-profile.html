@@ -374,6 +374,20 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .modal-btn.primary { background: #e8a020; color: #fff; border-color: #e8a020; }
 .modal-btn.primary:hover:not(:disabled) { background: #d49018; border-color: #d49018; }
 .modal-btn:disabled { background: #d8d4c8; border-color: #d8d4c8; color: #fff; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { max-width: 100%; box-sizing: border-box; }
+  .layout, .detail-grid, .form-grid, .perm-grid, .email-row { grid-template-columns: 1fr !important; }
+  .btn { min-height: 44px; }
+  .card-head .btn { width: 100%; justify-content: center; }
+  .input, input, select, textarea { font-size: 16px; }
+  /* Add Trusted Contact modal full-screen */
+  .modal { margin: 0; max-width: 100%; width: 100%; min-height: 100vh; border-radius: 0; }
+  .modal-foot { flex-direction: column; align-items: stretch; gap: 10px; }
+  .foot-actions { width: 100%; flex-direction: column; }
+  .foot-actions .modal-btn { width: 100%; min-height: 44px; }
+}
 </style>
 </head>
 <body>

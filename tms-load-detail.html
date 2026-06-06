@@ -45,6 +45,26 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-to { width: 220px; border: 1px solid #d8d8d8; border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; }
 .doc-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 12px; border-bottom: 1px solid #f3f1ea; }
 .doc-item .src { color: #999; }
+
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { max-width: 100%; padding: 16px 12px 80px; }
+  .head { flex-direction: column; align-items: flex-start; }
+  .grid, .grid.three { grid-template-columns: 1fr !important; }
+  .field input, .field select, .field textarea,
+  input, select, textarea { font-size: 16px; width: 100%; }
+  .btn { min-height: 44px; }
+  /* Document rows: stack the name/input/buttons so nothing overflows */
+  .doc-gen-row { flex-wrap: wrap; }
+  .doc-to { width: 100%; }
+  /* Sticky submit actions stack full-width */
+  .actions { flex-direction: column; align-items: stretch; }
+  .actions .btn { width: 100%; }
+  .errline, .okline { margin-right: 0; }
+  /* Submit-for-factoring panel button + input full-width */
+  #submit-panel input[type="text"], #submit-panel button { width: 100%; box-sizing: border-box; }
+  #btn-submit-factoring { min-height: 44px; }
+}
 </style>
 </head>
 <body>

@@ -216,6 +216,16 @@ html, body {
   .field-grid { grid-template-columns: 1fr; }
   .address-grid { grid-template-columns: 1fr; }
 }
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { max-width: 100%; padding: 16px 12px 40px; box-sizing: border-box; }
+  .layout, .field-grid, .address-grid { grid-template-columns: 1fr !important; }
+  .field-input, .field-textarea, input, select, textarea { font-size: 16px; }
+  .btn { min-height: 44px; }
+  .form-footer { flex-direction: column; align-items: stretch; gap: 12px; }
+  .btn-group { flex-direction: column; }
+  .btn-group .btn { width: 100%; }
+}
 </style>
 </head>
 <body>

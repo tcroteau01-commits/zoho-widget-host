@@ -285,6 +285,49 @@
     padding: 10px 12px 12px; border-bottom: none;
   }
   table.fees tbody tr.total-row td.amt { text-align: right; color: var(--of-orange); }
+
+  /* ===== Mobile (<=640px): card reflow + stacking ===== */
+  @media (max-width: 640px) {
+    html, body { overflow-x: hidden; }
+    body { padding: 14px 12px; }
+
+    /* P2 — stack KPIs, filter bar, slide-out grids */
+    .kpi-grid { grid-template-columns: 1fr !important; }
+    .filter-bar { flex-direction: column; align-items: stretch; }
+    .filter-bar .search-input, .filter-bar .seg-control { min-width: 0; width: 100%; }
+    .export-wrap { width: 100%; }
+    .export-wrap .btn-export { width: 100%; }
+    .dp-stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .dp-row-grid { grid-template-columns: 1fr !important; }
+
+    /* P5 — slide-out near full screen */
+    .detail-panel { width: 100% !important; }
+
+    /* P6 — tap targets + no iOS zoom */
+    .tab-strip button, .btn-export, .group-toggle button, .dp-close { min-height: 44px; }
+    input, select, textarea { font-size: 16px; }
+
+    /* P3 — loads + margins tables reflow to cards */
+    table.loads thead, table.margins thead { display: none; }
+    table.loads, table.loads tbody, table.loads tr, table.loads td,
+    table.margins, table.margins tbody, table.margins tr, table.margins td { display: block; width: 100%; }
+    table.loads tbody tr, table.margins tbody tr {
+      border: 1px solid var(--of-gray-200); border-radius: 10px;
+      background: #fff; padding: 8px 12px; margin: 0 0 10px;
+    }
+    table.loads tbody tr.totals, table.margins tbody tr.totals { border-top: 2px solid var(--of-charcoal); }
+    table.loads td, table.margins td {
+      display: flex; justify-content: space-between; gap: 12px;
+      text-align: right; padding: 5px 0; border: none;
+    }
+    table.loads td::before, table.margins td::before {
+      content: attr(data-label); font-weight: 600; color: var(--of-gray-500);
+      text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: 0.3px;
+    }
+
+    /* P4 — fees accordion + slide-out txns table scroll (nested/many cols) */
+    table.fees, table.dp-txns { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  }
 </style>
 </head>
 <body>
@@ -652,13 +695,13 @@
         for (var i = 0; i < d.rows.length; i++) {
           var r = d.rows[i];
           html += '<tr>' +
-            '<td class="first">' + esc(r.label) + '</td>' +
-            '<td>' + (r.loadCount || 0) + '</td>' +
-            '<td>' + fmtMoneyDec(r.purchaseAmount) + '</td>' +
-            '<td class="neg">' + fmtMoneyDec(r.discountFee) + '</td>' +
-            '<td class="neg">' + fmtMoneyDec(r.vendorPayable) + '</td>' +
-            '<td class="' + (r.margin >= 0 ? 'pos' : 'neg') + '">' + fmtMoneyDec(r.margin) + '</td>' +
-            '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '">' + fmtPct(r.marginPct) + '</td>' +
+            '<td class="first" data-label="' + esc(labelCol) + '">' + esc(r.label) + '</td>' +
+            '<td data-label="Loads">' + (r.loadCount || 0) + '</td>' +
+            '<td data-label="Purchase">' + fmtMoneyDec(r.purchaseAmount) + '</td>' +
+            '<td class="neg" data-label="Discount Fee">' + fmtMoneyDec(r.discountFee) + '</td>' +
+            '<td class="neg" data-label="Vendor Payable">' + fmtMoneyDec(r.vendorPayable) + '</td>' +
+            '<td class="' + (r.margin >= 0 ? 'pos' : 'neg') + '" data-label="Margin">' + fmtMoneyDec(r.margin) + '</td>' +
+            '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '" data-label="Margin %">' + fmtPct(r.marginPct) + '</td>' +
           '</tr>';
         }
         html += '<tr class="totals"><td class="first">TOTAL</td>' +
@@ -824,13 +867,13 @@
         for (var i = 0; i < d.loads.length; i++) {
           var r = d.loads[i];
           html += '<tr data-load-id="' + esc(r.loadId) + '">' +
-            '<td class="first">' + esc(r.buyDate || '') + '</td>' +
-            '<td class="left">' + esc(r.loadNumber || '') + '</td>' +
-            '<td class="left">' + esc(r.debtorName || '') + '</td>' +
-            '<td class="left">' + esc(r.vendorName || '') + '</td>' +
-            '<td>' + fmtMoneyDec(r.purchaseAmount) + '</td>' +
-            '<td class="' + (r.margin >= 0 ? 'pos' : 'neg') + '">' + fmtMoneyDec(r.margin) + '</td>' +
-            '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '">' + fmtPct(r.marginPct) + '</td>' +
+            '<td class="first" data-label="Buy Date">' + esc(r.buyDate || '') + '</td>' +
+            '<td class="left" data-label="Load #">' + esc(r.loadNumber || '') + '</td>' +
+            '<td class="left" data-label="Debtor">' + esc(r.debtorName || '') + '</td>' +
+            '<td class="left" data-label="Vendor">' + esc(r.vendorName || '') + '</td>' +
+            '<td data-label="Purchase">' + fmtMoneyDec(r.purchaseAmount) + '</td>' +
+            '<td class="' + (r.margin >= 0 ? 'pos' : 'neg') + '" data-label="Margin">' + fmtMoneyDec(r.margin) + '</td>' +
+            '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '" data-label="Margin %">' + fmtPct(r.marginPct) + '</td>' +
           '</tr>';
         }
         html += '<tr class="totals"><td class="first" colspan="4">TOTAL</td>' +

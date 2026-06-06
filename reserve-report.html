@@ -122,6 +122,43 @@
   .muted                  { color: #9ca3af; }
 
   .empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+
+  /* ===== Mobile (<=640px): card reflow + stacking ===== */
+  @media (max-width: 640px) {
+    html, body { overflow-x: hidden; }
+    body { padding: 14px 12px; }
+    .page-header { flex-direction: column; align-items: stretch; gap: 12px; }
+
+    /* P2 — stack KPIs + toolbar */
+    .kpis { grid-template-columns: 1fr !important; gap: 12px; }
+    .toolbar { flex-wrap: wrap; }
+    .toolbar .btn { flex: 1 1 auto; }
+    .tabs-row { flex-direction: column; align-items: stretch; }
+    .search { width: 100% !important; }
+
+    /* P6 — tap targets + no iOS zoom */
+    .btn, .tab { min-height: 44px; }
+    input, select, textarea, .search { font-size: 16px; }
+    .day-header { padding: 14px 12px; }
+
+    /* P3 — txns table reflows to cards */
+    table.txns thead { display: none; }
+    table.txns, table.txns tbody, table.txns tr, table.txns td { display: block; width: 100%; }
+    table.txns tr {
+      border: 1px solid var(--border); border-radius: 10px; background: #fff;
+      padding: 8px 12px; margin: 0 0 10px;
+    }
+    table.txns tr:last-child td { border-bottom: none; }
+    table.txns td {
+      display: flex; justify-content: space-between; gap: 12px;
+      text-align: right; padding: 5px 0; border: none;
+    }
+    table.txns td.num { text-align: right; }
+    table.txns td[data-label]::before {
+      content: attr(data-label); font-weight: 600; color: var(--muted);
+      text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: 0.4px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -359,14 +396,14 @@
       const noteHtml = isInterest ? `<em>${t.note || ''}</em>` : (t.note || '');
       const endingHtml = isInterest ? '<span class="muted">—</span>' : fmtMoney(t.ending_balance);
       return `<tr${isInterest ? ' class="interest-row"' : ''}>
-        <td>${t.trans_id || ''}</td>
-        <td>${t.inv_no || ''}</td>
-        <td>${t.debtor_name || ''}</td>
-        <td>${noteHtml}</td>
-        <td><span class="chip ${chipClass(t.category)}">${t.category || 'Other'}</span></td>
-        <td class="num">${fmtMoney(t.beginning_balance)}</td>
-        <td class="num ${amtClass}">${fmtMoney(t.amount)}</td>
-        <td class="num">${endingHtml}</td>
+        <td data-label="Trans ID">${t.trans_id || ''}</td>
+        <td data-label="Invoice">${t.inv_no || ''}</td>
+        <td data-label="Debtor">${t.debtor_name || ''}</td>
+        <td data-label="Note">${noteHtml}</td>
+        <td data-label="Category"><span class="chip ${chipClass(t.category)}">${t.category || 'Other'}</span></td>
+        <td class="num" data-label="Beginning">${fmtMoney(t.beginning_balance)}</td>
+        <td class="num ${amtClass}" data-label="Amount">${fmtMoney(t.amount)}</td>
+        <td class="num" data-label="Ending">${endingHtml}</td>
       </tr>`;
     }).join('');
 

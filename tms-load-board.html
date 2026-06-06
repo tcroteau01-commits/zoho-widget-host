@@ -83,6 +83,42 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 #tms-slideout .vbtn { border: 0; font-weight: 600; font-size: 13px; padding: 9px 16px; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; font-family: inherit; }
 #tms-slideout .vbtn.light { background: #fff; color: #1f2a44; }
 #tms-slideout .vbtn.dark { background: #33425f; color: #fff; }
+
+/* ===== Mobile (<=640px): card reflow + stacking ===== */
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { padding: 14px 12px 40px; max-width: 100%; }
+  .head { flex-direction: column; align-items: stretch; gap: 12px; }
+  .head .btn.primary { width: 100%; }
+
+  /* P2 — stack KPIs + toolbar */
+  .kpi-row { grid-template-columns: 1fr !important; gap: 8px; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .search-input { min-width: 0; width: 100%; }
+
+  /* P6 — tap targets + no iOS zoom */
+  .btn, .filter-pill { min-height: 44px; }
+  input, select, textarea, .search-input { font-size: 16px; }
+
+  /* P3 — board table reflows to cards */
+  .tbl thead { display: none; }
+  .tbl, .tbl tbody, .tbl tr, .tbl td { display: block; width: 100%; }
+  .tbl tbody tr {
+    border-bottom: 1px solid #f3f1ea; padding: 8px 14px;
+  }
+  .tbl td {
+    display: flex; justify-content: space-between; gap: 12px;
+    text-align: right !important; padding: 5px 0;
+  }
+  .tbl td[data-label]::before {
+    content: attr(data-label); font-weight: 700; color: #999;
+    text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;
+  }
+
+  /* P5 — slide-out near full screen + stack its cards */
+  #tms-slideout { width: 100% !important; max-width: 100% !important; }
+  #tms-slideout .vcards { grid-template-columns: 1fr !important; }
+}
 </style>
 </head>
 <body>
@@ -165,13 +201,13 @@ function renderRows(rows) {
     tr.onclick = function(){ selectLoad(l.id); };
     var mcls = (Number(l.margin)||0) >= 0 ? 'pos' : 'neg';
     tr.innerHTML =
-      '<td><div class="ld-num">' + esc(l.load_number) + '</div></td>' +
-      '<td><span class="' + chipClass(l.status) + '">' + esc(l.status) + '</span></td>' +
-      '<td>' + esc(l.customer_name) + '</td>' +
-      '<td>' + esc(l.lane) + '</td>' +
-      '<td>' + esc(l.carrier_name || '—') + '</td>' +
-      '<td style="text-align:right">' + money(l.invoice_amount) + '</td>' +
-      '<td style="text-align:right" class="' + mcls + '">' + money(l.margin) + '</td>';
+      '<td data-label="Load"><div class="ld-num">' + esc(l.load_number) + '</div></td>' +
+      '<td data-label="Status"><span class="' + chipClass(l.status) + '">' + esc(l.status) + '</span></td>' +
+      '<td data-label="Customer">' + esc(l.customer_name) + '</td>' +
+      '<td data-label="Lane">' + esc(l.lane) + '</td>' +
+      '<td data-label="Carrier">' + esc(l.carrier_name || '—') + '</td>' +
+      '<td style="text-align:right" data-label="Invoice">' + money(l.invoice_amount) + '</td>' +
+      '<td style="text-align:right" class="' + mcls + '" data-label="Margin">' + money(l.margin) + '</td>';
     body.appendChild(tr);
   });
 }

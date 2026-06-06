@@ -70,3 +70,16 @@ test('clicking an upcoming chip posts status and re-renders; Submitted is inert'
   // Submitted has no data-status -> not clickable
   assert.equal(w.document.querySelector('#v-stepper .chip[data-status="Submitted"]'), null);
 });
+
+test('Edit flips to edit mode; Submitted load shows funding link, no Edit', () => {
+  const w = boot('77');
+  w.renderView({ ...LOAD, status: 'In Transit' });
+  w.document.getElementById('v-edit').click();
+  assert.ok(w.document.getElementById('edit-mode'));
+  assert.ok(!w.document.getElementById('edit-mode').classList.contains('hidden'));
+
+  const w2 = boot('77');
+  w2.renderView({ ...LOAD, status: 'Submitted', funding_portal_link: 'https://brokerhub.operfi.com/#Page:Submission_History_NEW' });
+  assert.equal(w2.document.getElementById('v-edit'), null);                 // no edit when submitted
+  assert.ok(w2.document.getElementById('v-actions').innerHTML.includes('Submission_History_NEW'));
+});

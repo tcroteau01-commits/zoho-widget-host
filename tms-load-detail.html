@@ -514,8 +514,24 @@ function changeStatus(load, status) {
   }).catch(function(){ showToast('Status update failed'); });
 }
 
-// Stub replaced in Task 7
-function renderViewActions(load){ var el=document.getElementById('v-actions'); if(el) el.textContent=''; }
+function renderViewActions(load) {
+  var el = document.getElementById('v-actions');
+  if (!el) return;
+  if (load.status === 'Submitted') {
+    var link = load.funding_portal_link || '';
+    el.innerHTML = link
+      ? '<a class="vbtn light" href="' + esc(link) + '" target="_blank">Open funding record ↗</a>'
+      : '<span class="muted" style="color:#aeb8cc">Submitted</span>';
+    return;
+  }
+  el.innerHTML =
+    '<button class="vbtn light" id="v-edit">✎ Edit load</button>'
+    + '<button class="vbtn dark" id="v-docs">📄 Documents</button>'
+    + '<button class="vbtn dark" id="v-submit">Submit for Factoring</button>';
+  document.getElementById('v-edit').addEventListener('click', function(){ setMode('edit'); window.scrollTo(0,0); });
+  document.getElementById('v-docs').addEventListener('click', function(){ setMode('edit'); var c=document.getElementById('docs-card'); if(c) c.scrollIntoView(); });
+  document.getElementById('v-submit').addEventListener('click', function(){ setMode('edit'); var p=document.getElementById('submit-panel'); if(p) p.scrollIntoView(); });
+}
 
 function loadExisting() {
   if (!loadId || !brokerEmail) return Promise.resolve(null);

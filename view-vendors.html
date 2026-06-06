@@ -178,6 +178,37 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .panel-footer .actions { display: flex; gap: 8px; }
 .kbd { display: inline-block; background: #f0efe9; border: 1px solid #e0ddd2; border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10px; font-weight: 700; color: #555; margin: 0 2px; }
 .kbd-hints { font-size: 11px; color: #888; }
+
+/* ===== Mobile (<=640px): stacked labeled cards + panel full screen ===== */
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .widget { padding: 14px 12px 40px; max-width: 100%; }
+  .widget-header { flex-direction: column; align-items: stretch; gap: 12px; }
+  .header-actions { flex-wrap: wrap; }
+  .header-actions .btn { flex: 1 1 auto; }
+
+  /* P2 — stack KPIs + toolbar */
+  .kpi-row { grid-template-columns: 1fr !important; gap: 8px; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .search { min-width: 0; width: 100%; }
+
+  /* P3-equivalent — grid row list becomes single-column labeled cards */
+  .row { grid-template-columns: 1fr !important; gap: 8px; }
+  .row .cell-chev { display: none; }
+  .cell-val { white-space: normal; }
+  .row-action { width: 100%; }
+
+  /* P5 — slide-in detail panel near full screen */
+  .panel { width: 100% !important; max-width: 100% !important; }
+  .field-grid { grid-template-columns: 1fr !important; }
+  .panel-footer { flex-direction: column; align-items: stretch; gap: 8px; }
+  .panel-footer .actions { flex-wrap: wrap; }
+  .panel-footer .actions .btn { flex: 1 1 auto; }
+
+  /* P6 — tap targets + no iOS zoom */
+  .btn, .chip, .row-action { min-height: 44px; }
+  input, select, textarea, .search input { font-size: 16px; }
+}
 </style>
 </head>
 <body>

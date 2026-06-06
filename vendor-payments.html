@@ -70,6 +70,44 @@
   .dp-label { color: var(--of-gray-500); }
   .dp-value { color: var(--of-charcoal); font-weight: 600; text-align: right; }
   .dp-value .override { color: var(--of-orange); }
+
+  /* ===== Mobile (<=640px): card reflow + stacking ===== */
+  @media (max-width: 640px) {
+    html, body { overflow-x: hidden; }
+    .page { padding: 14px 12px 48px; max-width: 100%; }
+    .header { flex-direction: column; align-items: flex-start; gap: 10px; }
+
+    /* P2 — stack KPIs + toolbar */
+    .kpis { grid-template-columns: 1fr !important; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar .search { max-width: none; width: 100%; }
+
+    /* P5 — detail panel near full screen */
+    .detail-panel { width: 100% !important; max-width: 100% !important; }
+
+    /* P6 — tap targets + no iOS zoom */
+    .tab, .btn-pdf, .detail-close { min-height: 44px; }
+    input, select, textarea, .search { font-size: 16px; }
+
+    /* P3 — vp tables reflow to cards */
+    .vp-table thead { display: none; }
+    .vp-table, .vp-table tbody, .vp-table tr, .vp-table td { display: block; width: 100%; }
+    .vp-table { border-radius: 0; border: none; }
+    .vp-table tbody tr {
+      border: 1px solid #e6e3da; border-radius: 10px; background: #fff;
+      padding: 8px 12px; margin: 0 0 10px;
+    }
+    .vp-table td {
+      display: flex; justify-content: space-between; gap: 12px;
+      text-align: right; padding: 5px 0; border: none;
+    }
+    .vp-table td.num { text-align: right; }
+    .vp-table td[data-label]::before {
+      content: attr(data-label); font-weight: 700; color: var(--of-gray-500);
+      text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: 0.4px;
+    }
+    .vp-table td.empty-row { text-align: center; }
+  }
 </style>
 </head>
 <body>
@@ -230,14 +268,14 @@
       var statusClass = (r['Payment Status'] === 'Paid') ? 'paid' : 'pending';
       return '' +
         '<tr data-id="' + escapeHtml(r['_id'] || '') + '">' +
-        '<td>' + escapeHtml(r['Load #'] || '') + '</td>' +
-        '<td>' + escapeHtml(r['Debtor'] || '') + '</td>' +
-        '<td>' + vendor + '</td>' +
-        '<td class="num">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
-        '<td>' + escapeHtml(r['Vendor Due'] || '') + '</td>' +
-        '<td class="num">' + age + '</td>' +
-        '<td>' + escapeHtml(r['Vendor Pmt Terms'] || '-') + '</td>' +
-        '<td><span class="pill ' + statusClass + '">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
+        '<td data-label="Load #">' + escapeHtml(r['Load #'] || '') + '</td>' +
+        '<td data-label="Debtor">' + escapeHtml(r['Debtor'] || '') + '</td>' +
+        '<td data-label="Vendor">' + vendor + '</td>' +
+        '<td class="num" data-label="Amount">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
+        '<td data-label="Due">' + escapeHtml(r['Vendor Due'] || '') + '</td>' +
+        '<td class="num" data-label="AP Age">' + age + '</td>' +
+        '<td data-label="Terms">' + escapeHtml(r['Vendor Pmt Terms'] || '-') + '</td>' +
+        '<td data-label="Status"><span class="pill ' + statusClass + '">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
         '</tr>';
     }).join('');
     var table = '' +
@@ -466,13 +504,13 @@
         '<span class="pending-vendor">' + escapeHtml(r['USDOT'] || '') + ' <em>(pending)</em></span>';
       return '' +
         '<tr data-id="' + escapeHtml(r['_id'] || '') + '">' +
-        '<td>' + escapeHtml(r['Load #'] || '') + '</td>' +
-        '<td>' + escapeHtml(r['Debtor'] || '') + '</td>' +
-        '<td>' + vendor + '</td>' +
-        '<td class="num">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
-        '<td>' + escapeHtml(r['Paid Date'] || '') + '</td>' +
-        '<td>' + escapeHtml(r['Vendor Pmt Terms'] || '-') + '</td>' +
-        '<td><span class="pill paid">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
+        '<td data-label="Load #">' + escapeHtml(r['Load #'] || '') + '</td>' +
+        '<td data-label="Debtor">' + escapeHtml(r['Debtor'] || '') + '</td>' +
+        '<td data-label="Vendor">' + vendor + '</td>' +
+        '<td class="num" data-label="Amount">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
+        '<td data-label="Paid Date">' + escapeHtml(r['Paid Date'] || '') + '</td>' +
+        '<td data-label="Terms">' + escapeHtml(r['Vendor Pmt Terms'] || '-') + '</td>' +
+        '<td data-label="Status"><span class="pill paid">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
         '</tr>';
     }).join('');
     var table = '' +

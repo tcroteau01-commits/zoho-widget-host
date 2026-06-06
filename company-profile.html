@@ -728,26 +728,21 @@ function emailRowHtml(purpose, addr, note) {
 
 // ── Data load: Authorized Users ───────────────────────────────────────────
 function loadUsers() {
-  // SDK respects the report's in-app row filter (Account scope) when called from
-  // the broker's session, so we get scoped data automatically. Up to 200 records;
-  // brokers typically have <30.
-  ZOHO.CREATOR.DATA.getRecords({
-    report_name: 'Authorized_Users',
-    page: 1,
-    pageSize: 200
-  }).then(function(res) {
-    var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
-    console.log('[CompanyProfile] users:', data.length);
-    allUsers = data.slice().sort(function(a, b) {
-      return parseDate(b.Added_Time) - parseDate(a.Added_Time);
+  fetch(BROKER_API_BASE + '/broker-users?email=' + encodeURIComponent(brokerEmail))
+    .then(function(res) { return res.json(); })
+    .then(function(res) {
+      var data = (res && res.users) ? res.users : [];
+      console.log('[CompanyProfile] users:', data.length);
+      allUsers = data.slice().sort(function(a, b) {
+        return parseDate(b.Added_Time) - parseDate(a.Added_Time);
+      });
+      applyUserFilter();
+    }).catch(function(err) {
+      console.error('[CompanyProfile] /broker-users failed', err);
+      document.getElementById('users-body').innerHTML =
+        '<div class="state"><div class="state-title">Could not load users</div>' +
+        '<div class="state-msg">Open DevTools console (F12) for details.</div></div>';
     });
-    applyUserFilter();
-  }).catch(function(err) {
-    console.error('[CompanyProfile] getRecords(Authorized_Users) failed', err);
-    document.getElementById('users-body').innerHTML =
-      '<div class="state"><div class="state-title">Could not load users</div>' +
-      '<div class="state-msg">Open DevTools console (F12) for details.</div></div>';
-  });
 }
 
 function applyUserFilter() {

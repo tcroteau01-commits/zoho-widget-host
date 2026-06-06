@@ -28,3 +28,12 @@ test('grid/form widgets have a 640px breakpoint', () => {
     assert.ok(/@media[^{]*max-width:\s*640px/.test(html), w + ' missing @media max-width:640px');
   });
 });
+
+test('public widgets + admin bar have mobile handling', () => {
+  ['tms-carrier-upload','resources'].forEach(function (w) {
+    const html = fs.readFileSync(new URL('../' + w + '.html', import.meta.url), 'utf8');
+    assert.ok(/@media[^{]*max-width:\s*640px/.test(html), w + ' missing @media max-width:640px');
+  });
+  const js = fs.readFileSync(new URL('../operfi-impersonate.js', import.meta.url), 'utf8');
+  assert.ok(/@media[^{]*max-width:\s*640px/.test(js), 'operfi-impersonate.js admin bar missing 640px handling');
+});

@@ -28,6 +28,17 @@
   function renderAdminBar(info) {
     if (!info || !info.is_admin) return;
     if (document.getElementById('operfi-admin-bar')) return;
+    if (!document.getElementById('operfi-imp-style')) {
+      var st = document.createElement('style');
+      st.id = 'operfi-imp-style';
+      st.textContent =
+        '@media (max-width:640px){' +
+        '#operfi-admin-bar{flex-wrap:wrap;gap:8px;padding:8px 10px}' +
+        '#operfi-imp-search{flex:1 1 100%;min-width:0}' +
+        '#operfi-imp-exit{margin-left:0}' +
+        '#operfi-imp-list{left:10px;right:10px;width:auto}}';
+      document.head.appendChild(st);
+    }
     var cur = target();
     var clients = info.clients || [];
     var bar = document.createElement('div');

@@ -47,6 +47,19 @@
   .chart-card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 16px; cursor: pointer; }
   .empty, .loading, .error { padding: 24px; text-align: center; color: var(--of-gray-500); }
   .version-stamp { text-align: right; font-size: 10px; color: #b6b09a; padding: 8px 4px 0; }
+
+  @media (max-width: 640px) {
+    html, body { overflow-x: hidden; }
+    .container { padding: 12px; box-sizing: border-box; max-width: 100%; }
+    .header-strip { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .header-strip .meta { text-align: left; }
+    .quick-actions, .watch, .kpi-strip, .key-tasks { grid-template-columns: 1fr !important; }
+    .insights-row { grid-template-columns: 1fr !important; }
+    .qa { min-height: 44px; display: flex; align-items: center; justify-content: center; }
+    .watch-card, .task-card, .chart-card { min-height: 44px; }
+    button, .btn { min-height: 44px; }
+    input, select, textarea { font-size: 16px; }
+  }
 </style>
 </head>
 <body>

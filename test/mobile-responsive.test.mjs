@@ -18,3 +18,13 @@ test('heavy-table widgets expose row labels for card reflow (data-label or label
     assert.ok(/data-label=|class="[^"]*label/.test(html), w + ' has no data-label/label hooks for card reflow');
   });
 });
+
+const GRIDFORM = ['dashboard','carrier-profile','carrier-onboarding','company-profile',
+  'credit-check','wallet','noa-management','tms-load-detail'];
+
+test('grid/form widgets have a 640px breakpoint', () => {
+  GRIDFORM.forEach(function (w) {
+    const html = fs.readFileSync(new URL('../' + w + '.html', import.meta.url), 'utf8');
+    assert.ok(/@media[^{]*max-width:\s*640px/.test(html), w + ' missing @media max-width:640px');
+  });
+});

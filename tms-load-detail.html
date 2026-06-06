@@ -355,7 +355,11 @@ function saveLoad() {
     .then(function(r){ return r.json(); })
     .then(function(p){
       if (btn) { btn.disabled = false; btn.textContent = 'Save Load'; }
-      if (p && p.ok) { loadId = p.id; showOk('Saved.'); refreshDocCard(); }
+      if (p && p.ok) {
+        loadId = (p && p.id) || loadId;
+        showOk('Saved.'); refreshDocCard();
+        loadExisting().then(function(load){ if (load) { hydrate(load); } });
+      }
       else showError((p && p.error) || 'Save failed.');
     })
     .catch(function(){ if (btn) { btn.disabled = false; btn.textContent = 'Save Load'; } showError('Network error saving load.'); });
@@ -424,6 +428,8 @@ function hydrate(load) {
   refreshDocCard();
   window._currentLoad = load;
   renderSubmitPanel(load, window._loadedDocs || []);
+  renderView(load);
+  setMode('view');
 }
 
 function showLoading(on) {
@@ -580,6 +586,7 @@ function boot() {
 window.addEventListener('load', function(){
   var t = _acquireTarget();
   loadId = t.load_id;
+  if (!loadId) setMode('edit');
   if (loadId) { document.getElementById('page-title').textContent = 'Edit Load'; showLoading(true); }
   document.getElementById('f-invoice_amount').addEventListener('input', recomputeMargin);
   document.getElementById('f-carrier_pay').addEventListener('input', recomputeMargin);

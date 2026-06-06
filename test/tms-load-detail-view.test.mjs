@@ -9,6 +9,7 @@ function boot(loadId) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
   const w = dom.window;
   w.loadId = loadId || '';
+  w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
   return w;
 }
 
@@ -82,4 +83,16 @@ test('Edit flips to edit mode; Submitted load shows funding link, no Edit', () =
   w2.renderView({ ...LOAD, status: 'Submitted', funding_portal_link: 'https://brokerhub.operfi.com/#Page:Submission_History_NEW' });
   assert.equal(w2.document.getElementById('v-edit'), null);                 // no edit when submitted
   assert.ok(w2.document.getElementById('v-actions').innerHTML.includes('Submission_History_NEW'));
+});
+
+test('existing load defaults to view mode after hydrate; new load stays edit', () => {
+  const w = boot('77');
+  w.brokerEmail = 'b@op.com';
+  w.hydrate(LOAD);
+  assert.ok(!w.document.getElementById('view-mode').classList.contains('hidden'));
+  assert.ok(w.document.getElementById('edit-mode').classList.contains('hidden'));
+
+  const w2 = boot('');           // new booking, no loadId
+  assert.ok(w2.document.getElementById('view-mode').classList.contains('hidden')); // view hidden
+  assert.ok(!w2.document.getElementById('edit-mode').classList.contains('hidden')); // edit shown
 });

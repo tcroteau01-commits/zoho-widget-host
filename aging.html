@@ -411,6 +411,49 @@
     color: var(--of-charcoal); border-bottom-color: var(--of-orange);
   }
   .tab-strip button:hover:not(.active) { color: var(--of-gray-700); }
+
+  /* ===== Mobile (<=640px): card reflow + stacking ===== */
+  @media (max-width: 640px) {
+    html, body { overflow-x: hidden; }
+    body { padding: 14px 12px; }
+
+    /* P2 — stack KPI grid, filter bar, slide-out stat grids */
+    .kpi-grid { grid-template-columns: 1fr !important; }
+    .filter-bar { flex-direction: column; align-items: stretch; }
+    .filter-bar .search-input { max-width: none; width: 100%; }
+    .export-wrap { margin-left: 0; }
+    .dp-stats { grid-template-columns: repeat(2, 1fr) !important; }
+    .lp-field-grid { grid-template-columns: 1fr !important; }
+
+    /* P5 — slide-out near full screen */
+    .detail-panel { width: 100% !important; }
+
+    /* P6 — tap targets + no iOS zoom */
+    .seg-btn, .btn-export, .tab-strip button, .view-toggle button,
+    .lp-btn-primary, .lp-back-btn, .dp-close { min-height: 44px; }
+    input, select, textarea { font-size: 16px; }
+
+    /* P3 — main aging table reflows to cards */
+    table.aging thead { display: none; }
+    table.aging, table.aging tbody, table.aging tr, table.aging td { display: block; width: 100%; }
+    table.aging tr.customer-row, table.aging tr.totals {
+      border: 1px solid var(--of-gray-200); border-radius: 10px;
+      background: #fff; padding: 8px 12px; margin: 0 0 10px;
+    }
+    table.aging tr.totals { border-top: 2px solid var(--of-charcoal); }
+    table.aging td {
+      display: flex; justify-content: space-between; gap: 12px;
+      text-align: right; padding: 5px 0; border: none;
+    }
+    table.aging td::before {
+      content: attr(data-label); font-weight: 600; color: var(--of-gray-500);
+      text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: 0.3px;
+    }
+    table.aging td.first { font-size: 14px; }
+
+    /* P4 — secondary receipts/detail tables (many columns, live in panel) scroll */
+    table.detail, table.receipts { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+  }
 </style>
 </head>
 <body>
@@ -1119,11 +1162,11 @@
         var active = state.selectedCustomerId != null && String(state.selectedCustomerId) === String(cid);
         return '<tr class="customer-row' + (hot ? ' hot' : '') + (active ? ' active' : '') +
                '" data-customer-id="' + esc(cid) + '">' +
-          '<td class="first">' + esc(c.name) + '</td>' +
-          cell(c.buyLimit, true) +
-          cell(b.b0_30) + cell(b.b31_45) + cell(b.b46_60) + cell(b.b61_90) + cell(b.b90_plus) +
-          '<td class="total">' + fmtMoney(b.total) + '</td>' +
-          '<td>' + (c.concentrationPct != null ? c.concentrationPct.toFixed(1) : '0.0') + '%</td>' +
+          '<td class="first" data-label="Customer">' + esc(c.name) + '</td>' +
+          cell(c.buyLimit, true, 'Buy Limit') +
+          cell(b.b0_30, false, '0-30') + cell(b.b31_45, false, '31-45') + cell(b.b46_60, false, '46-60') + cell(b.b61_90, false, '61-90') + cell(b.b90_plus, false, '90+') +
+          '<td class="total" data-label="Total">' + fmtMoney(b.total) + '</td>' +
+          '<td data-label="%">' + (c.concentrationPct != null ? c.concentrationPct.toFixed(1) : '0.0') + '%</td>' +
         '</tr>';
       }).join('');
 
@@ -1144,9 +1187,10 @@
       return '<tbody>' + rows + empty + totalsRow + '</tbody>';
     }
 
-    function cell(v, dim) {
-      if (!v) return '<td class="dim">-</td>';
-      return '<td' + (dim ? ' class="dim"' : '') + '>' + fmtMoney(v) + '</td>';
+    function cell(v, dim, label) {
+      var lbl = label ? ' data-label="' + esc(label) + '"' : '';
+      if (!v) return '<td class="dim"' + lbl + '>-</td>';
+      return '<td' + (dim ? ' class="dim"' : '') + lbl + '>' + fmtMoney(v) + '</td>';
     }
 
     // ----- Recent Receipts section (customer detail panel) -----

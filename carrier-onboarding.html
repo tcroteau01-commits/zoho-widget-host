@@ -663,25 +663,15 @@ function navigateParent(hash) {
 
 // ── Broker self-lookup (for Contact_Name on the form) ─────────────────────
 function loadBrokerContact() {
-  // Find the broker's own Contact ID by matching loginUser email against
-  // Authorized_Users. The form's Contact_Name is a Contacts picklist.
-  ZOHO.CREATOR.DATA.getRecords({
-    report_name: 'Authorized_Users',
-    page: 1, pageSize: 200
-  }).then(function(res) {
-    var data = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
-    var me = data.find(function(c) {
-      return (c.Email || '').toLowerCase() === brokerEmail.toLowerCase();
+  fetch(BROKER_API_BASE + '/broker-users?email=' + encodeURIComponent(brokerEmail))
+    .then(function(res) { return res.json(); })
+    .then(function(res) {
+      brokerContactId = (res && res.self_contact_id) || '';
+      if (brokerContactId) console.log('[CarrierOnboarding] Broker Contact ID:', brokerContactId);
+      else console.warn('[CarrierOnboarding] No self_contact_id for', brokerEmail);
+    }).catch(function(err) {
+      console.error('[CarrierOnboarding] /broker-users fetch failed', err);
     });
-    if (me) {
-      brokerContactId = me.ID;
-      console.log('[CarrierOnboarding] Broker Contact ID:', brokerContactId);
-    } else {
-      console.warn('[CarrierOnboarding] Could not find broker contact for', brokerEmail);
-    }
-  }).catch(function(err) {
-    console.error('[CarrierOnboarding] Authorized_Users fetch failed', err);
-  });
 }
 
 // ── Lookup ────────────────────────────────────────────────────────────────

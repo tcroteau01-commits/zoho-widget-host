@@ -349,6 +349,19 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .modal { margin: 0; max-width: 100%; min-height: 100vh; border-radius: 0; }
   .history-table th, .history-table td { padding: 10px 14px; }
 }
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { max-width: 100%; box-sizing: border-box; }
+  .lookup-row, .send-grid, .lookup-result { grid-template-columns: 1fr !important; }
+  .result-actions { width: 100%; flex-direction: column; }
+  .result-actions .btn { width: 100%; }
+  .btn { min-height: 44px; justify-content: center; }
+  .select, .input, input, select, textarea { font-size: 16px; width: 100%; box-sizing: border-box; }
+  /* Add-carrier modal full-screen + footer buttons stack full-width */
+  .modal { margin: 0; max-width: 100%; width: 100%; min-height: 100vh; border-radius: 0; }
+  .modal-foot { flex-direction: column; }
+  .modal-foot .btn { width: 100%; }
+}
 </style>
 </head>
 <body>

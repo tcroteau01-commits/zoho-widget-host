@@ -24,6 +24,15 @@ select, input[type=file] { width: 100%; border: 1px solid #d8d8d8; border-radius
 .status { font-size: 13px; font-weight: 600; margin-top: 10px; }
 .status.ok { color: #2e7d32; } .status.err { color: #c62828; }
 .uploaded { font-size: 12px; color: #2e7d32; padding: 5px 0; }
+
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { width: 100%; max-width: 100%; padding: 16px 12px 56px; }
+  .card { width: 100%; max-width: 100%; padding: 16px 14px; }
+  select, input[type=file] { width: 100%; font-size: 16px; padding: 12px; min-height: 44px; }
+  .btn { width: 100%; min-height: 44px; font-size: 16px; }
+  #uploaded-list { width: 100%; }
+}
 </style>
 </head>
 <body>

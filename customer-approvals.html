@@ -402,7 +402,16 @@ var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
 var brokerEmail = '';
 var allRecords = [];
 var filteredRecords = [];
+var allClients = false;       // true when backend returns see-all (admin/credit, not impersonating)
 var currentStatus = 'all';
+
+// Flatten Account_Name (the owning broker, distinct from the debtor) — string or lookup object.
+function brokerName(rec){
+  var a = rec && rec.Account_Name;
+  if (a && typeof a === 'object') return a.display_value || a.zc_display_value || '';
+  return a || '';
+}
+window.brokerName = brokerName;
 var currentSearch = '';
 var openIndex = -1;
 var currentLoadId = 0;
@@ -548,6 +557,7 @@ function fetchAll(loadId) {
   }).then(function(payload) {
     if (loadId !== currentLoadId) return;
     clearTimeout(loadSafetyTimer);
+    allClients = !!(payload && payload.all_clients);
     var data = payload.records || [];
     console.log('[CustomerApprovals] Got', data.length, 'records in', (Date.now() - pageStart) + 'ms');
     onRecordsLoaded(data);
@@ -724,8 +734,18 @@ function rowHtml(r, idx) {
     actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
   }
 
+  // See-all (admin/credit) prepends a Client column; widen the row grid by one column.
+  var rowStyle = allClients ? ' style="grid-template-columns:1.3fr 1.6fr 1.4fr 0.9fr 1.1fr 1.1fr 28px;"' : '';
+  var clientCell = allClients
+    ? '<div>' +
+        '<div class="cell-label">Client</div>' +
+        '<div class="cell-val">' + esc(brokerName(r) || '—') + '</div>' +
+      '</div>'
+    : '';
+
   return '' +
-    '<div class="row s-' + s.key + '" data-idx="' + idx + '">' +
+    '<div class="row s-' + s.key + '"' + rowStyle + ' data-idx="' + idx + '">' +
+      clientCell +
       '<div>' +
         '<div class="cell-label">Customer</div>' +
         '<div class="cell-val lg">' + esc(r.Customer_Company_Name || '—') + '</div>' +

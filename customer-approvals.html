@@ -271,6 +271,38 @@ html, body {
   white-space: pre-wrap; word-break: break-word;
 }
 
+/* ===== Decision section (see-all / role context only) ===== */
+.panel-section.decision { border-color: #d8d4c4; box-shadow: 0 0 0 2px rgba(232,160,32,0.06); }
+.dec-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.dec-field:last-of-type { margin-bottom: 0; }
+.dec-label { font-size: 11px; color: #888; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.dec-label .req { color: #c62828; margin-left: 3px; }
+.dec-input, .dec-select, .dec-textarea {
+  width: 100%; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 9px 11px; font-size: 13px; font-family: inherit;
+  background: #fafafa; color: #272727; outline: none; transition: all 0.15s;
+}
+.dec-input:focus, .dec-select:focus, .dec-textarea:focus {
+  border-color: #e8a020; background: #fff; box-shadow: 0 0 0 3px rgba(232,160,32,0.12);
+}
+.dec-textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
+.dec-input.required-empty { border-color: #c62828; background: #fdf6f6; }
+.dec-row { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.dec-row .btn { white-space: nowrap; }
+.dec-msg { font-size: 12px; font-weight: 600; flex: 1; }
+.dec-msg.error { color: #a31818; }
+.dec-msg.ok { color: #1f6321; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: #272727; color: #fff; padding: 11px 20px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; z-index: 200; box-shadow: 0 6px 24px rgba(0,0,0,0.22);
+  opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.ok::before { content: '✓ '; }
+
 .docs-list { display: flex; flex-direction: column; gap: 8px; }
 .doc-item {
   display: flex; align-items: center; gap: 12px;
@@ -388,6 +420,7 @@ html, body {
 
 <div class="scrim" id="scrim"></div>
 <aside class="panel" id="panel"></aside>
+<div class="toast" id="toast"></div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=1"></script>
@@ -433,6 +466,29 @@ function statusMeta(rec) {
   var raw = rec.Credit_Decision || '';
   return STATUS_MAP[raw] || { key: 'unknown', label: raw || '—', pill: '' };
 }
+
+// ── Credit decision write (see-all / role context only) ─────────────────────
+// The 8 settable Credit_Decision values (mirrors the backend CREDIT_DECISION_VALUES set).
+var DECISION_VALUES = ['Approved','Awaiting Credit Decision','Pending Credit Application',
+  'Credit App Sent - Awaiting Customer',"Credit App Rec'd - Pending Review",
+  'Credit Boost Requested','Denied','Expired'];
+window.DECISION_VALUES = DECISION_VALUES;
+
+// Posts a decision. Returns {ok:true,...} or {ok:false,error}. Mirrors the server's
+// "Approved requires a positive limit" guard for instant feedback. Reads window.brokerEmail
+// so tests can drive it; falls back to the closure value in production.
+function submitDecision(rec, vals){
+  if (vals.decision === 'Approved' && (!vals.credit_limit || Number(vals.credit_limit) <= 0)) {
+    return Promise.resolve({ ok: false, error: 'Credit limit required for Approved' });
+  }
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  return fetch(BROKER_API_BASE + '/credit-decision', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, submission_id: rec.ID,
+      decision: vals.decision, credit_limit: vals.credit_limit, credit_notes: vals.credit_notes })
+  }).then(function(r){ return r.json(); });
+}
+window.submitDecision = submitDecision;
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
@@ -822,6 +878,42 @@ function renderPanel() {
     footerActionsHtml = '<button class="btn primary" id="p-resubmit">Resubmit</button>';
   }
 
+  // Decision section — see-all / role context only (backend enforces the role regardless).
+  // ADDITIVE + GATED: when allClients is false this is the empty string, so the panel
+  // renders byte-identically to before.
+  var decisionSectionHtml = '';
+  if (allClients) {
+    var curDecision = r.Credit_Decision || '';
+    var isApproved = curDecision === 'Approved';
+    var optsHtml = DECISION_VALUES.map(function(v) {
+      return '<option value="' + esc(v) + '"' + (v === curDecision ? ' selected' : '') + '>' + esc(v) + '</option>';
+    }).join('');
+    var curLimit = parseMoney(r.Credit_Limit);
+    decisionSectionHtml = '' +
+      '<div class="panel-section decision">' +
+        '<div class="panel-section-title">Make a Decision</div>' +
+        '<div class="dec-field">' +
+          '<label class="dec-label" for="dec-decision">Decision</label>' +
+          '<select class="dec-select" id="dec-decision">' + optsHtml + '</select>' +
+        '</div>' +
+        '<div class="dec-field">' +
+          '<label class="dec-label" for="dec-limit">Credit Limit' +
+            '<span class="req" id="dec-limit-req"' + (isApproved ? '' : ' style="display:none;"') + '>*</span>' +
+          '</label>' +
+          '<input type="number" class="dec-input" id="dec-limit" min="0" step="1" ' +
+            'placeholder="0" value="' + (curLimit > 0 ? esc(String(curLimit)) : '') + '">' +
+        '</div>' +
+        '<div class="dec-field">' +
+          '<label class="dec-label" for="dec-notes">Notes</label>' +
+          '<textarea class="dec-textarea" id="dec-notes" placeholder="Optional credit notes">' + esc(r.Credit_Notes || '') + '</textarea>' +
+        '</div>' +
+        '<div class="dec-row">' +
+          '<div class="dec-msg" id="dec-msg"></div>' +
+          '<button class="btn primary" id="dec-save">Save Decision</button>' +
+        '</div>' +
+      '</div>';
+  }
+
   var html = '' +
     '<div class="panel-top">' +
       '<span class="nav-btn' + prevDis + '" id="p-prev" title="Previous (k)">‹</span>' +
@@ -839,6 +931,9 @@ function renderPanel() {
       '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
     '</div>' +
     '<div class="panel-body">' +
+
+      // Make a Decision (see-all / role context only; empty string otherwise)
+      decisionSectionHtml +
 
       // Credit Decision
       '<div class="panel-section">' +
@@ -924,6 +1019,103 @@ function renderPanel() {
   });
   var rs = document.getElementById('p-resubmit');
   if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check_NEW'); });
+
+  wireDecisionSection(r);
+}
+
+// Wire the see-all Decision section: live "required" affordance + Save handler.
+function wireDecisionSection(rec) {
+  var sel = document.getElementById('dec-decision');
+  if (!sel) return;   // section not rendered (allClients false) — nothing to wire
+  var limitInput = document.getElementById('dec-limit');
+  var notes = document.getElementById('dec-notes');
+  var req = document.getElementById('dec-limit-req');
+  var msg = document.getElementById('dec-msg');
+  var saveBtn = document.getElementById('dec-save');
+
+  function syncRequired() {
+    var approved = sel.value === 'Approved';
+    if (req) req.style.display = approved ? '' : 'none';
+    if (!approved) limitInput.classList.remove('required-empty');
+  }
+  sel.addEventListener('change', function() { syncRequired(); setDecMsg(''); });
+
+  function setDecMsg(text, kind) {
+    if (!msg) return;
+    msg.textContent = text || '';
+    msg.className = 'dec-msg' + (kind ? ' ' + kind : '');
+  }
+
+  saveBtn.addEventListener('click', function() {
+    var vals = { decision: sel.value, credit_limit: limitInput.value, credit_notes: notes.value };
+    var approved = vals.decision === 'Approved';
+    var noLimit = !vals.credit_limit || Number(vals.credit_limit) <= 0;
+    if (approved && noLimit) {
+      limitInput.classList.add('required-empty');
+      setDecMsg('Credit limit required for Approved', 'error');
+      limitInput.focus();
+      return;
+    }
+    limitInput.classList.remove('required-empty');
+    saveBtn.disabled = true;
+    var origLabel = saveBtn.textContent;
+    saveBtn.textContent = 'Saving…';
+    setDecMsg('');
+    submitDecision(rec, vals).then(function(resp) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = origLabel;
+      if (resp && resp.ok) {
+        applyDecisionResult(rec, vals);
+        showToast('Decision saved');
+      } else {
+        setDecMsg((resp && resp.error) || 'Could not save decision', 'error');
+      }
+    }).catch(function(err) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = origLabel;
+      console.error('[CustomerApprovals] submitDecision failed', err);
+      setDecMsg('Could not save decision', 'error');
+    });
+  });
+}
+
+// After a successful write: update the record in allRecords, refresh KPIs, chips,
+// re-render the affected row, and re-render the open panel so the pill/limit reflect it.
+function applyDecisionResult(rec, vals) {
+  var target = null;
+  for (var i = 0; i < allRecords.length; i++) {
+    if (allRecords[i] && allRecords[i].ID === rec.ID) { target = allRecords[i]; break; }
+  }
+  if (!target) target = rec;
+  target.Credit_Decision = vals.decision;
+  if (vals.credit_limit !== undefined && vals.credit_limit !== '') {
+    target.Credit_Limit = vals.credit_limit;
+  }
+  if (vals.credit_notes !== undefined) target.Credit_Notes = vals.credit_notes;
+
+  renderKpis();
+  buildChips();
+  applyFilters();   // re-renders the list (rows) against current filters
+
+  // Keep the panel open on the same record; re-render it so the pill/limit update.
+  var newIdx = filteredRecords.indexOf(target);
+  if (newIdx !== -1) {
+    openIndex = newIdx;
+    renderPanel();
+  } else {
+    // Record filtered out by the active status chip — close the panel.
+    closePanel();
+  }
+}
+
+var toastTimer = null;
+function showToast(text) {
+  var t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = text;
+  t.className = 'toast ok show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { t.className = 'toast ok'; }, 2600);
 }
 
 function field(label, val) {

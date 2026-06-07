@@ -9,16 +9,21 @@ function load(file){
   return dom.window;
 }
 
-test('history exposes a broker-name helper that flattens Account_Name', () => {
+test('history brokerName reads Contact.Account_Name (the report\'s broker field)', () => {
   const w = load('history.html');
   assert.equal(typeof w.brokerName, 'function');
-  assert.equal(w.brokerName({ Account_Name: 'Marek LLC' }), 'Marek LLC');
-  assert.equal(w.brokerName({ Account_Name: { display_value: 'Marek LLC' } }), 'Marek LLC');
+  // real shape from All_Funding_Portals: dotted traversal lookup object
+  assert.equal(w.brokerName({ 'Contact.Account_Name': { zc_display_value: 'NXTDAY LOGISTICS LLC', Account_Name: 'NXTDAY LOGISTICS LLC' } }), 'NXTDAY LOGISTICS LLC');
+  assert.equal(w.brokerName({ Account_Name: 'Marek LLC' }), 'Marek LLC');   // direct fallback
   assert.equal(w.brokerName({}), '');
 });
 
-test('customer-approvals exposes the same broker-name helper', () => {
+test('customer-approvals brokerName reads Contact.Account_Name, not the debtor', () => {
   const w = load('customer-approvals.html');
   assert.equal(typeof w.brokerName, 'function');
-  assert.equal(w.brokerName({ Account_Name: { zc_display_value: 'Loyal Brokerage LLC' } }), 'Loyal Brokerage LLC');
+  // real shape from All_Customer_Submissions: broker is Contact.Account_Name, debtor is Customer_Company_Name
+  assert.equal(
+    w.brokerName({ 'Contact.Account_Name': { zc_display_value: 'VETERANS TRANSPORT BROKERAGE LLC' }, Customer_Company_Name: 'ATKORE' }),
+    'VETERANS TRANSPORT BROKERAGE LLC'
+  );
 });

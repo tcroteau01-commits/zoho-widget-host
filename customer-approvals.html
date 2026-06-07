@@ -405,10 +405,11 @@ var filteredRecords = [];
 var allClients = false;       // true when backend returns see-all (admin/credit, not impersonating)
 var currentStatus = 'all';
 
-// Flatten Account_Name (the owning broker, distinct from the debtor) — string or lookup object.
+// The owning broker is the dotted traversal field "Contact.Account_Name" (a lookup object),
+// distinct from the debtor (Customer_Company_Name); fall back to a direct Account_Name.
 function brokerName(rec){
-  var a = rec && rec.Account_Name;
-  if (a && typeof a === 'object') return a.display_value || a.zc_display_value || '';
+  var a = rec && (rec['Contact.Account_Name'] || rec.Account_Name);
+  if (a && typeof a === 'object') return a.zc_display_value || a.display_value || a.Account_Name || '';
   return a || '';
 }
 window.brokerName = brokerName;

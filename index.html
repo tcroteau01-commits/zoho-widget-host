@@ -994,6 +994,10 @@ window.addEventListener('load', function () {
   var rateCon = document.getElementById('rate-con');
   if (rateCon) { rateCon.addEventListener('input', refreshValidity); }
 
+  // Submit button
+  var submitBtn = document.getElementById('submit-btn');
+  if (submitBtn) { submitBtn.addEventListener('click', function () { submitLoad(); }); }
+
   refreshValidity();  // reflect any browser-autofilled fields in the initial submit state
   resolveEmail();
 });
@@ -1014,6 +1018,89 @@ window.loadCredit = loadCredit;
 window.computeMargin = computeMargin;
 window.updateMargin = updateMargin;
 window.onCustomerChange = onCustomerChange;
+
+// ── B5: Submit + upload ──────────────────────────────────────────────────────
+var _submitting = false;
+
+function _collectFields() {
+  function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  var carrierId = v('carrier-select');
+  var carrier = (window._carriers || []).filter(function (c) { return c.vendor_id === carrierId; })[0];
+  var fields = {
+    customer_id: v('customer-select'),
+    customer_reference_number: v('customer-reference'),
+    customer_rate: v('customer-rate'),
+    carrier_id: carrierId,
+    carrier_rate: v('carrier-rate'),
+    carrier_factoring_invoice: v('carrier-factoring-invoice'),
+    load_rate_confirmation_number: v('rate-con')
+  };
+  if (carrier && carrier.payment_terms) fields.payment_terms = carrier.payment_terms;
+  var comments = v('Load_Comments');
+  if (comments) fields.load_comments = comments;
+  return fields;
+}
+
+function _mergedPdfs() {
+  var custFiles = (fileStore['cust_docs'] || []);
+  var carrFiles = (fileStore['carrier_docs'] || []);
+  return Promise.all([
+    custFiles.length ? mergeFilesToPDF(custFiles) : Promise.resolve(null),
+    carrFiles.length ? mergeFilesToPDF(carrFiles) : Promise.resolve(null)
+  ]).then(function (r) { return { customer: r[0], carrier: r[1] }; });
+}
+
+function _uploadDoc(recordId, fieldName, blob, filename) {
+  var fd = new FormData();
+  fd.append('record_id', recordId);
+  fd.append('field_name', fieldName);
+  fd.append('report_name', 'All_Funding_Portals');
+  fd.append('file', blob, filename);
+  return fetch(BROKER_API_BASE + '/upload-doc', { method: 'POST', body: fd })
+    .then(function (r) { return r.ok; }).catch(function () { return false; });
+}
+
+function submitLoad() {
+  if (_submitting) return Promise.resolve();
+  _submitting = true;
+  var statusEl = document.getElementById('submit-status');
+  var btn = document.getElementById('submit-btn');
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Submitting…';
+  var payload = Object.assign({ email: brokerEmail }, _collectFields());
+  return fetch(BROKER_API_BASE + '/funding-submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload) })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok || !res.j || !res.j.record_id) {
+        if (statusEl) statusEl.textContent = 'Submission failed. Your entries are kept — please try again.';
+        if (btn) btn.disabled = false;
+        return;
+      }
+      var recordId = res.j.record_id;
+      return _mergedPdfs().then(function (pdfs) {
+        var ups = [];
+        if (pdfs.customer) ups.push(_uploadDoc(recordId, 'Customer_Documents', pdfs.customer, 'customer_docs.pdf'));
+        if (pdfs.carrier) ups.push(_uploadDoc(recordId, 'Carrier_Documents', pdfs.carrier, 'carrier_docs.pdf'));
+        return Promise.all(ups).then(function (results) {
+          var failed = results.filter(function (ok) { return !ok; }).length;
+          if (statusEl) statusEl.textContent = failed
+            ? 'Load submitted (#' + recordId + '), but a document failed to upload — re-upload or contact OperFi.'
+            : 'Load submitted successfully (#' + recordId + ').';
+        });
+      });
+    })
+    .catch(function () {
+      if (statusEl) statusEl.textContent = 'Submission failed. Your entries are kept — please try again.';
+      if (btn) btn.disabled = false;
+    })
+    .then(function () { _submitting = false; });
+}
+window._collectFields = _collectFields;
+window._mergedPdfs = _mergedPdfs;
+window._uploadDoc = _uploadDoc;
+window.submitLoad = submitLoad;
 
 // Test helper: set a field value and fire the appropriate event.
 // For SELECT elements, inserts a temporary option if the value isn't already present

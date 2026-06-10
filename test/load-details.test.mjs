@@ -246,3 +246,64 @@ test('completed step is clickable to go back', () => {
   w.goToStep('carrier');
   assert.strictEqual(w.canGoTo('customer'), true); // back to a completed step always allowed
 });
+
+// ── B5: Submit via /funding-submit + /upload-doc ──────────────────────────────
+
+test('submit posts /funding-submit with the raw field payload then uploads both PDFs', async () => {
+  const seen = [];
+  const dom = makeB2Dom((url, opts) => { seen.push({ url: String(url), opts });
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_500', warnings: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9', customer_reference_number: 'PO-1',
+    customer_rate: '2500', carrier_id: 'v3', carrier_rate: '2100',
+    carrier_factoring_invoice: 'F1', load_rate_confirmation_number: 'RC-7' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x'], {type:'application/pdf'}),
+                                          carrier: new w.Blob(['y'], {type:'application/pdf'}) });
+  await w.submitLoad();
+  const sub = seen.find(s => s.url.includes('/funding-submit'));
+  const body = JSON.parse(sub.opts.body);
+  assert.strictEqual(body.customer_id, 'c9');
+  assert.strictEqual(body.email, 'b@x.com');
+  assert.strictEqual(seen.filter(s => s.url.includes('/upload-doc')).length, 2);
+});
+
+test('submit failure keeps the form and surfaces an error (no record id)', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({ error: 'x' }) }));
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: null, carrier: null });
+  await w.submitLoad();
+  assert.match(w.document.getElementById('submit-status').textContent, /error|failed|try again/i);
+});
+
+test('record created but an upload fails surfaces a non-lost-work message with the record id', async () => {
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_777', warnings: [] }) });
+    return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) }); // upload fails
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: null });
+  await w.submitLoad();
+  const t = w.document.getElementById('submit-status').textContent;
+  assert.match(t, /rec_777/);
+  assert.match(t, /upload/i);
+});
+
+test('submit is blocked from firing twice concurrently', async () => {
+  let submitCalls = 0;
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit')) { submitCalls++;
+      return new Promise(res => setTimeout(() => res({ ok: true, json: () => Promise.resolve({ ok:true, record_id:'r1', warnings:[] }) }), 5)); }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: null, carrier: null });
+  await Promise.all([w.submitLoad(), w.submitLoad()]);
+  assert.strictEqual(submitCalls, 1);
+});

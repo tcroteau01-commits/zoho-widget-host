@@ -509,9 +509,90 @@ function resolveEmail() {
   }
 }
 
-// Minimal onReady for B1. Later tasks flesh this out to call the data loaders
-// (/tms-customers, /tms-carriers), credit (/funding-credit) and submit wiring.
-function onReady() { /* B1: no-op — data loading lands in a later task */ }
+function loadCustomers() {
+  var err = document.getElementById('customer-error');
+  if (err) err.textContent = '';
+  return fetch(BROKER_API_BASE + '/tms-customers?email=' + encodeURIComponent(brokerEmail))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (data) {
+      var approved = (data.customers || []).filter(function (c) {
+        return String(c.credit_decision || '').toLowerCase() === 'approved';
+      });
+      var sel = document.getElementById('customer-select');
+      sel.innerHTML = '<option value="">Select a customer…</option>' +
+        approved.map(function (c) {
+          return '<option value="' + c.customer_id + '">' + (c.customer_name || '') + '</option>';
+        }).join('');
+    })
+    .catch(function () {
+      var e = document.getElementById('customer-error');
+      if (e) e.textContent = 'Unable to load customers. Please retry.';
+    });
+}
+
+function loadCarriers() {
+  var err = document.getElementById('carrier-error');
+  if (err) err.textContent = '';
+  return fetch(BROKER_API_BASE + '/tms-carriers?email=' + encodeURIComponent(brokerEmail))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (data) {
+      window._carriers = data.carriers || [];
+      var sel = document.getElementById('carrier-select');
+      sel.innerHTML = '<option value="">Select a carrier…</option>' +
+        window._carriers.map(function (c) {
+          return '<option value="' + c.vendor_id + '">' + (c.carrier_name || '') + '</option>';
+        }).join('');
+      // Attach the change listener after the select is populated
+      // (safe to call multiple times; browsers ignore duplicate identical listeners
+      //  added via addEventListener for named functions)
+      sel.addEventListener('change', onCarrierChange);
+    })
+    .catch(function () {
+      var e = document.getElementById('carrier-error');
+      if (e) e.textContent = 'Unable to load carriers. Please retry.';
+    });
+}
+
+function onCarrierChange() {
+  var sel = document.getElementById('carrier-select');
+  var vid = sel ? sel.value : '';
+  var carriers = window._carriers || [];
+  var found = carriers.filter(function (c) { return c.vendor_id === vid; })[0] || null;
+  var terms = (found && found.payment_terms) ? found.payment_terms : '';
+
+  var readout = document.getElementById('terms-readout');
+  var readoutVal = document.getElementById('terms-readout-value');
+  var banner = document.getElementById('terms-banner');
+  var bannerVal = document.getElementById('terms-value');
+
+  if (readoutVal) readoutVal.textContent = terms || '—';
+  if (bannerVal) bannerVal.textContent = terms || '—';
+
+  if (readout) {
+    if (terms) { readout.classList.add('show'); } else { readout.classList.remove('show'); }
+  }
+  if (banner) {
+    if (terms) { banner.style.display = ''; } else { banner.style.display = 'none'; }
+  }
+
+  // Update summary rail (optional but cheap)
+  var sumCarrier = document.getElementById('sum-carrier');
+  if (sumCarrier) {
+    if (found && found.carrier_name) {
+      sumCarrier.textContent = found.carrier_name;
+      sumCarrier.classList.remove('empty');
+    } else {
+      sumCarrier.textContent = '—';
+      sumCarrier.classList.add('empty');
+    }
+  }
+}
+
+function onReady() {
+  if (!brokerEmail) return;
+  loadCustomers();
+  loadCarriers();
+}
 
 // ── Stepper navigation (visual shell only; gating lands in a later task) ─────
 var STEPS = ['customer', 'carrier', 'review'];
@@ -721,13 +802,18 @@ function blobToDataUrl(blob) {
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', function () {
-  // Stepper + nav button wiring (visual shell only for B1)
+  // Stepper + nav button wiring
   document.querySelectorAll('[data-goto]').forEach(function (b) {
     b.addEventListener('click', function () { gotoStep(b.getAttribute('data-goto')); });
   });
   document.querySelectorAll('.hstep[data-step]').forEach(function (hs) {
     hs.addEventListener('click', function () { gotoStep(hs.getAttribute('data-step')); });
   });
+
+  // Carrier change handler — shows payment terms from already-loaded _carriers
+  var carrierSel = document.getElementById('carrier-select');
+  if (carrierSel) { carrierSel.addEventListener('change', onCarrierChange); }
+
   resolveEmail();
 });
 
@@ -736,6 +822,9 @@ window.gotoStep = gotoStep;
 window.resolveEmail = resolveEmail;
 window.mergeFilesToPDF = mergeFilesToPDF;
 window.onFileChange = onFileChange;
+window.loadCustomers = loadCustomers;
+window.loadCarriers = loadCarriers;
+window.onCarrierChange = onCarrierChange;
 </script>
 </body>
 </html>

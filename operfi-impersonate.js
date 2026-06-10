@@ -51,7 +51,7 @@
       + '<span>Acting as:</span>'
       + '<input id="operfi-imp-search" placeholder="' + (curName ? esc(curName) : 'All clients') + '" '
       + 'style="flex:0 0 260px;padding:6px 10px;border-radius:6px;border:0;font:inherit" autocomplete="off">'
-      + (cur ? '<button id="operfi-imp-exit" style="margin-left:auto;background:#33425f;color:#fff;border:0;padding:6px 12px;border-radius:6px;cursor:pointer">Exit</button>' : '')
+      + (cur ? '<button id="operfi-imp-exit" style="background:#33425f;color:#fff;border:0;padding:6px 12px;border-radius:6px;cursor:pointer">Exit Client View</button>' : '')
       + '<div id="operfi-imp-list" style="display:none;position:absolute;top:42px;left:120px;width:320px;max-height:300px;overflow:auto;background:#fff;color:#101828;border-radius:8px;box-shadow:0 8px 24px rgba(16,24,40,.25)"></div>';
     document.body.appendChild(bar);
     document.body.style.marginTop = '44px';

@@ -147,3 +147,47 @@ test('customer names with & are HTML-escaped (no markup breakage)', async () => 
   assert.ok(opt, 'option present');
   assert.strictEqual(opt.textContent, 'J&B Trucking');
 });
+
+// ── B3: /funding-credit banner + live margin badge ────────────────────────────
+
+test('selecting a customer fetches /funding-credit and shows remaining credit', async () => {
+  const dom = makeB2Dom((url) => Promise.resolve({ ok: true, json: () => Promise.resolve(
+    String(url).includes('/funding-credit')
+      ? { available: true, Remaining_Credit: '5,500.00', Percent_Used: '45.00%' }
+      : {}) }));
+  const w = dom.window;
+  await w.loadCredit('c9');
+  assert.match(w.document.getElementById('credit-banner').textContent, /5,500\.00/);
+});
+
+test('credit unavailable shows a non-blocking message', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ available: false, reason: 'no_fv_id' }) }));
+  const w = dom.window;
+  await w.loadCredit('c9');
+  assert.match(w.document.getElementById('credit-banner').textContent, /unavailable/i);
+});
+
+test('margin badge computes customer minus carrier rate, $ and %', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  const m = w.computeMargin(2500, 2100);
+  assert.strictEqual(m.dollars, 400);
+  assert.strictEqual(m.percent, 16);
+});
+
+test('computeMargin handles zero/blank customer rate without NaN', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  const m = w.computeMargin('', '100');
+  assert.strictEqual(m.dollars, -100);
+  assert.strictEqual(m.percent, 0);
+});
+
+test('empty customer id clears the credit banner and does not fetch', async () => {
+  let calls = 0;
+  const dom = makeB2Dom(() => { calls++; return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); });
+  const w = dom.window;
+  await w.loadCredit('');
+  assert.strictEqual(calls, 0);
+  assert.strictEqual(w.document.getElementById('credit-banner').textContent.trim(), '');
+});

@@ -592,11 +592,102 @@ function onCarrierChange() {
       sumCarrier.classList.add('empty');
     }
   }
+
+  updateMargin();
+}
+
+// ── Credit banner ─────────────────────────────────────────────────────────────
+function loadCredit(customerId) {
+  var banner = document.getElementById('credit-banner');
+  if (!customerId) { if (banner) banner.textContent = ''; return Promise.resolve(); }
+  return fetch(BROKER_API_BASE + '/funding-credit?email=' + encodeURIComponent(brokerEmail) +
+               '&customer_id=' + encodeURIComponent(customerId))
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!banner) return;
+      if (d && d.available) {
+        banner.textContent = 'Credit available: $' + d.Remaining_Credit + ' (' + d.Percent_Used + ' used)';
+        banner.classList.add('show');
+      } else {
+        banner.textContent = 'Credit availability unavailable';
+        banner.classList.remove('show');
+      }
+    })
+    .catch(function () {
+      if (banner) { banner.textContent = 'Credit availability unavailable'; banner.classList.remove('show'); }
+    });
+}
+
+// ── Margin computation ────────────────────────────────────────────────────────
+function computeMargin(custRate, carrRate) {
+  var c = Number(custRate) || 0, k = Number(carrRate) || 0;
+  var dollars = c - k;
+  var percent = c > 0 ? Math.round((dollars / c) * 100) : 0;
+  return { dollars: dollars, percent: percent };
+}
+
+function updateMargin() {
+  var custRateEl = document.getElementById('customer-rate');
+  var carrRateEl = document.getElementById('carrier-rate');
+  var badge = document.getElementById('margin-badge');
+  var sumMargin = document.getElementById('sum-margin');
+  var sumCustRate = document.getElementById('sum-customer-rate');
+  var sumCarrRate = document.getElementById('sum-carrier-rate');
+
+  var custVal = custRateEl ? custRateEl.value : '';
+  var carrVal = carrRateEl ? carrRateEl.value : '';
+
+  // Update summary rate columns
+  if (sumCustRate) {
+    if (custVal) { sumCustRate.textContent = '$' + Number(custVal).toFixed(2); sumCustRate.classList.remove('empty'); }
+    else { sumCustRate.textContent = '—'; sumCustRate.classList.add('empty'); }
+  }
+  if (sumCarrRate) {
+    if (carrVal) { sumCarrRate.textContent = '$' + Number(carrVal).toFixed(2); sumCarrRate.classList.remove('empty'); }
+    else { sumCarrRate.textContent = '—'; sumCarrRate.classList.add('empty'); }
+  }
+
+  // Only show margin when at least one rate is present
+  if (!custVal && !carrVal) {
+    if (badge) { badge.textContent = ''; badge.className = 'mbadge'; }
+    if (sumMargin) sumMargin.textContent = '—';
+    return;
+  }
+
+  var m = computeMargin(custVal, carrVal);
+  var label = (m.dollars >= 0 ? '+' : '') + '$' + m.dollars.toFixed(2) + ' (' + m.percent + '%)';
+  if (badge) {
+    badge.textContent = label;
+    badge.className = 'mbadge ' + (m.dollars >= 0 ? 'good' : 'bad');
+  }
+  if (sumMargin) sumMargin.textContent = label;
+}
+
+// ── Customer change handler ───────────────────────────────────────────────────
+function onCustomerChange() {
+  var sel = document.getElementById('customer-select');
+  var customerId = sel ? sel.value : '';
+  var customerName = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].textContent : '';
+
+  // Update summary customer label
+  var sumCustomer = document.getElementById('sum-customer');
+  if (sumCustomer) {
+    if (customerId) { sumCustomer.textContent = customerName; sumCustomer.classList.remove('empty'); }
+    else { sumCustomer.textContent = '—'; sumCustomer.classList.add('empty'); }
+  }
+
+  loadCredit(customerId);
+  updateMargin();
 }
 
 function onReady() {
   if (!brokerEmail) return;
-  loadCustomers();
+  loadCustomers().then(function () {
+    var custSel = document.getElementById('customer-select');
+    if (custSel) custSel.addEventListener('change', onCustomerChange);
+    var custRate = document.getElementById('customer-rate');
+    if (custRate) custRate.addEventListener('input', updateMargin);
+  });
   loadCarriers();
 }
 
@@ -820,6 +911,10 @@ window.addEventListener('load', function () {
   var carrierSel = document.getElementById('carrier-select');
   if (carrierSel) { carrierSel.addEventListener('change', onCarrierChange); }
 
+  // Rate input handlers for live margin badge
+  var carrierRateEl = document.getElementById('carrier-rate');
+  if (carrierRateEl) { carrierRateEl.addEventListener('input', updateMargin); }
+
   resolveEmail();
 });
 
@@ -831,6 +926,10 @@ window.onFileChange = onFileChange;
 window.loadCustomers = loadCustomers;
 window.loadCarriers = loadCarriers;
 window.onCarrierChange = onCarrierChange;
+window.loadCredit = loadCredit;
+window.computeMargin = computeMargin;
+window.updateMargin = updateMargin;
+window.onCustomerChange = onCustomerChange;
 </script>
 </body>
 </html>

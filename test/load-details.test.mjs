@@ -131,3 +131,19 @@ test('selecting a carrier shows its payment terms (no extra fetch)', async () =>
   assert.strictEqual(fetchCount, beforeCount, 'no extra fetch on carrier selection');
   assert.match(w.document.getElementById('terms-readout-value').textContent, /Quickpay 2%/);
 });
+
+test('customer names with & are HTML-escaped (no markup breakage)', async () => {
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/tms-customers')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        customers: [{ customer_id: 'c1', customer_name: 'J&B Trucking', credit_decision: 'Approved' }]
+      })});
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ carriers: [] }) });
+  });
+  const w = dom.window;
+  await w.loadCustomers();
+  const opt = w.document.querySelector('#customer-select option[value="c1"]');
+  assert.ok(opt, 'option present');
+  assert.strictEqual(opt.textContent, 'J&B Trucking');
+});

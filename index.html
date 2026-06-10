@@ -509,6 +509,12 @@ function resolveEmail() {
   }
 }
 
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function loadCustomers() {
   var err = document.getElementById('customer-error');
   if (err) err.textContent = '';
@@ -521,7 +527,7 @@ function loadCustomers() {
       var sel = document.getElementById('customer-select');
       sel.innerHTML = '<option value="">Select a customer…</option>' +
         approved.map(function (c) {
-          return '<option value="' + c.customer_id + '">' + (c.customer_name || '') + '</option>';
+          return '<option value="' + esc(c.customer_id) + '">' + esc(c.customer_name || '') + '</option>';
         }).join('');
     })
     .catch(function () {
@@ -540,7 +546,7 @@ function loadCarriers() {
       var sel = document.getElementById('carrier-select');
       sel.innerHTML = '<option value="">Select a carrier…</option>' +
         window._carriers.map(function (c) {
-          return '<option value="' + c.vendor_id + '">' + (c.carrier_name || '') + '</option>';
+          return '<option value="' + esc(c.vendor_id) + '">' + esc(c.carrier_name || '') + '</option>';
         }).join('');
       // Attach the change listener after the select is populated
       // (safe to call multiple times; browsers ignore duplicate identical listeners

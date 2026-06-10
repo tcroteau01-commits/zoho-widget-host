@@ -1079,6 +1079,9 @@ function submitLoad() {
         return;
       }
       var recordId = res.j.record_id;
+      // Success: submit button intentionally stays disabled (set true at entry, not
+      // re-enabled here) so a created funding record can't be double-submitted.
+      // Only the failure paths below re-enable it for retry.
       return _mergedPdfs().then(function (pdfs) {
         var ups = [];
         if (pdfs.customer) ups.push(_uploadDoc(recordId, 'Customer_Documents', pdfs.customer, 'customer_docs.pdf'));

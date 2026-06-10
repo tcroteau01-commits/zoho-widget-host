@@ -594,6 +594,7 @@ function onCarrierChange() {
   }
 
   updateMargin();
+  refreshValidity();
 }
 
 // ── Credit banner ─────────────────────────────────────────────────────────────
@@ -678,6 +679,7 @@ function onCustomerChange() {
 
   loadCredit(customerId);
   updateMargin();
+  refreshValidity();
 }
 
 function onReady() {
@@ -685,14 +687,66 @@ function onReady() {
   loadCustomers().then(function () {
     var custSel = document.getElementById('customer-select');
     if (custSel) custSel.addEventListener('change', onCustomerChange);
-    var custRate = document.getElementById('customer-rate');
-    if (custRate) custRate.addEventListener('input', updateMargin);
+    // Note: #customer-rate input listener is wired in the boot block below
+    // so it is always attached regardless of whether loadCustomers resolves.
   });
   loadCarriers();
 }
 
-// ── Stepper navigation (visual shell only; gating lands in a later task) ─────
+// ── Stepper navigation (gated) ────────────────────────────────────────────────
 var STEPS = ['customer', 'carrier', 'review'];
+
+// Returns true if all required fields for the given step are filled/valid.
+function stepValid(step) {
+  var get = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  if (step === 'customer') {
+    return get('customer-select').trim() !== '' &&
+           get('customer-reference').trim() !== '' &&
+           Number(get('customer-rate')) > 0;
+  }
+  if (step === 'carrier') {
+    return get('carrier-select').trim() !== '' &&
+           Number(get('carrier-rate')) > 0 &&
+           get('carrier-factoring-invoice').trim() !== '' &&
+           get('rate-con').trim() !== '';
+  }
+  if (step === 'review') {
+    return stepValid('customer') && stepValid('carrier');
+  }
+  return false;
+}
+
+// Enables/disables submit; updates .done classes on hstep indicators.
+function refreshValidity() {
+  var submitBtn = document.getElementById('submit-btn');
+  var allValid = stepValid('customer') && stepValid('carrier');
+  if (submitBtn) submitBtn.disabled = !allValid;
+
+  var custDone = stepValid('customer');
+  var carrDone = stepValid('carrier');
+  ['customer', 'carrier', 'review'].forEach(function (s) {
+    var hs = document.querySelector('.hstep[data-step="' + s + '"]');
+    if (!hs) return;
+    var done = (s === 'customer' && custDone) ||
+               (s === 'carrier' && carrDone) ||
+               (s === 'review' && custDone && carrDone);
+    hs.classList.toggle('done', done);
+  });
+
+  // Update rail note
+  var railNote = document.getElementById('rail-note');
+  if (railNote) {
+    railNote.textContent = allValid ? 'Ready to submit' : 'Finish all 3 steps to enable submit';
+  }
+}
+
+// Returns true if navigation to the given step is permitted.
+function canGoTo(step) {
+  if (step === 'customer') return true;
+  if (step === 'carrier') return stepValid('customer');
+  if (step === 'review') return stepValid('customer') && stepValid('carrier');
+  return false;
+}
 
 function gotoStep(name) {
   var idx = STEPS.indexOf(name);
@@ -708,6 +762,13 @@ function gotoStep(name) {
   if (miniStep) miniStep.textContent = String(idx + 1);
   if (miniName) miniName.textContent = name === 'review' ? 'Review' : (name.charAt(0).toUpperCase() + name.slice(1));
   try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+}
+
+// Gated navigation — only moves forward if canGoTo passes; backward always allowed.
+function goToStep(name) {
+  if (canGoTo(name)) {
+    gotoStep(name);
+  }
 }
 
 // ── File-merge pipeline (PRESERVED from legacy widget) ───────────────────────
@@ -899,27 +960,49 @@ function blobToDataUrl(blob) {
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', function () {
-  // Stepper + nav button wiring
+  // Stepper nav buttons (gated — forward blocked until prior step valid; backward always allowed)
   document.querySelectorAll('[data-goto]').forEach(function (b) {
-    b.addEventListener('click', function () { gotoStep(b.getAttribute('data-goto')); });
+    b.addEventListener('click', function () { goToStep(b.getAttribute('data-goto')); });
   });
+  // hstep header clicks (gated)
   document.querySelectorAll('.hstep[data-step]').forEach(function (hs) {
-    hs.addEventListener('click', function () { gotoStep(hs.getAttribute('data-step')); });
+    hs.addEventListener('click', function () { goToStep(hs.getAttribute('data-step')); });
   });
 
-  // Carrier change handler — shows payment terms from already-loaded _carriers
+  // Carrier select change handler — shows payment terms from already-loaded _carriers
   var carrierSel = document.getElementById('carrier-select');
   if (carrierSel) { carrierSel.addEventListener('change', onCarrierChange); }
 
-  // Rate input handlers for live margin badge
+  // ── Consolidated rate + text field listeners (updateMargin + refreshValidity) ──
+  // Customer step fields
+  var custRateEl = document.getElementById('customer-rate');
+  if (custRateEl) {
+    custRateEl.addEventListener('input', function () { updateMargin(); refreshValidity(); });
+  }
+  var custRef = document.getElementById('customer-reference');
+  if (custRef) {
+    custRef.addEventListener('input', refreshValidity);
+  }
+
+  // Carrier step fields
   var carrierRateEl = document.getElementById('carrier-rate');
-  if (carrierRateEl) { carrierRateEl.addEventListener('input', updateMargin); }
+  if (carrierRateEl) {
+    carrierRateEl.addEventListener('input', function () { updateMargin(); refreshValidity(); });
+  }
+  var carrInvoice = document.getElementById('carrier-factoring-invoice');
+  if (carrInvoice) { carrInvoice.addEventListener('input', refreshValidity); }
+  var rateCon = document.getElementById('rate-con');
+  if (rateCon) { rateCon.addEventListener('input', refreshValidity); }
 
   resolveEmail();
 });
 
 // expose for tests / later tasks
 window.gotoStep = gotoStep;
+window.goToStep = goToStep;
+window.stepValid = stepValid;
+window.refreshValidity = refreshValidity;
+window.canGoTo = canGoTo;
 window.resolveEmail = resolveEmail;
 window.mergeFilesToPDF = mergeFilesToPDF;
 window.onFileChange = onFileChange;
@@ -930,6 +1013,25 @@ window.loadCredit = loadCredit;
 window.computeMargin = computeMargin;
 window.updateMargin = updateMargin;
 window.onCustomerChange = onCustomerChange;
+
+// Test helper: set a field value and fire the appropriate event.
+// For SELECT elements, inserts a temporary option if the value isn't already present
+// (browsers silently reset el.value to '' when the value doesn't match any option).
+window.setField = function (id, value) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (el.tagName === 'SELECT' && value !== '') {
+    var exists = Array.prototype.some.call(el.options, function (o) { return o.value === value; });
+    if (!exists) {
+      var opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = value;
+      el.appendChild(opt);
+    }
+  }
+  el.value = value;
+  el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+};
 </script>
 </body>
 </html>

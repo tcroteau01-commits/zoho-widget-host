@@ -191,3 +191,58 @@ test('empty customer id clears the credit banner and does not fetch', async () =
   assert.strictEqual(calls, 0);
   assert.strictEqual(w.document.getElementById('credit-banner').textContent.trim(), '');
 });
+
+// ── B4: Stepper gating + submit-enable logic ──────────────────────────────────
+
+test('submit stays disabled until all required fields valid', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window, d = w.document;
+  assert.strictEqual(d.querySelector('#submit-btn').disabled, true);
+  w.setField('customer-select', 'c9');
+  w.setField('customer-reference', 'PO-1');
+  w.setField('customer-rate', '2500');
+  w.setField('carrier-select', 'v3');
+  w.setField('carrier-rate', '2100');
+  w.setField('carrier-factoring-invoice', 'F1');
+  w.setField('rate-con', 'RC-7');
+  w.refreshValidity();
+  assert.strictEqual(d.querySelector('#submit-btn').disabled, false);
+});
+
+test('submit re-disables if a required field is cleared', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window, d = w.document;
+  ['customer-select','customer-reference','customer-rate','carrier-select','carrier-rate','carrier-factoring-invoice','rate-con']
+    .forEach(function (id, i) { w.setField(id, id.indexOf('rate')>-1 ? '100' : 'x'); });
+  w.refreshValidity();
+  assert.strictEqual(d.querySelector('#submit-btn').disabled, false);
+  w.setField('carrier-rate', '');
+  w.refreshValidity();
+  assert.strictEqual(d.querySelector('#submit-btn').disabled, true);
+});
+
+test('cannot reach review step until customer+carrier valid', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  assert.strictEqual(w.canGoTo('review'), false);
+  w.setField('customer-select', 'c9');
+  w.setField('customer-reference', 'PO-1');
+  w.setField('customer-rate', '2500');
+  assert.strictEqual(w.canGoTo('carrier'), true);
+  assert.strictEqual(w.canGoTo('review'), false);
+  w.setField('carrier-select', 'v3');
+  w.setField('carrier-rate', '2100');
+  w.setField('carrier-factoring-invoice', 'F1');
+  w.setField('rate-con', 'RC-7');
+  assert.strictEqual(w.canGoTo('review'), true);
+});
+
+test('completed step is clickable to go back', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window, d = w.document;
+  w.setField('customer-select', 'c9');
+  w.setField('customer-reference', 'PO-1');
+  w.setField('customer-rate', '2500');
+  w.goToStep('carrier');
+  assert.strictEqual(w.canGoTo('customer'), true); // back to a completed step always allowed
+});

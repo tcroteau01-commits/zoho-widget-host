@@ -820,14 +820,14 @@ function renderLookupResult(payload, dotQueried) {
 }
 
 // ── History (Recently Sent Links) ─────────────────────────────────────────
-function loadHistory() {
+function loadHistory(refresh) {
   if (!brokerEmail) return;
   document.getElementById('history-body').innerHTML =
     '<div class="state"><div class="spinner"></div><div>Loading recently sent links…</div></div>';
 
   Promise.all([
-    fetchReport('Carrier_Onboarding_Report', 'full'),
-    fetchReport('Vendor_Pay_Setup_Sent_Report', 'pay')
+    fetchReport('Carrier_Onboarding_Report', 'full', refresh),
+    fetchReport('Vendor_Pay_Setup_Sent_Report', 'pay', refresh)
   ]).then(function(arr) {
     var combined = [].concat(arr[0]).concat(arr[1]);
     combined.sort(function(a, b) { return parseDate(b.Added_Time) - parseDate(a.Added_Time); });
@@ -840,13 +840,16 @@ function loadHistory() {
   });
 }
 
-function fetchReport(reportName, type) {
+function fetchReport(reportName, type, refresh) {
   var qs = new URLSearchParams({
     email: brokerEmail,
     report: reportName,
     from_idx: '1',
     limit: '200'
   });
+  // After a just-sent link, bypass the backend scoped-report cache so the new row
+  // shows immediately (the SDK write never reaches the backend to invalidate it).
+  if (refresh) qs.set('refresh', '1');
   return fetch(BROKER_API_BASE + '/broker-report?' + qs.toString())
     .then(function(res) {
       if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
@@ -1128,7 +1131,7 @@ function submitModal() {
       submit.textContent = '✓ Sent';
       setTimeout(function() {
         closeModal();
-        loadHistory();
+        loadHistory(true);                 // refresh: show the just-sent link past the cache
       }, 1400);
     } else {
       var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';

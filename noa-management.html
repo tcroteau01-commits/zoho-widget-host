@@ -764,27 +764,37 @@ function renderStatusList(p) {
 
 // Type-to-search against /noa-carriers (worklist is small, so we can't use a dropdown of all carriers)
 var _carrierSearchTimer = null;
+// Cache results by exact query so a repeated query (backspace+retype, re-focus) is
+// not re-read from Creator. Exact-match only: /noa-carriers caps at 20 results, so
+// prefix-filtering a cached list could hide carriers — never narrow client-side.
+var _carrierSearchCache = {};
+
+function renderCarrierResults(box, list) {
+  box.innerHTML = list.map(function (c) {
+    return '<div class="opt" data-vid="' + esc(c.vendor_id) + '">' +
+           esc(c.carrier_name) + ' — MC ' + esc(c.mc) + ' — DOT ' + esc(c.dot) + '</div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('.opt'), function (el) {
+    el.onclick = function () {
+      var c = list.filter(function (x) { return String(x.vendor_id) === el.getAttribute('data-vid'); })[0];
+      if (c) selectCarrier(c);
+    };
+  });
+}
 
 function searchCarriers(q) {
   q = (q || '').trim();
   var box = document.getElementById('noa-carrier-results');
   if (!box) return Promise.resolve();
   if (q.length < 2) { box.innerHTML = ''; return Promise.resolve(); }
+  if (_carrierSearchCache[q]) { renderCarrierResults(box, _carrierSearchCache[q]); return Promise.resolve(); }
   return fetch(BROKER_API_BASE + '/noa-carriers?email=' + encodeURIComponent(brokerEmail) +
                '&q=' + encodeURIComponent(q))
     .then(function (r) { return r.json(); })
     .then(function (data) {
       var list = (data && data.carriers) || [];
-      box.innerHTML = list.map(function (c) {
-        return '<div class="opt" data-vid="' + esc(c.vendor_id) + '">' +
-               esc(c.carrier_name) + ' — MC ' + esc(c.mc) + ' — DOT ' + esc(c.dot) + '</div>';
-      }).join('');
-      Array.prototype.forEach.call(box.querySelectorAll('.opt'), function (el) {
-        el.onclick = function () {
-          var c = list.filter(function (x) { return String(x.vendor_id) === el.getAttribute('data-vid'); })[0];
-          if (c) selectCarrier(c);
-        };
-      });
+      _carrierSearchCache[q] = list;
+      renderCarrierResults(box, list);
     });
 }
 
@@ -794,6 +804,13 @@ function selectCarrier(c) {
   if (input) input.value = c.carrier_name + ' — MC ' + c.mc + ' — DOT ' + c.dot;
   var box = document.getElementById('noa-carrier-results');
   if (box) box.innerHTML = '';
+  // The carrier's on-file status is already in the worklist loaded on boot; reuse it
+  // instead of a fresh /noa-status read. Fall back to a fetch only for a carrier that
+  // isn't in the loaded worklist (i.e. has no NOA/LOR on file yet).
+  var loaded = ((statusPayload && statusPayload.carriers) || []).filter(function (x) {
+    return String(x.vendor_id) === selectedVendorId;
+  })[0];
+  if (loaded) { if (typeof showOnFile === 'function') showOnFile(loaded); return; }
   fetch(BROKER_API_BASE + '/noa-status?email=' + encodeURIComponent(brokerEmail) +
         '&vendor_id=' + encodeURIComponent(selectedVendorId))
     .then(function (r) { return r.json(); })

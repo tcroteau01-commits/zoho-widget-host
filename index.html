@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submit Load</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
@@ -12,150 +13,128 @@ html, body {
   color: #333;
   min-height: 100vh;
 }
-.widget { max-width: 680px; margin: 0 auto; padding: 16px; }
+.page { max-width: 1120px; margin: 0 auto; padding: 24px 20px 80px; }
 
 /* Header */
-.widget-header { margin-bottom: 18px; }
-.widget-title { font-size: 20px; font-weight: 700; color: #272727; }
-.widget-sub { font-size: 12px; color: #999; margin-top: 3px; }
+.head { margin-bottom: 16px; }
+.title { font-size: 22px; font-weight: 700; color: #272727; letter-spacing: -0.2px; }
+.sub { font-size: 12px; color: #888; margin-top: 4px; }
 
-/* Progress bar */
-.progress-bar {
-  display: flex;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid #ddd;
-  margin-bottom: 16px;
-}
-.prog-step {
-  flex: 1;
-  padding: 8px 4px;
-  font-size: 11px;
-  font-weight: 600;
-  text-align: center;
-  background: #fff;
-  color: #bbb;
-  border-right: 1px solid #ddd;
-  transition: all 0.2s;
-}
-.prog-step:last-child { border-right: none; }
-.prog-step.active { background: #e8a020; color: #fff; }
-.prog-step.done { background: #272727; color: #fff; }
-
-/* Status message */
-.status-msg {
-  padding: 12px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 14px;
+/* Auth / status banner */
+.auth-banner {
   display: none;
-}
-.status-msg.show { display: block; }
-.status-msg.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
-.status-msg.error   { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
-.status-msg.loading { background: #fff8e1; color: #856404; border: 1px solid #ffe082; }
-
-/* Accordion */
-.section {
-  background: #fff;
+  background: #ffebee;
+  border: 1px solid #ef9a9a;
+  border-left: 4px solid #c62828;
   border-radius: 8px;
-  border: 1px solid #ddd;
-  margin-bottom: 12px;
-  overflow: hidden;
+  padding: 11px 14px;
+  margin-bottom: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b71c1c;
 }
-.section.locked { opacity: 0.45; pointer-events: none; }
+.auth-banner.show { display: block; }
 
-.section-header {
+/* Horizontal stepper */
+.stepper {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
-  background: #3a3a3a;
-  color: #fff;
+  gap: 0;
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 10px;
+  padding: 6px;
+  margin-bottom: 18px;
+}
+.hstep {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 7px;
   cursor: pointer;
-  user-select: none;
   transition: background 0.15s;
 }
-.section-header:hover { background: #2a2a2a; }
-
-.sec-num {
+.hstep.active { background: #fff4e0; }
+.hstep .sc {
   width: 26px; height: 26px;
   border-radius: 50%;
-  background: #e8a020;
-  color: #fff;
-  font-weight: 700;
-  font-size: 12px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  transition: background 0.2s;
+  background: #eee;
+  color: #999;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+  transition: all 0.2s;
 }
-.section.completed .sec-num { background: #4caf50; }
+.hstep.done .sc { background: #1f6321; color: #fff; }
+.hstep.active .sc { background: #e8a020; color: #fff; }
+.hstep .stx .t { font-size: 13px; font-weight: 700; color: #444; }
+.hstep.active .stx .t { color: #272727; }
+.hstep .stx .s {
+  font-size: 11px; color: #aaa;
+  max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hsep { width: 24px; height: 2px; background: #eee; flex-shrink: 0; }
 
-.sec-title { flex: 1; font-weight: 600; font-size: 14px; }
-.sec-summary {
-  font-size: 11px;
-  color: rgba(255,255,255,0.65);
-  max-width: 220px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.sec-chevron {
-  font-size: 10px;
-  color: rgba(255,255,255,0.5);
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-.section.open .sec-chevron { transform: rotate(180deg); }
+/* Two-column layout: main + sticky rail */
+.two { display: grid; grid-template-columns: 1fr 330px; gap: 18px; align-items: start; }
+.rail { position: sticky; top: 10px; }
 
-.section-body {
-  display: none;
-  padding: 20px 16px 16px;
-  border-top: 2px solid #e8a020;
+/* Step cards */
+.card {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-radius: 12px;
+  padding: 20px 22px;
 }
-.section.open .section-body { display: block; }
+.step-card { display: none; }
+.step-card.active { display: block; }
+.card-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 12px; margin-bottom: 16px;
+  border-bottom: 1px solid #f0efe9;
+}
+.card-title {
+  font-size: 15px; font-weight: 700; color: #272727;
+  display: flex; align-items: center; gap: 9px;
+}
+.cnum {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: #fff4e0; color: #b86e00;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+}
 
 /* Fields */
-.field { margin-bottom: 15px; }
-.field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 15px;
-}
-@media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
-
+.field { margin-bottom: 14px; }
+.field.row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 label {
   display: block;
-  font-size: 11px;
-  font-weight: 700;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+  font-size: 11px; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.4px;
   margin-bottom: 5px;
 }
-label .req { color: #e8a020; margin-left: 1px; }
-
+label .req { color: #c62828; }
 input[type=text], input[type=number], select, textarea {
   width: 100%;
-  padding: 9px 11px;
-  border: 1.5px solid #ddd;
-  border-radius: 5px;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  padding: 9px 12px;
   font-size: 13px;
   font-family: inherit;
-  color: #333;
-  background: #fff;
-  transition: border-color 0.15s;
+  color: #272727;
+  background: #fafafa;
+  transition: border-color 0.15s, box-shadow 0.15s;
   -webkit-appearance: none;
   appearance: none;
 }
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: #e8a020;
+  background: #fff;
   box-shadow: 0 0 0 3px rgba(232,160,32,0.12);
 }
-input.invalid, select.invalid { border-color: #e53935; }
 select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23888' d='M5 7L0 2h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -163,724 +142,398 @@ select {
   padding-right: 30px;
   cursor: pointer;
 }
+input.invalid, select.invalid { border-color: #e53935; }
 textarea { resize: vertical; min-height: 90px; }
-
-.field-hint { font-size: 11px; color: #aaa; margin-top: 4px; }
-.field-err { font-size: 11px; color: #e53935; margin-top: 4px; display: none; }
+.field-hint { font-size: 11px; color: #aaa; margin-top: 5px; }
+.field-err { font-size: 11px; color: #e53935; margin-top: 5px; display: none; }
 .field-err.show { display: block; }
 
-/* USD prefix */
+/* USD prefix wrap */
 .usd-wrap { position: relative; }
 .usd-wrap::before {
   content: '$';
-  position: absolute; left: 11px; top: 50%;
+  position: absolute; left: 12px; top: 50%;
   transform: translateY(-50%);
   color: #aaa; font-size: 13px; pointer-events: none;
 }
-.usd-wrap input { padding-left: 22px; }
-
-/* Credit note */
-.credit-banner {
-  display: none;
-  background: #fff8e1;
-  border: 1px solid #ffe082;
-  border-left: 3px solid #e8a020;
-  border-radius: 5px;
-  padding: 9px 12px;
-  margin-bottom: 16px;
-  font-size: 12px;
-}
-.credit-banner .cb-label { color: #aaa; margin-bottom: 2px; font-size: 11px; }
-.credit-banner .cb-value { color: #272727; font-weight: 700; }
-
-/* Credit utilization warning */
-.credit-warning {
-  display: none;
-  background: #ffebee;
-  border: 1px solid #ef9a9a;
-  border-left: 4px solid #c62828;
-  border-radius: 5px;
-  padding: 10px 14px;
-  margin-bottom: 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #b71c1c;
-  line-height: 1.5;
-}
-.credit-warning.show { display: block; }
-
-/* Margin badge */
-.margin-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 700;
-  margin-top: 6px;
-  visibility: hidden;
-}
-.margin-badge.good { background: #e8f5e9; color: #2e7d32; visibility: visible; }
-.margin-badge.bad  { background: #fff3e0; color: #e65100; visibility: visible; }
+.usd-wrap input { padding-left: 23px; }
 
 /* Payment terms banner */
-.terms-banner {
-  background: #f5f0e8;
-  border: 1px solid #e0d5c0;
-  border-left: 4px solid #e8a020;
-  border-radius: 5px;
-  padding: 11px 14px;
-  margin-bottom: 15px;
-}
-.terms-banner.hidden { display: none; }
-.terms-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-.terms-label-text {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #a07828;
-}
-.terms-value {
-  font-size: 14px;
-  font-weight: 700;
-  color: #272727;
-  margin-bottom: 5px;
-}
-.terms-warning {
-  font-size: 11px;
-  color: #888;
-}
-.terms-warning strong { color: #e8a020; }
-
-/* Searchable dropdown */
-.sd-wrap { position: relative; }
-.sd-input-row {
-  display: flex;
-  align-items: center;
-  border: 1.5px solid #ddd;
-  border-radius: 5px;
-  background: #fff;
-  transition: border-color 0.15s;
-  cursor: text;
-}
-.sd-input-row:focus-within {
-  border-color: #e8a020;
-  box-shadow: 0 0 0 3px rgba(232,160,32,0.12);
-}
-.sd-input-row.invalid { border-color: #e53935; }
-.sd-icon { padding: 0 8px 0 11px; color: #bbb; font-size: 13px; flex-shrink: 0; }
-.sd-input {
-  flex: 1;
-  border: none;
-  outline: none;
-  padding: 9px 0;
-  font-size: 13px;
-  font-family: inherit;
-  color: #333;
-  background: transparent;
-  min-width: 0;
-}
-.sd-input::placeholder { color: #bbb; }
-.sd-clear {
-  padding: 0 10px;
-  color: #bbb;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
+.banner-terms {
   display: none;
+  background: #fff4e0;
+  border: 1px solid #f0dca8;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
 }
-.sd-clear:hover { color: #888; }
-.sd-arrow { padding: 0 11px; color: #bbb; font-size: 10px; flex-shrink: 0; transition: transform 0.2s; }
-.sd-wrap.open .sd-arrow { transform: rotate(180deg); }
+.banner-terms.show { display: block; }
+.banner-terms .bl { font-size: 11px; font-weight: 700; color: #b86e00; text-transform: uppercase; letter-spacing: 0.4px; }
+.banner-terms .bv { font-size: 14px; font-weight: 700; color: #272727; margin-top: 2px; }
+.banner-terms .bw { font-size: 11px; color: #a13e00; margin-top: 3px; }
 
-.sd-list {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0; right: 0;
-  background: #fff;
-  border: 1.5px solid #ddd;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-  max-height: 240px;
-  overflow-y: auto;
-  z-index: 100;
+/* Read-only terms inline display */
+.terms-readout {
   display: none;
+  font-size: 13px; font-weight: 700; color: #272727;
+  background: #fafaf6; border: 1px solid #e6e3da; border-radius: 6px;
+  padding: 9px 12px; margin-bottom: 14px;
 }
-.sd-wrap.open .sd-list { display: block; }
-.sd-item {
-  padding: 9px 12px;
-  cursor: pointer;
-  border-bottom: 1px solid #f5f5f5;
-  transition: background 0.1s;
-}
-.sd-item:last-child { border-bottom: none; }
-.sd-item:hover, .sd-item.focused { background: #fff8ee; }
-.sd-item.selected { background: #fff3d6; }
-.sd-item-main { font-size: 13px; color: #272727; font-weight: 500; }
-.sd-item-sub { font-size: 11px; color: #999; margin-top: 2px; }
-.sd-empty { padding: 12px; text-align: center; color: #bbb; font-size: 12px; }
+.terms-readout.show { display: block; }
+.terms-readout .k { font-size: 10px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 3px; }
 
-/* File upload */
-.file-area {
-  border: 2px dashed #e0e0e0;
-  border-radius: 6px;
-  padding: 14px;
+/* Margin badge inline (carrier card) */
+.mbadge {
+  display: none;
+  align-items: center; gap: 6px;
+  font-weight: 700; font-size: 12px;
+  padding: 5px 11px; border-radius: 6px; margin-top: 8px;
+}
+.mbadge.good { display: inline-flex; background: #e3f0fb; color: #0d4a8a; }
+.mbadge.bad  { display: inline-flex; background: #fff3e0; color: #e65100; }
+
+/* Uploader */
+.uploader {
+  border: 1.5px dashed #d0ccc0;
+  border-radius: 8px;
+  background: #fafaf6;
+  padding: 16px;
   text-align: center;
-  font-size: 12px;
-  color: #bbb;
+  color: #999; font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
 }
-.file-area:hover { border-color: #e8a020; color: #e8a020; }
-.file-area input[type=file] { display: none; }
-.file-area.invalid { border-color: #e53935; color: #e53935; }
-.file-area.drag-over { border-color: #e8a020; background: #fffbf0; color: #e8a020; }
+.uploader:hover { border-color: #e8a020; color: #e8a020; }
+.uploader.drag-over { border-color: #e8a020; background: #fffbf0; color: #e8a020; }
+.uploader.invalid { border-color: #e53935; color: #e53935; }
+.uploader b { color: #666; display: block; margin-bottom: 3px; }
+.uploader input[type=file] { display: none; }
 
-/* Upload description box */
-.upload-desc {
-  background: #f8f8f8;
-  border-radius: 5px;
-  padding: 9px 12px;
-  margin-bottom: 8px;
-  font-size: 11px;
-  color: #666;
-  line-height: 1.6;
-}
-.upload-desc strong { color: #333; display: block; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
-
-/* Section actions */
-.sec-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
-  padding-top: 14px;
+/* Step actions */
+.actions {
+  display: flex; justify-content: space-between; gap: 10px;
+  margin-top: 18px; padding-top: 16px;
   border-top: 1px solid #f0efe9;
 }
-
-/* Buttons */
 .btn {
-  padding: 9px 20px;
-  border-radius: 5px;
-  border: none;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
+  border: none; border-radius: 6px;
+  padding: 10px 18px;
+  font-size: 13px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
   transition: all 0.15s;
-  font-family: inherit;
 }
-.btn-primary { background: #e8a020; color: #fff; }
-.btn-primary:hover { background: #c98a18; }
-.btn-primary:disabled { background: #ccc; cursor: default; }
-.btn-ghost { background: transparent; color: #888; border: 1.5px solid #ddd; }
-.btn-ghost:hover { border-color: #aaa; color: #444; }
+.btn.primary { background: #e8a020; color: #fff; }
+.btn.primary:hover { background: #d49018; }
+.btn.ghost { background: #fff; border: 1px solid #d8d8d8; color: #444; }
+.btn.ghost:hover { border-color: #b8b8b8; }
+.btn.full { width: 100%; padding: 13px; font-size: 14px; }
+.btn:disabled { opacity: 0.5; cursor: default; }
 
-/* Submit card */
-.submit-card {
+/* Summary rail */
+.summary-card {
   background: #fff;
-  border-radius: 8px;
-  border: 1px solid #ddd;
-  padding: 20px 16px;
-  margin-bottom: 12px;
+  border: 1px solid #e6e3da;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+.miniprog { font-size: 11px; color: #888; text-align: center; margin-bottom: 12px; }
+.miniprog b { color: #e8a020; }
+.credit-banner {
   display: none;
+  background: #e3f4e3;
+  border: 1px solid #c4e6c4;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  text-align: center;
 }
-.submit-card h3 { font-size: 15px; color: #272727; margin-bottom: 4px; }
-.submit-card p  { font-size: 12px; color: #999; margin-bottom: 14px; }
-.submit-btn-full {
-  width: 100%;
-  padding: 13px;
-  font-size: 14px;
-  border-radius: 6px;
-  background: #272727;
-  color: #fff;
-  border: none;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s;
+.credit-banner.show { display: block; }
+.credit-banner .bl { font-size: 11px; font-weight: 700; color: #1f6321; text-transform: uppercase; letter-spacing: 0.4px; }
+.credit-banner .bv { font-size: 20px; font-weight: 700; color: #1f6321; margin-top: 2px; }
+.srow {
+  display: flex; justify-content: space-between;
+  padding: 9px 0; border-bottom: 1px solid #f5f3ee;
+  font-size: 13px;
 }
-.submit-btn-full:hover { background: #111; }
-.submit-btn-full:disabled { background: #ccc; cursor: default; }
-.submit-margin-note { margin-bottom: 12px; }
+.srow .k { color: #888; }
+.srow .v { color: #272727; font-weight: 700; max-width: 170px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .v.empty { color: #ccc; font-weight: 500; font-style: italic; }
+.total {
+  background: #fafaf6; border-radius: 8px;
+  padding: 12px 14px; margin: 14px 0;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.total .k { font-weight: 700; color: #272727; font-size: 13px; }
+.total .v { color: #1f6321; font-weight: 700; font-size: 16px; }
+.submit-status {
+  font-size: 12px; font-weight: 600;
+  text-align: center; margin-bottom: 10px;
+  min-height: 0;
+}
+.submit-status.loading { color: #856404; }
+.submit-status.success { color: #2e7d32; }
+.submit-status.error { color: #c62828; }
+.rail-note { font-size: 11px; color: #aaa; text-align: center; margin-top: 8px; }
+
+/* Mobile */
+@media (max-width: 760px) {
+  .two { grid-template-columns: 1fr; }
+  .rail { position: static; }
+}
+@media (max-width: 640px) {
+  .page { padding: 14px 12px 60px; }
+  .field.row { grid-template-columns: 1fr; }
+  .stepper { flex-wrap: wrap; }
+  .hsep { display: none; }
+  .hstep { flex: 1 1 100%; }
+  input, select, textarea { font-size: 16px; }
+}
 </style>
+<!-- File-merge pipeline libraries (preserved — used by mergeFilesToPDF & helpers) -->
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js"></script>
+<!-- Zoho Creator widget SDK (needed for getInitParams) -->
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<!-- Admin impersonation bar + fetch wrapper (self-injects into body) -->
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=1"></script>
 </head>
 <body>
-<div class="widget">
+<div class="page">
 
-  <div class="widget-header">
-    <div class="widget-title">Submit Load</div>
-    <div class="widget-sub">Complete all three sections to submit your load for funding</div>
-    <div style="text-align:right;font-size:10px;color:#bbb;padding:2px 0 0;">v2026-03-31.2</div>
+  <div class="head">
+    <div class="title">Submit Load</div>
+    <div class="sub">Step through each section. Your live summary and submit stay on the right.</div>
   </div>
 
-  <div id="statusMsg" class="status-msg"></div>
-  <div style="text-align:right;margin-bottom:4px;">
-    <button onclick="fillTestData()" style="font-size:10px;padding:3px 8px;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;cursor:pointer;color:#666;">🔧 Fill Test Data</button>
-  </div>
+  <div id="auth-banner" class="auth-banner"></div>
 
-  <div class="progress-bar">
-    <div class="prog-step active" id="prog1">1 · Customer</div>
-    <div class="prog-step" id="prog2">2 · Carrier</div>
-    <div class="prog-step" id="prog3">3 · Notes</div>
-  </div>
-
-  <!-- ── Section 1: Customer ─────────────────────────────────────────── -->
-  <div class="section open" id="sec1">
-    <div class="section-header" onclick="toggleSection(1)">
-      <div class="sec-num" id="num1">1</div>
-      <div class="sec-title">Customer / Shipper</div>
-      <div class="sec-summary" id="sum1"></div>
-      <div class="sec-chevron">▼</div>
+  <!-- Horizontal stepper -->
+  <div class="stepper" id="stepper">
+    <div class="hstep active" data-step="customer" data-index="1">
+      <span class="sc">1</span>
+      <div class="stx"><div class="t">Customer</div><div class="s" id="step-customer-sub">In progress</div></div>
     </div>
-    <div class="section-body">
-
-      <div id="creditWarning" class="credit-warning"></div>
-
-      <div id="creditBanner" class="credit-banner">
-        <div class="cb-label">Credit Availability</div>
-        <div class="cb-value" id="creditValue"></div>
-      </div>
-
-      <div class="field">
-        <label>Customer Name <span class="req">*</span></label>
-        <div class="sd-wrap" id="sd_customer">
-          <div class="sd-input-row" id="sd_customer_row">
-            <span class="sd-icon">🔍</span>
-            <input class="sd-input" id="sd_customer_input" placeholder="Search customers…" autocomplete="off" />
-            <span class="sd-clear" id="sd_customer_clear" onclick="clearDropdown('customer')">✕</span>
-            <span class="sd-arrow">▼</span>
-          </div>
-          <div class="sd-list" id="sd_customer_list"></div>
-        </div>
-        <input type="hidden" id="Customer_Name" />
-        <div class="field-err" id="e_Customer_Name">Please select a customer</div>
-        <div class="field-hint">Only approved customers are shown. If you don't see your customer, add them in your <strong>Customer Submission</strong> section first.</div>
-      </div>
-
-      <div class="field-row">
-        <div>
-          <label>Customer Reference # <span class="req">*</span></label>
-          <input type="text" id="Customer_Reference_Number" placeholder="e.g. REF-2025-001" />
-          <div class="field-err" id="e_Customer_Reference_Number">Required</div>
-        </div>
-        <div>
-          <label>Customer Rate <span class="req">*</span></label>
-          <div class="usd-wrap">
-            <input type="number" id="Customer_Rate" placeholder="0.00" step="0.01" min="0" oninput="updateMargin()" />
-          </div>
-          <div class="field-err" id="e_Customer_Rate">Required</div>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Customer Documents <span class="req">*</span></label>
-        <div class="upload-desc">
-          <strong>What to upload</strong>
-          Rate Confirmation (RC) signed by the customer · Bill of Lading (BOL) · Any other customer-side paperwork related to this load
-        </div>
-        <div class="file-area" id="cust_docs_area"
-             onclick="document.getElementById('cust_docs').click()"
-             ondragover="handleDragOver(event,'cust_docs_area')"
-             ondragleave="handleDragLeave(event,'cust_docs_area')"
-             ondrop="handleDrop(event,'cust_docs','cust_docs_label','cust_docs_area')">
-          <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.bmp,.webp,.gif,.svg,.tif,.tiff,.txt,.csv,.doc,.docx"
-                 onchange="onFileChange('cust_docs','cust_docs_label')" />
-          <span id="cust_docs_label">📎 Click or drag files here</span>
-        </div>
-        <div class="field-err" id="e_cust_docs">Please attach at least one customer document</div>
-      </div>
-
-      <div class="sec-actions">
-        <button class="btn btn-primary" onclick="nextSection(1)">Next: Carrier Info →</button>
-      </div>
+    <div class="hsep"></div>
+    <div class="hstep" data-step="carrier" data-index="2">
+      <span class="sc">2</span>
+      <div class="stx"><div class="t">Carrier</div><div class="s" id="step-carrier-sub">—</div></div>
+    </div>
+    <div class="hsep"></div>
+    <div class="hstep" data-step="review" data-index="3">
+      <span class="sc">3</span>
+      <div class="stx"><div class="t">Review &amp; Submit</div><div class="s" id="step-review-sub">—</div></div>
     </div>
   </div>
 
-  <!-- ── Section 2: Carrier ──────────────────────────────────────────── -->
-  <div class="section locked" id="sec2">
-    <div class="section-header" onclick="toggleSection(2)">
-      <div class="sec-num" id="num2">2</div>
-      <div class="sec-title">Carrier Information</div>
-      <div class="sec-summary" id="sum2"></div>
-      <div class="sec-chevron">▼</div>
-    </div>
-    <div class="section-body">
+  <div class="two">
+    <!-- ── Main column ─────────────────────────────────────────────── -->
+    <div class="main">
 
-      <div class="field">
-        <label>Carrier Name / MC # <span class="req">*</span></label>
-        <div class="sd-wrap" id="sd_carrier">
-          <div class="sd-input-row" id="sd_carrier_row">
-            <span class="sd-icon">🔍</span>
-            <input class="sd-input" id="sd_carrier_input" placeholder="Search carriers…" autocomplete="off" />
-            <span class="sd-clear" id="sd_carrier_clear" onclick="clearDropdown('carrier')">✕</span>
-            <span class="sd-arrow">▼</span>
+      <!-- Step 1: Customer -->
+      <div class="card step-card active" id="card-customer">
+        <div class="card-head"><div class="card-title"><span class="cnum">1</span> Customer / Shipper</div></div>
+
+        <div class="field">
+          <label>Customer Name <span class="req">*</span></label>
+          <select id="customer-select">
+            <option value="">Select a customer…</option>
+          </select>
+          <div class="field-hint">Only approved customers are shown. If you don't see your customer, add them in your <strong>Customer Submission</strong> section first.</div>
+        </div>
+
+        <div class="field row">
+          <div>
+            <label>Customer Reference # <span class="req">*</span></label>
+            <input type="text" id="customer-reference" placeholder="e.g. REF-2025-001" />
           </div>
-          <div class="sd-list" id="sd_carrier_list"></div>
+          <div>
+            <label>Customer Rate <span class="req">*</span></label>
+            <div class="usd-wrap">
+              <input type="number" id="customer-rate" placeholder="0.00" step="0.01" min="0" />
+            </div>
+          </div>
         </div>
-        <input type="hidden" id="Carrier_Name_or_MC" />
-        <div class="field-err" id="e_Carrier_Name_or_MC">Please select a carrier</div>
+
+        <div class="field">
+          <label>Customer Documents <span class="req">*</span></label>
+          <div class="uploader" id="cust_docs_area"
+               onclick="document.getElementById('cust_docs').click()"
+               ondragover="handleDragOver(event,'cust_docs_area')"
+               ondragleave="handleDragLeave(event,'cust_docs_area')"
+               ondrop="handleDrop(event,'cust_docs','cust_docs_label','cust_docs_area')">
+            <b>📎 Rate Confirmation (RC), Bill of Lading (BOL), customer paperwork</b>
+            <input type="file" id="cust_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.bmp,.webp,.gif,.svg,.tif,.tiff,.txt,.csv,.doc,.docx"
+                   onchange="onFileChange('cust_docs','cust_docs_label')" />
+            <span id="cust_docs_label">Click or drag files here</span>
+          </div>
+        </div>
+
+        <div class="field-err" id="customer-error">Please complete all required customer fields.</div>
+
+        <div class="actions">
+          <span></span>
+          <button class="btn primary" data-goto="carrier">Next: Carrier Info →</button>
+        </div>
       </div>
 
-      <div id="termsBanner" class="terms-banner hidden">
-        <div class="terms-top">
-          <span class="terms-label-text">Carrier Payment Terms</span>
-        </div>
-        <div class="terms-value" id="termsValue">—</div>
-        <div class="terms-warning"><strong>⚠ Verify:</strong> If these terms differ from your agreement, contact your OperFi rep before submitting.</div>
-      </div>
+      <!-- Step 2: Carrier -->
+      <div class="card step-card" id="card-carrier">
+        <div class="card-head"><div class="card-title"><span class="cnum">2</span> Carrier Information</div></div>
 
-      <div class="field">
-        <label>Carrier Rate <span class="req">*</span></label>
-        <div class="usd-wrap">
-          <input type="number" id="Carrier_Rate" placeholder="0.00" step="0.01" min="0" oninput="updateMargin()" />
+        <div class="field">
+          <label>Carrier Name / MC # <span class="req">*</span></label>
+          <select id="carrier-select">
+            <option value="">Select a carrier…</option>
+          </select>
         </div>
-        <div class="field-err" id="e_Carrier_Rate">Required</div>
-        <div id="marginBadge" class="margin-badge"></div>
-      </div>
 
-      <div class="field-row">
-        <div>
-          <label>Carrier / Factoring Invoice # <span class="req">*</span></label>
-          <input type="text" id="Carrier_Factoring_Invoice" placeholder="Invoice number" />
-          <div class="field-err" id="e_Carrier_Factoring_Invoice">Required</div>
+        <!-- read-only payment-terms display -->
+        <div class="terms-readout" id="terms-readout">
+          <span class="k">Carrier Payment Terms</span>
+          <span id="terms-readout-value">—</span>
         </div>
-        <div>
+
+        <!-- terms verification banner -->
+        <div class="banner-terms" id="terms-banner">
+          <div class="bl">Carrier Payment Terms</div>
+          <div class="bv" id="terms-value">—</div>
+          <div class="bw">⚠ Verify these match your agreement before submitting.</div>
+        </div>
+
+        <div class="field row">
+          <div>
+            <label>Carrier Rate <span class="req">*</span></label>
+            <div class="usd-wrap">
+              <input type="number" id="carrier-rate" placeholder="0.00" step="0.01" min="0" />
+            </div>
+            <div class="mbadge" id="margin-badge"></div>
+          </div>
+          <div>
+            <label>Carrier / Factoring Invoice # <span class="req">*</span></label>
+            <input type="text" id="carrier-factoring-invoice" placeholder="Invoice number" />
+          </div>
+        </div>
+
+        <div class="field">
           <label>Load / Rate Confirmation # <span class="req">*</span></label>
-          <input type="text" id="Load_Rate_Confirmation_Number" placeholder="Rate conf. number" />
-          <div class="field-err" id="e_Load_Rate_Confirmation_Number">Required</div>
+          <input type="text" id="rate-con" placeholder="Rate conf. number" />
+        </div>
+
+        <div class="field">
+          <label>Carrier Documents <span class="req">*</span></label>
+          <div class="uploader" id="carrier_docs_area"
+               onclick="document.getElementById('carrier_docs').click()"
+               ondragover="handleDragOver(event,'carrier_docs_area')"
+               ondragleave="handleDragLeave(event,'carrier_docs_area')"
+               ondrop="handleDrop(event,'carrier_docs','carrier_docs_label','carrier_docs_area')">
+            <b>📎 Carrier Invoice, POD, factoring invoice, signed Rate Con</b>
+            <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.bmp,.webp,.gif,.svg,.tif,.tiff,.txt,.csv,.doc,.docx"
+                   onchange="onFileChange('carrier_docs','carrier_docs_label')" />
+            <span id="carrier_docs_label">Click or drag files here</span>
+          </div>
+        </div>
+
+        <div class="field-err" id="carrier-error">Please complete all required carrier fields.</div>
+
+        <div class="actions">
+          <button class="btn ghost" data-goto="customer">← Back to Customer</button>
+          <button class="btn primary" data-goto="review">Next: Review →</button>
         </div>
       </div>
 
-      <div class="field">
-        <label>Carrier Documents <span class="req">*</span></label>
-        <div class="upload-desc">
-          <strong>What to upload</strong>
-          Carrier Invoice · Proof of Delivery (POD) · Factoring company invoice (if applicable) · Signed Rate Confirmation from the carrier
+      <!-- Step 3: Review & Submit -->
+      <div class="card step-card" id="card-review">
+        <div class="card-head"><div class="card-title"><span class="cnum">3</span> Review &amp; Submit</div></div>
+
+        <div class="field">
+          <label>Load Comments</label>
+          <textarea id="Load_Comments" placeholder="Any additional details about this load…"></textarea>
         </div>
-        <div class="file-area" id="carrier_docs_area"
-             onclick="document.getElementById('carrier_docs').click()"
-             ondragover="handleDragOver(event,'carrier_docs_area')"
-             ondragleave="handleDragLeave(event,'carrier_docs_area')"
-             ondrop="handleDrop(event,'carrier_docs','carrier_docs_label','carrier_docs_area')">
-          <input type="file" id="carrier_docs" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.bmp,.webp,.gif,.svg,.tif,.tiff,.txt,.csv,.doc,.docx"
-                 onchange="onFileChange('carrier_docs','carrier_docs_label')" />
-          <span id="carrier_docs_label">📎 Click or drag files here</span>
+
+        <div id="review-summary"></div>
+
+        <div class="actions">
+          <button class="btn ghost" data-goto="carrier">← Back to Carrier</button>
+          <span></span>
         </div>
-        <div class="field-err" id="e_carrier_docs">Please attach at least one carrier document</div>
       </div>
 
-      <div class="sec-actions">
-        <button class="btn btn-ghost" onclick="goTo(1)">← Back</button>
-        <button class="btn btn-primary" onclick="nextSection(2)">Next: Review →</button>
+    </div>
+
+    <!-- ── Sticky summary rail ─────────────────────────────────────── -->
+    <div class="rail">
+      <div class="summary-card" id="summary-rail">
+        <div class="miniprog">Step <b id="miniprog-step">1</b> of 3 · <span id="miniprog-name">Customer</span></div>
+
+        <div class="credit-banner" id="credit-banner">
+          <div class="bl">Credit Available</div>
+          <div class="bv" id="credit-value">—</div>
+        </div>
+
+        <div class="srow"><span class="k">Customer</span><span class="v empty" id="sum-customer">—</span></div>
+        <div class="srow"><span class="k">Customer Rate</span><span class="v empty" id="sum-customer-rate">—</span></div>
+        <div class="srow"><span class="k">Carrier</span><span class="v empty" id="sum-carrier">—</span></div>
+        <div class="srow"><span class="k">Carrier Rate</span><span class="v empty" id="sum-carrier-rate">—</span></div>
+
+        <div class="total"><span class="k">Margin</span><span class="v" id="sum-margin">—</span></div>
+
+        <div class="submit-status" id="submit-status"></div>
+        <button class="btn primary full" id="submit-btn" disabled>Submit Load for Funding</button>
+        <div class="rail-note" id="rail-note">Finish all 3 steps to enable submit</div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- ── Section 3: Notes ───────────────────────────────────────────── -->
-  <div class="section locked" id="sec3">
-    <div class="section-header" onclick="toggleSection(3)">
-      <div class="sec-num" id="num3">3</div>
-      <div class="sec-title">Additional Notes</div>
-      <div class="sec-summary" id="sum3">Optional</div>
-      <div class="sec-chevron">▼</div>
-    </div>
-    <div class="section-body">
-
-      <div class="field">
-        <label>Load Comments</label>
-        <textarea id="Load_Comments" placeholder="Any additional details about this load…"></textarea>
-      </div>
-
-      <div class="sec-actions">
-        <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
-        <button class="btn btn-primary" onclick="nextSection(3)">Review & Submit →</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Submit card ────────────────────────────────────────────────── -->
-  <div class="submit-card" id="submitCard">
-    <h3>Ready to Submit</h3>
-    <p>Review your entries above, then submit to send this load for funding.</p>
-    <div class="submit-margin-note" id="submitMarginNote"></div>
-    <button class="submit-btn-full" id="submitBtn" onclick="submitForm()">
-      Submit Load for Funding
-    </button>
-  </div>
-
-<div style="text-align:right;font-size:10px;color:#bbb;padding:4px 8px 0;">v2026-05-11.1</div>
-</div><!-- /widget -->
-
-<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script>
+// ── Base + state ────────────────────────────────────────────────────────────
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var brokerEmail = '';
 
-// ── State ─────────────────────────────────────────────────────────────────
-var customerRecords = [];
-var vendorRecords   = [];
-var currentSection  = 1;
-var done            = [false, false, false];
-
-// ── Boot ──────────────────────────────────────────────────────────────────
-window.addEventListener('load', function() {
-  loadCustomers();
-  loadVendors();
-});
-
-// ── Data ──────────────────────────────────────────────────────────────────
-function loadCustomers() {
-  ZOHO.CREATOR.DATA.getRecords({
-    report_name: 'Customer_Submission_Report',
-    page: 1, pageSize: 200
-  }).then(function(res) {
-    customerRecords = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
-    // Only show Approved customers (mirrors original form behavior)
-    customerRecords = customerRecords.filter(function(r) {
-      return r.Credit_Decision === 'Approved';
-    });
-    customerRecords.sort(function(a, b) {
-      return (a.Customer_Company_Name || '').localeCompare(b.Customer_Company_Name || '');
-    });
-    initDropdown('customer', customerRecords,
-      function(r) { return r.Customer_Company_Name || '(unnamed)'; },
-      function()  { return null; },
-      function(r, inputEl) { onCustomerSelect(r, inputEl); }
-    );
-  }).catch(function() {
-    document.getElementById('sd_customer_input').placeholder = 'Unable to load customers';
-  });
-}
-
-function loadVendors() {
-  ZOHO.CREATOR.DATA.getRecords({
-    report_name: 'Check_All_Vendors',
-    page: 1, pageSize: 200
-  }).then(function(res) {
-    vendorRecords = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
-    vendorRecords.sort(function(a, b) {
-      return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
-    });
-    initDropdown('carrier', vendorRecords,
-      function(r) { return r.Vendor_Name || '(unnamed)'; },
-      function(r) {
-        var parts = [];
-        if (r.MC)    parts.push('MC# ' + r.MC);
-        if (r.USDOT) parts.push('DOT ' + r.USDOT);
-        return parts.length ? parts.join(' · ') : (r.Payment_Terms || null);
-      },
-      function(r, inputEl) { onCarrierSelect(r, inputEl); }
-    );
-    prefillCarrierFromUrl();
-  }).catch(function() {
-    document.getElementById('sd_carrier_input').placeholder = 'Unable to load carriers';
-  });
-}
-
-function prefillCarrierFromUrl() {
-  var prefillId;
-  try {
-    var sp = new URL(window.location.href).searchParams;
-    prefillId = sp.get('Vendor_ID') || sp.get('vendor_id');
-  } catch (e) { prefillId = null; }
-  if (!prefillId) return;
-  var match = vendorRecords.find(function(r) { return String(r.ID) === String(prefillId); });
-  if (!match) {
-    console.warn('[LoadDetails] vendor_id ' + prefillId + ' not found in loaded vendor list');
-    return;
-  }
-  var input  = document.getElementById('sd_carrier_input');
-  var hidden = document.getElementById('Carrier_Name_or_MC');
-  var clear  = document.getElementById('sd_carrier_clear');
-  if (!input || !hidden) return;
-  hidden.value = match.ID;
-  input.value  = match.Vendor_Name || '';
-  if (clear) clear.style.display = 'inline';
-  onCarrierSelect(match, input);
-  console.log('[LoadDetails] Pre-filled carrier from URL:', match.Vendor_Name);
-}
-
-// ── Searchable dropdown engine ─────────────────────────────────────────────
-function initDropdown(key, records, mainFn, subFn, onSelect) {
-  var inputEl  = document.getElementById('sd_' + key + '_input');
-  var listEl   = document.getElementById('sd_' + key + '_list');
-  var wrapEl   = document.getElementById('sd_' + key);
-  var clearEl  = document.getElementById('sd_' + key + '_clear');
-  var hiddenEl = document.getElementById(key === 'customer' ? 'Customer_Name' : 'Carrier_Name_or_MC');
-
-  function renderList(filter) {
-    listEl.innerHTML = '';
-    var q = (filter || '').toLowerCase();
-    var filtered = records.filter(function(r) {
-      return mainFn(r).toLowerCase().indexOf(q) !== -1 ||
-             (subFn(r) || '').toLowerCase().indexOf(q) !== -1;
-    });
-    if (!filtered.length) {
-      listEl.innerHTML = '<div class="sd-empty">No results for "' + filter + '"</div>';
-      return;
-    }
-    filtered.forEach(function(r) {
-      var item = document.createElement('div');
-      item.className = 'sd-item';
-      if (hiddenEl.value === r.ID) item.classList.add('selected');
-      var sub = subFn(r);
-      item.innerHTML = '<div class="sd-item-main">' + mainFn(r) + '</div>' +
-        (sub ? '<div class="sd-item-sub">' + sub + '</div>' : '');
-      item.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        hiddenEl.value = r.ID;
-        inputEl.value  = mainFn(r);
-        clearEl.style.display = 'inline';
-        closeDropdown(key);
-        onSelect(r, inputEl);
-        // Clear validation error
-        document.getElementById('sd_' + key + '_row').classList.remove('invalid');
-        var err = document.getElementById('e_' + (key === 'customer' ? 'Customer_Name' : 'Carrier_Name_or_MC'));
-        if (err) err.classList.remove('show');
-      });
-      listEl.appendChild(item);
-    });
-  }
-
-  inputEl.addEventListener('focus', function() {
-    wrapEl.classList.add('open');
-    renderList(inputEl.value);
-  });
-  inputEl.addEventListener('input', function() {
-    renderList(inputEl.value);
-    if (!inputEl.value) { hiddenEl.value = ''; clearEl.style.display = 'none'; onSelect(null); }
-  });
-  inputEl.addEventListener('blur', function() {
-    setTimeout(function() { closeDropdown(key); }, 150);
-  });
-}
-
-function closeDropdown(key) {
-  document.getElementById('sd_' + key).classList.remove('open');
-}
-
-function clearDropdown(key) {
-  var inputEl  = document.getElementById('sd_' + key + '_input');
-  var hiddenEl = document.getElementById(key === 'customer' ? 'Customer_Name' : 'Carrier_Name_or_MC');
-  inputEl.value  = '';
-  hiddenEl.value = '';
-  document.getElementById('sd_' + key + '_clear').style.display = 'none';
-  if (key === 'customer') onCustomerSelect(null);
-  if (key === 'carrier')  onCarrierSelect(null);
-}
-
-// ── Field handlers ────────────────────────────────────────────────────────
-function onCustomerSelect(r) {
-  var banner  = document.getElementById('creditBanner');
-  var valueEl = document.getElementById('creditValue');
-  if (!r) { banner.style.display = 'none'; return; }
-
-  // Show banner immediately with loading state
-  valueEl.innerHTML = '<div style="color:#aaa;font-size:12px;">Loading credit info…</div>';
-  banner.style.display = 'block';
-
-  var fvid = r.FV_ID || '';
-  if (!fvid) {
-    showCreditFallback(r, valueEl);
-    return;
-  }
-
-  fetch('https://pryanoperfi.pythonanywhere.com/maxcredit?FVID=' + encodeURIComponent(fvid), {
-    method: 'GET',
-    headers: {
-      'Authorization': 'Bearer h0dYGKsWGMifxv62k8Ku7chBlKmoaHCQ',
-      'Content-Type': 'application/json'
-    }
-  })
-  .then(function(resp) { return resp.json(); })
-  .then(function(data) {
-    var buyLimit   = parseFloat((data.Buy_Limit           || '0').toString().replace(/,/g,'')) || 0;
-    var ar         = parseFloat((data.Sum_Amount_GL_3002  || '0').toString().replace(/,/g,'')) || 0;
-    var available  = parseFloat((data.Remaining_Credit    || '0').toString().replace(/,/g,'')) || 0;
-    var utilPct    = buyLimit > 0 ? (ar / buyLimit * 100) : 0;
-    var utilColor  = utilPct >= 80 ? '#c62828' : utilPct >= 60 ? '#e67e22' : '#2e7d32';
-    var availColor = available > 0 ? '#2e7d32' : '#c62828';
-
-    function fmt(n) {
-      return '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-    }
-
-    // Show utilization warning if >= 80%
-    var warningEl = document.getElementById('creditWarning');
-    if (utilPct >= 80 && r) {
-      warningEl.className = 'credit-warning show';
-      warningEl.innerHTML =
-        '⚠️ ALERT: ' + (r.Customer_Company_Name || 'This customer') +
-        ' is at <strong>' + utilPct.toFixed(2) + '%</strong> of their current credit limit (' + fmt(buyLimit) + '). ' +
-        'Please review before submitting.';
-    } else {
-      warningEl.className = 'credit-warning';
-    }
-
-    valueEl.innerHTML =
-      '<div style="line-height:1.9em;font-size:13px;">' +
-      '<b>Buy Limit:</b> ' + fmt(buyLimit) + '<br>' +
-      '<b>AR:</b> ' + fmt(ar) + '<br>' +
-      '<b>Utilization:</b> <span style="color:' + utilColor + ';font-weight:bold;">' + utilPct.toFixed(2) + '%</span><br>' +
-      '<b>Available:</b> <span style="color:' + availColor + ';font-weight:bold;">' + fmt(available) + '</span>' +
-      '</div>';
-  })
-  .catch(function(err) {
-    console.warn('Credit API error (possible CORS):', err);
-    showCreditFallback(r, valueEl);
-  });
-}
-
-function showCreditFallback(r, valueEl) {
-  if (r.Credit_Limit || r.Credit_Decision) {
-    var limitStr = r.Credit_Limit
-      ? '$' + parseFloat(r.Credit_Limit).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
-      : 'N/A';
-    var html = '<div style="line-height:1.7em;font-size:13px;">';
-    if (r.Credit_Decision) html += '<b>Status:</b> ' + r.Credit_Decision + '<br>';
-    if (r.Credit_Limit)    html += '<b>Credit Limit:</b> ' + limitStr;
-    html += '</div>';
-    valueEl.innerHTML = html;
-  } else {
-    document.getElementById('creditBanner').style.display = 'none';
-  }
-}
-
-function onCarrierSelect(r) {
-  var banner = document.getElementById('termsBanner');
-  if (r && r.Payment_Terms) {
-    document.getElementById('termsValue').textContent = r.Payment_Terms;
-    banner.classList.remove('hidden');
-  } else {
-    banner.classList.add('hidden');
-  }
-}
-
-function updateMargin() {
-  var cr = parseFloat(document.getElementById('Customer_Rate').value) || 0;
-  var vr = parseFloat(document.getElementById('Carrier_Rate').value)  || 0;
-  var badge = document.getElementById('marginBadge');
-  if (!cr || !vr) { badge.className = 'margin-badge'; badge.textContent = ''; return; }
-  if (vr <= cr * 0.90) {
-    badge.className = 'margin-badge good';
-    badge.textContent = '✓ Margin OK';
-  } else {
-    badge.className = 'margin-badge bad';
-    badge.textContent = '⚠ 10% Margin Not Met';
-  }
-}
-
+// In-memory file store keyed by input id (read by the merge pipeline below).
 var fileStore = {};
 
+// ── Email / init resolution ─────────────────────────────────────────────────
+function resolveEmail() {
+  try {
+    var p = ZOHO.CREATOR.UTIL.getInitParams();
+    var go = function (params) {
+      brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      if (typeof onReady === 'function') onReady();
+    };
+    if (p && typeof p.then === 'function') { p.then(go); } else { go(p); }
+  } catch (e) {
+    // later tasks surface an auth banner
+  }
+}
+
+// Minimal onReady for B1. Later tasks flesh this out to call the data loaders
+// (/tms-customers, /tms-carriers), credit (/funding-credit) and submit wiring.
+function onReady() { /* B1: no-op — data loading lands in a later task */ }
+
+// ── Stepper navigation (visual shell only; gating lands in a later task) ─────
+var STEPS = ['customer', 'carrier', 'review'];
+
+function gotoStep(name) {
+  var idx = STEPS.indexOf(name);
+  if (idx === -1) return;
+  STEPS.forEach(function (s) {
+    var card = document.getElementById('card-' + s);
+    if (card) card.classList.toggle('active', s === name);
+    var hs = document.querySelector('.hstep[data-step="' + s + '"]');
+    if (hs) hs.classList.toggle('active', s === name);
+  });
+  var miniStep = document.getElementById('miniprog-step');
+  var miniName = document.getElementById('miniprog-name');
+  if (miniStep) miniStep.textContent = String(idx + 1);
+  if (miniName) miniName.textContent = name === 'review' ? 'Review' : (name.charAt(0).toUpperCase() + name.slice(1));
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+}
+
+// ── File-merge pipeline (PRESERVED from legacy widget) ───────────────────────
+// IDs read here MUST stay in sync with the file inputs: 'cust_docs', 'carrier_docs'.
 function mergeFiles(inputId, newFiles) {
   if (!fileStore[inputId]) fileStore[inputId] = [];
   Array.from(newFiles).forEach(function(f) {
@@ -896,7 +549,8 @@ function mergeFiles(inputId, newFiles) {
 function updateFileLabel(inputId, labelId) {
   var files = fileStore[inputId] || [];
   var lbl = document.getElementById(labelId);
-  if (!files.length) { lbl.textContent = '📎 Click or drag files here'; return; }
+  if (!lbl) return;
+  if (!files.length) { lbl.textContent = 'Click or drag files here'; return; }
   if (files.length === 1) {
     lbl.innerHTML = '📄 ' + files[0].name;
   } else {
@@ -931,252 +585,7 @@ function handleDrop(e, inputId, labelId, areaId) {
   updateFileLabel(inputId, labelId);
 }
 
-// ── Accordion ─────────────────────────────────────────────────────────────
-function toggleSection(n) {
-  var sec = document.getElementById('sec' + n);
-  if (sec.classList.contains('locked')) return;
-  sec.classList.toggle('open');
-}
-
-function goTo(n) {
-  closeAll();
-  var sec = document.getElementById('sec' + n);
-  sec.classList.remove('locked');
-  sec.classList.add('open');
-  currentSection = n;
-  document.getElementById('submitCard').style.display = 'none';
-  updateProgress();
-}
-
-function closeAll() {
-  [1,2,3].forEach(function(n) {
-    document.getElementById('sec' + n).classList.remove('open');
-  });
-}
-
-function nextSection(from) {
-  var required = sectionRequired(from);
-  if (!validate(required)) return;
-  if (!validateFiles(from)) return;
-
-  done[from - 1] = true;
-  markDone(from);
-  closeAll();
-
-  if (from < 3) {
-    var next = document.getElementById('sec' + (from + 1));
-    next.classList.remove('locked');
-    next.classList.add('open');
-    currentSection = from + 1;
-    document.getElementById('submitCard').style.display = 'none';
-  } else {
-    currentSection = 4;
-    showSubmitCard();
-  }
-  updateProgress();
-}
-
-function sectionRequired(n) {
-  if (n === 1) return ['Customer_Name','Customer_Reference_Number','Customer_Rate'];
-  if (n === 2) return ['Carrier_Name_or_MC','Carrier_Rate','Carrier_Factoring_Invoice','Load_Rate_Confirmation_Number'];
-  return [];
-}
-
-function markDone(n) {
-  var sec = document.getElementById('sec' + n);
-  sec.classList.add('completed');
-  document.getElementById('num' + n).textContent = '✓';
-  document.getElementById('sum' + n).textContent = sectionSummary(n);
-}
-
-function sectionSummary(n) {
-  if (n === 1) {
-    var name = document.getElementById('sd_customer_input').value;
-    var ref  = document.getElementById('Customer_Reference_Number').value;
-    var rate = document.getElementById('Customer_Rate').value;
-    return [name, ref && 'Ref: ' + ref, rate && '$' + parseFloat(rate).toFixed(2)].filter(Boolean).join(' · ');
-  }
-  if (n === 2) {
-    var carrier = document.getElementById('sd_carrier_input').value;
-    var crate   = document.getElementById('Carrier_Rate').value;
-    return [carrier, crate && '$' + parseFloat(crate).toFixed(2)].filter(Boolean).join(' · ');
-  }
-  var comments = document.getElementById('Load_Comments').value.trim();
-  return comments ? comments.slice(0, 40) + (comments.length > 40 ? '…' : '') : 'No comments';
-}
-
-function showSubmitCard() {
-  var card = document.getElementById('submitCard');
-  card.style.display = 'block';
-  // Margin note
-  var cr = parseFloat(document.getElementById('Customer_Rate').value) || 0;
-  var vr = parseFloat(document.getElementById('Carrier_Rate').value)  || 0;
-  var noteEl = document.getElementById('submitMarginNote');
-  if (cr && vr) {
-    var good = vr <= cr * 0.90;
-    var pct  = cr > 0 ? (((cr - vr) / cr) * 100).toFixed(1) : '0';
-    noteEl.innerHTML = '<div class="margin-badge ' + (good ? 'good' : 'bad') + '" style="margin-bottom:10px;">' +
-      (good ? '✓ Margin OK — ' + pct + '% gross margin' : '⚠ Margin below 10% — ' + pct + '% gross margin') +
-      '</div>';
-  } else {
-    noteEl.innerHTML = '';
-  }
-  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-function updateProgress() {
-  [1,2,3].forEach(function(n) {
-    var el = document.getElementById('prog' + n);
-    el.className = 'prog-step';
-    if (done[n-1]) el.classList.add('done');
-    else if (n === currentSection) el.classList.add('active');
-  });
-}
-
-// ── Validation ────────────────────────────────────────────────────────────
-function validate(fields) {
-  var ok = true;
-  fields.forEach(function(id) {
-    var el  = document.getElementById(id);
-    var err = document.getElementById('e_' + id);
-    // For searchable dropdowns, highlight the visible input row
-    var visualEl = id === 'Customer_Name'    ? document.getElementById('sd_customer_row') :
-                   id === 'Carrier_Name_or_MC' ? document.getElementById('sd_carrier_row') : el;
-    if (!el.value.trim()) {
-      visualEl.classList.add('invalid');
-      if (err) err.classList.add('show');
-      ok = false;
-    } else {
-      visualEl.classList.remove('invalid');
-      if (err) err.classList.remove('show');
-    }
-  });
-  return ok;
-}
-
-function validateFiles(section) {
-  if (_testMode) return true;
-  var ok = true;
-  var checks = section === 1
-    ? [{ input: 'cust_docs',    area: 'cust_docs_area',    err: 'e_cust_docs' }]
-    : section === 2
-    ? [{ input: 'carrier_docs', area: 'carrier_docs_area', err: 'e_carrier_docs' }]
-    : [];
-  checks.forEach(function(c) {
-    var files = document.getElementById(c.input).files;
-    var area  = document.getElementById(c.area);
-    var err   = document.getElementById(c.err);
-    if (!files || files.length === 0) {
-      area.classList.add('invalid');
-      if (err) err.classList.add('show');
-      ok = false;
-    } else {
-      area.classList.remove('invalid');
-      if (err) err.classList.remove('show');
-    }
-  });
-  return ok;
-}
-
-// ── Submit ────────────────────────────────────────────────────────────────
-function submitForm() {
-  var btn = document.getElementById('submitBtn');
-  btn.disabled = true;
-  btn.textContent = 'Submitting…';
-  showStatus('Submitting your load…', 'loading');
-
-  var data = {
-    Customer_Name:                 document.getElementById('Customer_Name').value,
-    Customer_Reference_Number:     document.getElementById('Customer_Reference_Number').value.trim(),
-    Customer_Rate:                 document.getElementById('Customer_Rate').value,
-    Carrier_Name_or_MC:            document.getElementById('Carrier_Name_or_MC').value,
-    Payment_Terms:                 (function(){ var t = document.getElementById('termsValue').textContent.trim(); return t === '—' ? '' : t; })(),
-    Carrier_Factoring_Invoice:     document.getElementById('Carrier_Factoring_Invoice').value.trim(),
-    Load_Rate_Confirmation_Number: document.getElementById('Load_Rate_Confirmation_Number').value.trim(),
-    Carrier_Rate:                  document.getElementById('Carrier_Rate').value,
-    Load_Comments:                 document.getElementById('Load_Comments').value.trim(),
-    API_Submission:                'True'
-  };
-
-  ZOHO.CREATOR.DATA.addRecords({
-    form_name: 'Broker_Funding_Portal',
-    payload: { data: data }
-  }).then(function(res) {
-    console.log('addRecords response:', JSON.stringify(res));
-    if (res && res.code === 3000) {
-      var recordId = res.data && (res.data.ID || (typeof res.data === 'string' ? res.data : null));
-      console.log('Record ID:', recordId);
-      if (recordId) {
-        uploadFiles(recordId, btn);
-      } else {
-        showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
-        btn.textContent = '✓ Submitted';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    } else {
-      var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
-      showStatus('Submission failed' + detail + '. Please try again or contact support.', 'error');
-      console.error('addRecords failed:', JSON.stringify(res));
-      btn.disabled = false;
-      btn.textContent = 'Submit Load for Funding';
-    }
-  }).catch(function(e) {
-    var msg = (e && (e.message || e.toString())) ? ': ' + (e.message || e.toString()) : '';
-    showStatus('Submission failed' + msg + '. Please try again or contact support.', 'error');
-    btn.disabled = false;
-    btn.textContent = 'Submit Load for Funding';
-    console.error('submit error', e);
-  });
-}
-
-async function uploadFiles(recordId, btn) {
-  var sections = [
-    { key: 'cust_docs',    field: 'Customer_Documents', label: 'customer' },
-    { key: 'carrier_docs', field: 'Carrier_Documents',  label: 'carrier'  }
-  ];
-  var hasFiles = sections.some(function(s) { return (fileStore[s.key] || []).length > 0; });
-  if (!hasFiles) {
-    showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
-    btn.textContent = '✓ Submitted';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    return;
-  }
-  var errors = 0;
-  for (var i = 0; i < sections.length; i++) {
-    var s = sections[i];
-    var files = fileStore[s.key] || [];
-    if (!files.length) continue;
-    try {
-      showStatus('Merging ' + files.length + ' ' + s.label + ' file(s) into PDF…', 'loading');
-      var pdfBlob = await mergeFilesToPDF(files);
-      var filename = s.label + '_docs_' + recordId + '.pdf';
-      showStatus('Uploading ' + s.label + ' documents…', 'loading');
-      var formData = new FormData();
-      formData.append('record_id', recordId);
-      formData.append('field_name', s.field);
-      formData.append('file', pdfBlob, filename);
-      var resp = await fetch('https://pryanoperfi.pythonanywhere.com/upload-doc', {
-        method: 'POST',
-        body: formData
-      });
-      var data = await resp.json();
-      console.log('upload ' + s.label + ' response:', JSON.stringify(data));
-      if (data.code !== 3000) errors++;
-    } catch(e) {
-      console.error('upload ' + s.label + ' error:', e);
-      errors++;
-    }
-  }
-  if (errors > 0) {
-    showStatus('✓ Load submitted. ' + errors + ' document upload(s) failed — please contact your OperFi rep.', 'error');
-  } else {
-    showStatus('✓ Load submitted successfully! Your OperFi team will be in touch shortly.', 'success');
-  }
-  btn.textContent = '✓ Submitted';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-// ── PDF Merge ──────────────────────────────────────────────────────────────
+// ── PDF Merge (PRESERVED from legacy widget) ─────────────────────────────────
 async function mergeFilesToPDF(files) {
   var merged = await PDFLib.PDFDocument.create();
   for (var i = 0; i < files.length; i++) {
@@ -1310,45 +719,23 @@ function blobToDataUrl(blob) {
   });
 }
 
-function showStatus(msg, type) {
-  var el = document.getElementById('statusMsg');
-  el.textContent = msg;
-  el.className = 'status-msg show ' + type;
-}
-
-// ── Test data fill (dev only) ──────────────────────────────────────────────
-var _testMode = false;
-
-function fillTestData() {
-  _testMode = true;
-  if (customerRecords.length) {
-    var c = customerRecords[0];
-    document.getElementById('sd_customer_input').value = c.Customer_Company_Name || '(test)';
-    document.getElementById('Customer_Name').value = c.ID;
-    onCustomerSelect(c);
-  }
-  document.getElementById('Customer_Reference_Number').value = 'TEST-REF-001';
-  document.getElementById('Customer_Rate').value = '2000';
-  if (vendorRecords.length) {
-    var v = vendorRecords[0];
-    document.getElementById('sd_carrier_input').value = v.Vendor_Name || '(test)';
-    document.getElementById('Carrier_Name_or_MC').value = v.ID;
-    onCarrierSelect(v);
-  }
-  document.getElementById('Carrier_Factoring_Invoice').value = 'INV-TEST-001';
-  document.getElementById('Load_Rate_Confirmation_Number').value = 'RC-TEST-001';
-  document.getElementById('Carrier_Rate').value = '1500';
-  updateMargin();
-  // Unlock all sections, mark done, jump to review
-  [1,2,3].forEach(function(n) {
-    done[n-1] = true;
-    var sec = document.getElementById('sec' + n);
-    sec.classList.remove('locked');
-    markDone(n);
+// ── Boot ─────────────────────────────────────────────────────────────────────
+window.addEventListener('load', function () {
+  // Stepper + nav button wiring (visual shell only for B1)
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { gotoStep(b.getAttribute('data-goto')); });
   });
-  goTo(3);
-}
+  document.querySelectorAll('.hstep[data-step]').forEach(function (hs) {
+    hs.addEventListener('click', function () { gotoStep(hs.getAttribute('data-step')); });
+  });
+  resolveEmail();
+});
 
+// expose for tests / later tasks
+window.gotoStep = gotoStep;
+window.resolveEmail = resolveEmail;
+window.mergeFilesToPDF = mergeFilesToPDF;
+window.onFileChange = onFileChange;
 </script>
 </body>
 </html>

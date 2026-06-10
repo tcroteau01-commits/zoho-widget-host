@@ -994,6 +994,7 @@ window.addEventListener('load', function () {
   var rateCon = document.getElementById('rate-con');
   if (rateCon) { rateCon.addEventListener('input', refreshValidity); }
 
+  refreshValidity();  // reflect any browser-autofilled fields in the initial submit state
   resolveEmail();
 });
 

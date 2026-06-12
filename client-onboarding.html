@@ -838,7 +838,8 @@ function go(step) {
 function showStatus(msg, type) {
   var el = $('statusMsg'); if (!el) return;
   el.textContent = msg; el.className = 'status-msg show ' + type;
-  if (type !== 'success') global.scrollTo({ top: 0, behavior: 'smooth' });
+  // Always bring the banner into view — it sits at the top, the buttons are at the bottom.
+  global.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function pickRadio(container, attr, value) { qsa('#' + container + ' .chip').forEach(function (c) { c.classList.toggle('sel', c.getAttribute(attr) === value); }); }
@@ -994,15 +995,28 @@ function submitApplication() {
   var btn = $('submitBtn'); btn.disabled = true; btn.textContent = 'Submitting…';
   showStatus('Submitting your application…', 'loading');
 
-  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+  function doDemo(note) {
     console.log('DEMO submit — Application:', JSON.stringify(buildApplicationPayload(s), null, 2));
     console.log('DEMO submit — Owners:', JSON.stringify(buildOwnerPayloads(s, 'DEMO_APP_ID')));
     console.log('DEMO submit — Children:', JSON.stringify(buildChildPayloads(s, 'DEMO_APP_ID')));
-    showStatus('✓ Demo mode: application validated and payloads logged to the console. Wire ZOHO + Flask to submit for real.', 'success');
-    btn.textContent = '✓ Validated (demo)'; return;
+    showStatus('✓ Validated. ' + (note || 'Running standalone (demo) — full payloads logged to the browser console (F12). It submits for real once embedded in Creator.'), 'success');
+    btn.disabled = false; btn.textContent = '✓ Validated (demo)';
   }
 
-  ZOHO.CREATOR.init().then(function () {
+  // Only attempt a REAL submit when actually embedded in Creator (in an iframe, with the SDK).
+  // Opened standalone, ZOHO.CREATOR.init() never resolves — so we must not call it, or it hangs.
+  var inIframe; try { inIframe = global.self !== global.top; } catch (e) { inIframe = true; }
+  var hasSDK = (typeof ZOHO !== 'undefined') && ZOHO.CREATOR && typeof ZOHO.CREATOR.init === 'function';
+  if (!inIframe || !hasSDK) { doDemo(); return; }
+
+  function withTimeout(p, ms) {
+    return new Promise(function (resolve, reject) {
+      var to = setTimeout(function () { reject(new Error('sdk-timeout')); }, ms);
+      Promise.resolve(p).then(function (v) { clearTimeout(to); resolve(v); }, function (e) { clearTimeout(to); reject(e); });
+    });
+  }
+
+  withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
     return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM.application, payload: { data: buildApplicationPayload(s) } });
   }).then(function (res) {
     if (!res || res.code !== 3000) throw new Error('Application add failed (code ' + (res && res.code) + ')');
@@ -1012,6 +1026,7 @@ function submitApplication() {
     showStatus('✓ Application submitted. Check your email for a link to track status and upload documents.', 'success');
     btn.textContent = '✓ Submitted';
   }).catch(function (e) {
+    if (e && e.message === 'sdk-timeout') { doDemo('Creator did not respond (not embedded?) — validated in demo mode instead.'); return; }
     console.error('submit failed', e);
     showStatus('Submission failed: ' + (e && e.message ? e.message : e) + '. Please try again or contact your OperFi rep.', 'error');
     btn.disabled = false; btn.textContent = '✓ Submit Application';

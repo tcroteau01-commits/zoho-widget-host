@@ -319,7 +319,18 @@ var DEMO = {
 };
 
 // ── Data access layer (SDK when embedded, demo otherwise) ─────────────────────
-var LIVE = (typeof ZOHO !== 'undefined' && ZOHO.CREATOR);
+// LIVE only when truly embedded in Creator (in an iframe, with the SDK). Standalone,
+// ZOHO exists but ZOHO.CREATOR.init() never resolves — so we must stay in demo or it hangs.
+var LIVE = (function () {
+  var f; try { f = global.self !== global.top; } catch (e) { f = true; }
+  return f && (typeof ZOHO !== 'undefined') && !!(ZOHO && ZOHO.CREATOR);
+})();
+function withTimeout(p, ms) {
+  return new Promise(function (resolve, reject) {
+    var to = setTimeout(function () { reject(new Error('sdk-timeout')); }, ms);
+    Promise.resolve(p).then(function (v) { clearTimeout(to); resolve(v); }, function (e) { clearTimeout(to); reject(e); });
+  });
+}
 function loadModel() {
   // Live read would use ZOHO.CREATOR.DATA.getRecords for Application/Owner/Document/
   // Underwriting_Review filtered by the Application id (confirm exact SDK signature).
@@ -328,8 +339,10 @@ function loadModel() {
 }
 function saveReview(payload, hasExisting) {
   if (!LIVE) { console.log('DEMO save — Underwriting_Review payload:', JSON.stringify(payload, null, 2)); return Promise.resolve({ demo:true }); }
-  if (hasExisting) return ZOHO.CREATOR.DATA.updateRecord({ report_name:'Underwriting_Review_Report', id: hasExisting, payload:{ data: payload } });
-  return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM_REVIEW, payload:{ data: payload } });
+  return withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
+    if (hasExisting) return ZOHO.CREATOR.DATA.updateRecord({ report_name:'Underwriting_Review_Report', id: hasExisting, payload:{ data: payload } });
+    return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM_REVIEW, payload:{ data: payload } });
+  });
 }
 
 // ── DOM (browser only) ───────────────────────────────────────────────────────

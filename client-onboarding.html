@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OperFi Factoring Application</title>
+<style>
+:root {
+  --of-beige: #f0efe9; --of-beige-soft: #fafaf6; --of-beige-line: #e6e3da;
+  --of-charcoal: #272727; --of-charcoal-soft: #444; --of-gray-500: #888; --of-gray-700: #555; --of-gray-100: #f5f5f0;
+  --of-orange: #e8a020; --of-orange-soft: #f5a623;
+  --of-green: #2e7d32; --of-green-text: #1f6321; --of-green-soft: #e3f4e3;
+  --of-amber: #f5a623; --of-amber-text: #b86e00; --of-amber-soft: #fff8e1;
+  --of-red: #c62828; --of-red-text: #a31818; --of-red-soft: #fde4e4;
+  --of-blue-text: #1a5fb4; --of-blue-soft: #e3edfb;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: var(--of-beige); color: var(--of-charcoal); min-height: 100vh; }
+
+.topbar { background: var(--of-charcoal); color: #fff; padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; }
+.brand .logo { font-size: 19px; font-weight: 800; letter-spacing: -0.5px; }
+.brand .logo span { color: var(--of-orange); }
+.topbar .save { font-size: 12px; color: rgba(255,255,255,0.6); display: flex; align-items: center; gap: 7px; }
+.topbar .save .dot { width: 7px; height: 7px; border-radius: 50%; background: #6dcf6d; display:inline-block; }
+
+.shell { max-width: 1180px; margin: 0 auto; padding: 26px 24px 90px; display: grid; grid-template-columns: 220px 1fr 300px; gap: 26px; align-items: start; }
+@media (max-width: 960px){ .shell { grid-template-columns: 1fr; } .rail, .terms { display:none; } }
+
+.rail { position: sticky; top: 20px; }
+.rail-step { display: flex; align-items: center; gap: 12px; padding: 10px 0; color: var(--of-gray-500); font-size: 13px; font-weight: 600; }
+.rail-step .rnum { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--of-beige-line); background:#fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+.rail-step.done { color: var(--of-charcoal-soft); }
+.rail-step.done .rnum { background: var(--of-green); border-color: var(--of-green); color: #fff; }
+.rail-step.current { color: var(--of-charcoal); }
+.rail-step.current .rnum { background: var(--of-orange); border-color: var(--of-orange); color: #fff; box-shadow: 0 0 0 4px rgba(232,160,32,0.18); }
+.rail-step.locked { opacity: 0.5; }
+
+.fcard { background: #fff; border: 1px solid var(--of-beige-line); border-radius: 16px; padding: 30px 34px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+.step-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--of-orange); font-weight: 800; }
+.step-title { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 6px 0 6px; }
+.step-sub { font-size: 14px; color: var(--of-gray-700); line-height: 1.55; margin-bottom: 24px; }
+
+.field { margin-bottom: 18px; }
+.field label { display: block; font-size: 12px; font-weight: 700; color: var(--of-charcoal-soft); margin-bottom: 6px; }
+.field label .req { color: var(--of-red); }
+.field input[type=text], .field input[type=email], .field input[type=tel], .field input[type=number], .field select, .field textarea { width: 100%; padding: 12px 14px; border: 1.5px solid var(--of-beige-line); border-radius: 10px; font-size: 14px; font-family: inherit; background: var(--of-beige-soft); color: var(--of-charcoal); }
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--of-orange); background: #fff; }
+.field input.invalid, .field select.invalid, .field textarea.invalid { border-color: var(--of-red); background: #fff; }
+.field .hint { font-size: 11.5px; color: var(--of-gray-500); margin-top: 5px; }
+.field .ferr { font-size: 11.5px; color: var(--of-red); margin-top: 5px; display: none; }
+.field .ferr.show { display: block; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+.dot-hero { background: linear-gradient(120deg,#272727,#3a3320); border-radius: 14px; padding: 26px; color: #fff; margin-bottom: 22px; }
+.dot-hero h3 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.dot-hero p { font-size: 13px; color: rgba(255,255,255,0.65); margin-bottom: 16px; line-height: 1.5; }
+.dot-search { display: flex; gap: 10px; }
+.dot-search input { flex: 1; padding: 14px 16px; border-radius: 10px; border: none; font-size: 16px; font-weight: 600; font-family: inherit; letter-spacing: 1px; }
+.dot-search button { background: var(--of-orange); color: #fff; border: none; border-radius: 10px; padding: 0 24px; font-size: 14px; font-weight: 800; cursor: pointer; font-family: inherit; display: flex; align-items: center; gap: 8px; }
+.dot-search button:hover { background: #d8920f; }
+.dot-search button:disabled { opacity: 0.5; cursor: not-allowed; }
+.dot-hint { font-size: 11.5px; color: rgba(255,255,255,0.45); margin-top: 12px; }
+.dot-hint code { background: rgba(255,255,255,0.12); padding: 2px 7px; border-radius: 5px; color: var(--of-orange); font-weight: 700; }
+
+.found { display: none; align-items: center; gap: 16px; background: var(--of-green-soft); border: 1px solid #c7e6c7; border-radius: 12px; padding: 16px 20px; margin-bottom: 22px; }
+.found.show { display: flex; }
+.found .fcheck { width: 40px; height: 40px; border-radius: 50%; background: var(--of-green); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.found .fb-name { font-weight: 800; font-size: 16px; }
+.found .fb-meta { font-size: 12.5px; color: var(--of-gray-700); margin-top: 2px; }
+.found .fb-auth { margin-left: auto; }
+
+.chips { display: flex; gap: 10px; flex-wrap: wrap; }
+.chip { padding: 12px 18px; border: 1.5px solid var(--of-beige-line); border-radius: 10px; font-size: 13.5px; font-weight: 700; cursor: pointer; background: var(--of-beige-soft); color: var(--of-charcoal-soft); user-select: none; display:flex; align-items:center; gap:8px; }
+.chip:hover { border-color: var(--of-orange); }
+.chip.sel { border-color: var(--of-orange); background: var(--of-amber-soft); color: var(--of-charcoal); }
+.chip .cx { width:16px;height:16px;border:1.5px solid var(--of-gray-500);border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff; }
+.chip.sel .cx { background: var(--of-orange); border-color: var(--of-orange); }
+.chip.radio .cx { border-radius: 50%; }
+
+.divider { height: 1px; background: var(--of-beige-line); margin: 24px 0; }
+.section-h { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--of-charcoal); margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid var(--of-orange); }
+
+.carrier-only, .broker-only, .ambiguous-only, .vet-only, .prior-only, .hotshot-only, .related-only, .customers-only, .contacts-only { display: none; }
+body.is-carrier .carrier-only { display: block; }
+body.is-broker .broker-only { display: block; }
+body.is-carrier .chips.carrier-only, body.is-broker .chips.broker-only { display: flex; }
+body.is-ambiguous .ambiguous-only { display: block; }
+body.is-vet .vet-only { display: block; }
+body.show-prior .prior-only { display: grid; }
+body.show-hotshot .hotshot-only { display: block; }
+body.show-related .related-only { display: block; }
+body.show-customers .customers-only { display: block; }
+body.show-contacts .contacts-only { display: block; }
+
+.nav { display: flex; justify-content: space-between; margin-top: 28px; }
+.btn { background: var(--of-charcoal); color: #fff; border: none; border-radius: 10px; padding: 13px 26px; font-size: 14px; font-weight: 800; cursor: pointer; font-family: inherit; }
+.btn.orange { background: var(--of-orange); }
+.btn.ghost { background: #fff; border: 1.5px solid var(--of-beige-line); color: var(--of-charcoal); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.terms { position: sticky; top: 20px; background: #fff; border: 1px solid var(--of-beige-line); border-radius: 16px; overflow: hidden; }
+.terms.hidden { display: none; }
+.terms-head { background: var(--of-charcoal); color: #fff; padding: 16px 20px; }
+.terms-head .tt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--of-orange); font-weight: 800; }
+.terms-head .ts { font-size: 13px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+.terms-body { padding: 18px 20px; }
+.big-rate { text-align: center; padding: 6px 0 16px; border-bottom: 1px dashed var(--of-beige-line); margin-bottom: 16px; }
+.big-rate .br-val { font-size: 46px; font-weight: 800; letter-spacing: -2px; color: var(--of-charcoal); line-height: 1; }
+.big-rate .br-val span { font-size: 22px; color: var(--of-orange); }
+.big-rate .br-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--of-gray-500); font-weight: 700; margin-top: 6px; }
+.tline { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; font-size: 13px; border-bottom: 1px dashed var(--of-beige-line); }
+.tline:last-child { border-bottom: none; }
+.tline .tk { color: var(--of-gray-700); }
+.tline .tv { font-weight: 800; font-size: 15px; }
+.terms-foot { background: var(--of-beige-soft); padding: 12px 20px; font-size: 11px; color: var(--of-gray-500); line-height: 1.5; border-top: 1px solid var(--of-beige-line); }
+.promo { background: var(--of-amber-soft); border:1px solid #f5e0a8; border-radius:8px; padding:9px 12px; font-size:11.5px; color:var(--of-amber-text); font-weight:600; margin-bottom:14px; display:none; }
+.promo.show { display:block; }
+
+.subnote { font-size:12px;color:var(--of-gray-500);background:var(--of-beige-soft);border-radius:8px;padding:8px 12px;margin-top:6px; }
+.owner-block { border:1px solid var(--of-beige-line); border-radius:12px; padding:18px; margin-bottom:14px; background:var(--of-beige-soft); position:relative; }
+.owner-block h4 { font-size:13px; font-weight:800; margin-bottom:14px; }
+.add-link { color:var(--of-orange); font-weight:700; font-size:13px; cursor:pointer; display:inline-block; margin:2px 0 14px; }
+.fileup { border:1.5px dashed var(--of-beige-line); border-radius:10px; padding:14px; text-align:center; font-size:12.5px; color:var(--of-gray-700); cursor:pointer; }
+.fileup:hover { border-color:var(--of-orange); }
+
+/* Repeatable subforms */
+.sub-row { background:#fff; border:1px solid var(--of-beige-line); border-radius:10px; padding:14px 14px 4px; margin-bottom:10px; position:relative; }
+.sub-row .rm { position:absolute; top:8px; right:10px; color:var(--of-red); cursor:pointer; font-weight:800; border:none; background:none; font-size:18px; line-height:1; }
+.sub-grid { display:grid; gap:12px; }
+.sub-grid.c2 { grid-template-columns:1fr 1fr; }
+.sub-grid.c3 { grid-template-columns:1fr 1fr 1fr; }
+
+/* Status banner (loading / success / error) — Broker Portal convention */
+.status-msg { padding: 12px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; margin: 0 0 18px; display: none; }
+.status-msg.show { display: block; }
+.status-msg.success { background: var(--of-green-soft); color: var(--of-green-text); border: 1px solid #a5d6a7; }
+.status-msg.error   { background: var(--of-red-soft); color: var(--of-red-text); border: 1px solid #ef9a9a; }
+.status-msg.loading { background: var(--of-amber-soft); color: var(--of-amber-text); border: 1px solid #ffe082; }
+</style>
+</head>
+<body class="is-carrier">
+
+<div class="topbar">
+  <div class="brand"><div class="logo">Oper<span>Fi</span></div></div>
+  <div class="save"><span class="dot"></span> Progress saved automatically</div>
+</div>
+
+<div class="shell">
+
+  <!-- LEFT: progress rail -->
+  <div class="rail" id="rail">
+    <div class="rail-step current" data-r="0"><span class="rnum">1</span> Get Started</div>
+    <div class="rail-step locked" data-r="1"><span class="rnum">2</span> Your Operation</div>
+    <div class="rail-step locked" data-r="2"><span class="rnum">3</span> Credit History</div>
+    <div class="rail-step locked" data-r="3"><span class="rnum">4</span> Ownership</div>
+    <div class="rail-step locked" data-r="4"><span class="rnum">5</span> Rate &amp; Terms</div>
+    <div class="rail-step locked" data-r="5"><span class="rnum">6</span> Review &amp; Submit</div>
+  </div>
+
+  <!-- CENTER: step content -->
+  <div>
+    <div id="statusMsg" class="status-msg"></div>
+
+    <!-- STEP 0: Get started -->
+    <div class="fcard step" data-step="0">
+      <div class="step-eyebrow">Step 1 of 6</div>
+      <div class="step-title">Let's get you funded</div>
+      <div class="step-sub">Start by entering your USDOT number. We'll pull your business details from FMCSA automatically so you don't have to type them in.</div>
+
+      <div class="dot-hero">
+        <h3>🔍 Search your USDOT</h3>
+        <p>This auto-fills your business name, authority, MC number, fleet size, and contact info.</p>
+        <div class="dot-search">
+          <input type="text" id="dotInput" placeholder="e.g. 4366362" autocomplete="off" inputmode="numeric">
+          <button id="dotSearchBtn" type="button">Search ➜</button>
+        </div>
+        <div class="dot-hint">Try <code>4366362</code> (carrier) or <code>3421250</code> (broker)</div>
+      </div>
+
+      <div class="found" id="foundBanner">
+        <div class="fcheck">✓</div>
+        <div>
+          <div class="fb-name" id="fbName">—</div>
+          <div class="fb-meta" id="fbMeta">—</div>
+        </div>
+        <div class="fb-auth"><span class="chip sel" id="fbAuth" style="cursor:default">—</span></div>
+      </div>
+
+      <div class="field ambiguous-only">
+        <label>Your authority covers more than one type. Which are you signing up to factor under? <span class="req">*</span></label>
+        <div class="chips">
+          <div class="chip radio" data-fsel="Carrier" id="fselCarrier"><span class="cx">●</span> Carrier</div>
+          <div class="chip radio" data-fsel="Broker" id="fselBroker"><span class="cx">●</span> Broker</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>How did you hear about OperFi?</label>
+        <select id="referralSource"><option value="">Select...</option><option>OperFi Representative</option><option>Online</option><option>Referral Partner</option></select>
+      </div>
+      <div class="field" id="referralNameWrap" style="display:none">
+        <label>Who referred you?</label>
+        <input type="text" id="referralName" placeholder="Individual or company name">
+      </div>
+
+      <div class="field">
+        <div class="chip radio" id="vetChip" style="display:inline-flex"><span class="cx">✓</span> I'm a Veteran, Active Duty, or Law Enforcement</div>
+        <div class="hint">Qualifies you for a 0.25% rate discount. Proof of service requested after submission.</div>
+      </div>
+      <div class="field vet-only" id="branchWrap">
+        <label>Branch of Service / Affiliation <span class="req">*</span></label>
+        <input type="text" id="branchOfService" placeholder="e.g. U.S. Army">
+        <div class="hint">Stored once Tom adds the Branch_of_Service field in Creator (see README).</div>
+      </div>
+
+      <div class="nav">
+        <span></span>
+        <button class="btn orange" id="next0" type="button" disabled>Continue ➜</button>
+      </div>
+    </div>
+
+    <!-- STEP 1: Operation -->
+    <div class="fcard step" data-step="1" style="display:none">
+      <div class="step-eyebrow">Step 2 of 6</div>
+      <div class="step-title">Your operation</div>
+      <div class="step-sub">We pre-filled what we could from FMCSA. Confirm and complete the rest.</div>
+
+      <div class="section-h">Business</div>
+      <div class="row2">
+        <div class="field"><label>Legal Business Name <span class="req">*</span></label><input type="text" id="opName" data-req><div class="ferr" data-err="opName">Business name is required.</div></div>
+        <div class="field"><label>DBA (if any)</label><input type="text" id="opDBA"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>USDOT</label><input type="text" id="opUsdot" readonly></div>
+        <div class="field"><label>MC Number</label><input type="text" id="opMC" placeholder="MC #"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Business Formation Type <span class="req">*</span></label>
+          <select id="opFormation" data-req><option value="">Select...</option><option>LLC</option><option>S-Corp</option><option>C-Corp</option><option>Partnership</option><option>Sole Proprietor</option></select>
+        </div>
+        <div class="field"><label>Federal Tax ID (EIN) <span class="req" id="einReq">*</span></label><input type="text" id="opEIN" placeholder="XX-XXXXXXX"><div class="ferr" data-err="opEIN">EIN is required for LLC, Corp, and Partnership.</div></div>
+      </div>
+
+      <div class="carrier-only">
+        <div class="row2">
+          <div class="field"><label># of Trucks <span class="req">*</span></label><input type="number" id="opTrucks" value="1" min="1"></div>
+          <div class="field"><label># of Drivers <span class="req">*</span></label><input type="number" id="opDrivers" value="1" min="0"></div>
+        </div>
+        <div class="field">
+          <label>Equipment Type(s) <span class="req">*</span></label>
+          <div class="chips" id="equipChips">
+            <div class="chip" data-equip="Dry Van"><span class="cx">✓</span> Dry Van</div>
+            <div class="chip" data-equip="Flatbed"><span class="cx">✓</span> Flatbed</div>
+            <div class="chip" data-equip="Reefer"><span class="cx">✓</span> Reefer</div>
+            <div class="chip" data-equip="Step Deck"><span class="cx">✓</span> Step Deck</div>
+            <div class="chip" data-equip="Power Only"><span class="cx">✓</span> Power Only</div>
+            <div class="chip" data-equip="Box Truck"><span class="cx">✓</span> Box Truck</div>
+            <div class="chip" data-equip="Sprinter Van"><span class="cx">✓</span> Sprinter Van</div>
+            <div class="chip" data-equip="Hotshot"><span class="cx">✓</span> Hotshot</div>
+            <div class="chip" data-equip="Other"><span class="cx">✓</span> Other</div>
+          </div>
+          <div class="ferr" data-err="equip">Select at least one equipment type.</div>
+        </div>
+        <div class="field hotshot-only">
+          <div class="chip radio" id="hotshotCdlChip" style="display:inline-flex"><span class="cx">●</span> My Hotshot operation requires a CDL</div>
+          <div class="hint">CDL hotshot qualifies for a better rate tier.</div>
+        </div>
+        <div class="field" id="otherFreightWrap" style="display:none"><label>Other / Freight Hauled <span class="req">*</span></label><input type="text" id="opOtherFreight"></div>
+      </div>
+
+      <div class="field" style="margin-top:18px"><label>Estimated Monthly Invoices to Factor <span class="req">*</span></label><input type="text" id="opMonthly" placeholder="$" value="$22,000"></div>
+
+      <div class="section-h" style="margin-top:24px">Contact &amp; Address</div>
+      <div class="row2">
+        <div class="field"><label>Business Phone <span class="req">*</span></label><input type="tel" id="opPhone" data-req><div class="ferr" data-err="opPhone">Business phone is required.</div></div>
+        <div class="field"><label>Business Admin Email <span class="req">*</span></label><input type="email" id="opEmail" data-req><div class="ferr" data-err="opEmail">A valid admin email is required.</div></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>SMS / Admin Phone <span class="req">*</span></label><input type="tel" id="opSmsPhone" data-req><div class="ferr" data-err="opSmsPhone">SMS phone is required.</div></div>
+        <div class="field"><label>Alternate Phone</label><input type="tel" id="opAltPhone"></div>
+      </div>
+      <div class="broker-only">
+        <div class="row2">
+          <div class="field"><label>Operations Email <span class="req">*</span></label><input type="email" id="opOpsEmail"><div class="ferr" data-err="opOpsEmail">Operations email is required for brokers.</div></div>
+          <div class="field"><label>Accounting Email <span class="req">*</span></label><input type="email" id="opAcctEmail"><div class="ferr" data-err="opAcctEmail">Accounting email is required for brokers.</div></div>
+        </div>
+      </div>
+      <div class="field"><label>Office Manager</label><input type="text" id="opOfficeMgr"></div>
+      <div class="field"><label>Physical Business Address <span class="req">*</span></label><input type="text" id="opPhysical" placeholder="Street, City, State, ZIP" data-req><div class="ferr" data-err="opPhysical">Physical address is required.</div></div>
+      <div class="field">
+        <div class="chip radio sel" id="sameAddrChip" style="display:inline-flex"><span class="cx">●</span> Mailing address same as physical</div>
+      </div>
+      <div class="field" id="mailingWrap" style="display:none"><label>Mailing Business Address <span class="req">*</span></label><input type="text" id="opMailing" placeholder="Street, City, State, ZIP"></div>
+
+      <div class="divider"></div>
+      <div class="section-h">Factoring History</div>
+      <div class="field">
+        <label>Do you currently or previously work with a factoring company? <span class="req">*</span></label>
+        <div class="chips" id="priorChips">
+          <div class="chip radio" data-prior="Yes"><span class="cx">●</span> Yes</div>
+          <div class="chip radio sel" data-prior="No"><span class="cx">●</span> No</div>
+        </div>
+      </div>
+      <div class="prior-only row2" id="priorWrap">
+        <div class="field"><label>Current / Previous Factor</label><input type="text" id="opPriorFactor"></div>
+        <div class="field"><label>Termination Date</label><input type="text" id="opTermDate" placeholder="MM/DD/YYYY"></div>
+      </div>
+
+      <!-- Broker: related businesses + customer prescreen -->
+      <div class="broker-only">
+        <div class="divider"></div>
+        <div class="section-h">Other Businesses &amp; Customers</div>
+        <div class="field">
+          <label>Do you own other trucking / logistics businesses?</label>
+          <div class="chips" id="relatedToggle">
+            <div class="chip radio" data-rel="Yes"><span class="cx">●</span> Yes</div>
+            <div class="chip radio sel" data-rel="No"><span class="cx">●</span> No</div>
+          </div>
+        </div>
+        <div class="related-only">
+          <div id="relatedRows"></div>
+          <span class="add-link" id="addRelated">+ Add a business</span>
+        </div>
+        <div class="field">
+          <label>Do you have customers / a book of business to pre-screen?</label>
+          <div class="chips" id="customersToggle">
+            <div class="chip radio" data-cust="Yes"><span class="cx">●</span> Yes</div>
+            <div class="chip radio sel" data-cust="No"><span class="cx">●</span> No</div>
+          </div>
+        </div>
+        <div class="customers-only">
+          <div id="customerRows"></div>
+          <span class="add-link" id="addCustomer">+ Add a customer</span>
+        </div>
+      </div>
+
+      <div class="nav">
+        <button class="btn ghost" type="button" data-go="0">← Back</button>
+        <button class="btn orange" type="button" data-go="2">Continue ➜</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Credit -->
+    <div class="fcard step" data-step="2" style="display:none">
+      <div class="step-eyebrow">Step 3 of 6</div>
+      <div class="step-title">Credit history</div>
+      <div class="step-sub">Check anything that applies. This won't automatically disqualify you — it just helps us set up your file correctly.</div>
+      <div class="chips" id="creditChips" style="flex-direction:column;align-items:stretch">
+        <div class="chip" data-credit="None"><span class="cx">✓</span> None of the below</div>
+        <div class="chip" data-credit="Back Taxes"><span class="cx">✓</span> Back Taxes</div>
+        <div class="chip" data-credit="Bankruptcy"><span class="cx">✓</span> Bankruptcy</div>
+        <div class="chip" data-credit="Judgments"><span class="cx">✓</span> Judgments</div>
+        <div class="chip" data-credit="Liens"><span class="cx">✓</span> Liens</div>
+        <div class="chip" data-credit="Criminal Convictions"><span class="cx">✓</span> Criminal Convictions</div>
+      </div>
+      <div class="field" id="creditExplWrap" style="margin-top:18px;display:none"><label>Explanation <span class="req">*</span></label><textarea id="opCreditExpl" rows="3" placeholder="Brief details help us move faster"></textarea><div class="ferr" data-err="creditExpl">An explanation is required when a credit item is checked.</div></div>
+      <div class="nav">
+        <button class="btn ghost" type="button" data-go="1">← Back</button>
+        <button class="btn orange" type="button" data-go="3">Continue ➜</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Ownership + Trusted Contacts -->
+    <div class="fcard step" data-step="3" style="display:none">
+      <div class="step-eyebrow">Step 4 of 6</div>
+      <div class="step-title">Ownership</div>
+      <div class="step-sub">Tell us about the owners. If Owner 1 holds less than 100%, a second owner is required.</div>
+      <div id="ownerList">
+        <div class="owner-block" data-owner="0">
+          <h4>Owner 1</h4>
+          <div class="row2">
+            <div class="field"><label>First Name <span class="req">*</span></label><input type="text" data-of="first" data-req></div>
+            <div class="field"><label>Last Name <span class="req">*</span></label><input type="text" data-of="last" data-req></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Title <span class="req">*</span></label><input type="text" data-of="title"></div>
+            <div class="field"><label>Ownership % <span class="req">*</span></label><input type="text" data-of="pct" class="ownPct" value="100"></div>
+          </div>
+          <div class="row3">
+            <div class="field"><label>Birthdate <span class="req">*</span></label><input type="text" data-of="dob" placeholder="MM/DD/YYYY"></div>
+            <div class="field"><label>SSN <span class="req">*</span></label><input type="text" data-of="ssn" placeholder="•••-••-••••"></div>
+            <div class="field"><label>Phone <span class="req">*</span></label><input type="tel" data-of="phone"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Email <span class="req">*</span></label><input type="email" data-of="email"></div>
+            <div class="field"><label>Address</label><input type="text" data-of="address"></div>
+          </div>
+          <div class="field"><label>Driver's License Upload <span class="req">*</span></label><div class="fileup">⤴ Tap to upload front of license</div><div class="hint">Uploaded to WorkDrive via the backend after submission (see README).</div></div>
+        </div>
+      </div>
+      <span class="add-link" id="addOwner">+ Add another owner</span>
+      <div class="ferr" data-err="owner" style="margin-top:4px">Owner 1's required fields are incomplete, or a second owner is required because Owner 1 holds under 100%.</div>
+
+      <div class="divider"></div>
+      <div class="section-h">Trusted Contacts (optional)</div>
+      <div class="field">
+        <div class="chip radio" id="contactsToggle" style="display:inline-flex"><span class="cx">✓</span> Add trusted contacts who can speak to my account</div>
+      </div>
+      <div class="contacts-only">
+        <div id="contactRows"></div>
+        <span class="add-link" id="addContact">+ Add a contact</span>
+      </div>
+
+      <div class="nav">
+        <button class="btn ghost" type="button" data-go="2">← Back</button>
+        <button class="btn orange" type="button" data-go="4">Continue ➜</button>
+      </div>
+    </div>
+
+    <!-- STEP 4: Rate & Terms -->
+    <div class="fcard step" data-step="4" style="display:none">
+      <div class="step-eyebrow">Step 5 of 6</div>
+      <div class="step-title">Choose your rate &amp; terms</div>
+      <div class="step-sub">Your live quote updates on the right as you choose. No surprises.</div>
+
+      <div class="field">
+        <label>Term Length</label>
+        <div class="chips" id="termChips">
+          <div class="chip radio sel" data-term="annual"><span class="cx">●</span> Annual (12 mo) — lowest rate</div>
+          <div class="chip radio" data-term="90"><span class="cx">●</span> 90-Day Trial (3 mo)</div>
+        </div>
+      </div>
+
+      <div class="field carrier-only">
+        <label>Contract Type</label>
+        <div class="chips" id="recChips">
+          <div class="chip radio sel" data-rec="recourse"><span class="cx">●</span> Recourse</div>
+          <div class="chip radio" data-rec="nonrecourse"><span class="cx">●</span> Non-Recourse (+0.25%)</div>
+        </div>
+      </div>
+
+      <div class="field broker-only">
+        <label>Carrier Quick Pay Fee (what your carriers pay)</label>
+        <div class="chips" id="qpChips">
+          <div class="chip radio sel" data-qp="2"><span class="cx">●</span> 2%</div>
+          <div class="chip radio" data-qp="3"><span class="cx">●</span> 3%</div>
+          <div class="chip radio" data-qp="4"><span class="cx">●</span> 4%</div>
+          <div class="chip radio" data-qp="5"><span class="cx">●</span> 5%</div>
+        </div>
+        <div class="hint">OperFi adds a flat 2% margin on top.</div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-h">Program Terms</div>
+      <div class="row2">
+        <div class="field"><label>Setup Fee</label><input type="text" id="opSetupFee" placeholder="Confirmed by Underwriting"></div>
+        <div class="field"><label>Monthly Minimum</label><input type="text" id="opMonthlyMin" placeholder="Confirmed by Underwriting"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Repurchase Period</label><input type="text" id="opRepurchase" placeholder="e.g. 90 days"></div>
+        <div class="field"><label>Collection Service Fee</label><input type="text" id="opCollectionFee" placeholder="If applicable"></div>
+      </div>
+      <div class="subnote">These are standard program terms — your underwriter confirms the final figures at approval.</div>
+
+      <div class="divider"></div>
+      <div class="field"><label><span class="chip" id="termsChip" style="display:inline-flex"><span class="cx">✓</span> I agree to the OperFi Terms &amp; Conditions <span class="req">*</span></span></label><div class="ferr" data-err="terms">You must accept the Terms &amp; Conditions.</div></div>
+      <div class="broker-only">
+        <div class="field"><span class="chip" id="appFeeChip" style="display:inline-flex"><span class="cx">✓</span> I authorize the $150 due-diligence application fee</span></div>
+        <div class="subnote">The $150 application fee applies to broker applications and is collected at submission.</div>
+      </div>
+
+      <div class="nav">
+        <button class="btn ghost" type="button" data-go="3">← Back</button>
+        <button class="btn orange" type="button" data-go="5">Review ➜</button>
+      </div>
+    </div>
+
+    <!-- STEP 5: Review -->
+    <div class="fcard step" data-step="5" style="display:none">
+      <div class="step-eyebrow">Step 6 of 6</div>
+      <div class="step-title">Review &amp; submit</div>
+      <div class="step-sub">Here's everything at a glance. Submit and your underwriter takes it from here — you'll get a link to track status and upload any remaining documents.</div>
+      <div class="owner-block">
+        <div class="tline"><span class="tk">Business</span><span class="tv" id="rvName">—</span></div>
+        <div class="tline"><span class="tk">Authority</span><span class="tv" id="rvAuth">—</span></div>
+        <div class="tline"><span class="tk">Owners</span><span class="tv" id="rvOwners">—</span></div>
+        <div class="tline"><span class="tk">Your Rate</span><span class="tv" id="rvRate" style="color:var(--of-orange)">—</span></div>
+        <div class="tline"><span class="tk">Advance</span><span class="tv" id="rvAdv">—</span></div>
+        <div class="tline"><span class="tk">Credit Line</span><span class="tv" id="rvLimit">—</span></div>
+      </div>
+      <div class="nav">
+        <button class="btn ghost" type="button" data-go="4">← Back</button>
+        <button class="btn orange" id="submitBtn" type="button" style="background:var(--of-green)">✓ Submit Application</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT: live terms -->
+  <div class="terms hidden" id="termsPanel">
+    <div class="terms-head">
+      <div class="tt">Your Live Quote</div>
+      <div class="ts" id="termsAuth">—</div>
+    </div>
+    <div class="terms-body">
+      <div class="promo" id="promoBox">🎖 Veteran discount applied: −0.25%</div>
+      <div class="big-rate">
+        <div class="br-val"><span id="rateVal">2.75</span><span>%</span></div>
+        <div class="br-lbl">Factoring Rate</div>
+      </div>
+      <div class="tline"><span class="tk">Advance Rate</span><span class="tv" id="advVal">97.25%</span></div>
+      <div class="tline broker-only"><span class="tk">Reserve</span><span class="tv" id="resVal">—</span></div>
+      <div class="tline"><span class="tk">Term</span><span class="tv" id="termVal">12 Months</span></div>
+      <div class="tline"><span class="tk">Credit Line</span><span class="tv" id="limitVal">$30,000</span></div>
+      <div class="tline broker-only"><span class="tk">Carriers Pay (QP)</span><span class="tv" id="qpVal">4%</span></div>
+    </div>
+    <div class="terms-foot">Estimate based on your selections. Final terms are confirmed by Underwriting at approval.</div>
+  </div>
+
+</div>
+
+<!-- Zoho Creator widget SDK + shared staff-impersonation helper (Broker Portal convention) -->
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<script>
+/*
+ * OperFi Underwriting Module — Prospect Intake (Client Onboarding) widget.
+ *
+ * Fields/elements mirror the as-built Creator app OperFi_Client_Onboarding.ds;
+ * the visual/UX is referenced from client-application-mockup.html. Every
+ * form_name / field link-name below is verbatim from the .ds. See widgets/README.md.
+ *
+ * Testable logic is exposed on window.OF (jsdom does not load the external
+ * scripts above, so ZOHO is undefined under test — all SDK/fetch calls live
+ * inside handlers, never at load time).
+ */
+(function (global) {
+'use strict';
+
+// ───────────────────────── CONFIG (confirm with Tom) ─────────────────────────
+var API_BASE = global.OPERFI_UW_API_BASE || 'https://operfi-broker-api.onrender.com';
+var USDOT_LOOKUP_PATH = '/usdot-lookup';   // TODO confirm exact Flask route + response shape
+var CRM_SYNC_PATH     = '/uw-create-crm';  // TODO confirm Flask route that makes the CRM Account+Deal
+
+var FORM = {
+  application: 'Application', owner: 'Owner', related: 'Related_Business_Entity',
+  customer: 'Customer_Prescreen', contact: 'Trusted_Contact'
+};
+// Lookup field on each child form pointing back to the parent Application record.
+// Must be hand-added in Creator (NOT in the current .ds export). Confirm link-name.
+var APPLICATION_LOOKUP = 'Application';
+
+// ───────────────────────────── RATE ENGINE ──────────────────────────────────
+var CARRIER_BASE = {
+  semi:       { annual: 2.75, '90': 3.25 },
+  box:        { annual: 3.25, '90': 3.75 },
+  hotshotcdl: { annual: 3.00, '90': 3.50 }
+};
+var BROKER = {
+  nonvet: { annual: { rate: 3.00, reserve: 7.0 }, '90': { rate: 3.50, reserve: 6.5 } },
+  vet:    { annual: { rate: 2.75, reserve: 7.25 }, '90': { rate: 3.00, reserve: 7.0 } }
+};
+var PARTNER_PROMO_KEYS = ['Hotshot-USA', 'TAP', 'SWITCH'];
+var PROMO_RATE = 1.99;
+var DEFAULT_LIMIT = 30000;
+
+function deriveRateClass(equipTypes, hotshotIsCDL) {
+  var t = equipTypes || [];
+  var has = function (v) { return t.indexOf(v) !== -1; };
+  if (has('Box Truck') || has('Sprinter Van') || (has('Hotshot') && !hotshotIsCDL)) return 'box';
+  if (has('Hotshot') && hotshotIsCDL) return 'hotshotcdl';
+  return 'semi';
+}
+
+function computeQuote(state) {
+  var term = state.term === '90' ? '90' : 'annual';
+  var rate, reserve = 0, promoApplied = false;
+  if (state.authority === 'broker') {
+    var b = (state.vet ? BROKER.vet : BROKER.nonvet)[term];
+    rate = b.rate; reserve = b.reserve;
+  } else {
+    var cls = deriveRateClass(state.equipTypes, state.hotshotCDL);
+    rate = CARRIER_BASE[cls][term];
+    if (state.recourse === 'nonrecourse') rate += 0.25;
+    if (state.vet) rate -= 0.25;
+    if (term === 'annual' && PARTNER_PROMO_KEYS.indexOf(state.partnerKey) !== -1) { rate = PROMO_RATE; promoApplied = true; }
+    reserve = 0;
+  }
+  rate = Math.round(rate * 100) / 100;
+  var advance = Math.round((100 - rate - reserve) * 100) / 100;
+  var trucks = parseInt(state.trucks, 10) || 1;
+  var limit = state.authority === 'carrier' ? trucks * DEFAULT_LIMIT : DEFAULT_LIMIT;
+  var qpTotal = state.authority === 'broker' ? (parseInt(state.qp, 10) || 0) + 2 : null;
+  return { rate: rate, reserve: reserve, advance: advance, termMonths: term === 'annual' ? 12 : 3, limit: limit, qpTotal: qpTotal, promoApplied: promoApplied };
+}
+
+function resolveAuthority(authorityType, factoringSelected) {
+  var a = (authorityType || '').toLowerCase();
+  if (a === 'carrier') return 'carrier';
+  if (a === 'broker') return 'broker';
+  if (factoringSelected === 'Carrier') return 'carrier';
+  if (factoringSelected === 'Broker') return 'broker';
+  return 'ambiguous';
+}
+
+// ──────────────────────────── PAYLOAD BUILDERS ──────────────────────────────
+function num(v) { var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? '' : n; }
+
+function buildApplicationPayload(s) {
+  var q = computeQuote(s);
+  var authorityType = s.authorityType || (s.authority === 'broker' ? 'Broker' : 'Carrier');
+  var p = {
+    Application_Status: 'New',
+    Authority_Type: authorityType,
+    Factoring_Authority_Selected: s.authority === 'broker' ? 'Broker' : 'Carrier',
+    Referral_Source: s.referralSource || '',
+    Referral_Name: s.referralName || '',
+    Partner_Key: s.partnerKey || '',
+    Veteran: s.vet ? 'Yes' : 'No',
+    Submitted_At: s.submittedAt || '',
+    USDOT: num(s.usdot),
+    MC_Number: num(s.mc),
+    Business_Name: s.businessName || '',
+    DBA: s.dba || '',
+    Business_Formation_Type: s.formationType || '',
+    EIN: s.ein || '',
+    Monthly_Invoices_to_Factor: num(s.monthly),
+    Physical_Address: s.physicalAddress || '',
+    Mailing_Address: s.mailingAddress || s.physicalAddress || '',
+    Business_Phone: s.businessPhone || '',
+    Alternate_Phone: s.altPhone || '',
+    SMS_Admin_Phone: s.smsPhone || '',
+    Business_Admin_Email: s.adminEmail || '',
+    Office_Manager: s.officeManager || '',
+    Has_Prior_Factor: s.hasPrior ? 'Yes' : 'No',
+    Current_Previous_Factor: s.priorFactor || '',
+    Factor_Termination_Date: s.termDate || '',
+    Credit_Issues: s.creditIssues && s.creditIssues.length ? s.creditIssues : ['None'],
+    Credit_Explanation: s.creditExplanation || '',
+    Contract_Type: s.authority === 'carrier' ? (s.recourse === 'nonrecourse' ? 'Non-Recourse' : 'Recourse') : '',
+    Rate_Term_Selection: s.term === '90' ? '90 Day Option' : 'Annual Option',
+    Factoring_Rate: q.rate,
+    Reserve_Percent: q.reserve,
+    Advance_Rate: q.advance,
+    Term_Months: q.termMonths,
+    Purchase_Limit: q.limit,
+    Setup_Fee: s.setupFee || '',
+    Monthly_Minimum: s.monthlyMinimum || '',
+    Repurchase_Period: s.repurchasePeriod || '',
+    Collection_Service_Fee: s.collectionServiceFee || '',
+    Application_Date: s.applicationDate || '',
+    Terms_Accepted: !!s.termsAccepted
+  };
+  if (s.authority === 'carrier') {
+    p.Number_of_Trucks = num(s.trucks);
+    p.Number_of_Drivers = num(s.drivers);
+    p.Equipment_Types = s.equipTypes || [];
+    p.Other_Freight_Hauled = s.otherFreight || '';
+  } else {
+    p.Operations_Email = s.opsEmail || '';
+    p.Accounting_Email = s.acctEmail || '';
+    p.Carrier_QuickPay_Fee = (s.qp || '') + (s.qp ? '%' : '');
+    p.QuickPay_Total = q.qpTotal;
+    p.Application_Fee_Paid = !!s.appFeePaid;
+  }
+  return p;
+}
+
+function buildOwnerPayloads(s, appId) {
+  return (s.owners || []).map(function (o, i) {
+    var rec = {
+      Owner_Sequence: i + 1,
+      First_Name1: o.first || '', Last_Name1: o.last || '',
+      Title: o.title || '', Address: o.address || '', Email: o.email || '',
+      Phone: o.phone || '', Birthdate: o.dob || '', SSN: o.ssn || '', Ownership_Percent: num(o.pct)
+    };
+    if (appId != null) rec[APPLICATION_LOOKUP] = appId;
+    return rec;
+  });
+}
+
+function buildChildPayloads(s, appId) {
+  function link(rec) { if (appId != null) rec[APPLICATION_LOOKUP] = appId; return rec; }
+  return {
+    related: (s.relatedEntities || []).map(function (r) { return link({ Business_Name: r.name || '', USDOT: num(r.usdot), MC_Number: num(r.mc), Factoring_Company: r.factor || '' }); }),
+    customers: (s.customers || []).map(function (c) { return link({ Business_Name: c.name || '', Website: c.website || '', Expected_Monthly_Revenue: num(c.revenue) }); }),
+    contacts: (s.trustedContacts || []).map(function (t) { return link({ Name: t.name || '', Title: t.title || '', Phone: t.phone || '', Email: t.email || '' }); })
+  };
+}
+
+// ───────────────────────────── VALIDATION ───────────────────────────────────
+function isEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s || ''); }
+function einRequired(formationType) { return ['LLC', 'S-Corp', 'C-Corp', 'Partnership'].indexOf(formationType) !== -1; }
+
+function validateAll(s) {
+  var errors = [];
+  var req = function (cond, field, msg) { if (!cond) errors.push({ field: field, msg: msg }); };
+  req(s.businessName, 'opName', 'Business name is required.');
+  req(s.formationType, 'opFormation', 'Formation type is required.');
+  if (einRequired(s.formationType)) req(s.ein, 'opEIN', 'EIN is required for LLC, Corp, and Partnership.');
+  req(s.businessPhone, 'opPhone', 'Business phone is required.');
+  req(isEmail(s.adminEmail), 'opEmail', 'A valid admin email is required.');
+  req(s.smsPhone, 'opSmsPhone', 'SMS phone is required.');
+  req(s.physicalAddress, 'opPhysical', 'Physical address is required.');
+  req(num(s.monthly) !== '', 'opMonthly', 'Estimated monthly invoices is required.');
+  if (s.authority === 'carrier') {
+    req(s.equipTypes && s.equipTypes.length, 'equip', 'Select at least one equipment type.');
+    req((parseInt(s.trucks, 10) || 0) >= 1, 'opTrucks', 'Number of trucks is required.');
+    if (s.equipTypes && s.equipTypes.indexOf('Other') !== -1) req(s.otherFreight, 'opOtherFreight', 'Describe the other freight hauled.');
+  } else {
+    req(isEmail(s.opsEmail), 'opOpsEmail', 'Operations email is required for brokers.');
+    req(isEmail(s.acctEmail), 'opAcctEmail', 'Accounting email is required for brokers.');
+  }
+  var nonNone = (s.creditIssues || []).filter(function (c) { return c !== 'None'; });
+  if (nonNone.length) req(s.creditExplanation, 'creditExpl', 'An explanation is required when a credit item is checked.');
+  var o1 = (s.owners || [])[0] || {};
+  req(o1.first && o1.last, 'owner', "Owner 1's name is required.");
+  req(num(o1.pct) !== '', 'owner', "Owner 1's ownership % is required.");
+  req(o1.ssn, 'owner', "Owner 1's SSN is required.");
+  req(o1.dob, 'owner', "Owner 1's birthdate is required.");
+  if (num(o1.pct) !== '' && num(o1.pct) !== 100) {
+    var o2 = (s.owners || [])[1] || {};
+    req(o2.first && o2.last, 'owner', 'A second owner is required because Owner 1 holds under 100%.');
+  }
+  if (s.vet) req(s.branchOfService, 'branchOfService', 'Branch of service is required for veterans.');
+  req(s.termsAccepted, 'terms', 'You must accept the Terms & Conditions.');
+  return { ok: errors.length === 0, errors: errors };
+}
+
+// ──────────────────────────── EXPOSED API ───────────────────────────────────
+var OF = {
+  config: { API_BASE: API_BASE, USDOT_LOOKUP_PATH: USDOT_LOOKUP_PATH, CRM_SYNC_PATH: CRM_SYNC_PATH, FORM: FORM, APPLICATION_LOOKUP: APPLICATION_LOOKUP },
+  deriveRateClass: deriveRateClass, computeQuote: computeQuote, resolveAuthority: resolveAuthority,
+  buildApplicationPayload: buildApplicationPayload, buildOwnerPayloads: buildOwnerPayloads,
+  buildChildPayloads: buildChildPayloads, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail
+};
+global.OF = OF;
+
+// ════════════════════════ DOM WIRING (browser only) ═════════════════════════
+function $(id) { return document.getElementById(id); }
+function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+function val(id) { var e = $(id); return e ? (e.value || '').trim() : ''; }
+
+var DEMO_DOT = {
+  '4366362': { authorityType: 'Carrier', name: 'BRENNAN ESLINGER', mc: '1709488', ein: '', trucks: 1, drivers: 1, phone: '(623) 303-1449', email: 'brennantrucking25@gmail.com', loc: 'Glendale, AZ' },
+  '3421250': { authorityType: 'Broker', name: 'PRINCETON LOGISTICS GROUP LLC', mc: '1106008', ein: '84-5097931', trucks: 0, drivers: 0, phone: '(404) 369-0777', email: 'jim@princetonlogistics.group', loc: 'Atlanta, GA' }
+};
+
+function lookupUSDOT(dot) {
+  var url = OF.config.API_BASE + OF.config.USDOT_LOOKUP_PATH + '?usdot=' + encodeURIComponent(dot);
+  if (typeof fetch !== 'function') return Promise.resolve(DEMO_DOT[dot] || null);
+  return fetch(url).then(function (r) { if (!r.ok) throw new Error('lookup ' + r.status); return r.json(); }).then(function (j) {
+    if (!j || (!j.authorityType && !j.authority_type && !j.legal_name && !j.name)) throw new Error('empty');
+    return { authorityType: j.authorityType || j.authority_type || 'Carrier', name: j.name || j.legal_name || '', mc: j.mc || j.mc_number || '', ein: j.ein || '', trucks: j.trucks || j.power_units || 0, drivers: j.drivers || 0, phone: j.phone || '', email: j.email || '', loc: j.loc || j.location || '' };
+  }).catch(function () { return DEMO_DOT[dot] || null; });
+}
+
+if (typeof document !== 'undefined') {
+  global.addEventListener('load', function () { try { initDom(); } catch (e) { console.error('init error', e); } });
+}
+
+function getQueryParam(name) { try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; } }
+
+var UI = { authority: 'carrier', authorityType: 'Carrier', usdot: '', mc: '', partnerKey: null, businessName: '',
+  vet: false, hotshotCDL: false, hasPrior: false, term: 'annual', recourse: 'recourse', qp: 2, termsAccepted: false, appFeePaid: false };
+
+function setAuthorityUI(flow) {
+  document.body.classList.remove('is-carrier', 'is-broker', 'is-ambiguous');
+  if (flow === 'carrier') { document.body.classList.add('is-carrier'); UI.authority = 'carrier'; }
+  else if (flow === 'broker') { document.body.classList.add('is-broker'); UI.authority = 'broker'; }
+  else { document.body.classList.add('is-ambiguous'); }
+}
+
+// Collect a full state snapshot from the DOM.
+function readState() {
+  var equipTypes = qsa('#equipChips .chip.sel').map(function (c) { return c.getAttribute('data-equip'); });
+  var creditIssues = qsa('#creditChips .chip.sel').map(function (c) { return c.getAttribute('data-credit'); });
+  var owners = qsa('#ownerList .owner-block').map(function (blk) {
+    function f(name) { var e = blk.querySelector('[data-of="' + name + '"]'); return e ? e.value.trim() : ''; }
+    return { first: f('first'), last: f('last'), title: f('title'), pct: f('pct'), dob: f('dob'), ssn: f('ssn'), phone: f('phone'), email: f('email'), address: f('address') };
+  }).filter(function (o) { return o.first || o.last; });
+  var relatedEntities = qsa('#relatedRows .sub-row').map(function (r) {
+    function f(n) { var e = r.querySelector('[data-f="' + n + '"]'); return e ? e.value.trim() : ''; }
+    return { name: f('name'), usdot: f('usdot'), mc: f('mc'), factor: f('factor') };
+  });
+  var customers = qsa('#customerRows .sub-row').map(function (r) {
+    function f(n) { var e = r.querySelector('[data-f="' + n + '"]'); return e ? e.value.trim() : ''; }
+    return { name: f('name'), website: f('website'), revenue: f('revenue') };
+  });
+  var trustedContacts = qsa('#contactRows .sub-row').map(function (r) {
+    function f(n) { var e = r.querySelector('[data-f="' + n + '"]'); return e ? e.value.trim() : ''; }
+    return { name: f('name'), title: f('title'), phone: f('phone'), email: f('email') };
+  });
+  var sameAddr = $('sameAddrChip').classList.contains('sel');
+  return {
+    authority: UI.authority, authorityType: UI.authorityType, usdot: val('opUsdot') || UI.usdot, mc: val('opMC') || UI.mc,
+    referralSource: val('referralSource'), referralName: val('referralName'),
+    partnerKey: UI.partnerKey, vet: UI.vet, branchOfService: val('branchOfService'),
+    businessName: val('opName'), dba: val('opDBA'), formationType: val('opFormation'), ein: val('opEIN'),
+    trucks: val('opTrucks'), drivers: val('opDrivers'), equipTypes: equipTypes, hotshotCDL: UI.hotshotCDL, otherFreight: val('opOtherFreight'),
+    monthly: val('opMonthly'),
+    hasPrior: UI.hasPrior, priorFactor: val('opPriorFactor'), termDate: val('opTermDate'),
+    businessPhone: val('opPhone'), adminEmail: val('opEmail'), smsPhone: val('opSmsPhone'), altPhone: val('opAltPhone'),
+    opsEmail: val('opOpsEmail'), acctEmail: val('opAcctEmail'), officeManager: val('opOfficeMgr'),
+    physicalAddress: val('opPhysical'), mailingAddress: sameAddr ? val('opPhysical') : val('opMailing'),
+    creditIssues: creditIssues, creditExplanation: val('opCreditExpl'),
+    term: UI.term, recourse: UI.recourse, qp: UI.qp,
+    setupFee: val('opSetupFee'), monthlyMinimum: val('opMonthlyMin'), repurchasePeriod: val('opRepurchase'), collectionServiceFee: val('opCollectionFee'),
+    termsAccepted: UI.termsAccepted, appFeePaid: UI.appFeePaid,
+    owners: owners, relatedEntities: relatedEntities, customers: customers, trustedContacts: trustedContacts
+  };
+}
+
+function recalc() {
+  var s = { authority: UI.authority, vet: UI.vet, term: UI.term, recourse: UI.recourse,
+    equipTypes: qsa('#equipChips .chip.sel').map(function (c) { return c.getAttribute('data-equip'); }),
+    hotshotCDL: UI.hotshotCDL, trucks: val('opTrucks') || 1, qp: UI.qp, partnerKey: UI.partnerKey };
+  var q = computeQuote(s);
+  $('rateVal').textContent = q.rate.toFixed(2);
+  $('advVal').textContent = q.advance.toFixed(2) + '%';
+  $('resVal').textContent = q.reserve.toFixed(2) + '%';
+  $('termVal').textContent = q.termMonths + ' Months';
+  $('limitVal').textContent = '$' + q.limit.toLocaleString();
+  $('qpVal').textContent = q.qpTotal != null ? (q.qpTotal + '% (' + UI.qp + '%+2%)') : '—';
+  $('termsAuth').textContent = (UI.authority === 'carrier' ? 'Carrier' : 'Broker') + ' · ' + (UI.businessName || '—');
+  $('promoBox').classList.toggle('show', q.promoApplied || UI.vet);
+  $('promoBox').textContent = q.promoApplied ? '🎉 Partner promo rate applied: 1.99%' : '🎖 Veteran discount applied: −0.25%';
+  $('rvName').textContent = UI.businessName || '—';
+  $('rvAuth').textContent = UI.authority === 'carrier' ? 'Carrier' : 'Broker';
+  $('rvOwners').textContent = qsa('#ownerList .owner-block').filter(function (b) { var e = b.querySelector('[data-of="first"]'); return e && e.value.trim(); }).length || 1;
+  $('rvRate').textContent = q.rate.toFixed(2) + '%';
+  $('rvAdv').textContent = q.advance.toFixed(2) + '%';
+  $('rvLimit').textContent = '$' + q.limit.toLocaleString();
+}
+
+function go(step) {
+  qsa('.step').forEach(function (s) { s.style.display = 'none'; });
+  document.querySelector('.step[data-step="' + step + '"]').style.display = 'block';
+  qsa('.rail-step').forEach(function (r) {
+    var n = parseInt(r.dataset.r, 10);
+    r.classList.remove('current', 'done', 'locked');
+    if (n < step) r.classList.add('done'); else if (n === step) r.classList.add('current'); else r.classList.add('locked');
+  });
+  global.scrollTo(0, 0);
+}
+
+function showStatus(msg, type) {
+  var el = $('statusMsg'); if (!el) return;
+  el.textContent = msg; el.className = 'status-msg show ' + type;
+  if (type !== 'success') global.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function pickRadio(container, attr, value) { qsa('#' + container + ' .chip').forEach(function (c) { c.classList.toggle('sel', c.getAttribute(attr) === value); }); }
+
+// ── Repeatable subform row builders ──
+function subRow(cls, fields) {
+  var row = document.createElement('div'); row.className = 'sub-row';
+  var grid = document.createElement('div'); grid.className = 'sub-grid ' + cls;
+  fields.forEach(function (f) {
+    var wrap = document.createElement('div'); wrap.className = 'field';
+    wrap.innerHTML = '<label>' + f.label + '</label>';
+    var inp = document.createElement('input'); inp.type = f.type || 'text'; inp.setAttribute('data-f', f.f); if (f.ph) inp.placeholder = f.ph;
+    wrap.appendChild(inp); grid.appendChild(wrap);
+  });
+  row.appendChild(grid);
+  var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×';
+  rm.addEventListener('click', function () { row.remove(); });
+  row.appendChild(rm);
+  return row;
+}
+function addRelatedRow() { $('relatedRows').appendChild(subRow('c2', [{ f: 'name', label: 'Business Name' }, { f: 'usdot', label: 'USDOT' }, { f: 'mc', label: 'MC #' }, { f: 'factor', label: 'Factoring Company' }])); }
+function addCustomerRow() { $('customerRows').appendChild(subRow('c3', [{ f: 'name', label: 'Business Name' }, { f: 'website', label: 'Website' }, { f: 'revenue', label: 'Expected Monthly Revenue', ph: '$' }])); }
+function addContactRow() { $('contactRows').appendChild(subRow('c2', [{ f: 'name', label: 'Name' }, { f: 'title', label: 'Title' }, { f: 'phone', label: 'Phone' }, { f: 'email', label: 'Email' }])); }
+
+var ownerCount = 1;
+function addOwnerBlock() {
+  ownerCount++;
+  var blk = document.createElement('div'); blk.className = 'owner-block'; blk.setAttribute('data-owner', ownerCount - 1);
+  blk.innerHTML =
+    '<h4>Owner ' + ownerCount + '</h4>' +
+    '<div class="row2"><div class="field"><label>First Name</label><input type="text" data-of="first"></div>' +
+    '<div class="field"><label>Last Name</label><input type="text" data-of="last"></div></div>' +
+    '<div class="row2"><div class="field"><label>Title</label><input type="text" data-of="title"></div>' +
+    '<div class="field"><label>Ownership %</label><input type="text" data-of="pct" class="ownPct"></div></div>' +
+    '<div class="row3"><div class="field"><label>Birthdate</label><input type="text" data-of="dob" placeholder="MM/DD/YYYY"></div>' +
+    '<div class="field"><label>SSN</label><input type="text" data-of="ssn"></div>' +
+    '<div class="field"><label>Phone</label><input type="tel" data-of="phone"></div></div>' +
+    '<div class="row2"><div class="field"><label>Email</label><input type="email" data-of="email"></div>' +
+    '<div class="field"><label>Address</label><input type="text" data-of="address"></div></div>';
+  var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×';
+  rm.addEventListener('click', function () { blk.remove(); recalc(); });
+  blk.appendChild(rm);
+  $('ownerList').appendChild(blk);
+  recalc();
+}
+
+function initDom() {
+  UI.partnerKey = getQueryParam('key') || getQueryParam('partner') || null;
+
+  $('dotSearchBtn').addEventListener('click', function () {
+    var dot = val('dotInput'); if (!dot) return;
+    $('dotSearchBtn').disabled = true; $('dotSearchBtn').textContent = 'Searching…';
+    lookupUSDOT(dot).then(function (d) {
+      $('dotSearchBtn').disabled = false; $('dotSearchBtn').textContent = 'Search ➜';
+      if (!d) { showStatus('No FMCSA record found for USDOT ' + dot + '. Check the number and try again.', 'error'); return; }
+      UI.usdot = dot; UI.mc = d.mc; UI.authorityType = d.authorityType; UI.businessName = d.name; UI.trucks = d.trucks || 1;
+      var flow = resolveAuthority(d.authorityType, null);
+      setAuthorityUI(flow);
+      $('fbName').textContent = d.name;
+      $('fbMeta').textContent = 'DOT ' + dot + ' · MC ' + d.mc + (d.loc ? ' · ' + d.loc : '');
+      $('fbAuth').textContent = flow === 'broker' ? 'Broker' : (flow === 'carrier' ? 'Carrier' : d.authorityType);
+      $('foundBanner').classList.add('show');
+      $('next0').disabled = (flow === 'ambiguous');
+      $('opName').value = d.name || ''; $('opEIN').value = d.ein || ''; $('opUsdot').value = dot; $('opMC').value = d.mc || '';
+      $('opPhone').value = d.phone || ''; $('opEmail').value = d.email || '';
+      if (flow === 'carrier') $('opTrucks').value = d.trucks || 1;
+      $('termsPanel').classList.remove('hidden');
+      recalc();
+    });
+  });
+
+  qsa('#fselCarrier, #fselBroker').forEach(function (c) {
+    c.addEventListener('click', function () {
+      var sel = c.getAttribute('data-fsel');
+      qsa('.ambiguous-only .chip').forEach(function (x) { x.classList.toggle('sel', x === c); });
+      setAuthorityUI(sel === 'Broker' ? 'broker' : 'carrier'); $('next0').disabled = false; recalc();
+    });
+  });
+
+  $('referralSource').addEventListener('change', function () { $('referralNameWrap').style.display = this.value === 'Referral Partner' ? 'block' : 'none'; });
+
+  $('vetChip').addEventListener('click', function () { this.classList.toggle('sel'); UI.vet = this.classList.contains('sel'); document.body.classList.toggle('is-vet', UI.vet); recalc(); });
+  $('next0').addEventListener('click', function () { go(1); });
+
+  qsa('#equipChips .chip').forEach(function (c) {
+    c.addEventListener('click', function () {
+      c.classList.toggle('sel');
+      document.body.classList.toggle('show-hotshot', qsa('#equipChips .chip.sel').some(function (x) { return x.getAttribute('data-equip') === 'Hotshot'; }));
+      $('otherFreightWrap').style.display = qsa('#equipChips .chip.sel').some(function (x) { return x.getAttribute('data-equip') === 'Other'; }) ? 'block' : 'none';
+      recalc();
+    });
+  });
+  $('hotshotCdlChip').addEventListener('click', function () { this.classList.toggle('sel'); UI.hotshotCDL = this.classList.contains('sel'); recalc(); });
+  $('opTrucks').addEventListener('input', recalc);
+  $('opFormation').addEventListener('change', function () { $('einReq').style.display = einRequired(this.value) ? 'inline' : 'none'; });
+
+  qsa('#priorChips .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('priorChips', 'data-prior', c.getAttribute('data-prior')); UI.hasPrior = c.getAttribute('data-prior') === 'Yes'; document.body.classList.toggle('show-prior', UI.hasPrior); }); });
+  $('sameAddrChip').addEventListener('click', function () { this.classList.toggle('sel'); $('mailingWrap').style.display = this.classList.contains('sel') ? 'none' : 'block'; });
+
+  // Broker subform toggles
+  qsa('#relatedToggle .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('relatedToggle', 'data-rel', c.getAttribute('data-rel')); var on = c.getAttribute('data-rel') === 'Yes'; document.body.classList.toggle('show-related', on); if (on && !$('relatedRows').children.length) addRelatedRow(); }); });
+  qsa('#customersToggle .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('customersToggle', 'data-cust', c.getAttribute('data-cust')); var on = c.getAttribute('data-cust') === 'Yes'; document.body.classList.toggle('show-customers', on); if (on && !$('customerRows').children.length) addCustomerRow(); }); });
+  $('addRelated').addEventListener('click', addRelatedRow);
+  $('addCustomer').addEventListener('click', addCustomerRow);
+
+  // Credit
+  qsa('#creditChips .chip').forEach(function (c) {
+    c.addEventListener('click', function () {
+      var isNone = c.getAttribute('data-credit') === 'None';
+      if (isNone) { qsa('#creditChips .chip').forEach(function (x) { x.classList.remove('sel'); }); c.classList.add('sel'); }
+      else { c.classList.toggle('sel'); qsa('#creditChips .chip').forEach(function (x) { if (x.getAttribute('data-credit') === 'None') x.classList.remove('sel'); }); }
+      $('creditExplWrap').style.display = qsa('#creditChips .chip.sel').some(function (x) { return x.getAttribute('data-credit') !== 'None'; }) ? 'block' : 'none';
+    });
+  });
+
+  // Ownership
+  $('addOwner').addEventListener('click', addOwnerBlock);
+  $('ownerList').addEventListener('input', function (e) {
+    if (e.target && e.target.classList.contains('ownPct')) {
+      var first = $('ownerList').querySelector('[data-of="pct"]');
+      var pct = num(first ? first.value : '');
+      if (pct !== '' && pct !== 100 && qsa('#ownerList .owner-block').length < 2) addOwnerBlock();
+    }
+  });
+
+  // Trusted contacts
+  $('contactsToggle').addEventListener('click', function () { this.classList.toggle('sel'); var on = this.classList.contains('sel'); document.body.classList.toggle('show-contacts', on); if (on && !$('contactRows').children.length) addContactRow(); });
+  $('addContact').addEventListener('click', addContactRow);
+
+  // Rate & terms
+  qsa('#termChips .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('termChips', 'data-term', c.getAttribute('data-term')); UI.term = c.getAttribute('data-term'); recalc(); }); });
+  qsa('#recChips .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('recChips', 'data-rec', c.getAttribute('data-rec')); UI.recourse = c.getAttribute('data-rec'); recalc(); }); });
+  qsa('#qpChips .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('qpChips', 'data-qp', c.getAttribute('data-qp')); UI.qp = parseInt(c.getAttribute('data-qp'), 10); recalc(); }); });
+  $('termsChip').addEventListener('click', function () { this.classList.toggle('sel'); UI.termsAccepted = this.classList.contains('sel'); });
+  $('appFeeChip').addEventListener('click', function () { this.classList.toggle('sel'); UI.appFeePaid = this.classList.contains('sel'); });
+
+  qsa('[data-go]').forEach(function (b) { b.addEventListener('click', function () { UI.businessName = val('opName') || UI.businessName; recalc(); go(parseInt(b.getAttribute('data-go'), 10)); }); });
+  $('submitBtn').addEventListener('click', submitApplication);
+}
+
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+function nowParts() {
+  var d = new Date();
+  var mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  return { iso: d.toISOString(), creatorDate: pad(d.getDate()) + '-' + mon + '-' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) };
+}
+
+function submitApplication() {
+  var s = readState(); s.partnerKey = UI.partnerKey;
+  var v = validateAll(s);
+  if (!v.ok) { showStatus('Please fix: ' + v.errors.slice(0, 4).map(function (e) { return e.msg; }).join(' '), 'error'); return; }
+  var t = nowParts(); s.submittedAt = t.iso; s.applicationDate = t.creatorDate;
+  var btn = $('submitBtn'); btn.disabled = true; btn.textContent = 'Submitting…';
+  showStatus('Submitting your application…', 'loading');
+
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
+    console.log('DEMO submit — Application:', JSON.stringify(buildApplicationPayload(s), null, 2));
+    console.log('DEMO submit — Owners:', JSON.stringify(buildOwnerPayloads(s, 'DEMO_APP_ID')));
+    console.log('DEMO submit — Children:', JSON.stringify(buildChildPayloads(s, 'DEMO_APP_ID')));
+    showStatus('✓ Demo mode: application validated and payloads logged to the console. Wire ZOHO + Flask to submit for real.', 'success');
+    btn.textContent = '✓ Validated (demo)'; return;
+  }
+
+  ZOHO.CREATOR.init().then(function () {
+    return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM.application, payload: { data: buildApplicationPayload(s) } });
+  }).then(function (res) {
+    if (!res || res.code !== 3000) throw new Error('Application add failed (code ' + (res && res.code) + ')');
+    var appId = res.data && (res.data.ID || res.data);
+    return addChildren(s, appId).then(function () { return crmSync(s, appId); });
+  }).then(function () {
+    showStatus('✓ Application submitted. Check your email for a link to track status and upload documents.', 'success');
+    btn.textContent = '✓ Submitted';
+  }).catch(function (e) {
+    console.error('submit failed', e);
+    showStatus('Submission failed: ' + (e && e.message ? e.message : e) + '. Please try again or contact your OperFi rep.', 'error');
+    btn.disabled = false; btn.textContent = '✓ Submit Application';
+  });
+}
+
+function addChildren(s, appId) {
+  var jobs = [];
+  buildOwnerPayloads(s, appId).forEach(function (rec) { jobs.push([FORM.owner, rec]); });
+  var kids = buildChildPayloads(s, appId);
+  if (s.authority === 'broker') {
+    kids.related.forEach(function (r) { jobs.push([FORM.related, r]); });
+    kids.customers.forEach(function (r) { jobs.push([FORM.customer, r]); });
+  }
+  kids.contacts.forEach(function (r) { jobs.push([FORM.contact, r]); });
+  return jobs.reduce(function (chain, job) {
+    return chain.then(function () { return ZOHO.CREATOR.DATA.addRecords({ form_name: job[0], payload: { data: job[1] } }); });
+  }, Promise.resolve());
+}
+
+function crmSync(s, appId) {
+  if (typeof fetch !== 'function') return Promise.resolve();
+  return fetch(OF.config.API_BASE + OF.config.CRM_SYNC_PATH, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ application_id: appId, business_name: s.businessName, authority: s.authority, usdot: s.usdot, email: s.adminEmail, submitted_at: s.submittedAt })
+  }).then(function (r) { return r.json().catch(function () { return {}; }); }).catch(function (e) { console.warn('CRM sync deferred', e); return {}; });
+}
+
+})(typeof window !== 'undefined' ? window : this);
+</script>
+</body>
+</html>

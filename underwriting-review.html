@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OperFi Underwriting Review</title>
+<!--
+  EMPLOYEE widget — verify + administer an onboarding application.
+  Reads Application/Owner/Document and reads/writes Underwriting_Review (1:1 with Application).
+  Field link-names verbatim from OperFi_Client_Onboarding.ds. Runs in DEMO mode when not
+  embedded in Creator (sample applicant; Save logs the payload). Testable logic on window.OFUW.
+-->
+<style>
+:root {
+  --of-beige:#f0efe9; --of-beige-soft:#fafaf6; --of-beige-line:#e6e3da;
+  --of-charcoal:#272727; --of-charcoal-soft:#444; --of-gray-500:#888; --of-gray-700:#555; --of-gray-100:#f5f5f0;
+  --of-orange:#e8a020; --of-green:#2e7d32; --of-green-text:#1f6321; --of-green-soft:#e3f4e3;
+  --of-amber:#f5a623; --of-amber-text:#b86e00; --of-amber-soft:#fff8e1;
+  --of-red:#c62828; --of-red-text:#a31818; --of-red-soft:#fde4e4;
+  --of-blue-text:#1a5fb4; --of-blue-soft:#e3edfb;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; background:var(--of-beige); color:var(--of-charcoal); min-height:100vh; }
+.topbar { background:var(--of-charcoal); color:#fff; padding:12px 24px; display:flex; align-items:center; justify-content:space-between; }
+.brand { display:flex; align-items:baseline; gap:12px; }
+.brand .logo { font-size:18px; font-weight:800; letter-spacing:-0.5px; } .brand .logo span { color:var(--of-orange); }
+.brand .tag { font-size:10.5px; text-transform:uppercase; letter-spacing:0.7px; color:rgba(255,255,255,0.5); font-weight:700; }
+.who { font-size:12px; color:rgba(255,255,255,0.7); display:flex; align-items:center; gap:12px; }
+.demo-pill { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; background:rgba(232,160,32,0.18); color:var(--of-orange); border:1px solid rgba(232,160,32,0.4); border-radius:6px; padding:3px 9px; }
+.avatar { width:26px; height:26px; border-radius:50%; background:var(--of-orange); color:#fff; font-weight:800; font-size:11px; display:inline-flex; align-items:center; justify-content:center; }
+.page { max-width:1340px; margin:0 auto; padding:18px 24px 90px; }
+
+.status-msg { padding:11px 16px; border-radius:8px; font-size:13px; font-weight:600; margin-bottom:14px; display:none; }
+.status-msg.show { display:block; }
+.status-msg.success { background:var(--of-green-soft); color:var(--of-green-text); border:1px solid #a5d6a7; }
+.status-msg.error { background:var(--of-red-soft); color:var(--of-red-text); border:1px solid #ef9a9a; }
+.status-msg.loading { background:var(--of-amber-soft); color:var(--of-amber-text); border:1px solid #ffe082; }
+
+.hero { background:var(--of-charcoal); color:#fff; border-radius:14px; padding:20px 24px; display:grid; grid-template-columns:1fr auto; gap:18px; align-items:center; margin-bottom:12px; }
+.hero-eyebrow { font-size:11px; text-transform:uppercase; letter-spacing:0.7px; color:rgba(255,255,255,0.5); font-weight:700; }
+.hero-name { font-size:24px; font-weight:700; letter-spacing:-0.4px; line-height:1.1; margin:3px 0 5px; }
+.hero-meta { display:flex; gap:13px; font-size:13px; color:rgba(255,255,255,0.7); flex-wrap:wrap; }
+.hero-meta .sep { color:rgba(255,255,255,0.3); } .hero-meta .key { color:var(--of-orange); font-weight:600; }
+.verdict { display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
+.verdict-badge { padding:7px 16px; border-radius:999px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+.verdict-badge.low{background:rgba(46,125,50,0.18);color:#6dcf6d;} .verdict-badge.med{background:rgba(245,166,35,0.18);color:var(--of-amber);} .verdict-badge.high{background:rgba(198,40,40,0.18);color:#ff7a7a;}
+.state-pill { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; padding:5px 12px; border-radius:6px; background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.85); border:1px solid rgba(255,255,255,0.15); }
+
+.kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+.kpi { background:#fff; border:1px solid var(--of-beige-line); border-radius:12px; padding:14px 18px; position:relative; overflow:hidden; }
+.kpi::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--of-orange); }
+.kpi.good::before{background:var(--of-green);} .kpi.warn::before{background:var(--of-amber);} .kpi.bad::before{background:var(--of-red);}
+.kpi-label { font-size:10px; text-transform:uppercase; letter-spacing:0.6px; color:var(--of-gray-500); font-weight:700; margin-bottom:6px; }
+.kpi-value { font-size:24px; font-weight:700; color:var(--of-charcoal); letter-spacing:-0.4px; line-height:1; }
+.kpi-value.good{color:var(--of-green-text);} .kpi-value.warn{color:var(--of-amber-text);}
+.kpi-sub { font-size:11px; color:var(--of-gray-700); margin-top:6px; }
+
+.col-main { display:grid; grid-template-columns:1fr 370px; gap:14px; align-items:start; }
+.card { background:#fff; border:1px solid var(--of-beige-line); border-radius:12px; padding:18px 22px; margin-bottom:14px; }
+.card-title { font-size:11px; font-weight:700; color:var(--of-charcoal); text-transform:uppercase; letter-spacing:0.7px; padding-bottom:10px; margin-bottom:14px; border-bottom:2px solid var(--of-orange); display:flex; justify-content:space-between; align-items:center; }
+.card-title .count { color:var(--of-gray-500); font-weight:700; }
+.kv { display:grid; grid-template-columns:1fr 1fr; gap:8px 18px; }
+.kv .k { font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--of-gray-500); font-weight:700; }
+.kv .v { font-size:13px; color:var(--of-charcoal); font-weight:600; margin-top:1px; }
+.kv .row { padding:6px 0; border-bottom:1px dashed var(--of-beige-line); }
+
+.flag-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.flag { display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:9px; border:1px solid var(--of-beige-line); font-size:12.5px; }
+.flag.clear{background:var(--of-green-soft);border-color:#c7e6c7;} .flag.warn{background:var(--of-amber-soft);border-color:#f5e0a8;} .flag.bad{background:var(--of-red-soft);border-color:#f3c0c0;}
+.flag .fic { width:20px; height:20px; border-radius:50%; flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#fff; }
+.flag.clear .fic{background:var(--of-green);} .flag.warn .fic{background:var(--of-amber);} .flag.bad .fic{background:var(--of-red);}
+.flag .ft { font-weight:600; } .flag .fd { color:var(--of-gray-700); font-size:11px; }
+
+table { width:100%; border-collapse:collapse; font-size:12.5px; }
+th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--of-gray-500); font-weight:700; padding:6px 10px; border-bottom:1px solid var(--of-beige-line); }
+td { padding:9px 10px; border-bottom:1px dashed var(--of-beige-line); color:var(--of-charcoal-soft); }
+tr:last-child td { border-bottom:none; }
+.pill { font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px; text-transform:uppercase; letter-spacing:0.3px; display:inline-block; }
+.pill.g{background:var(--of-green-soft);color:var(--of-green-text);} .pill.a{background:var(--of-amber-soft);color:var(--of-amber-text);}
+.pill.r{background:var(--of-red-soft);color:var(--of-red-text);} .pill.b{background:var(--of-blue-soft);color:var(--of-blue-text);} .pill.n{background:var(--of-gray-100);color:var(--of-gray-700);}
+
+.fld { margin-bottom:14px; }
+.fld label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; color:var(--of-gray-500); margin-bottom:5px; }
+.fld input, .fld select, .fld textarea { width:100%; padding:10px 12px; border:1.5px solid var(--of-beige-line); border-radius:9px; font-size:13px; font-family:inherit; background:var(--of-beige-soft); color:var(--of-charcoal); }
+.fld input:focus,.fld select:focus,.fld textarea:focus { outline:none; border-color:var(--of-orange); background:#fff; }
+.fld .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.verify-row { display:flex; align-items:center; gap:10px; padding:8px 0; font-size:13px; border-bottom:1px dashed var(--of-beige-line); }
+.verify-row:last-child { border-bottom:none; }
+.toggle { width:18px; height:18px; border-radius:5px; border:1.5px solid var(--of-beige-line); background:#fff; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#fff; flex-shrink:0; }
+.toggle.on { background:var(--of-green); border-color:var(--of-green); }
+
+.gate { background:var(--of-beige-soft); border:1px solid var(--of-beige-line); border-radius:10px; padding:12px 14px; }
+.gate-row { display:flex; align-items:center; gap:9px; padding:6px 0; font-size:12.5px; }
+.gate-row .g-ic { width:17px; height:17px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#fff; }
+.gate-row.ok .g-ic{background:var(--of-green);} .gate-row.no .g-ic{background:#fff;border:1.5px solid var(--of-beige-line);color:var(--of-gray-500);}
+
+.rate-box { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.rate-item { text-align:center; padding:12px 8px; background:var(--of-beige-soft); border-radius:10px; }
+.rate-item .rv { font-size:22px; font-weight:800; color:var(--of-charcoal); } .rate-item .rl { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--of-gray-500); font-weight:700; margin-top:3px; }
+
+.btn { background:var(--of-charcoal); color:#fff; border:none; border-radius:7px; padding:8px 15px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; }
+.btn.ghost { background:#fff; border:1px solid var(--of-beige-line); color:var(--of-charcoal); }
+.btn.orange{background:var(--of-orange);} .btn.green{background:var(--of-green);} .btn.red{background:var(--of-red);}
+.btn.sm { padding:5px 11px; font-size:11px; } .btn.block { width:100%; padding:11px; font-size:13px; } .btn:disabled { opacity:0.45; cursor:not-allowed; }
+
+@media (max-width:1000px){ .col-main{grid-template-columns:1fr;} .kpi-row{grid-template-columns:1fr 1fr;} }
+@media (max-width:640px){ .kpi-row,.kv,.flag-grid{grid-template-columns:1fr;} .hero{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><div class="logo">Oper<span>Fi</span></div><div class="tag">Underwriting Review</div></div>
+  <div class="who"><span class="demo-pill" id="modePill">Demo</span> <span class="avatar" id="uwAvatar">UW</span> <span id="uwName">Underwriter</span></div>
+</div>
+
+<div class="page">
+  <div id="statusMsg" class="status-msg"></div>
+
+  <div class="hero">
+    <div>
+      <div class="hero-eyebrow" id="hAppLine">Application —</div>
+      <div class="hero-name" id="hBiz">—</div>
+      <div class="hero-meta" id="hMeta"></div>
+    </div>
+    <div class="verdict">
+      <span class="verdict-badge med" id="hRisk">Medium Risk</span>
+      <span class="state-pill" id="hState">In Review</span>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi warn"><div class="kpi-label">Fraud Flags</div><div class="kpi-value warn" id="kFraud">—</div><div class="kpi-sub">to clear of 10</div></div>
+    <div class="kpi good"><div class="kpi-label">Intake Packet</div><div class="kpi-value good" id="kDocs">—</div><div class="kpi-sub">documents received</div></div>
+    <div class="kpi warn"><div class="kpi-label">UCC Status</div><div class="kpi-value warn" id="kUcc">—</div><div class="kpi-sub">prior filings</div></div>
+    <div class="kpi good"><div class="kpi-label">Gates Passed</div><div class="kpi-value good" id="kGates">—</div><div class="kpi-sub">of 6 before approval</div></div>
+  </div>
+
+  <div class="col-main">
+    <!-- LEFT: verification (read-only from model) -->
+    <div>
+      <div class="card">
+        <div class="card-title">Submitted Application <span class="count">prospect data · read-only</span></div>
+        <div class="kv" id="appSummary"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Fraud Quick Glance <span class="count">IPQS · FMCSA · Carrier411</span></div>
+        <div class="flag-grid" id="fraudGrid"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Ownership &amp; Entity</div>
+        <table id="ownTable"></table>
+      </div>
+      <div class="card">
+        <div class="card-title">Documents <span class="count" id="docCount">—</span></div>
+        <table id="docTable"></table>
+      </div>
+    </div>
+
+    <!-- RIGHT: administration / Underwriting_Review -->
+    <div>
+      <div class="card">
+        <div class="card-title">Decision &amp; Administration</div>
+        <div class="fld"><label>Decision</label>
+          <select id="uwDecision"><option>Pending</option><option>Approved</option><option>Denied</option><option>More Information Needed</option></select>
+        </div>
+        <div class="verify-row"><span class="toggle" id="tgAuthority">✓</span> Authority Verified</div>
+        <div class="verify-row"><span class="toggle" id="tgOwnership">✓</span> Ownership Verified</div>
+        <div class="verify-row"><span class="toggle" id="tgUcc">✓</span> UCC Checked &amp; cleared</div>
+        <div class="fld" style="margin-top:14px"><label>Fraud Flag</label>
+          <select id="uwFraudFlag"><option>None</option><option>Low</option><option>Medium</option><option>High</option></select>
+        </div>
+        <div class="fld"><label>Fraud Notes</label><textarea id="uwFraudNotes" rows="2"></textarea></div>
+        <div class="fld"><label>Checklist Status</label>
+          <select id="uwChecklist"><option>Not Started</option><option>In Progress</option><option>Complete</option></select>
+        </div>
+        <div class="fld"><label>Underwriting Notes</label><textarea id="uwNotes" rows="3"></textarea></div>
+        <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+          <button class="btn green block" id="btnApprove">✓ Approve</button>
+          <button class="btn red block" id="btnDecline">✕ Decline</button>
+          <button class="btn ghost block" id="btnSave">💾 Save progress</button>
+        </div>
+        <div style="font-size:11px;color:var(--of-gray-500);margin-top:10px;text-align:center">Approve requires all 6 gates green. Decision syncs to CRM Deal stage.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Approval Gate <span class="count" id="gateCount">—</span></div>
+        <div class="gate" id="gateList"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Credit Structuring</div>
+        <div class="rate-box">
+          <div class="rate-item"><div class="rv" id="rbLimit">—</div><div class="rl">Credit Limit</div></div>
+          <div class="rate-item"><div class="rv" id="rbRate">—</div><div class="rl">Rec. Rate</div></div>
+          <div class="rate-item"><div class="rv" id="rbReserve">0%</div><div class="rl">Reserve</div></div>
+        </div>
+        <div class="fld row2" style="margin-top:12px">
+          <div><label>Approved Credit Limit</label><input type="text" id="uwLimit"></div>
+          <div><label>Recommended Rate</label><input type="text" id="uwRate"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Buyout Administration</div>
+        <div class="verify-row"><span class="toggle" id="tgBuyout">✓</span> Buyout Required</div>
+        <div class="fld row2" style="margin-top:12px">
+          <div><label>Buyout Factor</label><input type="text" id="uwBuyoutFactor"></div>
+          <div><label>Est. Buyout Date</label><input type="text" id="uwBuyoutDate" placeholder="MM/DD/YYYY"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<script>
+/*
+ * OperFi Underwriting Review widget — testable logic on window.OFUW.
+ * Field link-names verbatim from OperFi_Client_Onboarding.ds (Underwriting_Review form).
+ */
+(function (global) {
+'use strict';
+
+var APPLICATION_LOOKUP = 'Application'; // 1:1 lookup on Underwriting_Review (hand-add in Creator)
+var FORM_REVIEW = 'Underwriting_Review';
+
+// ── Pure logic ───────────────────────────────────────────────────────────────
+function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
+
+// The six approval gates (manual §10.1). ctx carries verification facts from data.
+function computeGate(s, ctx) {
+  ctx = ctx || {};
+  var gates = {
+    intakePacket:   (ctx.docsReceived||0) >= (ctx.docsRequired||0) && (ctx.docsRequired||0) > 0,
+    fraudClear:     s.fraudFlag === 'None' || s.fraudFlag === 'Low',
+    ownership:      !!s.ownershipVerified,
+    ucc:            !!s.uccChecked,
+    creditDocumented: num(s.approvedCreditLimit) !== '' && num(s.approvedCreditLimit) > 0,
+    checklistComplete: s.checklistStatus === 'Complete'
+  };
+  gates.passedCount = Object.keys(gates).filter(function(k){ return k!=='passedCount' && gates[k]; }).length;
+  gates.allPass = gates.passedCount === 6;
+  return gates;
+}
+
+// Decision validation — Approve is gated; Denied/More-Info need a reason note.
+function validateDecision(s, ctx) {
+  var errors = [];
+  if (s.decision === 'Approved') {
+    if (!s.authorityVerified) errors.push('Authority must be verified to approve.');
+    if (!s.ownershipVerified) errors.push('Ownership must be verified to approve.');
+    if (!s.uccChecked) errors.push('UCC must be checked & cleared to approve.');
+    if (num(s.approvedCreditLimit) === '' || num(s.approvedCreditLimit) <= 0) errors.push('Set an Approved Credit Limit to approve.');
+    if (s.checklistStatus !== 'Complete') errors.push('Checklist must be Complete to approve.');
+    if (s.fraudFlag === 'High') errors.push('Fraud Flag is High — resolve before approving.');
+    if (!computeGate(s, ctx).allPass) errors.push('All 6 approval gates must be green.');
+  }
+  if ((s.decision === 'Denied' || s.decision === 'More Information Needed') && !s.uwNotes) {
+    errors.push('Add an Underwriting note explaining the decision.');
+  }
+  return { ok: errors.length === 0, errors: errors };
+}
+
+// Map UI state -> Underwriting_Review record (REAL .ds link-names).
+function buildReviewPayload(s, appId) {
+  var p = {
+    Decision2: s.decision || 'Pending',
+    Approved_Credit_Limit: num(s.approvedCreditLimit),
+    Recommended_Rate: num(s.recommendedRate),
+    Authority_Verified: !!s.authorityVerified,
+    Ownership_Verified: !!s.ownershipVerified,
+    UCC_Checked: !!s.uccChecked,
+    Fraud_Flag1: s.fraudFlag || 'None',
+    Fraud_Notes: s.fraudNotes || '',
+    Buyout_Required: !!s.buyoutRequired,
+    Buyout_Factor: s.buyoutFactor || '',
+    Estimated_Buyout_Date: s.estimatedBuyoutDate || '',
+    Checklist_Status1: s.checklistStatus || 'Not Started',
+    UW_Notes: s.uwNotes || '',
+    Decision_Date: s.decisionDate || ''
+  };
+  if (appId != null) p[APPLICATION_LOOKUP] = appId;
+  return p;
+}
+
+var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, APPLICATION_LOOKUP: APPLICATION_LOOKUP };
+global.OFUW = OFUW;
+
+// ── Demo data (used when not embedded in Creator) ────────────────────────────
+var DEMO = {
+  appId: 'UW-2026-0418',
+  application: { Business_Name:'Brennan Eslinger Trucking LLC', Authority_Type:'Carrier', Factoring_Authority_Selected:'Carrier',
+    USDOT:'4366362', MC_Number:'1709488', EIN:'84-21••••', Business_Formation_Type:'LLC', Equipment_Types:['Dry Van','Flatbed'],
+    Number_of_Trucks:1, Number_of_Drivers:1, Monthly_Invoices_to_Factor:'$22,000', Has_Prior_Factor:'Yes',
+    Current_Previous_Factor:'TBS Factoring', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'Recourse',
+    Credit_Issues:['None'], loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes' },
+  owners: [{ First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'Managing Member', Ownership_Percent:100, sosRole:'Managing Member' }],
+  fraud: [
+    ['IP Address','Glendale, AZ · no proxy','clear'],['Phone (IPQS)','VOIP detected · score 78','bad'],
+    ['Email','Business domain match','clear'],['Insurance / COI','Producer phone mismatch','warn'],
+    ['COI Created Date','9 days before submit','clear'],['Bank Account Name','Matches legal entity','clear'],
+    ['DL / SSN (IDI/TLO)','Clean scan · identity match','clear'],['Carrier411','No FreightGuard · active','clear'],
+    ['State Match','Formation = mailing (AZ)','clear'],['Dispatch History','No prior internal flags','clear']
+  ],
+  documents: [
+    ['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
+    ['Voided Check','Prospect Upload','Received'],['Certificate of Insurance','Prospect Upload','Received'],
+    ['W-9','Prospect Upload','Verified'],['SOS Filing','Staff Upload','Verified'],
+    ['Operating Agreement','—','Requested'],['Prior aging report','—','Requested']
+  ],
+  ucc: 1,
+  review: { Decision2:'Pending', Authority_Verified:true, Ownership_Verified:true, UCC_Checked:false,
+    Fraud_Flag1:'Low', Fraud_Notes:'VOIP phone + COI producer mismatch — re-verifying.', Checklist_Status1:'In Progress',
+    UW_Notes:'', Approved_Credit_Limit:'$30,000', Recommended_Rate:'3.00%', Buyout_Required:true, Buyout_Factor:'TBS Factoring',
+    Estimated_Buyout_Date:'', Decision_Date:'' }
+};
+
+// ── Data access layer (SDK when embedded, demo otherwise) ─────────────────────
+var LIVE = (typeof ZOHO !== 'undefined' && ZOHO.CREATOR);
+function loadModel() {
+  // Live read would use ZOHO.CREATOR.DATA.getRecords for Application/Owner/Document/
+  // Underwriting_Review filtered by the Application id (confirm exact SDK signature).
+  // For v1/demo we resolve the sample model; wire the live reads when embedded.
+  return Promise.resolve(DEMO);
+}
+function saveReview(payload, hasExisting) {
+  if (!LIVE) { console.log('DEMO save — Underwriting_Review payload:', JSON.stringify(payload, null, 2)); return Promise.resolve({ demo:true }); }
+  if (hasExisting) return ZOHO.CREATOR.DATA.updateRecord({ report_name:'Underwriting_Review_Report', id: hasExisting, payload:{ data: payload } });
+  return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM_REVIEW, payload:{ data: payload } });
+}
+
+// ── DOM (browser only) ───────────────────────────────────────────────────────
+if (typeof document !== 'undefined') {
+  global.addEventListener('load', function(){ try { boot(); } catch(e){ console.error('init', e); } });
+}
+function $(id){ return document.getElementById(id); }
+var MODEL = null;
+
+function readState() {
+  return {
+    decision: $('uwDecision').value,
+    authorityVerified: $('tgAuthority').classList.contains('on'),
+    ownershipVerified: $('tgOwnership').classList.contains('on'),
+    uccChecked: $('tgUcc').classList.contains('on'),
+    fraudFlag: $('uwFraudFlag').value,
+    fraudNotes: $('uwFraudNotes').value,
+    checklistStatus: $('uwChecklist').value,
+    uwNotes: $('uwNotes').value,
+    decisionDate: $('uwDecisionDate').value,
+    approvedCreditLimit: $('uwLimit').value,
+    recommendedRate: $('uwRate').value,
+    buyoutRequired: $('tgBuyout').classList.contains('on'),
+    buyoutFactor: $('uwBuyoutFactor').value,
+    estimatedBuyoutDate: $('uwBuyoutDate').value
+  };
+}
+
+function ctx() {
+  var received = MODEL.documents.filter(function(d){ return d[2]==='Verified'||d[2]==='Received'; }).length;
+  return { docsReceived: received, docsRequired: MODEL.documents.length, fraudBad: MODEL.fraud.filter(function(f){return f[2]==='bad';}).length };
+}
+
+function renderGate() {
+  var s = readState(); var g = computeGate(s, ctx());
+  var rows = [
+    ['Intake packet verified', g.intakePacket],['Fraud screening clear', g.fraudClear],
+    ['Ownership verified', g.ownership],['UCCs resolved & filed', g.ucc],
+    ['Credit / reserve documented', g.creditDocumented],['Checklist complete', g.checklistComplete]
+  ];
+  $('gateList').innerHTML = rows.map(function(r){
+    return '<div class="gate-row '+(r[1]?'ok':'no')+'"><span class="g-ic">'+(r[1]?'✓':'○')+'</span> '+r[0]+'</div>';
+  }).join('');
+  $('gateCount').textContent = g.passedCount + ' / 6';
+  $('kGates').textContent = g.passedCount + ' / 6';
+  $('btnApprove').disabled = !g.allPass;
+  $('rbLimit').textContent = s.approvedCreditLimit || '—';
+  $('rbRate').textContent = s.recommendedRate || '—';
+}
+
+function showStatus(msg, type){ var el=$('statusMsg'); el.textContent=msg; el.className='status-msg show '+type; }
+
+function bindToggle(id){ $(id).addEventListener('click', function(){ this.classList.toggle('on'); renderGate(); }); }
+
+function boot() {
+  showStatus('Loading application…', 'loading');
+  loadModel().then(function(m){
+    MODEL = m;
+    $('modePill').textContent = LIVE ? 'Live' : 'Demo';
+    var a = m.application;
+    $('uwName').textContent = a.Assigned_Underwriter || 'Underwriter';
+    $('uwAvatar').textContent = (a.Assigned_Underwriter||'UW').split(' ').map(function(x){return x[0];}).join('').slice(0,2);
+    $('hAppLine').textContent = 'Application #' + m.appId + ' · ' + a.Authority_Type;
+    $('hBiz').textContent = a.Business_Name;
+    $('hMeta').innerHTML = '<span><span class="key">USDOT</span> '+a.USDOT+'</span><span class="sep">·</span>' +
+      '<span><span class="key">MC</span> '+a.MC_Number+'</span><span class="sep">·</span>' +
+      '<span>'+a.Business_Formation_Type+'</span><span class="sep">·</span><span>'+(a.loc||'')+'</span>' +
+      '<span class="sep">·</span><span>Assigned: <b style="color:#fff">'+(a.Assigned_Underwriter||'—')+'</b></span>';
+
+    // Application summary
+    $('appSummary').innerHTML = [
+      ['Authority', a.Authority_Type],['Factoring As', a.Factoring_Authority_Selected],
+      ['Formation', a.Business_Formation_Type],['Equipment', (a.Equipment_Types||[]).join(', ')],
+      ['Trucks / Drivers', a.Number_of_Trucks+' / '+a.Number_of_Drivers],['Monthly Invoices', a.Monthly_Invoices_to_Factor],
+      ['Prior Factor', a.Has_Prior_Factor==='Yes' ? a.Current_Previous_Factor : 'None'],['Veteran', a.Veteran],
+      ['Requested Term', a.Rate_Term_Selection.replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],['Credit Issues',(a.Credit_Issues||[]).join(', ')]
+    ].map(function(r){ return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+(r[1]||'—')+'</div></div>'; }).join('');
+
+    // Fraud grid
+    $('fraudGrid').innerHTML = m.fraud.map(function(f){
+      var cls=f[2], ic=cls==='clear'?'✓':'!';
+      return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f[0]+'</div><div class="fd">'+f[1]+'</div></div></div>';
+    }).join('');
+
+    // Ownership table
+    var ot = '<tr><th>Owner</th><th>Title</th><th>Stake</th><th>SOS Role</th></tr>';
+    m.owners.forEach(function(o){ ot += '<tr><td>'+o.First_Name1+' '+o.Last_Name1+'</td><td>'+o.Title+'</td><td>'+o.Ownership_Percent+'%</td><td><span class="pill g">'+o.sosRole+'</span></td></tr>'; });
+    $('ownTable').innerHTML = ot;
+
+    // Documents table
+    var pillFor = function(s){ return s==='Verified'?'g':(s==='Received'?'b':(s==='Rejected'?'r':'r')); };
+    var dt = '<tr><th>Document</th><th>Source</th><th>Status</th></tr>';
+    m.documents.forEach(function(d){ dt += '<tr><td>'+d[0]+'</td><td>'+d[1]+'</td><td><span class="pill '+pillFor(d[2])+'">'+d[2]+'</span></td></tr>'; });
+    $('docTable').innerHTML = dt;
+    var recv = m.documents.filter(function(d){return d[2]==='Verified'||d[2]==='Received';}).length;
+    $('docCount').textContent = recv + ' / ' + m.documents.length;
+    $('kDocs').textContent = recv + ' / ' + m.documents.length;
+    $('kFraud').textContent = m.fraud.filter(function(f){return f[2]!=='clear';}).length;
+    $('kUcc').textContent = m.ucc;
+
+    // Prefill admin controls from existing review
+    var r = m.review;
+    $('uwDecision').value = r.Decision2 || 'Pending';
+    $('tgAuthority').classList.toggle('on', !!r.Authority_Verified);
+    $('tgOwnership').classList.toggle('on', !!r.Ownership_Verified);
+    $('tgUcc').classList.toggle('on', !!r.UCC_Checked);
+    $('uwFraudFlag').value = r.Fraud_Flag1 || 'None';
+    $('uwFraudNotes').value = r.Fraud_Notes || '';
+    $('uwChecklist').value = r.Checklist_Status1 || 'Not Started';
+    $('uwNotes').value = r.UW_Notes || '';
+    $('uwDecisionDate').value = r.Decision_Date || '';
+    $('uwLimit').value = r.Approved_Credit_Limit || '';
+    $('uwRate').value = r.Recommended_Rate || '';
+    $('tgBuyout').classList.toggle('on', !!r.Buyout_Required);
+    $('uwBuyoutFactor').value = r.Buyout_Factor || '';
+    $('uwBuyoutDate').value = r.Estimated_Buyout_Date || '';
+
+    // Wire
+    ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
+    ['uwDecision','uwFraudFlag','uwChecklist','uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
+    $('btnApprove').addEventListener('click', function(){ submit('Approved'); });
+    $('btnDecline').addEventListener('click', function(){ submit('Denied'); });
+    $('btnSave').addEventListener('click', function(){ submit(null); });
+
+    $('statusMsg').className = 'status-msg';
+    renderGate();
+  });
+}
+
+function submit(forceDecision) {
+  var s = readState();
+  if (forceDecision) { s.decision = forceDecision; $('uwDecision').value = forceDecision; }
+  var v = validateDecision(s, ctx());
+  if (!v.ok) { showStatus('Cannot save: ' + v.errors[0], 'error'); return; }
+  showStatus('Saving decision…', 'loading');
+  var payload = buildReviewPayload(s, MODEL.appId);
+  saveReview(payload, MODEL.reviewId).then(function(res){
+    if (res && res.demo) { showStatus('✓ Demo: decision "'+payload.Decision2+'" validated and Underwriting_Review payload logged to the console.', 'success'); }
+    else { showStatus('✓ Saved. Decision "'+payload.Decision2+'" written to Underwriting_Review and synced to CRM.', 'success'); }
+  }).catch(function(e){ showStatus('Save failed: ' + (e && e.message ? e.message : e), 'error'); });
+}
+
+})(typeof window !== 'undefined' ? window : this);
+</script>
+</body>
+</html>

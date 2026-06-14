@@ -27,6 +27,16 @@ body{background:var(--body);color:var(--ink);
 .btn.sm{padding:6px 11px;font-size:12px}
 .btn[disabled]{opacity:.5;cursor:default}
 
+/* Smart resolve bar */
+.smart{background:linear-gradient(180deg,#fff8ea,#fdf0d6);border:1px solid #ecd49a;border-radius:12px;
+  padding:14px 18px;margin:16px 0 14px;display:flex;align-items:center;gap:16px}
+.smart.hidden{display:none}
+.smart .ic{width:36px;height:36px;border-radius:9px;background:var(--amber);color:#3a2a05;
+  display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;flex-shrink:0}
+.smart .txt{flex:1}
+.smart .txt b{font-size:14.5px}
+.smart .txt .d{font-size:12.5px;color:#7a5e1e;margin-top:2px}
+
 /* Toolbar */
 .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 .filters{display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:4px}
@@ -60,6 +70,31 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber-dk);cursor:
 .raw-mini{font-size:11px;color:#9a7a2e;font-style:italic}
 .empty{text-align:center;color:var(--muted);padding:40px 0}
 
+/* Modal: grouped resolve */
+.scrim{position:fixed;inset:0;background:rgba(20,18,14,.4);display:flex;align-items:flex-start;justify-content:center;padding-top:60px;z-index:9999}
+.scrim.hidden{display:none}
+.modal{background:var(--body);width:620px;max-width:94vw;border-radius:14px;border:1px solid var(--line);box-shadow:0 24px 60px rgba(0,0,0,.28);overflow:hidden}
+.modal-head{background:var(--ink);color:#fff;padding:16px 22px}
+.modal-head .x{float:right;cursor:pointer;opacity:.7}
+.modal-head h2{margin:0;font-size:16px}
+.modal-head .ms{font-size:12px;opacity:.72;margin-top:3px}
+.modal-body{padding:8px 22px 4px;max-height:54vh;overflow-y:auto}
+.grp{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+.grp-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.grp-raw{font-size:13.5px}
+.grp-raw b{font-weight:700}
+.grp-raw .sentby{font-size:11px;color:var(--muted);display:block;margin-top:2px}
+.grp-count{font-size:11.5px;font-weight:700;color:var(--amber-dk);background:var(--amber-soft);padding:4px 10px;border-radius:20px;white-space:nowrap}
+.grp-resolve{display:flex;align-items:center;gap:9px}
+select.gsel{flex:1;border:1px solid var(--amber);background:#fffdf7;border-radius:8px;padding:9px 11px;font-size:13px;font-weight:600;color:var(--ink);font-family:inherit}
+select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
+.grp.done{opacity:.75}
+.remember{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);margin-top:8px}
+.remember input{width:14px;height:14px}
+.remember b{color:var(--ink)}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;background:var(--body)}
+.modal-foot .left{flex:1;font-size:12.5px;color:var(--muted)}
+
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2a44;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;box-shadow:0 8px 24px rgba(16,24,40,.3)}
 #toast.hidden{display:none}
 
@@ -88,6 +123,13 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber-dk);cursor:
       <button class="btn" id="import-csv">⬍ Import CSV</button>
       <button class="btn amber" id="new-draft">＋ New Draft</button>
     </div>
+  </div>
+
+  <div class="smart hidden" id="smart">
+    <div class="ic">!</div>
+    <div class="txt"><b id="smart-title"></b><div class="d" id="smart-desc"></div></div>
+    <button class="btn dark" id="resolve-cust">Resolve customers</button>
+    <button class="btn" id="resolve-carr">Resolve carriers</button>
   </div>
 
   <div class="toolbar">
@@ -122,6 +164,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber-dk);cursor:
   </div>
 </div>
 
+<div class="scrim hidden" id="scrim"><div class="modal" id="modal"></div></div>
 <div id="toast" class="hidden"></div>
 
 <script>
@@ -133,7 +176,8 @@ var __state = {
   search: '',
   selected: [],
   customers: [],
-  carriers: []
+  carriers: [],
+  candidatesByRaw: {}
 };
 window.__state = __state;
 
@@ -230,6 +274,22 @@ function renderSummary(summary){
   var ready = summary.ready!=null?summary.ready:__state.drafts.filter(function(d){return d.status==='ready';}).length;
   setText('submit-all', 'Submit all Ready ('+ready+')');
   var sb=document.getElementById('submit-all'); if(sb) sb.disabled = !ready;
+  renderSmartBar();
+}
+
+function renderSmartBar(){
+  var smart=document.getElementById('smart'); if(!smart) return;
+  var attn=__state.drafts.filter(function(d){return d.status==='attention';});
+  var custGroups=computeGroups(attn,'customer');
+  var carrGroups=computeGroups(attn,'carrier');
+  var fixes=custGroups.length+carrGroups.length;
+  if (!attn.length || !fixes){ smart.classList.add('hidden'); return; }
+  smart.classList.remove('hidden');
+  setText('smart-title', attn.length+' load'+(attn.length===1?'':'s')+' need attention — but only '+fixes+' thing'+(fixes===1?'':'s')+' to fix');
+  setText('smart-desc', custGroups.length+' unmatched customer'+(custGroups.length===1?'':'s')+' and '+carrGroups.length+' unmatched carrier'+(carrGroups.length===1?'':'s')+' cover all '+attn.length+'. Resolve each once and they all clear.');
+  var rc=document.getElementById('resolve-cust'), rr=document.getElementById('resolve-carr');
+  if (rc){ rc.textContent='Resolve customers ('+custGroups.length+')'; rc.style.display=custGroups.length?'':'none'; }
+  if (rr){ rr.textContent='Resolve carriers ('+carrGroups.length+')'; rr.style.display=carrGroups.length?'':'none'; }
 }
 
 function setFilter(f){
@@ -240,6 +300,124 @@ function setFilter(f){
   renderQueue();
 }
 
+/* ---------------- grouped resolve ---------------- */
+
+function rawKeyFor(d, kind){
+  if (kind==='customer') return d.customer_raw || ('(no name · load '+d.id+')');
+  return d.carrier_raw || ('(no carrier · load '+d.id+')');
+}
+
+function computeGroups(drafts, kind){
+  drafts = drafts || __state.drafts.filter(function(d){return d.status==='attention';});
+  var map={};
+  drafts.forEach(function(d){
+    var miss = kind==='customer' ? (!d.customer_name && (d.reasons||[]).indexOf('customer')!==-1)
+                                 : (!d.carrier_name && (d.reasons||[]).indexOf('carrier')!==-1);
+    if (!miss) return;
+    var raw=rawKeyFor(d,kind);
+    if (!map[raw]) map[raw]={ raw:raw, count:0, ids:[], source:d.source };
+    map[raw].count++;
+    map[raw].ids.push(d.id);
+  });
+  return Object.keys(map).map(function(k){ return map[k]; });
+}
+
+function patchDraft(id, patch){
+  var body=Object.assign({ email: brokerEmail }, patch);
+  return fetch(BROKER_API_BASE+'/draft-loads/'+id, {
+    method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  }).then(function(r){ return r.json(); });
+}
+
+function applyGroup(raw, value, ids, remember, kind){
+  kind = kind||'customer';
+  var patchKey = kind==='customer' ? 'customer_id' : 'carrier_id';
+  var patches = ids.map(function(id){ var p={}; p[patchKey]=value; return patchDraft(id, p); });
+  return Promise.all(patches).then(function(){
+    if (remember && kind==='customer'){
+      var g=computeGroups(undefined,'customer').find(function(x){return x.raw===raw;});
+      return fetch(BROKER_API_BASE+'/draft-loads/alias', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ email:brokerEmail, source:(g&&g.source)||'', raw_name:raw, customer_id:value })
+      }).then(function(r){ return r.json(); });
+    }
+  }).then(function(){ return loadQueue(); });
+}
+
+function customerOptions(selectedId, candidates){
+  var opts='', seen={};
+  (candidates||[]).forEach(function(c){
+    seen[c.customer_id]=true;
+    opts+='<option value="'+esc(c.customer_id)+'"'+(c.customer_id===selectedId?' selected':'')+'>'+esc(c.name||c.customer_name)+(c.score!=null?' — '+Math.round(c.score*100)+'% match':'')+'</option>';
+  });
+  __state.customers.forEach(function(c){
+    if (seen[c.customer_id]) return;
+    opts+='<option value="'+esc(c.customer_id)+'"'+(c.customer_id===selectedId?' selected':'')+'>'+esc(c.customer_name)+'</option>';
+  });
+  return '<option value="">— pick a customer —</option>'+opts;
+}
+function carrierOptions(selectedId){
+  var opts='<option value="">— pick a carrier —</option>';
+  __state.carriers.forEach(function(c){
+    opts+='<option value="'+esc(c.vendor_id)+'"'+(c.vendor_id===selectedId?' selected':'')+'>'+esc(c.carrier_name)+(c.mc?' (MC '+esc(c.mc)+')':'')+(c.dnu?' · DNU':'')+'</option>';
+  });
+  return opts;
+}
+
+function resolveCustomerCandidates(raw, source){
+  if (__state.candidatesByRaw[raw]) return Promise.resolve(__state.candidatesByRaw[raw]);
+  return fetch(BROKER_API_BASE+'/draft-loads/resolve-customer', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ email:brokerEmail, raw_name:raw, source:source||'' })
+  }).then(function(r){ return r.json(); }).then(function(res){
+    var cands=(res&&res.candidates)||[];
+    __state.candidatesByRaw[raw]=cands;
+    return cands;
+  }).catch(function(){ return []; });
+}
+
+function openResolveModal(kind){
+  var groups=computeGroups(undefined, kind);
+  var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
+  if(!scrim||!modal) return;
+  var totalLoads=groups.reduce(function(a,g){return a+g.count;},0);
+  var title = kind==='customer'?'Resolve customers':'Resolve carriers';
+  modal.innerHTML=
+    '<div class="modal-head"><span class="x" id="modal-x">✕</span><h2>'+title+'</h2>'+
+    '<div class="ms">'+groups.length+' unmatched name'+(groups.length===1?'':'s')+' across '+totalLoads+' loads — match each once to clear all of them</div></div>'+
+    '<div class="modal-body" id="modal-body"></div>'+
+    '<div class="modal-foot"><div class="left">'+groups.length+' to resolve</div>'+
+    '<button class="btn" id="modal-cancel">Close</button></div>';
+  var mb=modal.querySelector('#modal-body');
+  groups.forEach(function(g, i){
+    var div=document.createElement('div');
+    div.className='grp'; div.setAttribute('data-raw', g.raw);
+    var selHtml = kind==='customer' ? customerOptions('', []) : carrierOptions('');
+    div.innerHTML=
+      '<div class="grp-top"><div class="grp-raw"><b>“'+esc(g.raw)+'”</b>'+(g.source?'<span class="sentby">sent by '+esc(g.source)+'</span>':'')+'</div>'+
+      '<span class="grp-count">'+g.count+' load'+(g.count===1?'':'s')+'</span></div>'+
+      '<div class="grp-resolve"><select class="gsel">'+selHtml+'</select></div>'+
+      (kind==='customer'?'<label class="remember"><input type="checkbox" class="remember-cb" checked> <b>Remember</b> this match for future imports from this TMS</label>':'');
+    mb.appendChild(div);
+    var sel=div.querySelector('select');
+    if (kind==='customer'){
+      resolveCustomerCandidates(g.raw, g.source).then(function(cands){ sel.innerHTML=customerOptions('', cands); });
+    }
+    sel.addEventListener('change', function(){
+      var val=sel.value; if(!val) return;
+      var remember = kind==='customer' ? !!(div.querySelector('.remember-cb') && div.querySelector('.remember-cb').checked) : false;
+      sel.classList.add('done'); div.classList.add('done');
+      applyGroup(g.raw, val, g.ids, remember, kind).then(function(){
+        showToast(g.count+' load'+(g.count===1?'':'s')+' cleared');
+      });
+    });
+  });
+  scrim.classList.remove('hidden');
+  modal.querySelector('#modal-x').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+}
+function closeModal(){ var s=document.getElementById('scrim'); if(s) s.classList.add('hidden'); }
+
 /* ---------------- data load ---------------- */
 
 function loadQueue(){
@@ -248,6 +426,7 @@ function loadQueue(){
     .then(function(r){ return r.json(); })
     .then(function(p){
       __state.drafts=(p&&p.drafts)||[];
+      __state.candidatesByRaw={};
       setText('sub', __state.drafts.length+' draft'+(__state.drafts.length===1?'':'s')+' · resolve once, submit in bulk.');
       renderQueue();
       renderSummary((p&&p.summary)||{});
@@ -283,15 +462,24 @@ window.addEventListener('load', function(){
   if (s) s.addEventListener('input', function(){ __state.search=s.value; renderQueue(); });
   bind('import-csv', function(){ showToast('CSV import coming soon'); });
   bind('new-draft', function(){ showToast('New draft coming soon'); });
+  bind('resolve-cust', function(){ openResolveModal('customer'); });
+  bind('resolve-carr', function(){ openResolveModal('carrier'); });
+  var scrim=document.getElementById('scrim');
+  if (scrim) scrim.addEventListener('click', function(e){ if(e.target===scrim) closeModal(); });
   boot();
 });
 function bind(id, fn){ var el=document.getElementById(id); if(el) el.addEventListener('click', fn); }
+
+document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeModal(); } });
 
 // expose for tests
 window.renderQueue=renderQueue;
 window.loadQueue=loadQueue;
 window.renderSummary=renderSummary;
 window.setFilter=setFilter;
+window.computeGroups=computeGroups;
+window.applyGroup=applyGroup;
+window.openResolveModal=openResolveModal;
 </script>
 </body>
 </html>

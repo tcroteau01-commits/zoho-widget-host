@@ -21,7 +21,35 @@ const DRAFTS = [
 function makeFetch(records) {
   return function (url, opts) {
     records.push({ url: String(url), opts: opts || {} });
-    var body = { drafts: DRAFTS, count: 2, summary: { total: 2, ready: 1, attention: 1 } };
+    var u = String(url);
+    var body;
+    if (u.indexOf('/draft-loads/resolve-customer') !== -1) {
+      body = { exact: false, source: 'TMS',
+        best: { customer_id: '1', name: 'DINE SOUTH LLC', score: 0.89 },
+        candidates: [{ customer_id: '1', name: 'DINE SOUTH LLC', score: 0.89 }] };
+    } else if (u.indexOf('/draft-loads/resolve-carrier') !== -1) {
+      body = { vendor_id: 'v2', matched_on: 'mc', conflict: false };
+    } else if (u.indexOf('/draft-loads/submit') !== -1) {
+      body = { submitted: ['900'], skipped: [], count: 1 };
+    } else if (u.indexOf('/draft-loads/alias') !== -1) {
+      body = { ok: true };
+    } else if (/\/draft-loads\/\d+/.test(u)) {
+      body = { status: 'ready', reasons: [] };
+    } else if (u.indexOf('/draft-loads') !== -1) {
+      body = { drafts: DRAFTS, count: 2, summary: { total: 2, ready: 1, attention: 1 } };
+    } else if (u.indexOf('/tms-customers') !== -1) {
+      body = { customers: [
+        { customer_id: '1', customer_name: 'DINE SOUTH LLC' },
+        { customer_id: '2', customer_name: 'PEPSICO INC' }
+      ], count: 2 };
+    } else if (u.indexOf('/tms-carriers') !== -1) {
+      body = { carriers: [
+        { vendor_id: 'v1', carrier_name: 'SWIFT HAUL LLC', mc: '982341', dnu: false },
+        { vendor_id: 'v2', carrier_name: 'RELIANT', mc: '771204', dnu: false }
+      ], count: 2 };
+    } else {
+      body = {};
+    }
     return Promise.resolve({ json: function () { return Promise.resolve(body); } });
   };
 }
@@ -99,4 +127,46 @@ test('submit-all button label reflects ready count', () => {
   const { window } = makeWidget();
   window.renderSummary({ total: 2, ready: 1, attention: 1 });
   assert.match(window.document.getElementById('submit-all').textContent, /1/);
+});
+
+// ---- Task 16 ----
+test('computeGroups groups attention drafts by distinct customer_raw with counts', () => {
+  const { window } = makeWidget();
+  const drafts = [
+    { id: '1', status: 'attention', reasons: ['customer'], customer_name: '', customer_raw: 'Krogers', source: 'TMS' },
+    { id: '2', status: 'attention', reasons: ['customer'], customer_name: '', customer_raw: 'Krogers', source: 'TMS' },
+    { id: '3', status: 'attention', reasons: ['customer'], customer_name: '', customer_raw: 'Dine South', source: 'TMS' }
+  ];
+  const groups = window.computeGroups(drafts, 'customer');
+  assert.equal(groups.length, 2);
+  const krog = groups.find(g => g.raw === 'Krogers');
+  assert.equal(krog.count, 2);
+  assert.deepEqual([...krog.ids].sort(), ['1', '2']);
+});
+
+test('computeGroups for carriers groups by carrier_raw', () => {
+  const { window } = makeWidget();
+  const drafts = [
+    { id: '1', status: 'attention', reasons: ['carrier'], carrier_name: '', carrier_raw: 'DOT 339', source: 'TMS' },
+    { id: '2', status: 'attention', reasons: ['carrier'], carrier_name: '', carrier_raw: 'DOT 339', source: 'TMS' }
+  ];
+  const groups = window.computeGroups(drafts, 'carrier');
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].count, 2);
+});
+
+test('applyGroup PATCHes every id + one alias call when remember', async () => {
+  const { window, records } = makeWidget();
+  await window.applyGroup('Dine South Restaurant Grp', '1', ['901', '902'], true, 'customer');
+  const patches = records.filter(r => /\/draft-loads\/\d+$/.test(r.url) && r.opts.method === 'PATCH');
+  assert.equal(patches.length, 2);
+  const aliases = records.filter(r => r.url.indexOf('/draft-loads/alias') !== -1);
+  assert.equal(aliases.length, 1);
+});
+
+test('applyGroup with remember=false issues no alias call', async () => {
+  const { window, records } = makeWidget();
+  await window.applyGroup('Dine South', '1', ['901'], false, 'customer');
+  const aliases = records.filter(r => r.url.indexOf('/draft-loads/alias') !== -1);
+  assert.equal(aliases.length, 0);
 });

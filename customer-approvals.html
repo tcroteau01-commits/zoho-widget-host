@@ -457,6 +457,7 @@ function brokerName(rec){
 }
 window.brokerName = brokerName;
 window.renderFraudCheck = function(d){ return renderFraudCheck(d); };  // exposed for tests (CC2)
+window.urlVal = function(v){ return urlVal(v); };                      // exposed for tests
 var currentSearch = '';
 var openIndex = -1;
 var currentLoadId = 0;
@@ -1056,7 +1057,7 @@ function fetchFraudCheck(r) {
   var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
   var qs = 'email=' + encodeURIComponent(email) +
            '&customer_email=' + encodeURIComponent(r.Email || '') +
-           '&website=' + encodeURIComponent(r.Company_Website || '');
+           '&website=' + encodeURIComponent(urlVal(r.Company_Website));
   fetch(BROKER_API_BASE + '/customer-fraud-check?' + qs)
     .then(function(res){ return res.ok ? res.json() : null; })
     .then(function(d){ if (d) renderFraudCheck(d); })
@@ -1189,7 +1190,16 @@ function field(label, val) {
   return '<div class="field"><div class="field-label">' + esc(label) + '</div>' +
     '<div class="field-val' + (has ? '' : ' empty') + '">' + (has ? esc(String(val)) : '—') + '</div></div>';
 }
+// Creator URL fields (Company_Website, LinkedIn_Profile, …) come back as objects
+// like { value, url, title }; stringifying them yields "[object Object]".
+function urlVal(v) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  return v.url || v.value || v.title || v.zc_display_value || '';
+}
+
 function fieldLink(label, val) {
+  val = urlVal(val);
   var has = val !== null && val !== undefined && String(val).trim() !== '';
   if (!has) return '<div class="field"><div class="field-label">' + esc(label) + '</div><div class="field-val empty">—</div></div>';
   var url = String(val).trim();
@@ -1328,7 +1338,7 @@ function exportCsv() {
       r.Customer_Point_of_Contact || '',
       r.Email || '',
       r.Phone_Number1 || r.Phone_Number || '',
-      r.Company_Website || '',
+      urlVal(r.Company_Website),
       parseMoney(r.Credit_Limit).toFixed(2),
       (r.Credit_Notes || '').replace(/\s+/g, ' ')
     ];

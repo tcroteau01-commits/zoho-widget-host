@@ -28,6 +28,16 @@ test('customer-approvals brokerName reads Contact.Account_Name, not the debtor',
   );
 });
 
+test('customer-approvals urlVal extracts the URL from a Creator url-field object', () => {
+  const w = load('customer-approvals.html');
+  assert.equal(typeof w.urlVal, 'function');
+  assert.equal(w.urlVal({ value: 'globaltoolandtechnology.com', url: 'https://globaltoolandtechnology.com' }), 'https://globaltoolandtechnology.com');
+  assert.equal(w.urlVal({ value: 'acme.com' }), 'acme.com');
+  assert.equal(w.urlVal('plain.com'), 'plain.com');
+  assert.equal(w.urlVal(null), '');
+  assert.notEqual(w.urlVal({ value: 'x.com' }), '[object Object]');
+});
+
 test('customer-approvals renderFraudCheck shows risk badge + reasons (CC2)', () => {
   const w = load('customer-approvals.html');
   assert.equal(typeof w.renderFraudCheck, 'function');

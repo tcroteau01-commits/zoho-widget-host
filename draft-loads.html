@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Draft Loads</title>
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<style>
+:root{
+  --ink:#272727;--amber:#e8a020;--amber-dk:#c9871a;--body:#f0efe9;--card:#fff;
+  --line:#e3e0d6;--muted:#7a766c;--green:#1f8f4e;--amber-soft:#fbf0d8;--red:#c0392b;--blue:#2c6fb5;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--body);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.4}
+.wrap{max-width:1180px;margin:0 auto;padding:22px}
+.crumb{color:var(--muted);font-size:12px;margin-bottom:14px}
+.head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.head h1{font-size:21px;margin:0;color:var(--ink)}
+.head .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;font-size:13px;
+  font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-family:inherit}
+.btn:hover{border-color:#cfc9bb}
+.btn.amber{background:var(--amber);border-color:var(--amber);color:#3a2a05}
+.btn.dark{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.sm{padding:6px 11px;font-size:12px}
+.btn[disabled]{opacity:.5;cursor:default}
+
+/* Toolbar */
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.filters{display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:4px}
+.chip{border:0;background:transparent;padding:6px 13px;border-radius:7px;font-size:12.5px;color:var(--ink);cursor:pointer;font-weight:600;font-family:inherit}
+.chip.on{background:var(--ink);color:#fff}
+.chip .ct{opacity:.6;font-weight:500;margin-left:4px}
+.tmpl{font-size:12px;color:var(--blue);text-decoration:none;font-weight:600;cursor:pointer}
+.spacer{flex:1}
+.search{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;font-size:13px;min-width:170px;font-family:inherit}
+
+/* Table */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:visible}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+  padding:11px 14px;border-bottom:1px solid var(--line);background:#faf9f5;font-weight:700}
+tbody td{padding:11px 14px;border-bottom:1px solid #f0eee6;vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fcfbf7}
+.co{font-weight:600}
+.small{font-size:11.5px;color:var(--muted);margin-top:2px}
+.mono{font-variant-numeric:tabular-nums}
+.rt{font-weight:600;font-variant-numeric:tabular-nums}
+.marg{font-weight:700;color:var(--green);font-variant-numeric:tabular-nums}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber-dk);cursor:pointer}
+.src{display:inline-flex;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
+.src.tms{background:#e8eff7;color:#2c6fb5}.src.csv{background:#eaf6ee;color:#1f8f4e}.src.manual{background:#f1eef9;color:#6a4bb5}
+.stat{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:20px;white-space:nowrap}
+.stat.ready{background:#e7f5ec;color:var(--green)}.stat.attn{background:var(--amber-soft);color:var(--amber-dk)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.docs{font-size:12px;color:var(--muted)}.docs.ok{color:var(--green);font-weight:600}
+.raw-mini{font-size:11px;color:#9a7a2e;font-style:italic}
+.empty{text-align:center;color:var(--muted);padding:40px 0}
+
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2a44;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;box-shadow:0 8px 24px rgba(16,24,40,.3)}
+#toast.hidden{display:none}
+
+@media (max-width:640px){
+  body{overflow-x:hidden}
+  .wrap{padding:14px 12px 40px}
+  .head{flex-direction:column;align-items:stretch;gap:12px}
+  .toolbar{flex-direction:column;align-items:stretch}
+  .search{min-width:0;width:100%}
+  thead{display:none}
+  table,tbody,tr,td{display:block;width:100%}
+  tbody tr{padding:8px 14px}
+  tbody td{display:flex;justify-content:space-between;gap:12px;text-align:right;padding:5px 0}
+  tbody td[data-label]::before{content:attr(data-label);font-weight:700;color:var(--muted);text-align:left;text-transform:uppercase;font-size:10px;letter-spacing:.5px}
+  .btn,.chip{min-height:44px}
+  input,select,textarea,.search{font-size:16px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="crumb">Broker Portal &nbsp;›&nbsp; Loads &nbsp;›&nbsp; <b style="color:var(--ink)">Draft Loads</b></div>
+  <div class="head">
+    <div><h1>Draft Loads</h1><div class="sub" id="sub">Loading…</div></div>
+    <div style="display:flex;gap:9px">
+      <button class="btn" id="import-csv">⬍ Import CSV</button>
+      <button class="btn amber" id="new-draft">＋ New Draft</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="filters" id="filters">
+      <button class="chip on" data-filter="all">All <span class="ct" id="ct-all">0</span></button>
+      <button class="chip" data-filter="attention">Needs attention <span class="ct" id="ct-attn">0</span></button>
+      <button class="chip" data-filter="ready">Ready <span class="ct" id="ct-ready">0</span></button>
+    </div>
+    <a class="tmpl" id="tmpl">⬇ Template</a>
+    <div class="spacer"></div>
+    <input class="search" id="search" placeholder="Search…">
+    <button class="btn dark" id="submit-all">Submit all Ready (0)</button>
+  </div>
+
+  <div class="panel">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34px"><input type="checkbox" id="cb-all"></th>
+          <th style="width:70px">Source</th>
+          <th>Customer</th>
+          <th>Carrier</th>
+          <th style="width:88px">Cust. Rate</th>
+          <th style="width:88px">Carr. Rate</th>
+          <th style="width:74px">Margin</th>
+          <th style="width:56px">Docs</th>
+          <th style="width:170px">Status</th>
+        </tr>
+      </thead>
+      <tbody id="queue-body"><tr><td colspan="9" class="empty">Loading drafts…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script>
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var brokerEmail = '';
+var __state = {
+  drafts: [],
+  filter: 'all',
+  search: '',
+  selected: [],
+  customers: [],
+  carriers: []
+};
+window.__state = __state;
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function money(n){ var v = Number(n)||0; return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function setText(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
+
+function showToast(msg){
+  var t=document.getElementById('toast'); if(!t) return;
+  t.textContent=msg; t.classList.remove('hidden');
+  clearTimeout(window._toastTimer);
+  window._toastTimer=setTimeout(function(){ t.classList.add('hidden'); },3000);
+}
+
+/* ---------------- queue render ---------------- */
+
+function marginOf(d){ return (Number(d.customer_rate)||0) - (Number(d.carrier_rate)||0); }
+
+function visibleDrafts(){
+  var f=__state.filter, s=(__state.search||'').toLowerCase();
+  return __state.drafts.filter(function(d){
+    if (f==='ready' && d.status!=='ready') return false;
+    if (f==='attention' && d.status!=='attention') return false;
+    if (s){
+      var hay=((d.customer_name||'')+' '+(d.customer_raw||'')+' '+(d.carrier_name||'')+' '+(d.carrier_raw||'')+' '+(d.customer_reference_number||'')).toLowerCase();
+      if (hay.indexOf(s)===-1) return false;
+    }
+    return true;
+  });
+}
+
+function customerCellHtml(d){
+  if (d.customer_name){
+    return '<div class="co">'+esc(d.customer_name)+'</div>'+
+           (d.customer_reference_number?'<div class="small mono">Ref '+esc(d.customer_reference_number)+'</div>':'');
+  }
+  return '<div class="raw-mini">sent: “'+esc(d.customer_raw||'—')+'”</div>'+
+         '<div class="co" style="color:var(--amber-dk)">Pick customer ▾</div>';
+}
+function carrierCellHtml(d){
+  if (d.carrier_name){
+    var line = d.carrier_mc ? 'MC '+esc(d.carrier_mc)+' ✓' : (d.carrier_dot ? 'DOT '+esc(d.carrier_dot)+' ✓' : '');
+    return '<div class="co">'+esc(d.carrier_name)+'</div>'+
+           (line?'<div class="small mono">'+line+'</div>':'');
+  }
+  return '<div class="raw-mini">sent: '+esc(d.carrier_raw||'—')+'</div>'+
+         '<div class="co" style="color:var(--amber-dk)">Pick carrier ▾</div>';
+}
+
+function statusCellHtml(d){
+  if (d.status==='ready') return '<span class="stat ready"><span class="dot"></span>Ready</span>';
+  return '<span class="stat attn"><span class="dot"></span>'+esc(reasonLabel(d.reasons))+'</span>';
+}
+function reasonLabel(reasons){
+  reasons = reasons||[];
+  if (reasons.indexOf('customer')!==-1) return 'Customer';
+  if (reasons.indexOf('carrier')!==-1) return 'Carrier';
+  if (reasons.indexOf('customer_docs')!==-1 || reasons.indexOf('carrier_docs')!==-1) return 'Docs needed';
+  return 'Needs info';
+}
+
+function renderQueue(drafts){
+  if (drafts) __state.drafts = drafts;
+  var rows = visibleDrafts();
+  var body=document.getElementById('queue-body');
+  if(!body) return;
+  if(!rows.length){ body.innerHTML='<tr><td colspan="9" class="empty">No drafts.</td></tr>'; return; }
+  body.innerHTML='';
+  rows.forEach(function(d){
+    var tr=document.createElement('tr');
+    var docCount=(d.has_customer_docs?1:0)+(d.has_carrier_docs?1:0);
+    var docCls='docs'+(docCount===2?' ok':'');
+    tr.innerHTML=
+      '<td data-label=""><input type="checkbox" class="rowcb" data-id="'+esc(d.id)+'"></td>'+
+      '<td data-label="Source"><span class="src '+srcClass(d.source)+'">'+esc(d.source||'')+'</span></td>'+
+      '<td data-label="Customer">'+customerCellHtml(d)+'</td>'+
+      '<td data-label="Carrier">'+carrierCellHtml(d)+'</td>'+
+      '<td data-label="Cust. Rate" class="rt">'+money(d.customer_rate)+'</td>'+
+      '<td data-label="Carr. Rate" class="rt">'+money(d.carrier_rate)+'</td>'+
+      '<td data-label="Margin" class="marg">'+money(marginOf(d))+'</td>'+
+      '<td data-label="Docs"><span class="'+docCls+'">'+docCount+(docCount===2?' ✓':'')+'</span></td>'+
+      '<td data-label="Status">'+statusCellHtml(d)+'</td>';
+    tr.setAttribute('data-row', d.id);
+    body.appendChild(tr);
+  });
+}
+function srcClass(s){ return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
+
+function renderSummary(summary){
+  summary=summary||{};
+  setText('ct-all', summary.total!=null?summary.total:__state.drafts.length);
+  setText('ct-ready', summary.ready!=null?summary.ready:__state.drafts.filter(function(d){return d.status==='ready';}).length);
+  setText('ct-attn', summary.attention!=null?summary.attention:__state.drafts.filter(function(d){return d.status==='attention';}).length);
+  var ready = summary.ready!=null?summary.ready:__state.drafts.filter(function(d){return d.status==='ready';}).length;
+  setText('submit-all', 'Submit all Ready ('+ready+')');
+  var sb=document.getElementById('submit-all'); if(sb) sb.disabled = !ready;
+}
+
+function setFilter(f){
+  __state.filter=f;
+  document.querySelectorAll('#filters .chip').forEach(function(c){
+    c.classList.toggle('on', c.getAttribute('data-filter')===f);
+  });
+  renderQueue();
+}
+
+/* ---------------- data load ---------------- */
+
+function loadQueue(){
+  if (!brokerEmail) return Promise.resolve();
+  return fetch(BROKER_API_BASE+'/draft-loads?email='+encodeURIComponent(brokerEmail))
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      __state.drafts=(p&&p.drafts)||[];
+      setText('sub', __state.drafts.length+' draft'+(__state.drafts.length===1?'':'s')+' · resolve once, submit in bulk.');
+      renderQueue();
+      renderSummary((p&&p.summary)||{});
+    })
+    .catch(function(){ setText('sub','Could not load drafts.'); });
+}
+
+function loadPickLists(){
+  if (!brokerEmail) return Promise.resolve();
+  var c=fetch(BROKER_API_BASE+'/tms-customers?email='+encodeURIComponent(brokerEmail))
+    .then(function(r){return r.json();}).then(function(p){ __state.customers=(p&&p.customers)||[]; }).catch(function(){});
+  var v=fetch(BROKER_API_BASE+'/tms-carriers?email='+encodeURIComponent(brokerEmail))
+    .then(function(r){return r.json();}).then(function(p){ __state.carriers=(p&&p.carriers)||[]; }).catch(function(){});
+  return Promise.all([c,v]);
+}
+
+function boot(){
+  if (typeof ZOHO==='undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) return;
+  var result=ZOHO.CREATOR.UTIL.getInitParams();
+  if (result && typeof result.then==='function'){
+    result.then(function(params){
+      brokerEmail=(params && (params.loginUser||params.login_user||params.email))||'';
+      loadPickLists().then(loadQueue);
+    });
+  }
+}
+
+window.addEventListener('load', function(){
+  document.querySelectorAll('#filters .chip').forEach(function(c){
+    c.addEventListener('click', function(){ setFilter(c.getAttribute('data-filter')); });
+  });
+  var s=document.getElementById('search');
+  if (s) s.addEventListener('input', function(){ __state.search=s.value; renderQueue(); });
+  bind('import-csv', function(){ showToast('CSV import coming soon'); });
+  bind('new-draft', function(){ showToast('New draft coming soon'); });
+  boot();
+});
+function bind(id, fn){ var el=document.getElementById(id); if(el) el.addEventListener('click', fn); }
+
+// expose for tests
+window.renderQueue=renderQueue;
+window.loadQueue=loadQueue;
+window.renderSummary=renderSummary;
+window.setFilter=setFilter;
+</script>
+</body>
+</html>

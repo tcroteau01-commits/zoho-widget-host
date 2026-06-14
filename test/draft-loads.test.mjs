@@ -200,3 +200,31 @@ test('bulk Set customer PATCHes all selected ids', async () => {
   const patches = records.filter(r => /\/draft-loads\/\d+$/.test(r.url) && r.opts.method === 'PATCH');
   assert.equal(patches.length, 2);
 });
+
+// ---- Task 18 ----
+test('submit-all posts only ready ids', async () => {
+  const { window, records } = makeWidget();
+  window.__state.drafts = DRAFTS;
+  await window.submitAllReady();
+  const sub = records.find(r => r.url.indexOf('/draft-loads/submit') !== -1);
+  assert.ok(sub);
+  const body = JSON.parse(sub.opts.body);
+  assert.deepEqual([...body.ids], ['900']);
+});
+
+test('per-row submit posts a single id', async () => {
+  const { window, records } = makeWidget();
+  await window.submitOne('900');
+  const sub = records.find(r => r.url.indexOf('/draft-loads/submit') !== -1);
+  const body = JSON.parse(sub.opts.body);
+  assert.deepEqual([...body.ids], ['900']);
+});
+
+test('skipped ids surface their reasons', () => {
+  const { window } = makeWidget();
+  window.handleSubmitResult({ submitted: ['900'], skipped: [{ id: '901', reasons: ['customer'] }], count: 1 });
+  const toast = window.document.getElementById('toast').textContent;
+  assert.match(toast, /1/);
+  assert.match(toast, /customer/);
+  assert.ok(window.__state.lastSkipped && window.__state.lastSkipped.length === 1);
+});

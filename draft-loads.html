@@ -83,6 +83,7 @@ select.cell{border:1px solid var(--amber);background:#fffdf7;border-radius:7px;p
 .applyall input{width:13px;height:13px}
 .editable{cursor:pointer;border-bottom:1px dashed transparent;display:inline-block}
 tr:hover .editable{border-bottom-color:#cfc9bb}
+.rowsubmit{font-size:11.5px;color:var(--green);font-weight:700;cursor:pointer;background:none;border:0;font-family:inherit;margin-left:8px}
 .empty{text-align:center;color:var(--muted);padding:40px 0}
 
 /* Modal: grouped resolve */
@@ -201,7 +202,8 @@ var __state = {
   selected: [],
   customers: [],
   carriers: [],
-  candidatesByRaw: {}
+  candidatesByRaw: {},
+  lastSkipped: []
 };
 window.__state = __state;
 
@@ -254,7 +256,8 @@ function carrierCellHtml(d){
 }
 
 function statusCellHtml(d){
-  if (d.status==='ready') return '<span class="stat ready"><span class="dot"></span>Ready</span>';
+  if (d.status==='ready') return '<span class="stat ready"><span class="dot"></span>Ready</span>'+
+    '<button class="rowsubmit" data-submit="'+esc(d.id)+'">Submit ▸</button>';
   return '<span class="stat attn"><span class="dot"></span>'+esc(reasonLabel(d.reasons))+'</span>';
 }
 function reasonLabel(reasons){
@@ -303,6 +306,8 @@ function wireRow(tr, d){
       openInlineEdit(tr, d, cell.getAttribute('data-edit'));
     });
   });
+  var sb=tr.querySelector('[data-submit]');
+  if (sb) sb.addEventListener('click', function(e){ e.stopPropagation(); submitOne(d.id); });
 }
 
 /* ---------------- inline cell edit ---------------- */
@@ -554,6 +559,38 @@ function openResolveModal(kind){
 }
 function closeModal(){ var s=document.getElementById('scrim'); if(s) s.classList.add('hidden'); }
 
+/* ---------------- submit gating ---------------- */
+
+function submitIds(ids){
+  return fetch(BROKER_API_BASE+'/draft-loads/submit', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ email:brokerEmail, ids:ids })
+  }).then(function(r){ return r.json(); }).then(function(res){ handleSubmitResult(res); return res; });
+}
+function submitAllReady(){
+  var ids=__state.drafts.filter(function(d){return d.status==='ready';}).map(function(d){return d.id;});
+  if (!ids.length){ showToast('Nothing ready to submit'); return Promise.resolve(); }
+  return submitIds(ids);
+}
+function submitOne(id){ return submitIds([id]); }
+
+function handleSubmitResult(res){
+  res=res||{};
+  var submitted=(res.submitted||[]);
+  __state.lastSkipped=(res.skipped||[]);
+  if (submitted.length){
+    __state.drafts=__state.drafts.filter(function(d){ return submitted.indexOf(d.id)===-1; });
+  }
+  var msg = submitted.length+' submitted';
+  if (__state.lastSkipped.length){
+    msg += ' · '+__state.lastSkipped.length+' skipped ('+
+      __state.lastSkipped.map(function(s){ return (s.reasons||[]).join(','); }).join('; ')+')';
+  }
+  showToast(msg);
+  renderQueue();
+  renderSummary();
+}
+
 /* ---------------- data load ---------------- */
 
 function loadQueue(){
@@ -598,6 +635,7 @@ window.addEventListener('load', function(){
   if (s) s.addEventListener('input', function(){ __state.search=s.value; renderQueue(); });
   bind('import-csv', function(){ showToast('CSV import coming soon'); });
   bind('new-draft', function(){ showToast('New draft coming soon'); });
+  bind('submit-all', function(){ submitAllReady(); });
   bind('resolve-cust', function(){ openResolveModal('customer'); });
   bind('resolve-carr', function(){ openResolveModal('carrier'); });
   bind('bulk-cust', function(){ promptPick('customer'); });
@@ -632,6 +670,9 @@ window.openInlineEdit=openInlineEdit;
 window.toggleSelect=toggleSelect;
 window.bulkSetCustomer=bulkSetCustomer;
 window.bulkSetCarrier=bulkSetCarrier;
+window.submitAllReady=submitAllReady;
+window.submitOne=submitOne;
+window.handleSubmitResult=handleSubmitResult;
 </script>
 </body>
 </html>

@@ -39,6 +39,20 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .breadcrumb a:hover { color: var(--of-charcoal); }
 .breadcrumb .sep { margin: 0 6px; opacity: 0.5; }
 .breadcrumb .current { color: var(--of-charcoal); font-weight: 600; }
+/* CP1 — carrier switcher (top-right header) */
+.cp-topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:12px; }
+.cp-topbar .breadcrumb { margin-bottom:0; }
+.cp-switch { position:relative; width:340px; max-width:48vw; }
+.cp-switch input { width:100%; padding:8px 12px; font-size:13px; border:1px solid #d8d8d8; border-radius:8px; outline:none; font-family:inherit; background:#fff; }
+.cp-switch input:focus { border-color: var(--of-gold, #e8a020); box-shadow:0 0 0 3px rgba(232,160,32,.12); }
+.cp-switch-results { position:absolute; top:calc(100% + 4px); left:0; right:0; background:#fff; border:1px solid #e6e3da; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); max-height:340px; overflow-y:auto; z-index:50; }
+.cp-switch-item { padding:9px 12px; cursor:pointer; border-bottom:1px solid #f3f1ea; }
+.cp-switch-item:last-child { border-bottom:none; }
+.cp-switch-item:hover { background: var(--of-beige, #faf8f2); }
+.cp-switch-item .nm { font-weight:600; color: var(--of-charcoal, #272727); font-size:13px; }
+.cp-switch-item .mt { color:#999; font-size:11px; margin-top:2px; }
+.cp-switch-empty { padding:10px 12px; color:#999; font-size:12px; }
+@media (max-width:640px){ .cp-topbar{ flex-direction:column; } .cp-switch{ width:100%; max-width:100%; } }
 
 /* Re-review banner (conditional) */
 .review-banner {
@@ -543,10 +557,16 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 <div class="page">
 
-  <div class="breadcrumb">
-    <a href="#">View Vendors</a>
-    <span class="sep">›</span>
-    <span class="current">Risk Profile</span>
+  <div class="cp-topbar">
+    <div class="breadcrumb">
+      <a href="#">View Vendors</a>
+      <span class="sep">›</span>
+      <span class="current">Risk Profile</span>
+    </div>
+    <div class="cp-switch">
+      <input id="cp-switch-input" type="text" autocomplete="off" placeholder="Switch carrier — name, MC, or DOT…">
+      <div id="cp-switch-results" class="cp-switch-results" style="display:none"></div>
+    </div>
   </div>
 
   <!-- Re-review banner (data-driven; hidden by default) -->
@@ -825,11 +845,87 @@ window.addEventListener('message', function(e) {
   if (changed && vendorId && brokerEmail) loadProfile();
 });
 
+// CP1 — carrier switcher: type-to-search (reuses /noa-carriers) and reload the
+// page with the chosen carrier without going back to the Vendors list.
+var _cpSwitchTimer = null, _cpSwitchCache = {};
+
+function wireCarrierSwitch() {
+  var input = document.getElementById('cp-switch-input');
+  if (!input || input._cpBound) return;
+  input._cpBound = true;
+  input.addEventListener('input', function () {
+    var v = input.value;
+    clearTimeout(_cpSwitchTimer);
+    _cpSwitchTimer = setTimeout(function () { cpSwitchSearch(v); }, 250);
+  });
+  input.addEventListener('focus', function () {
+    if (input.value.trim().length >= 2) cpSwitchSearch(input.value);
+  });
+  // Close the results when clicking outside the switcher.
+  document.addEventListener('click', function (e) {
+    var sw = document.querySelector('.cp-switch');
+    var box = document.getElementById('cp-switch-results');
+    if (sw && box && !sw.contains(e.target)) box.style.display = 'none';
+  });
+}
+
+function cpSwitchSearch(q) {
+  q = (q || '').trim();
+  var box = document.getElementById('cp-switch-results');
+  if (!box) return;
+  if (q.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  if (_cpSwitchCache[q]) { cpRenderSwitch(_cpSwitchCache[q]); return; }
+  fetch(BROKER_API_BASE + '/noa-carriers?email=' + encodeURIComponent(brokerEmail) +
+        '&q=' + encodeURIComponent(q))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var list = (data && data.carriers) || [];
+      _cpSwitchCache[q] = list;
+      cpRenderSwitch(list);
+    })
+    .catch(function () { /* leave dropdown as-is on a transient error */ });
+}
+
+function cpRenderSwitch(list) {
+  var box = document.getElementById('cp-switch-results');
+  if (!box) return;
+  if (!list || !list.length) {
+    box.innerHTML = '<div class="cp-switch-empty">No carriers found</div>';
+    box.style.display = '';
+    return;
+  }
+  box.innerHTML = list.map(function (c) {
+    return '<div class="cp-switch-item" data-vid="' + esc(String(c.vendor_id)) + '">' +
+      '<div class="nm">' + esc(c.carrier_name || '—') + '</div>' +
+      '<div class="mt">MC ' + esc(c.mc || '—') + ' · DOT ' + esc(c.dot || '—') + '</div>' +
+    '</div>';
+  }).join('');
+  box.style.display = '';
+  Array.prototype.forEach.call(box.querySelectorAll('.cp-switch-item'), function (el) {
+    el.addEventListener('click', function () { cpSwitchTo(el.getAttribute('data-vid')); });
+  });
+}
+
+function cpSwitchTo(vid) {
+  if (!vid) return;
+  vendorId = String(vid);
+  try { sessionStorage.setItem('carrierProfileVendorId', vendorId); } catch (e) { /* ignore */ }
+  var box = document.getElementById('cp-switch-results');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+  var input = document.getElementById('cp-switch-input');
+  if (input) { input.value = ''; input.blur(); }
+  showLoading(true);
+  loadProfile(true);
+}
+
+if (typeof window !== 'undefined') { window.cpRenderSwitch = cpRenderSwitch; window.cpSwitchTo = cpSwitchTo; }
+
 function boot() {
   if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
     showError('SDK unavailable', 'Reload the page.');
     return;
   }
+  wireCarrierSwitch();
   function gotParams(params) {
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) { showError('Could not identify broker', 'login user missing'); return; }

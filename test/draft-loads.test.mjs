@@ -255,3 +255,17 @@ test('write-path failure surfaces a toast', async () => {
   window.__state.selected = ['900'];
   await window.bulkSetCustomer('1');
   assert.match(window.document.getElementById('toast').textContent, /failed/i);
+});
+
+test('renderQueue escapes external raw strings (XSS guard)', () => {
+  const { window } = makeWidget();
+  window.renderQueue([
+    { id: 'x1', status: 'attention', reasons: ['customer'], source: 'TMS',
+      customer_name: '', customer_raw: '<img src=x onerror=alert(1)>',
+      carrier_name: 'A "QUOTE" CARRIER', carrier_mc: '1', carrier_raw: '',
+      customer_rate: '0', carrier_rate: '0' }
+  ]);
+  const html = window.document.querySelector('#queue-body').innerHTML;
+  assert.ok(html.indexOf('<img') === -1, 'raw <img must not appear unescaped');
+  assert.match(html, /&lt;img/);
+});

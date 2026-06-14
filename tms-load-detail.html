@@ -204,6 +204,7 @@ var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
 var brokerEmail = '';
 var loadId = '';
 var carriersById = {};
+var allCustomers = [];
 var stopSeq = 0;
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -233,13 +234,37 @@ function _acquireTarget() {
 }
 
 function populateCustomers(customers) {
+  allCustomers = customers || [];
   var sel = document.getElementById('f-customer_id');
   if (!sel) return;
-  (customers || []).forEach(function(c){
+  // Only surface APPROVED customers (Credit_Decision == "Approved") — you can't
+  // book a load against a customer that hasn't cleared credit. Other statuses are
+  // hidden here; an existing load's customer is re-added on edit by ensureCustomerOption.
+  allCustomers
+    .filter(function(c){ return c.credit_decision === 'Approved'; })
+    .forEach(function(c){
+      var o = document.createElement('option');
+      o.value = c.customer_id; o.textContent = c.customer_name;
+      sel.appendChild(o);
+    });
+}
+
+// Keep an already-booked customer selectable on edit even if it's no longer in the
+// approved list, so editing a load never silently drops its customer.
+function ensureCustomerOption(id) {
+  if (!id) return;
+  var sel = document.getElementById('f-customer_id');
+  if (!sel) return;
+  for (var i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === String(id)) return;
+  }
+  var match = allCustomers.filter(function(c){ return String(c.customer_id) === String(id); })[0];
+  if (match) {
     var o = document.createElement('option');
-    o.value = c.customer_id; o.textContent = c.customer_name + (c.approval_status ? ' (' + c.approval_status + ')' : '');
+    o.value = match.customer_id;
+    o.textContent = match.customer_name + ' (not currently approved)';
     sel.appendChild(o);
-  });
+  }
 }
 
 function populateCarriers(carriers) {
@@ -369,6 +394,7 @@ function saveTemplate() {
 
 function applyTemplate(t) {
   if (!t) return;
+  ensureCustomerOption(t.customer_id);
   setVal('f-customer_id', t.customer_id || '');
   setVal('f-origin', t.origin || '');
   setVal('f-destination', t.destination || '');
@@ -395,6 +421,7 @@ function hydrate(load) {
   loadId = load.id || '';
   document.getElementById('page-title').textContent = 'Load ' + (load.load_number || '');
   setVal('f-status', load.status || 'Booked');
+  ensureCustomerOption(load.customer_id);
   setVal('f-customer_id', load.customer_id || '');
   setVal('f-customer_reference', load.customer_reference || '');
   setVal('f-invoice_amount', load.invoice_amount || '');
@@ -703,7 +730,7 @@ if (typeof window !== 'undefined') {
 
 // expose for tests
 window.addStop = addStop; window.removeStop = removeStop; window.recomputeMargin = recomputeMargin;
-window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers;
+window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers; window.ensureCustomerOption = ensureCustomerOption;
 window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; window.saveLoad = saveLoad;
 window.applyTemplate = applyTemplate; window.hydrate = hydrate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;

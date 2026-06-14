@@ -334,3 +334,37 @@ test('createDraftsFromPreview posts only the clean rows and opens paperwork', as
   assert.ok(body.source_payload && body.source_payload.carrier_factoring_invoice === 'INV-7741');
   assert.ok(window.document.getElementById('paperwork'), 'paperwork view opened');
 });
+
+// ---- Task 20: paperwork assembly + auto-route ----
+function mk() {
+  const w = makeWidget().window;
+  // Rehydrate cross-realm return values into host-realm plain objects so deepEqual
+  // (which compares [[Prototype]] identity) works against host-realm literals.
+  const orig = w.routeFileToSlot;
+  w.routeFileToSlot = function () {
+    const r = orig.apply(w, arguments);
+    return r == null ? r : { loadId: r.loadId, slot: r.slot };
+  };
+  return w;
+}
+
+test('routeFileToSlot: ref# -> customer, invoice# -> carrier', () => {const w=mk();
+  const loads=[{id:'900',ref:'WMT-90021',invoice:'INV-7741'}];
+  assert.deepEqual(w.routeFileToSlot('WMT-90021.pdf',loads),{loadId:'900',slot:'customer'});
+  assert.deepEqual(w.routeFileToSlot('INV-7741.pdf',loads),{loadId:'900',slot:'carrier'});
+  assert.equal(w.routeFileToSlot('random.pdf',loads),null);});
+
+test('paperwork: load ready only when both slots filled', ()=>{const w=mk();
+  assert.equal(w.paperworkStatus({customer:true,carrier:false}),'attention');
+  assert.equal(w.paperworkStatus({customer:true,carrier:true}),'ready');});
+
+test('renderPaperwork renders one row per load with two required slots', () => {
+  const w = mk();
+  w.renderPaperwork([
+    { id: '900', ref: 'WMT-90021', invoice: 'INV-7741', customer_name: 'WALMART INC', carrier_name: 'SWIFT' },
+    { id: '901', ref: 'WMT-90022', invoice: 'INV-7742', customer_name: 'WALMART INC', carrier_name: 'RELIANT' }
+  ]);
+  const rows = w.document.querySelectorAll('#paperwork .lrow');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].querySelectorAll('.slot').length, 2);
+});

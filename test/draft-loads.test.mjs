@@ -228,3 +228,16 @@ test('skipped ids surface their reasons', () => {
   assert.match(toast, /customer/);
   assert.ok(window.__state.lastSkipped && window.__state.lastSkipped.length === 1);
 });
+
+// ---- Code-quality fixes ----
+test('margin tolerates formatted money strings like "$2,850"', () => {
+  const { window } = makeWidget();
+  window.renderQueue([
+    { id: 'f1', status: 'ready', reasons: [], source: 'CSV',
+      customer_name: 'PEPSICO INC', customer_raw: '',
+      carrier_name: 'SWIFT HAUL LLC', carrier_mc: '982341', carrier_raw: '',
+      customer_rate: '$2,850', carrier_rate: '$2,400',
+      has_customer_docs: true, has_carrier_docs: true }
+  ]);
+  const marg = window.document.querySelector('#queue-body td.marg').textContent;
+  assert.equal(marg, '$450');

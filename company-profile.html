@@ -966,45 +966,35 @@ function submitContact() {
   showModalMsg('Adding contact…', 'loading');
 
   var payload = {
-    Contact_Name: {
-      first_name: document.getElementById('m-first').value.trim(),
-      last_name:  document.getElementById('m-last').value.trim()
-    },
-    Email:        document.getElementById('m-email').value.trim(),
-    Phone_Number: document.getElementById('m-phone').value.trim(),
-    User_Permissions: selectedRoles
-    // Private fields (Account_Name, Freight_Broker, Contact_CRM_ID,
-    // User_Invited_to_Portal, Last_Login) are stripped from portal submissions
-    // anyway — the form's on-add workflow populates them from zoho.loginuser.
+    email: brokerEmail,
+    first_name: document.getElementById('m-first').value.trim(),
+    last_name:  document.getElementById('m-last').value.trim(),
+    contact_email: document.getElementById('m-email').value.trim(),
+    phone: document.getElementById('m-phone').value.trim(),
+    permissions: selectedRoles
   };
 
-  ZOHO.CREATOR.DATA.addRecords({
-    form_name: 'Contacts',
-    payload: { data: payload }
+  fetch(BROKER_API_BASE + '/broker-add-contact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   }).then(function(res) {
-    console.log('[CompanyProfile] addRecords response:', JSON.stringify(res));
-    if (res && res.code === 3000) {
-      showModalMsg('✓ Contact added. An invitation email will be sent to ' + payload.Email + '.', 'success');
+    return res.json().then(function(data) { return { status: res.status, data: data || {} }; });
+  }).then(function(r) {
+    if (r.status === 200 && r.data.ok) {
+      showModalMsg('✓ Contact added. An invitation email will be sent to ' + payload.contact_email + '.', 'success');
       btn.textContent = '✓ Added';
-      // Refresh the user list to include the new contact
-      setTimeout(function() {
-        loadUsers();
-        closeModal();
-      }, 1400);
+      setTimeout(function() { loadUsers(); closeModal(); }, 1400);
     } else {
-      var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
+      var detail = r.data.message ? ' (' + r.data.message + ')'
+                 : r.data.error ? ' (' + r.data.error + ')' : '';
       showModalMsg('Could not add contact' + detail + '. Please try again.', 'error');
-      btn.disabled = false;
-      cancel.disabled = false;
-      btn.textContent = 'Submit';
+      btn.disabled = false; cancel.disabled = false; btn.textContent = 'Submit';
     }
   }).catch(function(err) {
-    console.error('[CompanyProfile] addRecords failed', err);
-    var msg = (err && (err.message || err.toString())) ? ': ' + (err.message || err.toString()) : '';
-    showModalMsg('Could not add contact' + msg + '. Please try again.', 'error');
-    btn.disabled = false;
-    cancel.disabled = false;
-    btn.textContent = 'Submit';
+    console.error('[CompanyProfile] /broker-add-contact failed', err);
+    showModalMsg('Could not add contact. Please check your connection and try again.', 'error');
+    btn.disabled = false; cancel.disabled = false; btn.textContent = 'Submit';
   });
 }
 
@@ -1060,6 +1050,14 @@ function esc(s) {
     return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
   });
 }
+
+// ── expose for tests (no-op in production; window overrides are unset live) ──
+window.submitContact = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  if (Array.isArray(window.selectedRoles)) selectedRoles = window.selectedRoles;
+  return submitContact.apply(this, arguments);
+};
 
 })();
 </script>

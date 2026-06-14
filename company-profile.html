@@ -979,7 +979,11 @@ function submitContact() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).then(function(res) {
-    return res.json().then(function(data) { return { status: res.status, data: data || {} }; });
+    return res.text().then(function(t) {
+      var data = {};
+      try { data = t ? JSON.parse(t) : {}; } catch (e) { data = {}; }
+      return { status: res.status, data: data };
+    });
   }).then(function(r) {
     if (r.status === 200 && r.data.ok) {
       showModalMsg('✓ Contact added. An invitation email will be sent to ' + payload.contact_email + '.', 'success');

@@ -23,7 +23,7 @@ test('submitContact POSTs the contact to /broker-add-contact', () => {
   let captured = null;
   dom.window.fetch = (url, opts) => {
     captured = { url, opts };
-    return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok: true, id: 'rec_900' }) });
+    return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: 'rec_900' })) });
   };
   dom.window.submitContact();
   assert.ok(captured, 'fetch was called');
@@ -39,7 +39,7 @@ test('submitContact POSTs the contact to /broker-add-contact', () => {
 test('submitContact surfaces the real error message (no [object Object])', async () => {
   const dom = boot();
   dom.window.fetch = () =>
-    Promise.resolve({ status: 200, json: () => Promise.resolve({ ok: false, code: 3001, message: 'Email already exists' }) });
+    Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: false, code: 3001, message: 'Email already exists' })) });
   dom.window.submitContact();
   await new Promise(r => setTimeout(r, 0));
   const msg = dom.window.document.getElementById('modal-msg').textContent;

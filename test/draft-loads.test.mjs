@@ -377,3 +377,38 @@ test('routeFileToSlot: token-boundary match avoids ref substring collision', () 
   ];
   assert.deepEqual(w.routeFileToSlot('WMT-90021.pdf', loads), { loadId: '2', slot: 'customer' });
 });
+
+function fakeFile(name) {
+  return { name, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+}
+
+test('failed upload does not leave a paperwork slot marked Ready', async () => {
+  const w = mk();
+  w.mergeFilesToPDF = () => Promise.resolve(new w.Blob(['x']));
+  w.fetch = function (url) {
+    if (String(url).indexOf('/upload-doc') !== -1) {
+      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.openPaperwork([{ id: '900', ref: 'WMT-90021', invoice: 'INV-7741', customer_name: 'WALMART INC', carrier_name: 'SWIFT' }]);
+  await w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
+  assert.notEqual(w.__pw.slots['900'].customer, true);
+  assert.equal(w.paperworkStatus(w.__pw.slots['900']), 'attention');
+  assert.match(w.document.getElementById('pw-prog-lbl').textContent, /0 of 1/);
+  assert.match(w.document.getElementById('toast').textContent, /failed/i);
+});
+
+test('successful upload marks the paperwork slot Ready', async () => {
+  const w = mk();
+  w.mergeFilesToPDF = () => Promise.resolve(new w.Blob(['x']));
+  w.fetch = function (url) {
+    if (String(url).indexOf('/upload-doc') !== -1) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.openPaperwork([{ id: '900', ref: 'WMT-90021', invoice: 'INV-7741', customer_name: 'WALMART INC', carrier_name: 'SWIFT' }]);
+  await w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
+  assert.equal(w.__pw.slots['900'].customer, true);
+});

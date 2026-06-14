@@ -903,7 +903,7 @@ function routeFileToSlot(filename, loads){
 
 function paperworkStatus(slots){
   slots=slots||{};
-  return (slots.customer && slots.carrier) ? 'ready' : 'attention';
+  return (slots.customer===true && slots.carrier===true) ? 'ready' : 'attention';
 }
 
 function openPaperwork(loads){
@@ -922,9 +922,14 @@ function closePaperwork(){
 }
 
 function slotHtml(l, slot){
-  var filled=__pw.slots[l.id] && __pw.slots[l.id][slot];
+  var state=__pw.slots[l.id] && __pw.slots[l.id][slot];
   var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
-  if (filled && files.length){
+  if (state==='uploading' && files.length){
+    var upn=files[files.length-1].name;
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(upn)+'</span></div>'+
+           '<div class="auto">uploading…</div>';
+  }
+  if (state===true && files.length){
     var nm=files[files.length-1].name;
     return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span> ✓</div>'+
            '<div class="auto">✓ routed by '+(slot==='customer'?'ref #':'invoice #')+'</div>';
@@ -943,7 +948,7 @@ function renderPaperwork(loads){
     var st=paperworkStatus(__pw.slots[l.id]);
     var statHtml = st==='ready'
       ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
-      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer?'Carrier doc':(__pw.slots[l.id].carrier?'Customer doc':'Both needed')) +'</span>';
+      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer===true?'Carrier doc':(__pw.slots[l.id].carrier===true?'Customer doc':'Both needed')) +'</span>';
     var row=document.createElement('div');
     row.className='lrow'; row.setAttribute('data-row', l.id);
     row.innerHTML=
@@ -976,20 +981,26 @@ function wirePaperworkSlots(){
 
 function attachToSlot(loadId, slot, file){
   if(!__pw.files[loadId]) __pw.files[loadId]={customer:[],carrier:[]};
+  if(!__pw.slots[loadId]) __pw.slots[loadId]={customer:false,carrier:false};
   __pw.files[loadId][slot].push(file);
-  __pw.slots[loadId][slot]=true;
-  uploadSlot(loadId, slot);
+  __pw.slots[loadId][slot]='uploading';   // transient; only ===true counts as Ready
   renderPaperwork(__pw.loads);
+  return uploadSlot(loadId, slot).then(function(ok){
+    if(ok){ __pw.slots[loadId][slot]=true; }
+    else { __pw.slots[loadId][slot]=false; __pw.files[loadId][slot].pop(); showToast('Upload failed — try again'); }
+    renderPaperwork(__pw.loads);
+    return ok;
+  });
 }
 
 function uploadSlot(loadId, slot){
   var files=(__pw.files[loadId]&&__pw.files[loadId][slot])||[];
   if(!files.length) return Promise.resolve(false);
   var field = slot==='customer' ? 'Customer_Documents' : 'Carrier_Documents';
-  return mergeFilesToPDF(files).then(function(blob){
-    return _uploadDoc(loadId, field, blob, (slot==='customer'?'customer':'carrier')+'-'+loadId+'.pdf');
-  }).then(function(ok){ if(!ok) showToast('Upload failed for load '+loadId); return ok; })
-    .catch(function(){ showToast('Upload failed for load '+loadId); return false; });
+  return window.mergeFilesToPDF(files).then(function(blob){
+    return window._uploadDoc(loadId, field, blob, (slot==='customer'?'customer':'carrier')+'-'+loadId+'.pdf');
+  }).then(function(ok){ return !!ok; })
+    .catch(function(){ return false; });
 }
 
 function dropAllFiles(fileList){
@@ -1034,8 +1045,11 @@ window.routeFileToSlot=routeFileToSlot;
 window.paperworkStatus=paperworkStatus;
 window.renderPaperwork=renderPaperwork;
 window.openPaperwork=openPaperwork;
+window.attachToSlot=attachToSlot;
 window.dropAllFiles=dropAllFiles;
 window.mergeFilesToPDF=mergeFilesToPDF;
+window._uploadDoc=_uploadDoc;
+window.__pw=__pw;
 
 /* ================= ported merge/upload helpers (only called on user attach) ================= */
 

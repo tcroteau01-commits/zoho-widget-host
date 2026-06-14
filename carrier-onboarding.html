@@ -1107,7 +1107,6 @@ function submitModal() {
   }
   if (!currentModalType) return;
 
-  var formCfg = FORMS[currentModalType];
   var submit = document.getElementById('modal-submit');
   var cancel = document.getElementById('modal-cancel');
   submit.disabled = true;
@@ -1121,23 +1120,35 @@ function submitModal() {
   var sendTo      = document.getElementById('m-send-to').value.trim();
   var additional  = document.getElementById('m-additional').value.trim();
 
-  var payload = {
-    Contact_Name: brokerContactId,
-    Send_To:      sendTo
+  // Send via the impersonation-aware backend (owner token) instead of the portal
+  // SDK. The portal permission set lacks ADD on these forms (Creator code 2899
+  // "Permission denied to add record(s)"), and an SDK add under admin impersonation
+  // would stamp the wrong contact. The form's on-add workflow still fires
+  // server-side and sends the link email.
+  var body = {
+    email:   brokerEmail,
+    type:    currentModalType,        // 'full' (onboarding) or 'pay' (pay setup)
+    send_to: sendTo
   };
-  if (additional)  payload.Additional_Email = additional;
-  if (carrierName) payload.Carrier_Name = carrierName;
+  if (additional)  body.additional_email = additional;
+  if (carrierName) body.carrier_name = carrierName;
   if (lookupResult && lookupResult.carrier) {
-    if (lookupResult.carrier.dot_number) payload.Carrier_DOT = lookupResult.carrier.dot_number;
-    if (lookupResult.carrier.mc_number)  payload.Carrier_MC  = lookupResult.carrier.mc_number;
+    if (lookupResult.carrier.dot_number) body.carrier_dot = lookupResult.carrier.dot_number;
+    if (lookupResult.carrier.mc_number)  body.carrier_mc  = lookupResult.carrier.mc_number;
   }
 
-  ZOHO.CREATOR.DATA.addRecords({
-    form_name: formCfg.form_name,
-    payload: { data: payload }
+  fetch(BROKER_API_BASE + '/broker-send-onboarding-link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
   }).then(function(res) {
-    console.log('[CarrierOnboarding] addRecords response:', JSON.stringify(res));
-    if (res && res.code === 3000) {
+    return res.text().then(function(t) {
+      var data = {};
+      try { data = t ? JSON.parse(t) : {}; } catch (e) { data = {}; }
+      return { status: res.status, data: data };
+    });
+  }).then(function(r) {
+    if (r.status === 200 && r.data.ok) {
       showModalMsg('✓ Link sent to ' + sendTo + (additional ? ' (CC: ' + additional + ')' : '') + '.', 'success');
       submit.textContent = '✓ Sent';
       setTimeout(function() {
@@ -1145,27 +1156,15 @@ function submitModal() {
         loadHistory(true);                 // refresh: show the just-sent link past the cache
       }, 1400);
     } else {
-      var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
-      showModalMsg('Could not send link' + detail + '. Please try again.', 'error');
+      var detail = r.data && (r.data.message || r.data.error);
+      showModalMsg('Could not send link' + (detail ? ': ' + detail : '') + '. Please try again.', 'error');
       submit.disabled = false;
       cancel.disabled = false;
       submit.textContent = 'Send Link';
     }
   }).catch(function(err) {
-    console.error('[CarrierOnboarding] addRecords failed', err);
-    // The Creator SDK rejects with a plain object (e.g. {code, message} or
-    // {responseText}); err.toString() on that yields "[object Object]". Pull out
-    // a human-readable detail so the real failure (e.g. Creator code 3xxx) shows.
-    var detail = '';
-    if (err) {
-      if (typeof err === 'string') detail = err;
-      else if (err.message) detail = err.message;
-      else if (err.responseText) detail = err.responseText;
-      else if (err.code) detail = 'code ' + err.code + (err.error ? ': ' + err.error : '');
-      else { try { detail = JSON.stringify(err); } catch (e) { detail = String(err); } }
-    }
-    var msg = detail ? ': ' + detail : '';
-    showModalMsg('Could not send link' + msg + '. Please try again.', 'error');
+    console.error('[CarrierOnboarding] /broker-send-onboarding-link failed', err);
+    showModalMsg('Could not send link. Please check your connection and try again.', 'error');
     submit.disabled = false;
     cancel.disabled = false;
     submit.textContent = 'Send Link';

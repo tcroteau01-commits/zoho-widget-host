@@ -234,15 +234,19 @@ function _acquireTarget() {
   return out;
 }
 
+// Credit decisions that mean the customer is bookable: cleared credit ("Approved")
+// or approved-with-a-limit but requesting more ("Credit Boost Requested").
+var TMS_BOOKABLE_DECISIONS = ['Approved', 'Credit Boost Requested'];
+
 function populateCustomers(customers) {
   allCustomers = customers || [];
   var sel = document.getElementById('f-customer_id');
   if (!sel) return;
-  // Only surface APPROVED customers (Credit_Decision == "Approved") — you can't
-  // book a load against a customer that hasn't cleared credit. Other statuses are
-  // hidden here; an existing load's customer is re-added on edit by ensureCustomerOption.
+  // Only surface bookable customers — you can't book a load against one that hasn't
+  // cleared credit. Other statuses are hidden; an existing load's customer is
+  // re-added on edit by ensureCustomerOption.
   allCustomers
-    .filter(function(c){ return c.credit_decision === 'Approved'; })
+    .filter(function(c){ return TMS_BOOKABLE_DECISIONS.indexOf(c.credit_decision) !== -1; })
     .forEach(function(c){
       var o = document.createElement('option');
       o.value = c.customer_id; o.textContent = c.customer_name;

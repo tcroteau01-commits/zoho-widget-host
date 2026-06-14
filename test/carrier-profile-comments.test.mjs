@@ -278,3 +278,16 @@ test('renderNoaCard shows factoring + pay term and a Manage button with a handle
   assert.match(card.textContent, /Factoring Company/);
   assert.equal(typeof window.document.getElementById('cp-noa-manage').onclick, 'function');
 });
+
+test('CP1 carrier switcher renders results and switching stamps the new vendor', () => {
+  const { window } = makeWidget();
+  const d = window.document;
+  window.cpRenderSwitch([{ vendor_id: '777', carrier_name: 'NEW CARRIER', mc: '123', dot: '456' }]);
+  const box = d.getElementById('cp-switch-results');
+  assert.equal(box.style.display, '');
+  const item = box.querySelector('.cp-switch-item');
+  assert.ok(item, 'a result item should render');
+  assert.match(item.textContent, /NEW CARRIER/);
+  item.click();                                   // -> cpSwitchTo('777')
+  assert.equal(window.sessionStorage.getItem('carrierProfileVendorId'), '777');
+});

@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Draft Loads</title>
+<!-- File-merge pipeline libraries (used by mergeFilesToPDF & helpers — only invoked on user attach, never at boot) -->
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js"></script>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
 <style>
@@ -114,6 +119,56 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2a44;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;box-shadow:0 8px 24px rgba(16,24,40,.3)}
 #toast.hidden{display:none}
 
+/* Import CSV modal */
+.modal.wide{width:860px}
+.imp-top{display:flex;align-items:center;gap:14px;padding:12px 0}
+.imp-top .dl{font-size:12.5px;color:var(--blue);text-decoration:none;font-weight:700}
+.imp-file{font-size:13px;font-family:inherit}
+.prevtbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+.prevtbl th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:7px 8px;border-bottom:1px solid var(--line);background:#faf9f5;font-weight:700}
+.prevtbl td{padding:7px 8px;border-bottom:1px solid #f0eee6;vertical-align:top}
+.prevrow.bad{background:#fff6f4}
+.prevrow.dup{background:#fffaf0}
+.pct{font-size:10.5px;color:var(--amber-dk);font-weight:700}
+.badge-error,.badge-dup,.badge-ok{display:inline-flex;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
+.badge-error{background:#fbe6e2;color:var(--red)}
+.badge-dup{background:var(--amber-soft);color:var(--amber-dk)}
+.badge-ok{background:#e7f5ec;color:var(--green)}
+.conflict{color:var(--red);font-weight:700;font-size:10.5px}
+
+/* Paperwork view */
+.pw-hidden{display:none}
+.dropzone{border:2px dashed var(--amber);background:linear-gradient(180deg,#fffaf0,#fdf3df);border-radius:14px;padding:22px;text-align:center;margin:16px 0 14px;position:relative}
+.dropzone.drag{border-style:solid;background:#fff6e4}
+.dropzone .cloud{font-size:30px;margin-bottom:4px}
+.dropzone .big{font-size:16px;font-weight:700;color:#5d460f}
+.dropzone .sm{font-size:12.5px;color:#8a6e2e;margin-top:4px}
+.statusrow{display:flex;gap:14px;margin-bottom:14px;align-items:stretch}
+.prog{flex:1;background:#fff;border:1px solid var(--line);border-radius:11px;padding:13px 16px}
+.prog .lbl{font-size:12.5px;font-weight:700}.prog .lbl b{color:var(--green)}
+.prog .barwrap{height:9px;background:#eee9dc;border-radius:6px;overflow:hidden;margin-top:8px}
+.prog .bar{height:100%;width:0;background:var(--green);border-radius:6px;transition:width .2s}
+.tray{flex:1.1;background:#fff;border:1px solid #ecd49a;border-radius:11px;padding:11px 14px}
+.tray .th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--amber-dk);font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between}
+.files{display:flex;gap:7px;flex-wrap:wrap}
+.file{background:var(--amber-soft);border:1px solid #e7cf94;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:600;color:#5d460f;display:flex;align-items:center;gap:6px;cursor:grab}
+.file .pdf{background:var(--red);color:#fff;border-radius:3px;font-size:8px;padding:1px 3px;font-weight:800}
+.lhead{display:grid;grid-template-columns:1fr 200px 200px 110px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;background:#faf9f5;border-bottom:1px solid var(--line);padding:10px 16px}
+.lhead .req{color:var(--amber-dk)}
+.lrow{display:grid;grid-template-columns:1fr 200px 200px 110px;align-items:center;padding:12px 16px;border-bottom:1px solid #f0eee6}
+.lrow:last-child{border-bottom:0}
+.slot{margin-right:12px}
+.filled{display:flex;align-items:center;gap:7px;background:#f1faf4;border:1px solid #bfe3cc;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:600;color:var(--green)}
+.filled .pdf{background:var(--green);color:#fff;border-radius:3px;font-size:8px;padding:1px 3px;font-weight:800}
+.filled .nm{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.empty-slot{border:1.5px dashed #cfc9bb;border-radius:8px;padding:7px 9px;font-size:11.5px;color:var(--muted);text-align:center}
+.empty-slot.req{border-color:#e0a93f;color:var(--amber-dk);font-weight:600;background:#fffdf7}
+.empty-slot.target{border-color:var(--amber);border-style:solid;background:#fff6e4;color:var(--amber-dk);font-weight:700}
+.auto{font-size:9.5px;color:var(--green);font-weight:700;margin-top:3px}
+.rstat{text-align:right}
+.foot{display:flex;align-items:center;gap:12px;margin-top:16px}
+.foot .l{flex:1;font-size:12.5px;color:var(--muted)}.foot .l b{color:var(--green)}
+
 @media (max-width:640px){
   body{overflow-x:hidden}
   .wrap{padding:14px 12px 40px}
@@ -186,6 +241,40 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
       </thead>
       <tbody id="queue-body"><tr><td colspan="9" class="empty">Loading drafts…</td></tr></tbody>
     </table>
+  </div>
+</div>
+
+<div class="wrap pw-hidden" id="paperwork-wrap">
+  <div class="crumb"><a href="#" id="pw-back-link" style="color:var(--blue);text-decoration:none">‹ Draft Loads</a> &nbsp;›&nbsp; <b style="color:var(--ink)">Attach Paperwork</b></div>
+  <div class="head">
+    <div><h1>Attach Paperwork</h1><div class="sub" id="pw-sub">data resolved — now both packets required per load</div></div>
+  </div>
+  <div class="dropzone" id="pw-drop">
+    <div class="cloud">⬍</div>
+    <div class="big">Drop all your packets here — customer and carrier</div>
+    <div class="sm">A name with the <b>load ref #</b> → Customer Docs, a name with the <b>invoice #</b> → Carrier Docs · anything unmatched lands in the tray</div>
+  </div>
+  <div class="statusrow">
+    <div class="prog">
+      <div class="lbl" id="pw-prog-lbl"><b>0 of 0</b> loads have both packets</div>
+      <div class="barwrap"><div class="bar" id="pw-bar"></div></div>
+      <div class="small" id="pw-prog-sub" style="margin-top:7px"></div>
+    </div>
+    <div class="tray">
+      <div class="th"><span>⬍ Unmatched files — drag onto a slot</span><span id="pw-tray-ct">0</span></div>
+      <div class="files" id="pw-tray"></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="lhead">
+      <span>Load</span><span>Customer Docs <span class="req">· required</span></span><span>Carrier Docs <span class="req">· required</span></span><span style="text-align:right">Status</span>
+    </div>
+    <div id="paperwork"></div>
+  </div>
+  <div class="foot">
+    <div class="l" id="pw-foot"><b>0 ready</b></div>
+    <button class="btn" id="pw-back">Back to drafts</button>
+    <button class="btn amber" id="pw-done">Done — return to queue</button>
   </div>
 </div>
 
@@ -640,7 +729,10 @@ window.addEventListener('load', function(){
   });
   var s=document.getElementById('search');
   if (s) s.addEventListener('input', function(){ __state.search=s.value; renderQueue(); });
-  bind('import-csv', function(){ showToast('CSV import coming soon'); });
+  bind('import-csv', function(){ openImportModal(); });
+  bind('pw-back', function(){ closePaperwork(); loadQueue(); });
+  bind('pw-back-link', function(e){ if(e&&e.preventDefault) e.preventDefault(); closePaperwork(); loadQueue(); });
+  bind('pw-done', function(){ finishPaperwork(); });
   bind('new-draft', function(){ showToast('New draft coming soon'); });
   bind('submit-all', function(){ submitAllReady(); });
   bind('resolve-cust', function(){ openResolveModal('customer'); });
@@ -659,11 +751,426 @@ window.addEventListener('load', function(){
   });
   var scrim=document.getElementById('scrim');
   if (scrim) scrim.addEventListener('click', function(e){ if(e.target===scrim) closeModal(); });
+  var drop=document.getElementById('pw-drop');
+  if (drop){
+    drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('drag'); });
+    drop.addEventListener('dragleave', function(){ drop.classList.remove('drag'); });
+    drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag'); if(e.dataTransfer&&e.dataTransfer.files.length) dropAllFiles(e.dataTransfer.files); });
+  }
   boot();
 });
 function bind(id, fn){ var el=document.getElementById(id); if(el) el.addEventListener('click', fn); }
 
 document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeModal(); } });
+
+/* ================= Task 19: CSV import modal + preview ================= */
+
+var __import = { rows: [] };
+
+function openImportModal(){
+  var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
+  if(!scrim||!modal) return;
+  __import.rows=[];
+  modal.className='modal wide';
+  modal.innerHTML=
+    '<div class="modal-head"><span class="x" id="modal-x">✕</span><h2>Import loads from CSV</h2>'+
+    '<div class="ms">Upload your TMS export — we match customers &amp; carriers, then you attach paperwork.</div></div>'+
+    '<div class="modal-body">'+
+      '<div class="imp-top">'+
+        '<a class="dl tmpl" id="imp-template" download href="'+esc(BROKER_API_BASE)+'/draft-loads/template">⬇ Download template</a>'+
+        '<input type="file" class="imp-file" id="imp-file" accept=".csv,text/csv">'+
+      '</div>'+
+      '<div id="imp-preview"></div>'+
+    '</div>'+
+    '<div class="modal-foot"><div class="left" id="imp-summary"></div>'+
+      '<button class="btn" id="modal-cancel">Cancel</button>'+
+      '<button class="btn amber" id="imp-create" disabled>Create 0 drafts</button></div>';
+  scrim.classList.remove('hidden');
+  modal.querySelector('#modal-x').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+  var fi=modal.querySelector('#imp-file');
+  if (fi) fi.addEventListener('change', function(){ if (fi.files && fi.files[0]) importFile(fi.files[0]); });
+  modal.querySelector('#imp-create').addEventListener('click', function(){ createDraftsFromPreview(); });
+}
+
+function importFile(file){
+  var fd=new FormData();
+  fd.append('file', file, file.name);
+  var url=BROKER_API_BASE+'/draft-loads/import-preview?email='+encodeURIComponent(brokerEmail);
+  return fetch(url, { method:'POST', body:fd })
+    .then(function(r){ return r.json(); })
+    .then(function(res){ renderPreview((res&&res.rows)||[]); })
+    .catch(function(){ showToast('Import preview failed'); });
+}
+
+function isBadRow(row){ return (row.errors&&row.errors.length)||row.duplicate; }
+
+function renderPreview(rows){
+  __import.rows = rows||[];
+  var host=document.getElementById('imp-preview');
+  if(!host) return;
+  if(!__import.rows.length){ host.innerHTML='<div class="empty">No rows in this file.</div>'; }
+  else {
+    var html='<table class="prevtbl"><thead><tr>'+
+      '<th>Customer</th><th>Carrier</th><th>Cust. Rate</th><th>Carr. Rate</th><th>Status</th></tr></thead><tbody>';
+    __import.rows.forEach(function(row){
+      var m=row.mapped||{}, cm=row.customer_match||{}, vm=row.carrier_match||{};
+      var bad=isBadRow(row);
+      var cls='prevrow'+((row.errors&&row.errors.length)?' bad':(row.duplicate?' dup':''));
+      var custCell;
+      if (cm.exact && cm.best){ custCell=esc(cm.best.name); }
+      else if (cm.best){ custCell=esc(cm.best.name)+' <span class="pct">'+Math.round((cm.best.score||0)*100)+'%</span>'; }
+      else { custCell='<span style="color:var(--amber-dk)">'+esc(m.customer_name_raw||'—')+'</span>'; }
+      if (m.customer_reference_number) custCell+='<div class="small mono">Ref '+esc(m.customer_reference_number)+'</div>';
+      var carrId = m.carrier_mc ? 'MC '+esc(m.carrier_mc) : (m.carrier_dot ? 'DOT '+esc(m.carrier_dot) : '<span style="color:var(--amber-dk)">no MC/DOT</span>');
+      var carrCell=carrId+(vm.vendor_id?' ✓':'')+(vm.conflict?'<div class="conflict">⚠ MC/DOT conflict</div>':'');
+      var badge;
+      if (row.errors && row.errors.length) badge='<span class="badge-error">Error: '+esc(row.errors.join(', '))+'</span>';
+      else if (row.duplicate) badge='<span class="badge-dup">Duplicate ref</span>';
+      else badge='<span class="badge-ok">Ready</span>';
+      html+='<tr class="'+cls+'"><td>'+custCell+'</td><td>'+carrCell+'</td>'+
+        '<td class="mono">'+money(m.customer_rate)+'</td><td class="mono">'+money(m.carrier_rate)+'</td>'+
+        '<td>'+badge+'</td></tr>';
+    });
+    html+='</tbody></table>';
+    host.innerHTML=html;
+  }
+  var clean=__import.rows.filter(function(r){ return !isBadRow(r); }).length;
+  var bad=__import.rows.length-clean;
+  setText('imp-summary', __import.rows.length+' row'+(__import.rows.length===1?'':'s')+' · '+clean+' ready'+(bad?' · '+bad+' skipped':''));
+  var btn=document.getElementById('imp-create');
+  if (btn){ btn.textContent='Create '+clean+' draft'+(clean===1?'':'s'); btn.disabled=!clean; }
+}
+
+function createDraftsFromPreview(){
+  var clean=__import.rows.filter(function(r){ return !isBadRow(r); });
+  if(!clean.length){ showToast('No clean rows to create'); return Promise.resolve(); }
+  return Promise.all(clean.map(function(row){
+    var m=row.mapped||{}, cm=row.customer_match||{}, vm=row.carrier_match||{};
+    var body={
+      email: brokerEmail,
+      source: 'CSV',
+      source_load_ref: m.customer_reference_number,
+      customer_reference_number: m.customer_reference_number,
+      customer_rate: m.customer_rate,
+      carrier_rate: m.carrier_rate,
+      carrier_factoring_invoice: m.carrier_factoring_invoice,
+      load_rate_confirmation_number: m.load_rate_confirmation_number,
+      source_payload: m
+    };
+    if (cm.best && cm.best.customer_id) body.customer_id=cm.best.customer_id;
+    if (vm.vendor_id) body.carrier_id=vm.vendor_id;
+    if (m.payment_terms) body.payment_terms=m.payment_terms;
+    if (m.load_comments) body.load_comments=m.load_comments;
+    return fetch(BROKER_API_BASE+'/draft-loads', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    }).then(function(r){ return r.json(); }).then(function(res){
+      return { id:(res&&res.record_id)||'', ref:m.customer_reference_number, invoice:m.carrier_factoring_invoice,
+               customer_name:(cm.best&&cm.best.name)||m.customer_name_raw||'', carrier_name:m.carrier_mc?('MC '+m.carrier_mc):(m.carrier_dot?('DOT '+m.carrier_dot):'') };
+    });
+  })).then(function(loads){
+    closeModal();
+    showToast(loads.length+' draft'+(loads.length===1?'':'s')+' created — attach paperwork');
+    openPaperwork(loads);
+  }).catch(function(){ showToast('Could not create drafts'); });
+}
+
+/* ================= Task 20: paperwork assembly + auto-route ================= */
+
+var __pw = { loads: [], slots: {}, files: {}, tray: [] };
+
+function routeFileToSlot(filename, loads){
+  var fn=String(filename||'').toLowerCase();
+  for (var i=0;i<loads.length;i++){
+    var l=loads[i];
+    if (l.ref && fn.indexOf(String(l.ref).toLowerCase())!==-1) return { loadId:l.id, slot:'customer' };
+  }
+  for (var j=0;j<loads.length;j++){
+    var c=loads[j];
+    if (c.invoice && fn.indexOf(String(c.invoice).toLowerCase())!==-1) return { loadId:c.id, slot:'carrier' };
+  }
+  return null;
+}
+
+function paperworkStatus(slots){
+  slots=slots||{};
+  return (slots.customer && slots.carrier) ? 'ready' : 'attention';
+}
+
+function openPaperwork(loads){
+  __pw.loads = loads||[];
+  __pw.slots = {};
+  __pw.files = {};
+  __pw.tray = [];
+  __pw.loads.forEach(function(l){ __pw.slots[l.id]={customer:false,carrier:false}; __pw.files[l.id]={customer:[],carrier:[]}; });
+  document.querySelectorAll('.wrap').forEach(function(w){ if (w.id!=='paperwork-wrap') w.classList.add('pw-hidden'); });
+  var pw=document.getElementById('paperwork-wrap'); if (pw) pw.classList.remove('pw-hidden');
+  renderPaperwork(__pw.loads);
+}
+function closePaperwork(){
+  var pw=document.getElementById('paperwork-wrap'); if (pw) pw.classList.add('pw-hidden');
+  document.querySelectorAll('.wrap').forEach(function(w){ if (w.id!=='paperwork-wrap') w.classList.remove('pw-hidden'); });
+}
+
+function slotHtml(l, slot){
+  var filled=__pw.slots[l.id] && __pw.slots[l.id][slot];
+  var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
+  if (filled && files.length){
+    var nm=files[files.length-1].name;
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span> ✓</div>'+
+           '<div class="auto">✓ routed by '+(slot==='customer'?'ref #':'invoice #')+'</div>';
+  }
+  var label = slot==='customer' ? 'customer packet needed' : 'carrier invoice needed';
+  return '<div class="empty-slot req" data-slot="'+slot+'" data-load="'+esc(l.id)+'">⬍ '+label+'</div>';
+}
+
+function renderPaperwork(loads){
+  if (loads) __pw.loads = loads;
+  __pw.loads.forEach(function(l){ if(!__pw.slots[l.id]){ __pw.slots[l.id]={customer:false,carrier:false}; __pw.files[l.id]={customer:[],carrier:[]}; } });
+  var host=document.getElementById('paperwork');
+  if(!host) return;
+  host.innerHTML='';
+  __pw.loads.forEach(function(l){
+    var st=paperworkStatus(__pw.slots[l.id]);
+    var statHtml = st==='ready'
+      ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
+      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer?'Carrier doc':(__pw.slots[l.id].carrier?'Customer doc':'Both needed')) +'</span>';
+    var row=document.createElement('div');
+    row.className='lrow'; row.setAttribute('data-row', l.id);
+    row.innerHTML=
+      '<div><div class="co">'+esc(l.customer_name||'—')+'</div><div class="small mono">Ref '+esc(l.ref||'')+' · '+esc(l.carrier_name||'')+'</div></div>'+
+      '<div class="slot" data-slot-wrap="customer" data-load="'+esc(l.id)+'">'+slotHtml(l,'customer')+'</div>'+
+      '<div class="slot" data-slot-wrap="carrier" data-load="'+esc(l.id)+'">'+slotHtml(l,'carrier')+'</div>'+
+      '<div class="rstat">'+statHtml+'</div>';
+    host.appendChild(row);
+  });
+  wirePaperworkSlots();
+  renderTray();
+  renderPaperworkProgress();
+}
+
+function wirePaperworkSlots(){
+  document.querySelectorAll('#paperwork .slot').forEach(function(cell){
+    cell.addEventListener('dragover', function(e){ e.preventDefault(); cell.classList.add('drag'); });
+    cell.addEventListener('dragleave', function(){ cell.classList.remove('drag'); });
+    cell.addEventListener('drop', function(e){
+      e.preventDefault(); cell.classList.remove('drag');
+      var idx=e.dataTransfer && e.dataTransfer.getData('text/plain');
+      if (idx===''||idx==null) return;
+      var f=__pw.tray[Number(idx)];
+      if (!f) return;
+      __pw.tray.splice(Number(idx),1);
+      attachToSlot(cell.getAttribute('data-load'), cell.getAttribute('data-slot-wrap'), f);
+    });
+  });
+}
+
+function attachToSlot(loadId, slot, file){
+  if(!__pw.files[loadId]) __pw.files[loadId]={customer:[],carrier:[]};
+  __pw.files[loadId][slot].push(file);
+  __pw.slots[loadId][slot]=true;
+  uploadSlot(loadId, slot);
+  renderPaperwork(__pw.loads);
+}
+
+function uploadSlot(loadId, slot){
+  var files=(__pw.files[loadId]&&__pw.files[loadId][slot])||[];
+  if(!files.length) return Promise.resolve(false);
+  var field = slot==='customer' ? 'Customer_Documents' : 'Carrier_Documents';
+  return mergeFilesToPDF(files).then(function(blob){
+    return _uploadDoc(loadId, field, blob, (slot==='customer'?'customer':'carrier')+'-'+loadId+'.pdf');
+  }).then(function(ok){ if(!ok) showToast('Upload failed for load '+loadId); return ok; })
+    .catch(function(){ showToast('Upload failed for load '+loadId); return false; });
+}
+
+function dropAllFiles(fileList){
+  var files=Array.prototype.slice.call(fileList||[]);
+  files.forEach(function(f){
+    var route=routeFileToSlot(f.name, __pw.loads);
+    if (route){ attachToSlot(route.loadId, route.slot, f); }
+    else { __pw.tray.push(f); }
+  });
+  renderPaperwork(__pw.loads);
+}
+
+function renderTray(){
+  var host=document.getElementById('pw-tray'); if(!host) return;
+  setText('pw-tray-ct', __pw.tray.length);
+  host.innerHTML='';
+  __pw.tray.forEach(function(f, i){
+    var el=document.createElement('span');
+    el.className='file'; el.setAttribute('draggable','true');
+    el.innerHTML='<span class="pdf">PDF</span> '+esc(f.name);
+    el.addEventListener('dragstart', function(e){ if(e.dataTransfer) e.dataTransfer.setData('text/plain', String(i)); });
+    host.appendChild(el);
+  });
+}
+
+function renderPaperworkProgress(){
+  var total=__pw.loads.length;
+  var ready=__pw.loads.filter(function(l){ return paperworkStatus(__pw.slots[l.id])==='ready'; }).length;
+  var lbl=document.getElementById('pw-prog-lbl'); if(lbl) lbl.innerHTML='<b>'+ready+' of '+total+'</b> loads have both packets';
+  var bar=document.getElementById('pw-bar'); if(bar) bar.style.width=(total?Math.round(ready/total*100):0)+'%';
+  setText('pw-prog-sub', (total-ready)+' load'+((total-ready)===1?'':'s')+' still missing a packet');
+  var foot=document.getElementById('pw-foot'); if(foot) foot.innerHTML='<b>'+ready+' ready</b> · '+(total-ready)+' still missing a packet';
+}
+
+function finishPaperwork(){ closePaperwork(); loadQueue(); }
+
+/* expose import + paperwork */
+window.openImportModal=openImportModal;
+window.renderPreview=renderPreview;
+window.createDraftsFromPreview=createDraftsFromPreview;
+window.routeFileToSlot=routeFileToSlot;
+window.paperworkStatus=paperworkStatus;
+window.renderPaperwork=renderPaperwork;
+window.openPaperwork=openPaperwork;
+window.dropAllFiles=dropAllFiles;
+window.mergeFilesToPDF=mergeFilesToPDF;
+
+/* ================= ported merge/upload helpers (only called on user attach) ================= */
+
+async function mergeFilesToPDF(files) {
+  var merged = await PDFLib.PDFDocument.create();
+  for (var i = 0; i < files.length; i++) {
+    var file = files[i];
+    var ext = file.name.split('.').pop().toLowerCase();
+    try {
+      if (ext === 'pdf') {
+        var bytes = await file.arrayBuffer();
+        var src = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+        var pages = await merged.copyPages(src, src.getPageIndices());
+        pages.forEach(function(p) { merged.addPage(p); });
+      } else if (ext === 'heic' || ext === 'heif') {
+        var converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+        if (Array.isArray(converted)) converted = converted[0];
+        var dataUrl = await blobToDataUrl(converted);
+        await addImagePageToPDF(merged, dataUrl);
+      } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'bmp' || ext === 'webp' || ext === 'gif' || ext === 'svg') {
+        var dataUrl2 = await fileToDataUrl(file);
+        await addImagePageToPDF(merged, dataUrl2);
+      } else if (ext === 'tif' || ext === 'tiff') {
+        await addTiffPagesToPDF(merged, file);
+      } else if (ext === 'txt' || ext === 'csv') {
+        var text = await file.text();
+        await addTextPageToPDF(merged, text, file.name);
+      } else if (ext === 'docx') {
+        var ab = await file.arrayBuffer();
+        var result = await mammoth.extractRawText({ arrayBuffer: ab });
+        await addTextPageToPDF(merged, result.value, file.name);
+      } else if (ext === 'doc') {
+        await addTextPageToPDF(merged, '[.doc format cannot be rendered. File: ' + file.name + ' — please re-save as PDF or DOCX.]', file.name);
+      }
+    } catch(e) {
+      console.error('mergeFilesToPDF error on', file.name, e);
+      await addTextPageToPDF(merged, '[Error processing file: ' + file.name + ' — ' + (e.message || e) + ']', file.name);
+    }
+  }
+  var pdfBytes = await merged.save();
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+
+async function addImagePageToPDF(pdfDoc, dataUrl) {
+  var img = new Image();
+  img.src = dataUrl;
+  await new Promise(function(resolve) { img.onload = resolve; });
+  var canvas = document.createElement('canvas');
+  var maxW = 1700, maxH = 2200;
+  var w = img.naturalWidth, h = img.naturalHeight;
+  var scale = Math.min(maxW / w, maxH / h, 1);
+  canvas.width  = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  var pngUrl = canvas.toDataURL('image/png');
+  var base64 = pngUrl.split(',')[1];
+  var binary = atob(base64);
+  var pngBytes = new Uint8Array(binary.length);
+  for (var j = 0; j < binary.length; j++) pngBytes[j] = binary.charCodeAt(j);
+  var pdfImg = await pdfDoc.embedPng(pngBytes);
+  var page = pdfDoc.addPage([pdfImg.width, pdfImg.height]);
+  page.drawImage(pdfImg, { x: 0, y: 0, width: pdfImg.width, height: pdfImg.height });
+}
+
+async function addTextPageToPDF(pdfDoc, text, filename) {
+  var font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  var pageW = 612, pageH = 792, margin = 50, size = 10, lineH = 16;
+  var maxW = pageW - margin * 2;
+  var lines = ['File: ' + filename, ''];
+  var words = (text || '').split(/\s+/);
+  var line = '';
+  words.forEach(function(w) {
+    var test = line ? line + ' ' + w : w;
+    if (font.widthOfTextAtSize(test, size) > maxW) {
+      if (line) lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  });
+  if (line) lines.push(line);
+  var perPage = Math.floor((pageH - margin * 2) / lineH);
+  for (var i = 0; i < lines.length; i += perPage) {
+    var page = pdfDoc.addPage([pageW, pageH]);
+    var chunk = lines.slice(i, i + perPage);
+    chunk.forEach(function(l, idx) {
+      page.drawText(l || ' ', { x: margin, y: pageH - margin - idx * lineH, size: size, font: font });
+    });
+  }
+}
+
+async function addTiffPagesToPDF(pdfDoc, file) {
+  var ab = await file.arrayBuffer();
+  var ifds = UTIF.decode(ab);
+  for (var i = 0; i < ifds.length; i++) {
+    UTIF.decodeImage(ab, ifds[i]);
+    var ifd = ifds[i];
+    var w = ifd.width, h = ifd.height;
+    var tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    var imageData = tmp.getContext('2d').createImageData(w, h);
+    imageData.data.set(new Uint8ClampedArray(ifd.data.buffer));
+    tmp.getContext('2d').putImageData(imageData, 0, 0);
+    var canvas = document.createElement('canvas');
+    var maxW = 1700, maxH = 2200;
+    var scale = Math.min(maxW / w, maxH / h, 1);
+    canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+    canvas.getContext('2d').drawImage(tmp, 0, 0, canvas.width, canvas.height);
+    var base64 = canvas.toDataURL('image/png').split(',')[1];
+    var binary = atob(base64);
+    var pngBytes = new Uint8Array(binary.length);
+    for (var j = 0; j < binary.length; j++) pngBytes[j] = binary.charCodeAt(j);
+    var pdfImg = await pdfDoc.embedPng(pngBytes);
+    var page = pdfDoc.addPage([pdfImg.width, pdfImg.height]);
+    page.drawImage(pdfImg, { x: 0, y: 0, width: pdfImg.width, height: pdfImg.height });
+  }
+}
+
+function fileToDataUrl(file) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function(e) { resolve(e.target.result); };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+function blobToDataUrl(blob) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function(e) { resolve(e.target.result); };
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+function _uploadDoc(recordId, fieldName, blob, filename) {
+  var fd = new FormData();
+  fd.append('record_id', recordId);
+  fd.append('field_name', fieldName);
+  fd.append('report_name', 'All_Funding_Portals');
+  fd.append('file', blob, filename);
+  return fetch(BROKER_API_BASE + '/upload-doc', { method: 'POST', body: fd })
+    .then(function (r) { return r.ok; }).catch(function () { return false; });
+}
 
 // expose for tests
 window.renderQueue=renderQueue;

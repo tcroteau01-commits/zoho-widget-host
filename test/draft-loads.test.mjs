@@ -50,9 +50,39 @@ function makeFetch(records) {
     } else {
       body = {};
     }
-    return Promise.resolve({ json: function () { return Promise.resolve(body); } });
+      if (u.indexOf('/draft-loads/import-preview') !== -1) {
+      body = PREVIEW;
+    }
+    if (/\/draft-loads$/.test(u.split('?')[0]) && opts && opts.method === 'POST') {
+      body = { record_id: 'rec-' + (records.length) };
+    }
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve(body); } });
   };
 }
+
+const PREVIEW = {
+  summary: { total: 3, clean: 1, errors: 1, duplicates: 1 },
+  rows: [
+    { raw: {}, mapped: { customer_name_raw: 'WALMART INC', customer_reference_number: 'WMT-90021',
+        customer_rate: '2850', carrier_mc: '982341', carrier_dot: '', carrier_rate: '2400',
+        carrier_factoring_invoice: 'INV-7741', load_rate_confirmation_number: 'RC-1', payment_terms: '', load_comments: '' },
+      customer_match: { exact: false, best: { customer_id: '1', name: 'WALMART INC', score: 0.97 }, candidates: [] },
+      carrier_match: { vendor_id: 'v1', matched_on: 'mc', conflict: false },
+      errors: [], duplicate: false },
+    { raw: {}, mapped: { customer_name_raw: '', customer_reference_number: '',
+        customer_rate: '', carrier_mc: '', carrier_dot: '', carrier_rate: '',
+        carrier_factoring_invoice: '', load_rate_confirmation_number: '', payment_terms: '', load_comments: '' },
+      customer_match: { exact: false, best: null, candidates: [] },
+      carrier_match: { vendor_id: '', matched_on: '', conflict: false },
+      errors: ['customer_reference_number', 'customer_rate', 'carrier_id'], duplicate: false },
+    { raw: {}, mapped: { customer_name_raw: 'WALMART INC', customer_reference_number: 'WMT-90021',
+        customer_rate: '2850', carrier_mc: '982341', carrier_dot: '', carrier_rate: '2400',
+        carrier_factoring_invoice: 'INV-7742', load_rate_confirmation_number: 'RC-2', payment_terms: '', load_comments: '' },
+      customer_match: { exact: false, best: { customer_id: '1', name: 'WALMART INC', score: 0.97 }, candidates: [] },
+      carrier_match: { vendor_id: 'v1', matched_on: 'mc', conflict: false },
+      errors: [], duplicate: true }
+  ]
+};
 
 function makeWidget() {
   const records = [];
@@ -268,4 +298,39 @@ test('renderQueue escapes external raw strings (XSS guard)', () => {
   const html = window.document.querySelector('#queue-body').innerHTML;
   assert.ok(html.indexOf('<img') === -1, 'raw <img must not appear unescaped');
   assert.match(html, /&lt;img/);
+});
+
+// ---- Task 19: CSV import modal + preview ----
+function mk19() { return makeWidget().window; }
+
+test('openImportModal shows a template link to /draft-loads/template', () => {
+  const w = mk19();
+  w.openImportModal();
+  const a = w.document.querySelector('#scrim a[download], #scrim a.tmpl');
+  assert.ok(a, 'template link present');
+  assert.ok(/\/draft-loads\/template$/.test(a.getAttribute('href')), a.getAttribute('href'));
+});
+
+test('renderPreview renders one row per preview row and flags error + duplicate', () => {
+  const w = mk19();
+  w.openImportModal();
+  w.renderPreview(PREVIEW.rows);
+  const rows = w.document.querySelectorAll('.prevrow');
+  assert.equal(rows.length, 3);
+  assert.equal(w.document.querySelectorAll('.prevrow .badge-error').length, 1);
+  assert.equal(w.document.querySelectorAll('.prevrow .badge-dup').length, 1);
+});
+
+test('createDraftsFromPreview posts only the clean rows and opens paperwork', async () => {
+  const { window, records } = makeWidget();
+  window.openImportModal();
+  window.renderPreview(PREVIEW.rows);
+  await window.createDraftsFromPreview();
+  const posts = records.filter(r => /\/draft-loads$/.test(r.url.split('?')[0]) && r.opts.method === 'POST');
+  assert.equal(posts.length, 1);
+  const body = JSON.parse(posts[0].opts.body);
+  assert.equal(body.source, 'CSV');
+  assert.equal(body.customer_reference_number, 'WMT-90021');
+  assert.ok(body.source_payload && body.source_payload.carrier_factoring_invoice === 'INV-7741');
+  assert.ok(window.document.getElementById('paperwork'), 'paperwork view opened');
 });

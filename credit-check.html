@@ -445,6 +445,7 @@ html, body {
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-places.js?v=1"></script>
 <script>
 (function() {
 'use strict';
@@ -454,6 +455,8 @@ var FORM_NAME       = 'Customer_Submission';
 var UPLOAD_REPORT   = 'All_Customer_Submissions';
 var UPLOAD_FIELD    = 'Additional_Supporting_Documents';
 var MAX_FILES       = 10;
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var brokerEmail     = '';
 
 var selectedFiles = [];
 
@@ -723,6 +726,31 @@ function resetForm() {
 window.addEventListener('load', function() {
   document.getElementById('submitBtn').addEventListener('click', submitForm);
   document.getElementById('resetBtn').addEventListener('click', resetForm);
+
+  // Resolve the login user (for the address-autocomplete backend auth), then wire
+  // Google address autocomplete onto the street field -> fills city/state/zip too.
+  try {
+    if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.UTIL &&
+        typeof ZOHO.CREATOR.UTIL.getInitParams === 'function') {
+      var r = ZOHO.CREATOR.UTIL.getInitParams();
+      if (r && typeof r.then === 'function') {
+        r.then(function(p) { brokerEmail = (p && (p.loginUser || p.login_user || p.email)) || ''; });
+      }
+    }
+  } catch (e) { /* autocomplete will fall back to window.brokerEmail */ }
+  if (window.OperFiPlaces) {
+    var street = document.getElementById('address_line_1');
+    if (street) OperFiPlaces.attach(street, {
+      apiBase: BROKER_API_BASE,
+      email: function(){ return brokerEmail; },
+      onSelect: function(a) {
+        if (a.street) street.value = a.street;
+        var c = document.getElementById('district_city');   if (c && a.city)  c.value = a.city;
+        var s = document.getElementById('state_province');  if (s && a.state) s.value = a.state;
+        var z = document.getElementById('postal_Code');     if (z && a.zip)   z.value = a.zip;
+      }
+    });
+  }
 
   var fileInput = document.getElementById('fileInput');
   fileInput.addEventListener('change', function() {

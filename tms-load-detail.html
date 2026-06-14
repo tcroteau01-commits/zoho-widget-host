@@ -6,6 +6,7 @@
 <title>Load Detail</title>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-places.js?v=1"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
@@ -311,6 +312,10 @@ function addStop(type) {
   wrap.innerHTML = stopMarkup(type, seq);
   var row = wrap.firstChild;
   box.appendChild(row);
+  if (window.OperFiPlaces) {
+    var addr = row.querySelector('[data-k="address"]');
+    if (addr) OperFiPlaces.attach(addr, { email: function(){ return brokerEmail; } });
+  }
   var rm = row.querySelector('[data-remove]');
   if (rm) rm.onclick = function(){ row.parentNode.removeChild(row); };
 }
@@ -484,12 +489,27 @@ function portalPageUrl(page) {
   return svc.replace(/\/+$/, '') + '/#Page:' + page;
 }
 
+// Google address autocomplete (via backend proxy). Origin/Destination fill as a
+// "City, ST" lane; stop Address fields fill with the full formatted address.
+function wireAddressAutocomplete() {
+  if (!window.OperFiPlaces) return;
+  var em = function(){ return brokerEmail; };
+  function laneFill(input) {
+    return function(a) { input.value = (a.city && a.state) ? (a.city + ', ' + a.state) : (a.formatted || a.description || ''); };
+  }
+  var o = document.getElementById('f-origin');
+  if (o) OperFiPlaces.attach(o, { email: em, onSelect: laneFill(o) });
+  var d = document.getElementById('f-destination');
+  if (d) OperFiPlaces.attach(d, { email: em, onSelect: laneFill(d) });
+}
+
 function boot() {
   if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) return;
   var result = ZOHO.CREATOR.UTIL.getInitParams();
   if (result && typeof result.then === 'function') {
     result.then(function(params){
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      wireAddressAutocomplete();
       loadRefData();
     });
   }

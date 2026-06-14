@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom';
 const HTML = readFileSync(new URL('../tms-load-detail.html', import.meta.url), 'utf8');
 
 const CARRIERS = { carriers: [
-  { vendor_id: 'v1', carrier_name: 'ROADWAY', mc: '123', dot: '897', dnu: false, status: 'Active' },
+  { vendor_id: 'v1', carrier_name: 'ROADWAY', mc: '123', dot: '897', dnu: false, status: 'Active', payment_terms: 'Net 30' },
   { vendor_id: 'v2', carrier_name: 'BADCO', mc: '999', dot: '111', dnu: true, status: 'Active' },
 ]};
 const CUSTOMERS = { customers: [
@@ -60,6 +60,15 @@ test('populateCarriers marks DNU carriers and shows a warning on select', () => 
   sel.value = 'v2';                                // BADCO (dnu)
   window.onCarrierChange();
   assert.match(window.document.getElementById('vetting-badge').textContent, /Do Not Use|DNU/i);
+});
+
+test('onCarrierChange shows the carrier broker pay terms on select', () => {
+  const { window } = makeWidget();
+  window.populateCarriers(CARRIERS.carriers);
+  window.document.getElementById('f-carrier_id').value = 'v1';   // ROADWAY, Net 30
+  window.onCarrierChange();
+  const badge = window.document.getElementById('vetting-badge').textContent;
+  assert.match(badge, /Pay terms: Net 30/);
 });
 
 test('populateCustomers lists bookable customers (Approved + Boost Requested), hides others', () => {

@@ -37,6 +37,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .badge { display: inline-block; padding: 5px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-top: 6px; }
 .badge.warn { background: #fdecea; color: #c62828; }
 .badge.ok { background: #e8f5e9; color: #2e7d32; }
+.badge.terms { background: #eef2fb; color: #2b4a8b; }
 .actions { display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: #f0efe9; padding: 14px 0; }
 .errline { color: #c62828; font-size: 12px; font-weight: 600; margin-right: auto; align-self: center; }
 .okline { color: #2e7d32; font-size: 12px; font-weight: 600; margin-right: auto; align-self: center; }
@@ -290,8 +291,13 @@ function onCarrierChange() {
   if (!badge) return;
   if (!c) { badge.innerHTML = ''; return; }
   setVal('f-carrier_mc', c.mc || '');
-  if (c.dnu) badge.innerHTML = '<span class="badge warn">⚠ Do Not Use — submission will be soft-blocked</span>';
-  else badge.innerHTML = '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>';
+  // Broker-specific pay terms for this carrier (Payment_Terms_for_Broker1), so the
+  // user sees how/when this carrier gets paid right when they pick them.
+  var terms = c.payment_terms
+    ? ' <span class="badge terms">Pay terms: ' + esc(c.payment_terms) + '</span>'
+    : '';
+  if (c.dnu) badge.innerHTML = '<span class="badge warn">⚠ Do Not Use — submission will be soft-blocked</span>' + terms;
+  else badge.innerHTML = '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>' + terms;
 }
 
 function stopMarkup(type, seq) {

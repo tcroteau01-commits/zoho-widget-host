@@ -36,6 +36,46 @@ test('submitContact POSTs the contact to /broker-add-contact', () => {
   assert.deepStrictEqual(sent.permissions, ['Full Access']);
 });
 
+test('edit mode: openEditModal pre-fills + submitContact POSTs to /broker-edit-contact with contact_id (COMP1)', () => {
+  const dom = boot();
+  const w = dom.window;
+  // open edit on an existing contact
+  w.openEditModal({ ID: '900', Contact_Name: { first_name: 'Jane', last_name: 'Doe' },
+                    Email: 'jane@acme.com', Phone_Number: '(555) 111-2222', User_Permissions: ['Full Access'] });
+  assert.strictEqual(w.document.getElementById('m-first').value, 'Jane');
+  assert.strictEqual(w.document.getElementById('m-email').value, 'jane@acme.com');
+  assert.ok(w.document.querySelector('.perm-card.selected'), 'a permission was pre-selected');
+
+  let captured = null;
+  w.fetch = (url, opts) => { captured = { url, opts }; return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '900' })) }); };
+  w.submitContact();
+  assert.ok(captured.url.indexOf('/broker-edit-contact') !== -1, 'hits the edit endpoint');
+  const sent = JSON.parse(captured.opts.body);
+  assert.strictEqual(sent.contact_id, '900');
+  assert.strictEqual(sent.first_name, 'Jane');
+});
+
+test('deleteUser POSTs to /broker-delete-contact after confirm (COMP1)', () => {
+  const dom = boot();
+  const w = dom.window;
+  w.confirm = () => true;
+  let captured = null;
+  w.fetch = (url, opts) => { captured = { url, opts }; return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true })) }); };
+  w.deleteUser({ ID: '900', Contact_Name: { first_name: 'Jane', last_name: 'Doe' } });
+  assert.ok(captured.url.indexOf('/broker-delete-contact') !== -1);
+  assert.strictEqual(JSON.parse(captured.opts.body).contact_id, '900');
+});
+
+test('deleteUser does nothing when confirm is cancelled (COMP1)', () => {
+  const dom = boot();
+  const w = dom.window;
+  w.confirm = () => false;
+  let called = false;
+  w.fetch = () => { called = true; return Promise.resolve({ status: 200, text: () => Promise.resolve('{}') }); };
+  w.deleteUser({ ID: '900', Contact_Name: { first_name: 'Jane', last_name: 'Doe' } });
+  assert.strictEqual(called, false, 'no request when cancelled');
+});
+
 test('submitContact surfaces the real error message (no [object Object])', async () => {
   const dom = boot();
   dom.window.fetch = () =>

@@ -1202,22 +1202,17 @@
       // Bind clickable-debtor + quick link
       function navigateToAging(debtorId) {
         try { localStorage.setItem('openCustomerId', String(debtorId)); } catch (e) {}
-        // Try Creator SDK navigation first (works inside the portal iframe);
-        // fall back to hash change for standalone-test mode.
-        try {
-          if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR && ZOHO.CREATOR.UTIL &&
-              typeof ZOHO.CREATOR.UTIL.navigateParentURL === 'function') {
-            ZOHO.CREATOR.UTIL.navigateParentURL('#Page:Aging');
-            return;
-          }
-        } catch (e) {}
-        try {
-          if (window.top && window.top.location) {
-            window.top.location.hash = '#Page:Aging';
-            return;
-          }
-        } catch (e) {}
-        window.location.hash = '#Page:Aging';
+        // Build the full parent-portal URL from serviceOrigin so we navigate the
+        // Zoho portal, not this widget's own (github.io) iframe URL. Setting only
+        // location.hash stuck '#Page:Aging' onto the widget URL, so the quick link
+        // appeared to go nowhere. (ZOHO.CREATOR.UTIL.navigateParentURL throws
+        // "Improper Configuration" in the v2.0 widget SDK, so we don't use it.)
+        var sp = new URLSearchParams(window.location.search);
+        var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+        var url = origin.replace(/\/$/, '') + '/#Page:Aging';
+        try { window.top.location.href = url; return; } catch (e) {}
+        try { window.parent.location.href = url; return; } catch (e) {}
+        try { window.open(url, '_top'); } catch (e) {}
       }
       var dbt = panel.querySelector('.clickable-debtor');
       if (dbt) dbt.addEventListener('click', function () {

@@ -393,15 +393,16 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div class="card-head">
       <div>
         <div class="card-title">Look Up Carrier First</div>
-        <div class="card-sub">Search by DOT to verify the carrier and check if they're already in your vendors before sending a link</div>
+        <div class="card-sub">Search by DOT or MC to verify the carrier and check if they're already in your vendors before sending a link</div>
       </div>
     </div>
 
     <div class="lookup-row">
       <select class="select" id="lookup-type">
         <option value="dot">Search by DOT #</option>
+        <option value="mc">Search by MC #</option>
       </select>
-      <input class="input" id="lookup-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Enter DOT number…" />
+      <input class="input" id="lookup-input" type="text" placeholder="Enter DOT number…" />
       <button class="btn dark" id="lookup-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         Search
@@ -613,6 +614,11 @@ function bindGlobalUI() {
   document.getElementById('lookup-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') runLookup();
   });
+  var lookupType = document.getElementById('lookup-type');
+  if (lookupType) lookupType.addEventListener('change', function() {
+    document.getElementById('lookup-input').placeholder =
+      lookupType.value === 'mc' ? 'Enter MC number…' : 'Enter DOT number…';
+  });
 
   document.querySelectorAll('[data-open-modal]').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -690,10 +696,13 @@ function loadBrokerContact() {
 // ── Lookup ────────────────────────────────────────────────────────────────
 function runLookup() {
   var input = document.getElementById('lookup-input');
-  var dot = input.value.trim();
-  if (!dot || !/^\d+$/.test(dot)) {
+  var type = (document.getElementById('lookup-type') || {}).value || 'dot';
+  // Accept MC entered as "MC123456" or "123456"; DOT is numeric.
+  var digits = (input.value || '').replace(/\D/g, '');
+  if (!digits) {
     input.classList.add('invalid');
-    showLookupError('Invalid DOT', 'Enter a numeric DOT number.');
+    showLookupError(type === 'mc' ? 'Invalid MC' : 'Invalid DOT',
+                    type === 'mc' ? 'Enter a numeric MC number.' : 'Enter a numeric DOT number.');
     return;
   }
   input.classList.remove('invalid');
@@ -702,14 +711,16 @@ function runLookup() {
   var btn = document.getElementById('lookup-btn');
   btn.disabled = true;
 
-  var url = BROKER_API_BASE + '/carrier-lookup?email=' + encodeURIComponent(brokerEmail) + '&dot=' + encodeURIComponent(dot);
+  var param = type === 'mc' ? ('mc=MC' + digits) : ('dot=' + digits);
+  var label = (type === 'mc' ? 'MC ' : 'DOT ') + digits;
+  var url = BROKER_API_BASE + '/carrier-lookup?email=' + encodeURIComponent(brokerEmail) + '&' + param;
   fetch(url).then(function(res) {
     if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
     return res.json();
   }).then(function(payload) {
     btn.disabled = false;
     lookupResult = payload;
-    renderLookupResult(payload, dot);
+    renderLookupResult(payload, label);
   }).catch(function(err) {
     btn.disabled = false;
     console.error('[CarrierOnboarding] /carrier-lookup failed', err);
@@ -733,7 +744,7 @@ function showLookupError(title, msg) {
     '</div>';
 }
 
-function renderLookupResult(payload, dotQueried) {
+function renderLookupResult(payload, queryLabel) {
   var el = document.getElementById('lookup-result');
   var carrier = payload.carrier;
   var existing = payload.existing_vendor;
@@ -773,7 +784,7 @@ function renderLookupResult(payload, dotQueried) {
         } catch (e) {}
         navigateParent('#Page:Carrier_Profile?Vendor_ID=' + encodeURIComponent(existing.ID));
       } else {
-        navigateParent('#Page:Vendors');
+        navigateParent('#Page:Vendors_New');
       }
     });
     return;
@@ -784,7 +795,7 @@ function renderLookupResult(payload, dotQueried) {
     el.className = 'lookup-result warning';
     el.innerHTML =
       '<div class="result-info">' +
-        '<div class="result-name">DOT ' + esc(dotQueried) + ' not found in CarrierOK</div>' +
+        '<div class="result-name">' + esc(queryLabel) + ' not found in CarrierOK</div>' +
         '<div class="result-detail warning">We could not find this carrier in CarrierOK. You can still send an onboarding link — fill in the details manually below.</div>' +
       '</div>' +
       '<div class="result-actions">' +
@@ -1142,7 +1153,18 @@ function submitModal() {
     }
   }).catch(function(err) {
     console.error('[CarrierOnboarding] addRecords failed', err);
-    var msg = (err && (err.message || err.toString())) ? ': ' + (err.message || err.toString()) : '';
+    // The Creator SDK rejects with a plain object (e.g. {code, message} or
+    // {responseText}); err.toString() on that yields "[object Object]". Pull out
+    // a human-readable detail so the real failure (e.g. Creator code 3xxx) shows.
+    var detail = '';
+    if (err) {
+      if (typeof err === 'string') detail = err;
+      else if (err.message) detail = err.message;
+      else if (err.responseText) detail = err.responseText;
+      else if (err.code) detail = 'code ' + err.code + (err.error ? ': ' + err.error : '');
+      else { try { detail = JSON.stringify(err); } catch (e) { detail = String(err); } }
+    }
+    var msg = detail ? ': ' + detail : '';
     showModalMsg('Could not send link' + msg + '. Please try again.', 'error');
     submit.disabled = false;
     cancel.disabled = false;

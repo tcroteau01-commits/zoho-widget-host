@@ -60,6 +60,12 @@ test('populateCarriers marks DNU carriers and shows a warning on select', () => 
   assert.match(window.document.getElementById('vetting-badge').textContent, /Do Not Use|DNU/i);
 });
 
+test('Carrier MC field is read-only (auto-filled from carrier, not editable)', () => {
+  const { window } = makeWidget();
+  const mc = window.document.getElementById('f-carrier_mc');
+  assert.ok(mc.hasAttribute('readonly'), 'Carrier MC input should have the readonly attribute');
+});
+
 test('collectForm builds the save body including stops', () => {
   const { window } = makeWidget();
   window.populateCustomers(CUSTOMERS.customers);

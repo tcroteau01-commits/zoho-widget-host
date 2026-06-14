@@ -285,19 +285,57 @@ function populateCarriers(carriers) {
   });
 }
 
+var _vettingCache = {};   // vendor_id -> /noa-status row (avoid refetch on reselect)
+
 function onCarrierChange() {
   var c = carriersById[val('f-carrier_id')];
   var badge = document.getElementById('vetting-badge');
   if (!badge) return;
   if (!c) { badge.innerHTML = ''; return; }
   setVal('f-carrier_mc', c.mc || '');
-  // Broker-specific pay terms for this carrier (Payment_Terms_for_Broker1), so the
-  // user sees how/when this carrier gets paid right when they pick them.
-  var terms = c.payment_terms
-    ? ' <span class="badge terms">Pay terms: ' + esc(c.payment_terms) + '</span>'
-    : '';
-  if (c.dnu) badge.innerHTML = '<span class="badge warn">⚠ Do Not Use — submission will be soft-blocked</span>' + terms;
-  else badge.innerHTML = '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>' + terms;
+  // Base status (DNU / OK) renders immediately; broker-specific pay terms, factor,
+  // and NOA/LOR on-file are fetched from /noa-status and appended when they arrive.
+  var base = c.dnu
+    ? '<span class="badge warn">⚠ Do Not Use — submission will be soft-blocked</span>'
+    : '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>';
+  badge.innerHTML = base;
+  fetchCarrierVetting(c.vendor_id, base);
+}
+
+// Pull broker-specific pay term + factoring company + NOA/LOR on-file for the
+// selected carrier and append it to the vetting badge. Reuses /noa-status.
+function fetchCarrierVetting(vendorId, base) {
+  var email = brokerEmail || (typeof window !== 'undefined' && window.brokerEmail) || '';
+  if (!vendorId || !email) return;
+  function render(row) {
+    if (val('f-carrier_id') !== String(vendorId)) return;   // user changed carrier
+    var badge = document.getElementById('vetting-badge');
+    if (badge) badge.innerHTML = base + vettingExtraHtml(row);
+  }
+  if (_vettingCache[vendorId]) { render(_vettingCache[vendorId]); return; }
+  fetch(BROKER_API_BASE + '/noa-status?email=' + encodeURIComponent(email) +
+        '&vendor_id=' + encodeURIComponent(vendorId))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      var row = (d && d.carriers && d.carriers[0]) || null;
+      if (row) _vettingCache[vendorId] = row;
+      render(row);
+    })
+    .catch(function(){ /* leave base badge as-is */ });
+}
+
+function vettingExtraHtml(row) {
+  if (!row) return '';
+  var out = '';
+  if (row.pay_term) out += ' <span class="badge terms">Pay terms: ' + esc(row.pay_term) + '</span>';
+  if (row.factoring_company) out += ' <span class="badge terms">Factor: ' + esc(row.factoring_company) + '</span>';
+  var needsNoa = /factor|lor/i.test(row.pay_term || '');
+  if (row.doc_on_file) {
+    out += ' <span class="badge ok">' + esc((row.doc_on_file.type || 'NOA/LOR')) + ' on file</span>';
+  } else if (needsNoa) {
+    out += ' <span class="badge warn">⚠ No NOA/LOR on file — verify before booking</span>';
+  }
+  return out;
 }
 
 function stopMarkup(type, seq) {
@@ -762,6 +800,7 @@ if (typeof window !== 'undefined') {
 window.addStop = addStop; window.removeStop = removeStop; window.recomputeMargin = recomputeMargin;
 window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers; window.ensureCustomerOption = ensureCustomerOption;
 window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; window.saveLoad = saveLoad;
+window.vettingExtraHtml = vettingExtraHtml;
 window.applyTemplate = applyTemplate; window.hydrate = hydrate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf;

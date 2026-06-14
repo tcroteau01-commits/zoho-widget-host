@@ -170,3 +170,33 @@ test('applyGroup with remember=false issues no alias call', async () => {
   const aliases = records.filter(r => r.url.indexOf('/draft-loads/alias') !== -1);
   assert.equal(aliases.length, 0);
 });
+
+// ---- Task 17 ----
+test('clicking a flagged customer cell yields an inline select', () => {
+  const { window } = makeWidget();
+  window.renderQueue(DRAFTS);
+  const rows = window.document.querySelectorAll('#queue-body tr');
+  const cell = rows[1].querySelector('[data-edit="customer"]');
+  assert.ok(cell);
+  cell.click();
+  assert.ok(rows[1].querySelector('select.cell'));
+});
+
+test('bulk-select shows the bar with the correct count', () => {
+  const { window } = makeWidget();
+  window.renderQueue(DRAFTS);
+  const cbs = window.document.querySelectorAll('#queue-body input.rowcb');
+  cbs[0].checked = true; cbs[0].dispatchEvent(new window.Event('change', { bubbles: true }));
+  cbs[1].checked = true; cbs[1].dispatchEvent(new window.Event('change', { bubbles: true }));
+  const bar = window.document.getElementById('bulkbar');
+  assert.ok(!bar.classList.contains('hidden'));
+  assert.match(bar.textContent, /2 selected/);
+});
+
+test('bulk Set customer PATCHes all selected ids', async () => {
+  const { window, records } = makeWidget();
+  window.__state.selected = ['900', '901'];
+  await window.bulkSetCustomer('1');
+  const patches = records.filter(r => /\/draft-loads\/\d+$/.test(r.url) && r.opts.method === 'PATCH');
+  assert.equal(patches.length, 2);
+});

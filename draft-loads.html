@@ -47,6 +47,14 @@ body{background:var(--body);color:var(--ink);
 .spacer{flex:1}
 .search{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;font-size:13px;min-width:170px;font-family:inherit}
 
+/* Bulk-select bar */
+.bulkbar{background:var(--ink);color:#fff;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.bulkbar.hidden{display:none}
+.bulkbar .cnt{font-weight:700}
+.bulkbar .btn{background:#3a3a3a;border-color:#4a4a4a;color:#fff}
+.bulkbar .btn:hover{background:#454545}
+.bulkbar .x{margin-left:auto;cursor:pointer;opacity:.6}
+
 /* Table */
 .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:visible}
 table{width:100%;border-collapse:collapse}
@@ -55,6 +63,7 @@ thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacin
 tbody td{padding:11px 14px;border-bottom:1px solid #f0eee6;vertical-align:middle}
 tbody tr:last-child td{border-bottom:0}
 tbody tr:hover{background:#fcfbf7}
+tbody tr.sel{background:#fff7e8}
 .co{font-weight:600}
 .small{font-size:11.5px;color:var(--muted);margin-top:2px}
 .mono{font-variant-numeric:tabular-nums}
@@ -68,6 +77,12 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber-dk);cursor:
 .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
 .docs{font-size:12px;color:var(--muted)}.docs.ok{color:var(--green);font-weight:600}
 .raw-mini{font-size:11px;color:#9a7a2e;font-style:italic}
+.celledit{display:flex;flex-direction:column;gap:5px}
+select.cell{border:1px solid var(--amber);background:#fffdf7;border-radius:7px;padding:6px 8px;font-size:12.5px;font-weight:600;color:var(--ink);width:100%;max-width:230px;font-family:inherit}
+.applyall{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--amber-dk);font-weight:600;cursor:pointer}
+.applyall input{width:13px;height:13px}
+.editable{cursor:pointer;border-bottom:1px dashed transparent;display:inline-block}
+tr:hover .editable{border-bottom-color:#cfc9bb}
 .empty{text-align:center;color:var(--muted);padding:40px 0}
 
 /* Modal: grouped resolve */
@@ -144,6 +159,15 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
     <button class="btn dark" id="submit-all">Submit all Ready (0)</button>
   </div>
 
+  <div class="bulkbar hidden" id="bulkbar">
+    <span class="cnt" id="bulk-count">0 selected</span>
+    <button class="btn sm" id="bulk-cust">Set customer ▾</button>
+    <button class="btn sm" id="bulk-carr">Set carrier ▾</button>
+    <button class="btn sm" id="bulk-docs">Attach docs</button>
+    <button class="btn sm" id="bulk-del">Delete</button>
+    <span class="x" id="bulk-clear">✕ clear</span>
+  </div>
+
   <div class="panel">
     <table>
       <thead>
@@ -211,20 +235,22 @@ function visibleDrafts(){
 
 function customerCellHtml(d){
   if (d.customer_name){
-    return '<div class="co">'+esc(d.customer_name)+'</div>'+
+    return '<div class="co editable" data-edit="customer">'+esc(d.customer_name)+'</div>'+
            (d.customer_reference_number?'<div class="small mono">Ref '+esc(d.customer_reference_number)+'</div>':'');
   }
-  return '<div class="raw-mini">sent: “'+esc(d.customer_raw||'—')+'”</div>'+
-         '<div class="co" style="color:var(--amber-dk)">Pick customer ▾</div>';
+  return '<div class="editable" data-edit="customer">'+
+         '<div class="raw-mini">sent: “'+esc(d.customer_raw||'—')+'”</div>'+
+         '<div class="co" style="color:var(--amber-dk)">Pick customer ▾</div></div>';
 }
 function carrierCellHtml(d){
   if (d.carrier_name){
     var line = d.carrier_mc ? 'MC '+esc(d.carrier_mc)+' ✓' : (d.carrier_dot ? 'DOT '+esc(d.carrier_dot)+' ✓' : '');
-    return '<div class="co">'+esc(d.carrier_name)+'</div>'+
+    return '<div class="co editable" data-edit="carrier">'+esc(d.carrier_name)+'</div>'+
            (line?'<div class="small mono">'+line+'</div>':'');
   }
-  return '<div class="raw-mini">sent: '+esc(d.carrier_raw||'—')+'</div>'+
-         '<div class="co" style="color:var(--amber-dk)">Pick carrier ▾</div>';
+  return '<div class="editable" data-edit="carrier">'+
+         '<div class="raw-mini">sent: '+esc(d.carrier_raw||'—')+'</div>'+
+         '<div class="co" style="color:var(--amber-dk)">Pick carrier ▾</div></div>';
 }
 
 function statusCellHtml(d){
@@ -248,10 +274,11 @@ function renderQueue(drafts){
   body.innerHTML='';
   rows.forEach(function(d){
     var tr=document.createElement('tr');
+    if (__state.selected.indexOf(d.id)!==-1) tr.className='sel';
     var docCount=(d.has_customer_docs?1:0)+(d.has_carrier_docs?1:0);
     var docCls='docs'+(docCount===2?' ok':'');
     tr.innerHTML=
-      '<td data-label=""><input type="checkbox" class="rowcb" data-id="'+esc(d.id)+'"></td>'+
+      '<td data-label=""><input type="checkbox" class="rowcb" data-id="'+esc(d.id)+'"'+(__state.selected.indexOf(d.id)!==-1?' checked':'')+'></td>'+
       '<td data-label="Source"><span class="src '+srcClass(d.source)+'">'+esc(d.source||'')+'</span></td>'+
       '<td data-label="Customer">'+customerCellHtml(d)+'</td>'+
       '<td data-label="Carrier">'+carrierCellHtml(d)+'</td>'+
@@ -261,10 +288,119 @@ function renderQueue(drafts){
       '<td data-label="Docs"><span class="'+docCls+'">'+docCount+(docCount===2?' ✓':'')+'</span></td>'+
       '<td data-label="Status">'+statusCellHtml(d)+'</td>';
     tr.setAttribute('data-row', d.id);
+    wireRow(tr, d);
     body.appendChild(tr);
   });
 }
 function srcClass(s){ return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
+
+function wireRow(tr, d){
+  var cb=tr.querySelector('input.rowcb');
+  if (cb) cb.addEventListener('change', function(){ toggleSelect(d.id, cb.checked); });
+  tr.querySelectorAll('[data-edit]').forEach(function(cell){
+    cell.addEventListener('click', function(e){
+      e.stopPropagation();
+      openInlineEdit(tr, d, cell.getAttribute('data-edit'));
+    });
+  });
+}
+
+/* ---------------- inline cell edit ---------------- */
+
+function matchingUnresolved(sameRaw, kind){
+  return __state.drafts.filter(function(x){
+    var raw = kind==='customer' ? (x.customer_raw||'') : (x.carrier_raw||'');
+    var named = kind==='customer' ? x.customer_name : x.carrier_name;
+    return raw===sameRaw && !named;
+  });
+}
+
+function openInlineEdit(tr, d, kind){
+  var anchor=tr.querySelector('[data-edit="'+kind+'"]');
+  var cell = anchor && anchor.closest('td');
+  if (!cell || cell.querySelector('select.cell')) return;
+  var sameRaw = kind==='customer' ? (d.customer_raw||'') : (d.carrier_raw||'');
+  var matchCount = sameRaw ? matchingUnresolved(sameRaw, kind).length : 1;
+  var wrap=document.createElement('div'); wrap.className='celledit';
+  var rawTxt = kind==='customer' ? d.customer_raw : d.carrier_raw;
+  if (rawTxt){ var r=document.createElement('div'); r.className='raw-mini'; r.textContent='sent: “'+rawTxt+'”'; wrap.appendChild(r); }
+  var sel=document.createElement('select'); sel.className='cell';
+  sel.innerHTML = kind==='customer' ? customerOptions('', []) : carrierOptions('');
+  wrap.appendChild(sel);
+  var applyAll=null;
+  if (matchCount>1){
+    var lbl=document.createElement('label'); lbl.className='applyall';
+    lbl.innerHTML='<input type="checkbox" checked> Apply to all '+matchCount+' with this name';
+    applyAll=lbl.querySelector('input'); wrap.appendChild(lbl);
+  }
+  cell.innerHTML=''; cell.appendChild(wrap);
+  if (kind==='customer' && rawTxt){
+    resolveCustomerCandidates(rawTxt, d.source).then(function(cands){ sel.innerHTML=customerOptions('', cands); });
+  }
+  if (sel.focus) sel.focus();
+  sel.addEventListener('change', function(){
+    var val=sel.value; if(!val) return;
+    var ids=[d.id];
+    if (applyAll && applyAll.checked && sameRaw){
+      ids=matchingUnresolved(sameRaw, kind).map(function(x){return x.id;});
+    }
+    var patchKey = kind==='customer'?'customer_id':'carrier_id';
+    Promise.all(ids.map(function(id){ var p={}; p[patchKey]=val; return patchDraft(id,p); }))
+      .then(function(){ return loadQueue(); })
+      .then(function(){ showToast('Updated'); });
+  });
+}
+
+/* ---------------- bulk select ---------------- */
+
+function toggleSelect(id, on){
+  var i=__state.selected.indexOf(id);
+  if (on && i===-1) __state.selected.push(id);
+  if (!on && i!==-1) __state.selected.splice(i,1);
+  renderBulkBar();
+  var tr=document.querySelector('[data-row="'+id+'"]');
+  if (tr) tr.classList.toggle('sel', on);
+}
+function clearSelection(){
+  __state.selected=[];
+  document.querySelectorAll('#queue-body input.rowcb').forEach(function(c){ c.checked=false; });
+  document.querySelectorAll('#queue-body tr.sel').forEach(function(t){ t.classList.remove('sel'); });
+  renderBulkBar();
+}
+function renderBulkBar(){
+  var bar=document.getElementById('bulkbar'); if(!bar) return;
+  var n=__state.selected.length;
+  if (!n){ bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  setText('bulk-count', n+' selected');
+}
+function bulkSetCustomer(customerId){
+  return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { customer_id: customerId }); }))
+    .then(function(){ clearSelection(); return loadQueue(); });
+}
+function bulkSetCarrier(carrierId){
+  return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { carrier_id: carrierId }); }))
+    .then(function(){ clearSelection(); return loadQueue(); });
+}
+
+function promptPick(kind){
+  var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
+  if(!scrim||!modal||!__state.selected.length) return;
+  var title = kind==='customer'?'Set customer for '+__state.selected.length+' loads':'Set carrier for '+__state.selected.length+' loads';
+  modal.innerHTML=
+    '<div class="modal-head"><span class="x" id="modal-x">✕</span><h2>'+esc(title)+'</h2></div>'+
+    '<div class="modal-body"><div class="grp"><div class="grp-resolve"><select class="gsel" id="bulk-sel">'+
+    (kind==='customer'?customerOptions('',[]):carrierOptions(''))+'</select></div></div></div>'+
+    '<div class="modal-foot"><div class="left"></div><button class="btn" id="modal-cancel">Cancel</button>'+
+    '<button class="btn amber" id="modal-apply">Apply</button></div>';
+  scrim.classList.remove('hidden');
+  modal.querySelector('#modal-x').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+  modal.querySelector('#modal-apply').addEventListener('click', function(){
+    var val=modal.querySelector('#bulk-sel').value; if(!val){ closeModal(); return; }
+    (kind==='customer'?bulkSetCustomer(val):bulkSetCarrier(val)).then(function(){ closeModal(); showToast('Updated'); });
+  });
+}
 
 function renderSummary(summary){
   summary=summary||{};
@@ -464,6 +600,18 @@ window.addEventListener('load', function(){
   bind('new-draft', function(){ showToast('New draft coming soon'); });
   bind('resolve-cust', function(){ openResolveModal('customer'); });
   bind('resolve-carr', function(){ openResolveModal('carrier'); });
+  bind('bulk-cust', function(){ promptPick('customer'); });
+  bind('bulk-carr', function(){ promptPick('carrier'); });
+  bind('bulk-clear', clearSelection);
+  bind('bulk-docs', function(){ showToast('Attach docs coming soon'); });
+  bind('bulk-del', function(){ showToast('Delete coming soon'); });
+  var cbAll=document.getElementById('cb-all');
+  if (cbAll) cbAll.addEventListener('change', function(){
+    var on=cbAll.checked;
+    if (on){ visibleDrafts().forEach(function(d){ if(__state.selected.indexOf(d.id)===-1) __state.selected.push(d.id); }); }
+    else { __state.selected=[]; }
+    renderQueue(); renderBulkBar();
+  });
   var scrim=document.getElementById('scrim');
   if (scrim) scrim.addEventListener('click', function(e){ if(e.target===scrim) closeModal(); });
   boot();
@@ -480,6 +628,10 @@ window.setFilter=setFilter;
 window.computeGroups=computeGroups;
 window.applyGroup=applyGroup;
 window.openResolveModal=openResolveModal;
+window.openInlineEdit=openInlineEdit;
+window.toggleSelect=toggleSelect;
+window.bulkSetCustomer=bulkSetCustomer;
+window.bulkSetCarrier=bulkSetCarrier;
 </script>
 </body>
 </html>

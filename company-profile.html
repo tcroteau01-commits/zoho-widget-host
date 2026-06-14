@@ -114,7 +114,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .user-list { display: flex; flex-direction: column; gap: 6px; max-height: 540px; overflow-y: auto; padding-right: 4px; }
 .user-row {
   display: grid;
-  grid-template-columns: 36px 1.6fr 1.4fr 110px 90px;
+  grid-template-columns: 36px 1.6fr 1.4fr 110px 90px auto;
   gap: 12px; align-items: center;
   padding: 10px 12px;
   background: #fff;
@@ -123,6 +123,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   transition: all 0.12s;
 }
 .user-row:hover { border-color: #c8c4b6; background: #fafaf6; }
+.user-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.ua-btn { border: 1px solid #d8d8d8; background: #fff; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: #555; cursor: pointer; font-family: inherit; }
+.ua-btn:hover { border-color: #b8b8b8; background: #fafafa; }
+.ua-btn.danger { color: #c62828; border-color: #f0c4c4; }
+.ua-btn.danger:hover { background: #fdecea; border-color: #e0a0a0; }
 .user-avatar {
   width: 36px; height: 36px; border-radius: 50%;
   background: #fff4e0; color: #b86e00;
@@ -562,6 +567,9 @@ var allUsers = [];
 var filteredUsers = [];
 var currentSearch = '';
 var selectedRoles = [];
+var editingContactId = null;     // null = add mode; a contact ID = edit mode
+var selfContactId = '';          // the acting contact (can't delete yourself)
+var selfIsFull = false;          // only Full Access users see edit/delete
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
@@ -747,9 +755,13 @@ function loadUsers() {
     .then(function(res) {
       var data = (res && res.users) ? res.users : [];
       console.log('[CompanyProfile] users:', data.length);
+      selfContactId = (res && res.self_contact_id) ? String(res.self_contact_id) : '';
       allUsers = data.slice().sort(function(a, b) {
         return parseDate(b.Added_Time) - parseDate(a.Added_Time);
       });
+      // Edit/delete are offered only to a Full Access user (acting on their own roster).
+      var self = allUsers.filter(function(u){ return String(u.ID) === selfContactId; })[0];
+      selfIsFull = self ? hasFullAccess(self) : false;
       applyUserFilter();
     }).catch(function(err) {
       console.error('[CompanyProfile] /broker-users failed', err);
@@ -796,6 +808,16 @@ function renderUsers() {
   html += '</div>';
   body.innerHTML = html;
 
+  body.querySelectorAll('.ua-btn[data-action]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var id = btn.getAttribute('data-id');
+      var u = allUsers.filter(function(x){ return String(x.ID) === String(id); })[0];
+      if (!u) return;
+      if (btn.getAttribute('data-action') === 'edit') openEditModal(u);
+      else deleteUser(u);
+    });
+  });
+
   // Summary counts based on full list, not filtered
   var fullCount = 0, vendorCount = 0;
   allUsers.forEach(function(u) {
@@ -829,6 +851,18 @@ function userRowHtml(u) {
     '<div class="user-phone">' + esc(formatPhone(u.Phone_Number)) + '</div>' +
     '<div><span class="user-perm ' + permClass + '">' + permLabel + '</span></div>' +
     '<div class="user-added">' + esc(addedLabel) + '</div>' +
+    userActionsHtml(u) +
+  '</div>';
+}
+
+// Edit/Delete actions — only for a Full Access user; never a Delete on your own row.
+function userActionsHtml(u) {
+  if (!selfIsFull) return '<div class="user-actions"></div>';
+  var id = esc(String(u.ID || ''));
+  var del = String(u.ID) === selfContactId ? '' :
+    '<button class="ua-btn danger" data-action="delete" data-id="' + id + '">Delete</button>';
+  return '<div class="user-actions">' +
+    '<button class="ua-btn" data-action="edit" data-id="' + id + '">Edit</button>' + del +
   '</div>';
 }
 
@@ -879,7 +913,63 @@ function resetModal() {
   selectedRoles = [];
   syncModalSubmit();
   hideModalMsg();
+  editingContactId = null;
   document.getElementById('modal-submit').textContent = 'Submit';
+  var mt = document.querySelector('#modal-scrim .m-title');
+  var ms = document.querySelector('#modal-scrim .m-sub');
+  if (mt) mt.textContent = 'Add Trusted Contact';
+  if (ms) ms.textContent = 'Grant a team member access to the broker portal';
+}
+
+// Open the same modal in EDIT mode, pre-filled from the selected contact.
+function openEditModal(u) {
+  resetModal();
+  editingContactId = String(u.ID);
+  var name = displayContactName(u);
+  var c = u.Contact_Name;
+  var first = (c && c.first_name) || (typeof name === 'string' ? name.split(' ')[0] : '') || '';
+  var last = (c && c.last_name) || (typeof name === 'string' ? name.split(' ').slice(1).join(' ') : '') || '';
+  document.getElementById('m-first').value = first;
+  document.getElementById('m-last').value = last;
+  document.getElementById('m-email').value = u.Email || '';
+  document.getElementById('m-phone').value = u.Phone_Number || '';
+  // Pre-select permission cards from the contact's roles.
+  var perms = u.User_Permissions;
+  if (typeof perms === 'string') perms = perms.split(',').map(function(s){ return s.trim(); });
+  perms = perms || [];
+  perms.forEach(function(role) {
+    var card = document.querySelector('.perm-card[data-role="' + role + '"]');
+    if (card) { card.classList.add('selected'); selectedRoles.push(role); }
+  });
+  if (selectedRoles.indexOf('Full Access') !== -1) {
+    var fw = document.getElementById('full-warn'); if (fw) fw.classList.add('show');
+  }
+  syncModalSubmit();
+  document.getElementById('modal-submit').textContent = 'Save';
+  var mt = document.querySelector('#modal-scrim .m-title');
+  var ms = document.querySelector('#modal-scrim .m-sub');
+  if (mt) mt.textContent = 'Edit Contact';
+  if (ms) ms.textContent = 'Update this team member’s details or access';
+  document.getElementById('modal-scrim').classList.add('show');
+  document.getElementById('m-first').focus();
+}
+
+function deleteUser(u) {
+  var name = displayContactName(u);
+  if (!window.confirm('Remove ' + name + '’s access to the portal? This cannot be undone.')) return;
+  fetch(BROKER_API_BASE + '/broker-delete-contact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, contact_id: String(u.ID) })
+  }).then(function(res) {
+    return res.text().then(function(t) { var d={}; try{ d=t?JSON.parse(t):{}; }catch(e){} return { status: res.status, data: d }; });
+  }).then(function(r) {
+    if (r.status === 200 && r.data.ok) { loadUsers(); }
+    else { window.alert('Could not remove user' + (r.data.error || r.data.message ? ': ' + (r.data.error || r.data.message) : '') + '.'); }
+  }).catch(function(err) {
+    console.error('[CompanyProfile] /broker-delete-contact failed', err);
+    window.alert('Could not remove user. Please check your connection and try again.');
+  });
 }
 
 function togglePermCard(card) {
@@ -960,10 +1050,11 @@ function submitContact() {
 
   var btn = document.getElementById('modal-submit');
   var cancel = document.getElementById('modal-cancel');
+  var isEdit = !!editingContactId;
   btn.disabled = true;
   cancel.disabled = true;
-  btn.textContent = 'Submitting…';
-  showModalMsg('Adding contact…', 'loading');
+  btn.textContent = isEdit ? 'Saving…' : 'Submitting…';
+  showModalMsg(isEdit ? 'Saving changes…' : 'Adding contact…', 'loading');
 
   var payload = {
     email: brokerEmail,
@@ -973,8 +1064,10 @@ function submitContact() {
     phone: document.getElementById('m-phone').value.trim(),
     permissions: selectedRoles
   };
+  var endpoint = '/broker-add-contact';
+  if (isEdit) { endpoint = '/broker-edit-contact'; payload.contact_id = editingContactId; }
 
-  fetch(BROKER_API_BASE + '/broker-add-contact', {
+  fetch(BROKER_API_BASE + endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -986,19 +1079,20 @@ function submitContact() {
     });
   }).then(function(r) {
     if (r.status === 200 && r.data.ok) {
-      showModalMsg('✓ Contact added. An invitation email will be sent to ' + payload.contact_email + '.', 'success');
-      btn.textContent = '✓ Added';
+      showModalMsg(isEdit ? '✓ Changes saved.'
+                          : '✓ Contact added. An invitation email will be sent to ' + payload.contact_email + '.', 'success');
+      btn.textContent = isEdit ? '✓ Saved' : '✓ Added';
       setTimeout(function() { loadUsers(); closeModal(); }, 1400);
     } else {
       var detail = r.data.message ? ' (' + r.data.message + ')'
                  : r.data.error ? ' (' + r.data.error + ')' : '';
-      showModalMsg('Could not add contact' + detail + '. Please try again.', 'error');
-      btn.disabled = false; cancel.disabled = false; btn.textContent = 'Submit';
+      showModalMsg('Could not ' + (isEdit ? 'save changes' : 'add contact') + detail + '. Please try again.', 'error');
+      btn.disabled = false; cancel.disabled = false; btn.textContent = isEdit ? 'Save' : 'Submit';
     }
   }).catch(function(err) {
-    console.error('[CompanyProfile] /broker-add-contact failed', err);
-    showModalMsg('Could not add contact. Please check your connection and try again.', 'error');
-    btn.disabled = false; cancel.disabled = false; btn.textContent = 'Submit';
+    console.error('[CompanyProfile] ' + endpoint + ' failed', err);
+    showModalMsg('Could not ' + (isEdit ? 'save changes' : 'add contact') + '. Please check your connection and try again.', 'error');
+    btn.disabled = false; cancel.disabled = false; btn.textContent = isEdit ? 'Save' : 'Submit';
   });
 }
 
@@ -1061,6 +1155,15 @@ window.submitContact = function() {
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
   if (Array.isArray(window.selectedRoles)) selectedRoles = window.selectedRoles;
   return submitContact.apply(this, arguments);
+};
+window.openEditModal = function() {
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  return openEditModal.apply(this, arguments);
+};
+window.deleteUser = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  return deleteUser.apply(this, arguments);
 };
 
 })();

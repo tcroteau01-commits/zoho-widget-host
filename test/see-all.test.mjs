@@ -27,3 +27,23 @@ test('customer-approvals brokerName reads Contact.Account_Name, not the debtor',
     'VETERANS TRANSPORT BROKERAGE LLC'
   );
 });
+
+test('customer-approvals renderFraudCheck shows risk badge + reasons (CC2)', () => {
+  const w = load('customer-approvals.html');
+  assert.equal(typeof w.renderFraudCheck, 'function');
+  const d = w.document;
+  const sec = d.createElement('div'); sec.id = 'ca-fraud'; sec.style.display = 'none';
+  const badge = d.createElement('span'); badge.id = 'ca-fraud-badge';
+  const body = d.createElement('div'); body.id = 'ca-fraud-body';
+  sec.appendChild(badge); sec.appendChild(body); d.body.appendChild(sec);
+
+  w.renderFraudCheck({
+    risk: 'high',
+    reasons: ["Email domain (lilly.usatransport.com) doesn't match the website (lilly.com)"],
+    email_domain: 'lilly.usatransport.com', website_domain: 'lilly.com', domain_mismatch: true,
+  });
+  assert.equal(sec.style.display, '');                 // revealed
+  assert.match(badge.textContent, /High risk/);
+  assert.match(badge.className, /\bhigh\b/);
+  assert.match(body.innerHTML, /doesn.t match/);
+});

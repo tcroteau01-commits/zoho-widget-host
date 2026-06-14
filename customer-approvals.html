@@ -370,6 +370,16 @@ html, body {
   .btn, .chip, .row-action { min-height: 44px; }
   input, select, textarea, .search input { font-size: 16px; }
 }
+/* CC2 — credit-team domain/fraud check */
+.ca-fraud-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px; margin-left: 6px; }
+.ca-fraud-badge.high { background:#fdecea; color:#c62828; }
+.ca-fraud-badge.medium { background:#fff4e0; color:#b25e00; }
+.ca-fraud-badge.low { background:#e8f5e9; color:#2e7d32; }
+.ca-fraud-badge.unknown { background:#eee; color:#777; }
+.ca-fraud-reasons { margin: 6px 0 0; padding-left: 18px; color:#c62828; font-size: 12px; }
+.ca-fraud-reasons li { margin: 2px 0; }
+.ca-fraud-clean { font-size: 12px; color:#666; }
+.ca-fraud-meta { margin-top: 8px; font-size: 11px; color:#999; }
 </style>
 </head>
 <body>
@@ -446,6 +456,7 @@ function brokerName(rec){
   return a || '';
 }
 window.brokerName = brokerName;
+window.renderFraudCheck = function(d){ return renderFraudCheck(d); };  // exposed for tests (CC2)
 var currentSearch = '';
 var openIndex = -1;
 var currentLoadId = 0;
@@ -914,6 +925,17 @@ function renderPanel() {
       '</div>';
   }
 
+  // CC2 — domain/fraud check for the credit team only (gated like the decision section).
+  // Populated after render by fetchFraudCheck via the backend; stays hidden otherwise.
+  var fraudSectionHtml = '';
+  if (allClients) {
+    fraudSectionHtml = '' +
+      '<div class="panel-section" id="ca-fraud" style="display:none;">' +
+        '<div class="panel-section-title">Domain Check<span class="ca-fraud-badge" id="ca-fraud-badge"></span></div>' +
+        '<div id="ca-fraud-body"></div>' +
+      '</div>';
+  }
+
   var html = '' +
     '<div class="panel-top">' +
       '<span class="nav-btn' + prevDis + '" id="p-prev" title="Previous (k)">‹</span>' +
@@ -931,6 +953,7 @@ function renderPanel() {
       '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
     '</div>' +
     '<div class="panel-body">' +
+      fraudSectionHtml +
 
       // Make a Decision (see-all / role context only; empty string otherwise)
       decisionSectionHtml +
@@ -1021,6 +1044,49 @@ function renderPanel() {
   if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check_NEW'); });
 
   wireDecisionSection(r);
+  fetchFraudCheck(r);
+}
+
+// CC2 — pull domain/fraud signals for the credit team (gated server-side; a 403
+// for non-credit users simply leaves the section hidden). On-view only, so the
+// client who submitted the customer never sees we ran this.
+function fetchFraudCheck(r) {
+  if (!allClients) return;
+  if (!document.getElementById('ca-fraud')) return;
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  var qs = 'email=' + encodeURIComponent(email) +
+           '&customer_email=' + encodeURIComponent(r.Email || '') +
+           '&website=' + encodeURIComponent(r.Company_Website || '');
+  fetch(BROKER_API_BASE + '/customer-fraud-check?' + qs)
+    .then(function(res){ return res.ok ? res.json() : null; })
+    .then(function(d){ if (d) renderFraudCheck(d); })
+    .catch(function(){});
+}
+
+function renderFraudCheck(d) {
+  var sec = document.getElementById('ca-fraud');
+  var badge = document.getElementById('ca-fraud-badge');
+  var body = document.getElementById('ca-fraud-body');
+  if (!sec || !body) return;
+  var risk = d.risk || 'unknown';
+  var labelMap = { high: 'High risk', medium: 'Review', low: 'Looks clean', unknown: 'Unknown' };
+  if (badge) { badge.textContent = labelMap[risk] || risk; badge.className = 'ca-fraud-badge ' + risk; }
+  var out = '';
+  if (d.reasons && d.reasons.length) {
+    out += '<ul class="ca-fraud-reasons">' +
+      d.reasons.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+  } else if (risk === 'unknown') {
+    out += '<div class="ca-fraud-clean">Domain data unavailable.</div>';
+  } else {
+    out += '<div class="ca-fraud-clean">No domain-age or mismatch flags.</div>';
+  }
+  var meta = [];
+  if (d.email_domain) meta.push('Email domain: ' + esc(d.email_domain));
+  if (d.website_domain) meta.push('Website: ' + esc(d.website_domain));
+  if (d.domain_age_human) meta.push('Domain age: ' + esc(d.domain_age_human));
+  if (meta.length) out += '<div class="ca-fraud-meta">' + meta.join(' · ') + '</div>';
+  body.innerHTML = out;
+  sec.style.display = '';
 }
 
 // Wire the see-all Decision section: live "required" affordance + Save handler.

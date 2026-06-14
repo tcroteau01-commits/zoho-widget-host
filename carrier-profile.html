@@ -1524,7 +1524,16 @@ function renderNoaCard(c) {
     '<button id="cp-noa-manage" class="btn-secondary" style="margin-top:10px;">Manage NOA / LOR</button>';
   document.getElementById('cp-noa-manage').onclick = function(){
     try { localStorage.setItem('noaManagementTarget', JSON.stringify({ Vendor_ID: String(vendorId), action: '', ts: Date.now() })); } catch(e){}
-    if (window.top) { window.top.location.href = window.top.location.origin + '/#Page:NOA_Management_New?Vendor_ID=' + encodeURIComponent(vendorId); }
+    // Build the parent-portal URL from serviceOrigin. Reading
+    // window.top.location.origin throws a cross-origin SecurityError (this widget
+    // is on github.io, the portal is on brokerhub.operfi.com), which killed the
+    // click handler so the button did nothing.
+    var sp = new URLSearchParams(window.location.search);
+    var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+    var url = origin.replace(/\/$/, '') + '/#Page:NOA_Management_New?Vendor_ID=' + encodeURIComponent(vendorId);
+    try { window.top.location.href = url; return; } catch (e) {}
+    try { window.parent.location.href = url; return; } catch (e) {}
+    try { window.open(url, '_top'); } catch (e) {}
   };
 }
 

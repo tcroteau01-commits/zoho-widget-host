@@ -307,3 +307,93 @@ test('submit is blocked from firing twice concurrently', async () => {
   await Promise.all([w.submitLoad(), w.submitLoad()]);
   assert.strictEqual(submitCalls, 1);
 });
+
+// ── Task 22: Save-as-Draft manual feeder + draft reopen ───────────────────────
+
+test('there is a Save as Draft button next to Submit', () => {
+  const d = new JSDOM(HTML).window.document;
+  assert.ok(d.getElementById('save-draft-btn'), 'missing #save-draft-btn');
+});
+
+test('saveDraft POSTs /draft-loads with source Manual and the collected fields, even when incomplete', async () => {
+  const seen = [];
+  const dom = makeB2Dom((url, opts) => { seen.push({ url: String(url), opts });
+    if (String(url).includes('/draft-loads'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ record_id: '950' }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  // only a couple of fields filled — drafts are lenient
+  w._collectFields = () => ({ customer_id: 'c9', customer_reference_number: 'PO-7' });
+  await w.saveDraft();
+  const draft = seen.find(s => s.url.includes('/draft-loads'));
+  assert.ok(draft, '/draft-loads was called');
+  assert.strictEqual(draft.opts.method, 'POST');
+  const body = JSON.parse(draft.opts.body);
+  assert.strictEqual(body.source, 'Manual');
+  assert.strictEqual(body.email, 'b@x.com');
+  assert.strictEqual(body.source_load_ref, 'PO-7');
+  assert.strictEqual(body.customer_id, 'c9');
+  assert.deepStrictEqual(body.source_payload, { customer_id: 'c9', customer_reference_number: 'PO-7' });
+});
+
+test('a second saveDraft PATCHes the stored record id instead of POSTing again', async () => {
+  const seen = [];
+  const dom = makeB2Dom((url, opts) => { seen.push({ url: String(url), opts: opts || {} });
+    if (String(url).includes('/draft-loads'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ record_id: '950', status: 'draft', reasons: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  await w.saveDraft();
+  await w.saveDraft();
+  const calls = seen.filter(s => s.url.includes('/draft-loads'));
+  assert.strictEqual(calls.length, 2);
+  assert.strictEqual(calls[0].opts.method, 'POST');
+  assert.strictEqual(calls[1].opts.method, 'PATCH');
+  assert.match(calls[1].url, /\/draft-loads\/950/);
+});
+
+test('saveDraft failure surfaces a visible message (no silent success)', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  await w.saveDraft();
+  assert.match(w.document.getElementById('submit-status').textContent, /fail|error|try again/i);
+});
+
+test('prefillFromDraft populates the form inputs from a draft object', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window, d = w.document;
+  w.prefillFromDraft({
+    id: '950',
+    customer_id: 'c9',
+    customer_reference_number: 'PO-7',
+    customer_rate: '2500',
+    carrier_id: 'v3',
+    carrier_rate: '2100',
+    carrier_factoring_invoice: 'F1',
+    load_rate_confirmation_number: 'RC-7',
+    source_payload: { load_comments: 'rush load' }
+  });
+  assert.strictEqual(d.getElementById('customer-reference').value, 'PO-7');
+  assert.strictEqual(d.getElementById('customer-rate').value, '2500');
+  assert.strictEqual(d.getElementById('carrier-factoring-invoice').value, 'F1');
+  assert.strictEqual(d.getElementById('rate-con').value, 'RC-7');
+  assert.strictEqual(d.getElementById('Load_Comments').value, 'rush load');
+});
+
+test('prefillFromDraft sets currentDraftId so a later saveDraft PATCHes that draft', async () => {
+  const seen = [];
+  const dom = makeB2Dom((url, opts) => { seen.push({ url: String(url), opts: opts || {} });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'draft', reasons: [] }) });
+  });
+  const w = dom.window;
+  w.prefillFromDraft({ id: '321', customer_id: 'c9' });
+  w._collectFields = () => ({ customer_id: 'c9' });
+  await w.saveDraft();
+  const call = seen.find(s => s.url.includes('/draft-loads'));
+  assert.strictEqual(call.opts.method, 'PATCH');
+  assert.match(call.url, /\/draft-loads\/321/);
+});

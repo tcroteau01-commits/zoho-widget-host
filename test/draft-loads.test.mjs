@@ -412,3 +412,44 @@ test('successful upload marks the paperwork slot Ready', async () => {
   await w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
   assert.equal(w.__pw.slots['900'].customer, true);
 });
+
+test('createDraftsFromPreview survives a partial create failure and opens paperwork with successes only', async () => {
+  const { window, records } = makeWidget();
+  window.openImportModal();
+  window.renderPreview(PREVIEW.rows);
+  const cleanRows = [PREVIEW.rows[0], { ...PREVIEW.rows[0], mapped: { ...PREVIEW.rows[0].mapped, customer_reference_number: 'WMT-90099', carrier_factoring_invoice: 'INV-9999' } }];
+  window.__import.rows = cleanRows;
+  let postCount = 0;
+  window.fetch = function (url, opts) {
+    records.push({ url: String(url), opts: opts || {} });
+    if (/\/draft-loads$/.test(String(url).split('?')[0]) && opts && opts.method === 'POST') {
+      postCount++;
+      if (postCount === 1) return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ record_id: 'rec-ok' }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  await window.createDraftsFromPreview();
+  assert.equal(window.__pw.loads.length, 1);
+  assert.equal(window.__pw.loads[0].id, 'rec-ok');
+  assert.ok(window.__pw.loads.every(l => l.id && l.id !== ''), 'no blank-id load');
+  assert.match(window.document.getElementById('toast').textContent, /1 of 2/);
+});
+
+test('createDraftsFromPreview with zero successes shows error and does not open paperwork', async () => {
+  const { window, records } = makeWidget();
+  window.openImportModal();
+  window.renderPreview(PREVIEW.rows);
+  window.__import.rows = [PREVIEW.rows[0]];
+  window.__pw.loads = ['SENTINEL'];
+  window.fetch = function (url, opts) {
+    records.push({ url: String(url), opts: opts || {} });
+    if (/\/draft-loads$/.test(String(url).split('?')[0]) && opts && opts.method === 'POST') {
+      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  await window.createDraftsFromPreview();
+  assert.deepEqual(window.__pw.loads, ['SENTINEL']);
+  assert.match(window.document.getElementById('toast').textContent, /fail/i);
+});

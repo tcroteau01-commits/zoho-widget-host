@@ -241,3 +241,17 @@ test('margin tolerates formatted money strings like "$2,850"', () => {
   ]);
   const marg = window.document.querySelector('#queue-body td.marg').textContent;
   assert.equal(marg, '$450');
+});
+
+test('write-path failure surfaces a toast', async () => {
+  const { window } = makeWidget();
+  // Force PATCH to reject
+  window.fetch = function (url, opts) {
+    if (String(url).indexOf('/draft-loads/') !== -1 && opts && opts.method === 'PATCH') {
+      return Promise.reject(new Error('network'));
+    }
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ drafts: [], count: 0, summary: {} }); } });
+  };
+  window.__state.selected = ['900'];
+  await window.bulkSetCustomer('1');
+  assert.match(window.document.getElementById('toast').textContent, /failed/i);

@@ -353,7 +353,8 @@ function openInlineEdit(tr, d, kind){
     var patchKey = kind==='customer'?'customer_id':'carrier_id';
     Promise.all(ids.map(function(id){ var p={}; p[patchKey]=val; return patchDraft(id,p); }))
       .then(function(){ return loadQueue(); })
-      .then(function(){ showToast('Updated'); });
+      .then(function(){ showToast('Updated'); })
+      .catch(function(){ showToast('Update failed'); });
   });
 }
 
@@ -382,11 +383,13 @@ function renderBulkBar(){
 }
 function bulkSetCustomer(customerId){
   return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { customer_id: customerId }); }))
-    .then(function(){ clearSelection(); return loadQueue(); });
+    .then(function(){ clearSelection(); return loadQueue(); })
+    .catch(function(){ showToast('Update failed'); });
 }
 function bulkSetCarrier(carrierId){
   return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { carrier_id: carrierId }); }))
-    .then(function(){ clearSelection(); return loadQueue(); });
+    .then(function(){ clearSelection(); return loadQueue(); })
+    .catch(function(){ showToast('Update failed'); });
 }
 
 function promptPick(kind){
@@ -468,7 +471,7 @@ function patchDraft(id, patch){
   var body=Object.assign({ email: brokerEmail }, patch);
   return fetch(BROKER_API_BASE+'/draft-loads/'+id, {
     method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
-  }).then(function(r){ return r.json(); });
+  }).then(function(r){ if(r&&r.ok===false) throw new Error('patch failed'); return r.json(); });
 }
 
 function applyGroup(raw, value, ids, remember, kind){
@@ -481,9 +484,10 @@ function applyGroup(raw, value, ids, remember, kind){
       return fetch(BROKER_API_BASE+'/draft-loads/alias', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ email:brokerEmail, source:(g&&g.source)||'', raw_name:raw, customer_id:value })
-      }).then(function(r){ return r.json(); });
+      }).then(function(r){ if(r&&r.ok===false) throw new Error('alias failed'); return r.json(); });
     }
-  }).then(function(){ return loadQueue(); });
+  }).then(function(){ return loadQueue(); })
+    .catch(function(){ showToast('Update failed'); });
 }
 
 function customerOptions(selectedId, candidates){
@@ -566,7 +570,9 @@ function submitIds(ids){
   return fetch(BROKER_API_BASE+'/draft-loads/submit', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({ email:brokerEmail, ids:ids })
-  }).then(function(r){ return r.json(); }).then(function(res){ handleSubmitResult(res); return res; });
+  }).then(function(r){ if(r&&r.ok===false) throw new Error('submit failed'); return r.json(); })
+    .then(function(res){ handleSubmitResult(res); return res; })
+    .catch(function(){ showToast('Submit failed'); });
 }
 function submitAllReady(){
   var ids=__state.drafts.filter(function(d){return d.status==='ready';}).map(function(d){return d.id;});

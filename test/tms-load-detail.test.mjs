@@ -14,6 +14,10 @@ const CUSTOMERS = { customers: [
   { customer_id: 'cu2', customer_name: 'Pending Co', credit_decision: 'Awaiting Credit Decision' },
   { customer_id: 'cu3', customer_name: 'Boost Co', credit_decision: 'Credit Boost Requested' },
 ]};
+const NOA_STATUS = { carriers: [{
+  vendor_id: 'v1', pay_term: 'Factoring Company - Quick Pay', factoring_company: 'OUTGO INC.',
+  doc_on_file: { type: 'NOA', has_doc: true },
+}] };
 
 function makeWidget(opts) {
   opts = opts || {};
@@ -28,7 +32,8 @@ function makeWidget(opts) {
         if (String(url).indexOf('/tms-carriers') !== -1) return Promise.resolve({ json: () => Promise.resolve(CARRIERS) });
         if (String(url).indexOf('/tms-customers') !== -1) return Promise.resolve({ json: () => Promise.resolve(CUSTOMERS) });
         if (String(url).indexOf('/tms-templates') !== -1) return Promise.resolve({ json: () => Promise.resolve({ templates: [] }) });
-        return Promise.resolve({ json: () => Promise.resolve({}) });
+        if (String(url).indexOf('/noa-status') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(NOA_STATUS) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
       };
     }
   });
@@ -62,13 +67,26 @@ test('populateCarriers marks DNU carriers and shows a warning on select', () => 
   assert.match(window.document.getElementById('vetting-badge').textContent, /Do Not Use|DNU/i);
 });
 
-test('onCarrierChange shows the carrier broker pay terms on select', () => {
+test('onCarrierChange fetches /noa-status and shows pay terms, factor, and NOA on file', async () => {
   const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
   window.populateCarriers(CARRIERS.carriers);
-  window.document.getElementById('f-carrier_id').value = 'v1';   // ROADWAY, Net 30
+  window.document.getElementById('f-carrier_id').value = 'v1';   // ROADWAY
   window.onCarrierChange();
+  await new Promise(r => setTimeout(r, 10));                     // let /noa-status resolve
   const badge = window.document.getElementById('vetting-badge').textContent;
-  assert.match(badge, /Pay terms: Net 30/);
+  assert.match(badge, /Pay terms: Factoring Company - Quick Pay/);
+  assert.match(badge, /Factor: OUTGO INC\./);
+  assert.match(badge, /NOA on file/);
+});
+
+test('vettingExtraHtml warns when a factoring/LOR carrier has no NOA on file', () => {
+  const { window } = makeWidget();
+  const html = window.vettingExtraHtml({ pay_term: 'Factoring Company', factoring_company: 'RTS', doc_on_file: null });
+  assert.match(html, /No NOA\/LOR on file/);
+  // a direct-pay carrier with no doc should NOT warn
+  const ok = window.vettingExtraHtml({ pay_term: 'Standard Net 30', doc_on_file: null });
+  assert.doesNotMatch(ok, /No NOA\/LOR on file/);
 });
 
 test('populateCustomers lists bookable customers (Approved + Boost Requested), hides others', () => {

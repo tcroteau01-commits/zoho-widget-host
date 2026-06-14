@@ -12,6 +12,7 @@ const CARRIERS = { carriers: [
 const CUSTOMERS = { customers: [
   { customer_id: 'cu1', customer_name: 'Big Shipper', credit_decision: 'Approved' },
   { customer_id: 'cu2', customer_name: 'Pending Co', credit_decision: 'Awaiting Credit Decision' },
+  { customer_id: 'cu3', customer_name: 'Boost Co', credit_decision: 'Credit Boost Requested' },
 ]};
 
 function makeWidget(opts) {
@@ -61,14 +62,15 @@ test('populateCarriers marks DNU carriers and shows a warning on select', () => 
   assert.match(window.document.getElementById('vetting-badge').textContent, /Do Not Use|DNU/i);
 });
 
-test('populateCustomers only lists APPROVED customers', () => {
+test('populateCustomers lists bookable customers (Approved + Boost Requested), hides others', () => {
   const { window } = makeWidget();
   window.populateCustomers(CUSTOMERS.customers);
   const sel = window.document.getElementById('f-customer_id');
   const labels = Array.from(sel.options).map(o => o.textContent);
   assert.ok(labels.includes('Big Shipper'), 'approved customer should be listed');
+  assert.ok(labels.includes('Boost Co'), 'boost-pending customer should be listed');
   assert.ok(!labels.includes('Pending Co'), 'non-approved customer should be hidden');
-  assert.equal(sel.options.length, 2);            // placeholder + 1 approved
+  assert.equal(sel.options.length, 3);            // placeholder + approved + boost
 });
 
 test('ensureCustomerOption re-adds a non-approved customer when editing a load booked against it', () => {

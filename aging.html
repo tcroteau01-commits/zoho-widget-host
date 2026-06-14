@@ -1340,9 +1340,15 @@
 
     function openInSubmissionHistory(loadId) {
       try { localStorage.setItem('focusLoadId', loadId); } catch (e) {}
-      if (window.top && window.top.location) {
-        window.top.location.href = '#Page:Submission_History';
-      }
+      // Build the full parent-portal URL from serviceOrigin so we navigate the
+      // Zoho portal, not this widget's own (github.io) iframe URL. A bare
+      // '#Page:...' hash just sticks onto the widget URL and goes nowhere useful.
+      var sp = new URLSearchParams(window.location.search);
+      var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+      var url = origin.replace(/\/$/, '') + '/#Page:Submission_History';
+      try { window.top.location.href = url; return; } catch (e) {}
+      try { window.parent.location.href = url; return; } catch (e) {}
+      try { window.open(url, '_top'); } catch (e) {}
     }
 
     function findInvoiceByLoadId(customer, loadId) {

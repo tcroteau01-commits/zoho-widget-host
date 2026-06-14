@@ -1142,7 +1142,18 @@ function submitModal() {
     }
   }).catch(function(err) {
     console.error('[CarrierOnboarding] addRecords failed', err);
-    var msg = (err && (err.message || err.toString())) ? ': ' + (err.message || err.toString()) : '';
+    // The Creator SDK rejects with a plain object (e.g. {code, message} or
+    // {responseText}); err.toString() on that yields "[object Object]". Pull out
+    // a human-readable detail so the real failure (e.g. Creator code 3xxx) shows.
+    var detail = '';
+    if (err) {
+      if (typeof err === 'string') detail = err;
+      else if (err.message) detail = err.message;
+      else if (err.responseText) detail = err.responseText;
+      else if (err.code) detail = 'code ' + err.code + (err.error ? ': ' + err.error : '');
+      else { try { detail = JSON.stringify(err); } catch (e) { detail = String(err); } }
+    }
+    var msg = detail ? ': ' + detail : '';
     showModalMsg('Could not send link' + msg + '. Please try again.', 'error');
     submit.disabled = false;
     cancel.disabled = false;

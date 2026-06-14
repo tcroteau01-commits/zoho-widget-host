@@ -10,7 +10,8 @@ const CARRIERS = { carriers: [
   { vendor_id: 'v2', carrier_name: 'BADCO', mc: '999', dot: '111', dnu: true, status: 'Active' },
 ]};
 const CUSTOMERS = { customers: [
-  { customer_id: 'cu1', customer_name: 'Big Shipper', approval_status: 'Approved' },
+  { customer_id: 'cu1', customer_name: 'Big Shipper', credit_decision: 'Approved' },
+  { customer_id: 'cu2', customer_name: 'Pending Co', credit_decision: 'Awaiting Credit Decision' },
 ]};
 
 function makeWidget(opts) {
@@ -58,6 +59,26 @@ test('populateCarriers marks DNU carriers and shows a warning on select', () => 
   sel.value = 'v2';                                // BADCO (dnu)
   window.onCarrierChange();
   assert.match(window.document.getElementById('vetting-badge').textContent, /Do Not Use|DNU/i);
+});
+
+test('populateCustomers only lists APPROVED customers', () => {
+  const { window } = makeWidget();
+  window.populateCustomers(CUSTOMERS.customers);
+  const sel = window.document.getElementById('f-customer_id');
+  const labels = Array.from(sel.options).map(o => o.textContent);
+  assert.ok(labels.includes('Big Shipper'), 'approved customer should be listed');
+  assert.ok(!labels.includes('Pending Co'), 'non-approved customer should be hidden');
+  assert.equal(sel.options.length, 2);            // placeholder + 1 approved
+});
+
+test('ensureCustomerOption re-adds a non-approved customer when editing a load booked against it', () => {
+  const { window } = makeWidget();
+  window.populateCustomers(CUSTOMERS.customers);
+  window.ensureCustomerOption('cu2');             // the now-non-approved booked customer
+  const sel = window.document.getElementById('f-customer_id');
+  const opt = Array.from(sel.options).find(o => o.value === 'cu2');
+  assert.ok(opt, 'booked customer should be re-added on edit');
+  assert.match(opt.textContent, /not currently approved/i);
 });
 
 test('Carrier MC field is read-only (auto-filled from carrier, not editable)', () => {

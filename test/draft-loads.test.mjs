@@ -368,3 +368,12 @@ test('renderPaperwork renders one row per load with two required slots', () => {
   assert.equal(rows.length, 2);
   assert.equal(rows[0].querySelectorAll('.slot').length, 2);
 });
+
+test('routeFileToSlot: token-boundary match avoids ref substring collision', () => {
+  const w = mk();
+  const loads = [
+    { id: '1', ref: 'WMT-9002', invoice: 'A' },
+    { id: '2', ref: 'WMT-90021', invoice: 'B' }
+  ];
+  assert.deepEqual(w.routeFileToSlot('WMT-90021.pdf', loads), { loadId: '2', slot: 'customer' });
+});

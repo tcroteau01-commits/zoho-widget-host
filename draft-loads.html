@@ -879,15 +879,24 @@ function createDraftsFromPreview(){
 
 var __pw = { loads: [], slots: {}, files: {}, tray: [] };
 
+function tokenMatch(filename, key){
+  key=String(key==null?'':key).toLowerCase();
+  if(!key) return false;
+  // True only when key appears bounded by start/end or a non-alphanumeric char,
+  // so 'WMT-9002' does NOT match 'WMT-90021.pdf'.
+  var esc=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  var re=new RegExp('(^|[^a-z0-9])'+esc+'([^a-z0-9]|$)');
+  return re.test(String(filename||'').toLowerCase());
+}
+
 function routeFileToSlot(filename, loads){
-  var fn=String(filename||'').toLowerCase();
   for (var i=0;i<loads.length;i++){
     var l=loads[i];
-    if (l.ref && fn.indexOf(String(l.ref).toLowerCase())!==-1) return { loadId:l.id, slot:'customer' };
+    if (l.ref && tokenMatch(filename, l.ref)) return { loadId:l.id, slot:'customer' };
   }
   for (var j=0;j<loads.length;j++){
     var c=loads[j];
-    if (c.invoice && fn.indexOf(String(c.invoice).toLowerCase())!==-1) return { loadId:c.id, slot:'carrier' };
+    if (c.invoice && tokenMatch(filename, c.invoice)) return { loadId:c.id, slot:'carrier' };
   }
   return null;
 }

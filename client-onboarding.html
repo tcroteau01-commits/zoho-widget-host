@@ -905,7 +905,7 @@ function initDom() {
       $('next0').disabled = (flow === 'ambiguous');
       $('opName').value = d.name || ''; $('opEIN').value = d.ein || ''; $('opUsdot').value = dot; $('opMC').value = d.mc || '';
       $('opPhone').value = d.phone || ''; $('opEmail').value = d.email || '';
-      if (flow === 'carrier') $('opTrucks').value = d.trucks || 1;
+      if (flow === 'carrier') { $('opTrucks').value = d.trucks || 1; if (d.drivers != null && d.drivers !== '') $('opDrivers').value = d.drivers; }
       $('termsPanel').classList.remove('hidden');
       recalc();
     });

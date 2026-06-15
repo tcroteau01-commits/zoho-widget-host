@@ -198,7 +198,7 @@ html, body {
   border-radius: 10px;
   padding: 14px 16px;
   display: grid;
-  grid-template-columns: 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 62px;
+  grid-template-columns: 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 96px;
   gap: 16px;
   align-items: center;
   cursor: pointer;
@@ -212,8 +212,11 @@ html, body {
 .row.s-hold::before       { background: #d35400; }
 .row.s-purchased::before  { background: #2e7d32; }
 .row.s-verifying::before  { background: #1976d2; }
-.hist-edit { border: 1px solid #d9d4ea; background: #fff; border-radius: 7px; padding: 5px 0; width: 100%; font-size: 12px; font-weight: 600; color: #6a4bb5; cursor: pointer; font-family: inherit; text-align: center; transition: background 0.12s, border-color 0.12s; }
+.draft-acts { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.hist-edit { border: 1px solid #d9d4ea; background: #fff; border-radius: 7px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: #6a4bb5; cursor: pointer; font-family: inherit; text-align: center; transition: background 0.12s, border-color 0.12s; }
 .hist-edit:hover { background: #f3effb; border-color: #b9a4e8; }
+.hist-del { border: 1px solid #f0c6c6; background: #fff; border-radius: 7px; padding: 5px 9px; font-size: 12px; font-weight: 700; color: #a31818; cursor: pointer; font-family: inherit; line-height: 1; transition: background 0.12s, border-color 0.12s; }
+.hist-del:hover { background: #fdf2f2; border-color: #e3a0a0; }
 
 .cell-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; font-weight: 600; margin-bottom: 2px; }
 .cell-val { font-size: 13px; color: #272727; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -634,6 +637,18 @@ function editDraftLoad(id) {
   try { sessionStorage.setItem('draftId', String(id)); } catch (e) {}
   navigateParent('#Page:' + LOAD_DETAILS_PAGE);
 }
+// Delete a draft directly from Submission History (same endpoint as the Draft Loads
+// widget). On success drop it from the in-memory set and re-render.
+function deleteDraftRow(id) {
+  if (!window.confirm('Delete this draft? This cannot be undone.')) return;
+  fetch(BROKER_API_BASE + '/draft-loads/' + id + '?email=' + encodeURIComponent(brokerEmail), { method: 'DELETE' })
+    .then(function(r) { if (!r || !r.ok) throw new Error('delete failed'); return r.json(); })
+    .then(function() {
+      allRecords = allRecords.filter(function(x) { return String(x.ID) !== String(id); });
+      applyFilters();
+    })
+    .catch(function() { window.alert('Could not delete this draft — please try again.'); });
+}
 function isHoldRollup(rec) {
   var k = statusMeta(rec).key;
   return k === 'hold' || k === 'verifying-noa' || k === 'verifying-inv';
@@ -1026,7 +1041,7 @@ function renderList(truncated) {
       var idx = parseInt(rowEl.dataset.idx, 10);
       var r = allRecords[idx];
       if (r && isDraft(r)) {
-        if (e.target.closest('[data-edit-draft]')) return;  // Edit handles itself
+        if (e.target.closest('[data-edit-draft]') || e.target.closest('[data-del-draft]')) return;  // buttons handle themselves
         goToDraftQueue();
         return;
       }
@@ -1037,6 +1052,12 @@ function renderList(truncated) {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
       editDraftLoad(btn.getAttribute('data-edit-draft'));
+    });
+  });
+  results.querySelectorAll('[data-del-draft]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      deleteDraftRow(btn.getAttribute('data-del-draft'));
     });
   });
 }
@@ -1053,7 +1074,7 @@ function rowHtml(r, idx) {
   var docCount = totalDocCount(r);
 
   // See-all (admin/credit) prepends a Client column; widen the row grid by one column.
-  var rowStyle = allClients ? ' style="grid-template-columns:1.3fr 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 62px;"' : '';
+  var rowStyle = allClients ? ' style="grid-template-columns:1.3fr 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 96px;"' : '';
   var clientCell = allClients
     ? '<div>' +
         '<div class="cell-label">Client</div>' +
@@ -1090,7 +1111,10 @@ function rowHtml(r, idx) {
       '</div>' +
       '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
       (isDraft(r)
-        ? '<div class="cell-chev"><button class="hist-edit" data-edit-draft="' + esc(r.ID) + '">Edit</button></div>'
+        ? '<div class="cell-chev draft-acts">' +
+            '<button class="hist-edit" data-edit-draft="' + esc(r.ID) + '">Edit</button>' +
+            '<button class="hist-del" data-del-draft="' + esc(r.ID) + '" title="Delete draft">✕</button>' +
+          '</div>'
         : '<div class="chev cell-chev">›</div>') +
     '</div>';
 }
@@ -1450,6 +1474,7 @@ window.portalUrl = portalUrl;
 window.navigateParent = navigateParent;
 window.goToDraftQueue = goToDraftQueue;
 window.editDraftLoad = editDraftLoad;
+window.deleteDraftRow = deleteDraftRow;
 
 })();
 </script>

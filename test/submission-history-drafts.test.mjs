@@ -44,6 +44,45 @@ test('rowHtml for a Draft load exposes an Edit control + draft badge', () => {
   assert.match(html, /Edit/);
 });
 
+test('rowHtml for a Draft load also exposes a Delete (✕) control', () => {
+  const w = makeDom();
+  const html = w.rowHtml(DRAFT, 0);
+  assert.match(html, /data-del-draft="900"/);
+});
+
+test('deleteDraftRow issues a DELETE to /draft-loads/<id> when confirmed', () => {
+  const calls = [];
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously',
+    url: 'https://tcroteau01-commits.github.io/history.html?serviceOrigin=https://brokerhub.operfi.com',
+    beforeParse(window) {
+      window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => new Promise(() => {}) } } };
+      window.fetch = (url, opts) => { calls.push({ url: String(url), opts: opts || {} }); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); };
+    }
+  });
+  const w = dom.window;
+  w.confirm = () => true;
+  w.deleteDraftRow('900');
+  const del = calls.find(c => /\/draft-loads\/900/.test(c.url) && c.opts.method === 'DELETE');
+  assert.ok(del, 'DELETE issued');
+});
+
+test('deleteDraftRow does nothing when the confirm is cancelled', () => {
+  const calls = [];
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously',
+    url: 'https://tcroteau01-commits.github.io/history.html',
+    beforeParse(window) {
+      window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => new Promise(() => {}) } } };
+      window.fetch = (url, opts) => { calls.push({ url: String(url), opts: opts || {} }); return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); };
+    }
+  });
+  const w = dom.window;
+  w.confirm = () => false;
+  w.deleteDraftRow('900');
+  assert.equal(calls.filter(c => c.opts && c.opts.method === 'DELETE').length, 0);
+});
+
 test('rowHtml for a non-draft load keeps the chevron, no edit control', () => {
   const w = makeDom();
   const html = w.rowHtml(PURCHASED, 1);

@@ -231,6 +231,102 @@ test('bulk Set customer PATCHes all selected ids', async () => {
   assert.equal(patches.length, 2);
 });
 
+test('promptPick self-heals an empty customer list (the "nothing happens" fix)', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.renderQueue(DRAFTS);
+  window.__state.selected = ['900'];
+  window.__state.customers = [];           // simulate pick lists that never loaded
+  await window.promptPick('customer');
+  const sel = window.document.getElementById('bulk-sel');
+  assert.ok(sel, 'picker modal opened');
+  // options beyond the placeholder = the lists were fetched on demand
+  assert.ok(sel.querySelectorAll('option').length > 1, 'customer options populated');
+  assert.ok(window.__state.customers.length > 0, 'customers loaded into state');
+});
+
+test('promptPick carrier self-heals an empty carrier list', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.renderQueue(DRAFTS);
+  window.__state.selected = ['900'];
+  window.__state.carriers = [];
+  await window.promptPick('carrier');
+  const sel = window.document.getElementById('bulk-sel');
+  assert.ok(sel.querySelectorAll('option').length > 1, 'carrier options populated');
+});
+
+// ---- Edit a draft → Load Details form (sessionStorage handoff) ----
+test('editDraft stashes the draft id in sessionStorage for the Load Details form', () => {
+  const { window } = makeWidget();
+  try { window.sessionStorage.removeItem('draftId'); } catch (e) {}
+  window.editDraft('901');
+  assert.equal(window.sessionStorage.getItem('draftId'), '901');
+});
+
+test('portalPageUrl targets the Load Details page on the portal origin', () => {
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously',
+    url: 'https://tcroteau01-commits.github.io/draft-loads.html?serviceOrigin=https://portal.example.com/app',
+    beforeParse(window) {
+      window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => new Promise(() => {}) } } };
+      window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    }
+  });
+  const url = dom.window.portalPageUrl('Load_Details_NEW');
+  assert.equal(url, 'https://portal.example.com/app/#Page:Load_Details_NEW');
+});
+
+test('each queue row exposes an Edit action', () => {
+  const { window } = makeWidget();
+  window.renderQueue(DRAFTS);
+  const rows = window.document.querySelectorAll('#queue-body tr');
+  assert.ok(rows[0].querySelector('[data-edit-row]'), 'row has an edit control');
+});
+
+// ---- Delete drafts (single + bulk) ----
+test('deleteDrafts issues a DELETE and removes the draft from state', async () => {
+  const { window, records } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.confirm = () => true;
+  window.__state.drafts = DRAFTS.slice();
+  await window.deleteDrafts(['901']);
+  const dels = records.filter(r => /\/draft-loads\/901/.test(r.url) && r.opts.method === 'DELETE');
+  assert.equal(dels.length, 1);
+  assert.ok(!window.__state.drafts.some(d => d.id === '901'), '901 removed from state');
+  assert.ok(window.__state.drafts.some(d => d.id === '900'), '900 untouched');
+});
+
+test('deleteDrafts cancelled at the confirm does nothing', async () => {
+  const { window, records } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.confirm = () => false;
+  window.__state.drafts = DRAFTS.slice();
+  await window.deleteDrafts(['901']);
+  const dels = records.filter(r => r.opts && r.opts.method === 'DELETE');
+  assert.equal(dels.length, 0);
+  assert.equal(window.__state.drafts.length, 2);
+});
+
+test('bulk Delete button removes all selected drafts', async () => {
+  const { window, records } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.confirm = () => true;
+  window.__state.drafts = DRAFTS.slice();
+  window.__state.selected = ['900', '901'];
+  await window.deleteDrafts(window.__state.selected.slice());
+  const dels = records.filter(r => r.opts && r.opts.method === 'DELETE');
+  assert.equal(dels.length, 2);
+  assert.equal(window.__state.drafts.length, 0);
+});
+
+test('each queue row exposes a Delete action', () => {
+  const { window } = makeWidget();
+  window.renderQueue(DRAFTS);
+  const rows = window.document.querySelectorAll('#queue-body tr');
+  assert.ok(rows[0].querySelector('[data-del]'), 'row has a delete control');
+});
+
 // ---- Task 18 ----
 test('submit-all posts only ready ids', async () => {
   const { window, records } = makeWidget();
@@ -321,18 +417,32 @@ test('renderPreview renders one row per preview row and flags error + duplicate'
   assert.equal(w.document.querySelectorAll('.prevrow .badge-dup').length, 1);
 });
 
-test('createDraftsFromPreview posts only the clean rows and opens paperwork', async () => {
+test('createDraftsFromPreview creates every non-duplicate row (unresolved = exceptions) and opens paperwork', async () => {
   const { window, records } = makeWidget();
   window.openImportModal();
   window.renderPreview(PREVIEW.rows);
   await window.createDraftsFromPreview();
   const posts = records.filter(r => /\/draft-loads$/.test(r.url.split('?')[0]) && r.opts.method === 'POST');
-  assert.equal(posts.length, 1);
-  const body = JSON.parse(posts[0].opts.body);
-  assert.equal(body.source, 'CSV');
-  assert.equal(body.customer_reference_number, 'WMT-90021');
-  assert.ok(body.source_payload && body.source_payload.carrier_factoring_invoice === 'INV-7741');
+  // PREVIEW = [matched, unresolved/missing-fields, duplicate]; the duplicate is skipped,
+  // both the matched AND the unresolved row come in as drafts.
+  assert.equal(posts.length, 2);
+  const matched = JSON.parse(posts[0].opts.body);
+  assert.equal(matched.source, 'CSV');
+  assert.equal(matched.customer_reference_number, 'WMT-90021');
+  assert.equal(matched.customer_id, '1');
+  const unresolved = JSON.parse(posts[1].opts.body);
+  assert.ok(!unresolved.customer_id, 'unresolved row has no customer_id but is still created');
+  assert.ok(!unresolved.carrier_id, 'unresolved row has no carrier_id but is still created');
   assert.ok(window.document.getElementById('paperwork'), 'paperwork view opened');
+});
+
+test('createDraftsFromPreview never posts pay terms (derived server-side from carrier)', async () => {
+  const { window, records } = makeWidget();
+  window.openImportModal();
+  window.renderPreview(PREVIEW.rows);
+  await window.createDraftsFromPreview();
+  const posts = records.filter(r => /\/draft-loads$/.test(r.url.split('?')[0]) && r.opts.method === 'POST');
+  posts.forEach(p => assert.ok(!('payment_terms' in JSON.parse(p.opts.body)), 'no payment_terms sent'));
 });
 
 // ---- Task 20: paperwork assembly + auto-route ----
@@ -367,6 +477,40 @@ test('renderPaperwork renders one row per load with two required slots', () => {
   const rows = w.document.querySelectorAll('#paperwork .lrow');
   assert.equal(rows.length, 2);
   assert.equal(rows[0].querySelectorAll('.slot').length, 2);
+});
+
+test('renderPaperwork row surfaces carrier name, customer ref AND carrier invoice for drag-drop direction', () => {
+  const w = mk();
+  w.renderPaperwork([
+    { id: '900', ref: 'EXAMPLE-10042', invoice: 'INV-7741', customer_name: 'ABC Shipping',
+      carrier_name: 'BRENNAN TRUCKING', carrier_mc: '982341' }
+  ]);
+  const txt = w.document.querySelector('#paperwork .lrow').textContent;
+  assert.match(txt, /ABC Shipping/);
+  assert.match(txt, /BRENNAN TRUCKING/);
+  assert.match(txt, /EXAMPLE-10042/);
+  assert.match(txt, /INV-7741/);
+});
+
+test('empty paperwork slots hint which number routes the file', () => {
+  const w = mk();
+  w.renderPaperwork([{ id: '900', ref: 'EXAMPLE-10042', invoice: 'INV-7741',
+    customer_name: 'ABC Shipping', carrier_name: 'BRENNAN TRUCKING' }]);
+  const slots = w.document.querySelectorAll('#paperwork .slot');
+  assert.match(slots[0].textContent, /EXAMPLE-10042/, 'customer slot hints the ref #');
+  assert.match(slots[1].textContent, /INV-7741/, 'carrier slot hints the invoice #');
+});
+
+test('createDraftsFromPreview passes the resolved carrier NAME (not MC) into paperwork', async () => {
+  const { window } = makeWidget();
+  window.__state.carriers = [{ vendor_id: 'v1', carrier_name: 'BRENNAN TRUCKING', mc: '982341' }];
+  window.openImportModal();
+  window.renderPreview([PREVIEW.rows[0]]);
+  await window.createDraftsFromPreview();
+  const load = window.__pw.loads[0];
+  assert.equal(load.carrier_name, 'BRENNAN TRUCKING');
+  assert.equal(load.invoice, 'INV-7741');
+  assert.equal(load.carrier_mc, '982341');
 });
 
 test('routeFileToSlot: token-boundary match avoids ref substring collision', () => {

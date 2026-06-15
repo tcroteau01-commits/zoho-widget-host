@@ -1208,6 +1208,11 @@ function _resolveDraftId(params) {
   if (!id) {
     try { id = new URLSearchParams(location.search).get('draftId'); } catch (e) {}
   }
+  // Edit handoff from the Draft Loads queue: the id is stashed in sessionStorage
+  // (Creator hash-route query params don't reach getInitParams). Clear after read.
+  if (!id) {
+    try { id = sessionStorage.getItem('draftId'); if (id) sessionStorage.removeItem('draftId'); } catch (e) {}
+  }
   return id || '';
 }
 

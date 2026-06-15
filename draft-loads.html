@@ -89,6 +89,11 @@ select.cell{border:1px solid var(--amber);background:#fffdf7;border-radius:7px;p
 .editable{cursor:pointer;border-bottom:1px dashed transparent;display:inline-block}
 tr:hover .editable{border-bottom-color:#cfc9bb}
 .rowsubmit{font-size:11.5px;color:var(--green);font-weight:700;cursor:pointer;background:none;border:0;font-family:inherit;margin-left:8px}
+.rowacts{display:flex;gap:6px;align-items:center}
+.actbtn{font-size:11.5px;font-weight:600;cursor:pointer;background:#fff;border:1px solid var(--line);border-radius:7px;padding:5px 9px;color:var(--ink);font-family:inherit}
+.actbtn:hover{border-color:#cfc9bb}
+.actbtn.del{color:var(--red);border-color:#ecc7c2;font-weight:700}
+.actbtn.del:hover{background:#fbe6e2}
 .empty{text-align:center;color:var(--muted);padding:40px 0}
 
 /* Modal: grouped resolve */
@@ -237,9 +242,10 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
           <th style="width:74px">Margin</th>
           <th style="width:56px">Docs</th>
           <th style="width:170px">Status</th>
+          <th style="width:92px">Actions</th>
         </tr>
       </thead>
-      <tbody id="queue-body"><tr><td colspan="9" class="empty">Loading drafts…</td></tr></tbody>
+      <tbody id="queue-body"><tr><td colspan="10" class="empty">Loading drafts…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -363,7 +369,7 @@ function renderQueue(drafts){
   var rows = visibleDrafts();
   var body=document.getElementById('queue-body');
   if(!body) return;
-  if(!rows.length){ body.innerHTML='<tr><td colspan="9" class="empty">No drafts.</td></tr>'; return; }
+  if(!rows.length){ body.innerHTML='<tr><td colspan="10" class="empty">No drafts.</td></tr>'; return; }
   body.innerHTML='';
   rows.forEach(function(d){
     var tr=document.createElement('tr');
@@ -379,7 +385,11 @@ function renderQueue(drafts){
       '<td data-label="Carr. Rate" class="rt">'+money(d.carrier_rate)+'</td>'+
       '<td data-label="Margin" class="marg">'+money(marginOf(d))+'</td>'+
       '<td data-label="Docs"><span class="'+docCls+'">'+docCount+(docCount===2?' ✓':'')+'</span></td>'+
-      '<td data-label="Status">'+statusCellHtml(d)+'</td>';
+      '<td data-label="Status">'+statusCellHtml(d)+'</td>'+
+      '<td data-label="Actions"><div class="rowacts">'+
+        '<button class="actbtn" data-edit-row="'+esc(d.id)+'" title="Open this load">Edit</button>'+
+        '<button class="actbtn del" data-del="'+esc(d.id)+'" title="Delete draft">✕</button>'+
+      '</div></td>';
     tr.setAttribute('data-row', d.id);
     wireRow(tr, d);
     body.appendChild(tr);
@@ -398,6 +408,52 @@ function wireRow(tr, d){
   });
   var sb=tr.querySelector('[data-submit]');
   if (sb) sb.addEventListener('click', function(e){ e.stopPropagation(); submitOne(d.id); });
+  var del=tr.querySelector('[data-del]');
+  if (del) del.addEventListener('click', function(e){ e.stopPropagation(); deleteDrafts([d.id]); });
+  var ed=tr.querySelector('[data-edit-row]');
+  if (ed) ed.addEventListener('click', function(e){ e.stopPropagation(); editDraft(d.id); });
+}
+
+/* ---------------- edit a draft → Load Details form ---------------- */
+
+// Creator page link-name of the Load Details / Submit Load form. Tom: confirm
+// the exact link-name; everything else keys off this one constant.
+var LOAD_DETAILS_PAGE = 'Load_Details_NEW';
+
+// Widgets share one GH-Pages origin but live on separate Creator pages. Creator
+// passes the portal origin in ?serviceOrigin=; build an absolute hash route to it.
+function portalPageUrl(page){
+  var svc=''; try { svc=new URLSearchParams(window.location.search).get('serviceOrigin')||''; } catch(e){}
+  return svc.replace(/\/+$/,'') + '/#Page:' + page;
+}
+
+// Hand the draft id to the Load Details form via sessionStorage (shared across
+// pages on the same GH origin; Creator hash-route query params don't reach the
+// widget), then navigate the parent Creator frame to that form.
+function editDraft(id){
+  try { sessionStorage.setItem('draftId', String(id)); } catch(e){}
+  var url=portalPageUrl(LOAD_DETAILS_PAGE);
+  try { window.top.location.href=url; } catch(e){ window.location.href=url; }
+}
+
+/* ---------------- delete drafts (single + bulk) ---------------- */
+
+function deleteDrafts(ids){
+  ids=(ids||[]).filter(Boolean);
+  if(!ids.length) return Promise.resolve();
+  if(!window.confirm('Delete '+ids.length+' draft'+(ids.length===1?'':'s')+'? This cannot be undone.')) return Promise.resolve();
+  return Promise.all(ids.map(function(id){
+    return fetch(BROKER_API_BASE+'/draft-loads/'+id+'?email='+encodeURIComponent(brokerEmail), { method:'DELETE' })
+      .then(function(r){ return r && r.ok ? id : null; })
+      .catch(function(){ return null; });
+  })).then(function(done){
+    var ok=done.filter(Boolean);
+    __state.drafts=__state.drafts.filter(function(d){ return ok.indexOf(d.id)===-1; });
+    __state.selected=__state.selected.filter(function(id){ return ok.indexOf(id)===-1; });
+    clearSelection(); renderQueue(); renderSummary();
+    var failed=ids.length-ok.length;
+    showToast(ok.length+' draft'+(ok.length===1?'':'s')+' deleted'+(failed?' · '+failed+' failed':''));
+  });
 }
 
 /* ---------------- inline cell edit ---------------- */
@@ -481,9 +537,28 @@ function bulkSetCarrier(carrierId){
     .catch(function(){ showToast('Update failed'); });
 }
 
+// Ensure the customer/carrier pick lists are loaded before opening a picker.
+// If they failed to load at boot (quota/impersonation), the dropdown would open
+// empty and feel like "nothing happened" — so fetch them on demand here.
+function ensurePickLists(kind){
+  var need = kind==='customer' ? !(__state.customers && __state.customers.length)
+                               : !(__state.carriers && __state.carriers.length);
+  return need ? loadPickLists() : Promise.resolve();
+}
+
 function promptPick(kind){
   var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
-  if(!scrim||!modal||!__state.selected.length) return;
+  if(!scrim||!modal||!__state.selected.length) return Promise.resolve();
+  return ensurePickLists(kind).then(function(){ promptPickRender(kind, scrim, modal); });
+}
+
+function promptPickRender(kind, scrim, modal){
+  modal.className='modal';
+  var list = kind==='customer' ? __state.customers : __state.carriers;
+  if (!list || !list.length){
+    showToast('Could not load '+(kind==='customer'?'customers':'carriers')+' — try Refresh');
+    return;
+  }
   var title = kind==='customer'?'Set customer for '+__state.selected.length+' loads':'Set carrier for '+__state.selected.length+' loads';
   modal.innerHTML=
     '<div class="modal-head"><span class="x" id="modal-x">✕</span><h2>'+esc(title)+'</h2></div>'+
@@ -615,6 +690,7 @@ function openResolveModal(kind){
   var groups=computeGroups(undefined, kind);
   var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
   if(!scrim||!modal) return;
+  modal.className='modal';
   var totalLoads=groups.reduce(function(a,g){return a+g.count;},0);
   var title = kind==='customer'?'Resolve customers':'Resolve carriers';
   modal.innerHTML=
@@ -741,7 +817,7 @@ window.addEventListener('load', function(){
   bind('bulk-carr', function(){ promptPick('carrier'); });
   bind('bulk-clear', clearSelection);
   bind('bulk-docs', function(){ showToast('Attach docs coming soon'); });
-  bind('bulk-del', function(){ showToast('Delete coming soon'); });
+  bind('bulk-del', function(){ deleteDrafts(__state.selected.slice()); });
   var cbAll=document.getElementById('cb-all');
   if (cbAll) cbAll.addEventListener('change', function(){
     var on=cbAll.checked;
@@ -804,6 +880,11 @@ function importFile(file){
 }
 
 function isBadRow(row){ return (row.errors&&row.errors.length)||row.duplicate; }
+// Only true within-file duplicate refs are NOT created — identical Source_Load_Ref
+// would collapse onto one record via POST idempotency. Everything else (including
+// unmatched customer/carrier and missing fields) lands as a Draft "exception".
+function isDuplicateRow(row){ return !!row.duplicate; }
+function creatableRows(){ return __import.rows.filter(function(r){ return !isDuplicateRow(r); }); }
 
 function renderPreview(rows){
   __import.rows = rows||[];
@@ -835,16 +916,27 @@ function renderPreview(rows){
     html+='</tbody></table>';
     host.innerHTML=html;
   }
+  var creatable=creatableRows().length;
+  var dupes=__import.rows.length-creatable;
   var clean=__import.rows.filter(function(r){ return !isBadRow(r); }).length;
-  var bad=__import.rows.length-clean;
-  setText('imp-summary', __import.rows.length+' row'+(__import.rows.length===1?'':'s')+' · '+clean+' ready'+(bad?' · '+bad+' skipped':''));
+  var needFix=creatable-clean;
+  setText('imp-summary', __import.rows.length+' row'+(__import.rows.length===1?'':'s')+' · '+creatable+' will import'+
+    (needFix>0?' ('+needFix+' need attention)':'')+(dupes?' · '+dupes+' duplicate'+(dupes===1?'':'s')+' skipped':''));
   var btn=document.getElementById('imp-create');
-  if (btn){ btn.textContent='Create '+clean+' draft'+(clean===1?'':'s'); btn.disabled=!clean; }
+  if (btn){ btn.textContent='Create '+creatable+' draft'+(creatable===1?'':'s'); btn.disabled=!creatable; }
+}
+
+// Resolve a vendor id to its display carrier name (for the paperwork screen).
+// Returns '' when unresolved — the row then shows MC/DOT instead.
+function carrierDisplayName(vendorId){
+  if(!vendorId) return '';
+  var c=(__state.carriers||[]).filter(function(x){ return x.vendor_id===vendorId; })[0];
+  return (c && c.carrier_name) || '';
 }
 
 function createDraftsFromPreview(){
-  var clean=__import.rows.filter(function(r){ return !isBadRow(r); });
-  if(!clean.length){ showToast('No clean rows to create'); return Promise.resolve(); }
+  var clean=creatableRows();
+  if(!clean.length){ showToast('No rows to create'); return Promise.resolve(); }
   return Promise.all(clean.map(function(row){
     var m=row.mapped||{}, cm=row.customer_match||{}, vm=row.carrier_match||{};
     var body={
@@ -860,7 +952,7 @@ function createDraftsFromPreview(){
     };
     if (cm.best && cm.best.customer_id) body.customer_id=cm.best.customer_id;
     if (vm.vendor_id) body.carrier_id=vm.vendor_id;
-    if (m.payment_terms) body.payment_terms=m.payment_terms;
+    // payment_terms is derived server-side from the carrier's Account_Vendor record.
     if (m.load_comments) body.load_comments=m.load_comments;
     return fetch(BROKER_API_BASE+'/draft-loads', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
@@ -870,7 +962,9 @@ function createDraftsFromPreview(){
     }).then(function(res){
       if(!res || !res.record_id) return null;
       return { id:res.record_id, ref:m.customer_reference_number, invoice:m.carrier_factoring_invoice,
-               customer_name:(cm.best&&cm.best.name)||m.customer_name_raw||'', carrier_name:m.carrier_mc?('MC '+m.carrier_mc):(m.carrier_dot?('DOT '+m.carrier_dot):'') };
+               customer_name:(cm.best&&cm.best.name)||m.customer_name_raw||'',
+               carrier_name:carrierDisplayName(vm.vendor_id),
+               carrier_mc:m.carrier_mc||'', carrier_dot:m.carrier_dot||'' };
     }).catch(function(){ return null; });
   })).then(function(loads){
     var ok=loads.filter(function(l){ return l && l.id; });
@@ -949,7 +1043,9 @@ function slotHtml(l, slot){
            '<div class="auto">✓ routed by '+(slot==='customer'?'ref #':'invoice #')+'</div>';
   }
   var label = slot==='customer' ? 'customer packet needed' : 'carrier invoice needed';
-  return '<div class="empty-slot req" data-slot="'+slot+'" data-load="'+esc(l.id)+'">⬍ '+label+'</div>';
+  var key = slot==='customer' ? l.ref : l.invoice;
+  var hint = key ? '<div class="auto" style="color:var(--amber-dk)">drop file named '+esc(key)+'</div>' : '';
+  return '<div class="empty-slot req" data-slot="'+slot+'" data-load="'+esc(l.id)+'">⬍ '+label+'</div>'+hint;
 }
 
 function renderPaperwork(loads){
@@ -963,10 +1059,17 @@ function renderPaperwork(loads){
     var statHtml = st==='ready'
       ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
       : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer===true?'Carrier doc':(__pw.slots[l.id].carrier===true?'Customer doc':'Both needed')) +'</span>';
+    var carrId = l.carrier_mc ? ('MC '+esc(l.carrier_mc)) : (l.carrier_dot ? ('DOT '+esc(l.carrier_dot)) : '');
+    var idBits=[];
+    if (l.ref) idBits.push('Cust ref '+esc(l.ref));
+    if (l.invoice) idBits.push('Carrier inv '+esc(l.invoice));
+    if (carrId) idBits.push(carrId);
+    var titleHtml = esc(l.customer_name||'—') +
+      (l.carrier_name ? ' <span style="color:var(--muted);font-weight:600">→</span> '+esc(l.carrier_name) : '');
     var row=document.createElement('div');
     row.className='lrow'; row.setAttribute('data-row', l.id);
     row.innerHTML=
-      '<div><div class="co">'+esc(l.customer_name||'—')+'</div><div class="small mono">Ref '+esc(l.ref||'')+' · '+esc(l.carrier_name||'')+'</div></div>'+
+      '<div><div class="co">'+titleHtml+'</div><div class="small mono">'+idBits.join(' · ')+'</div></div>'+
       '<div class="slot" data-slot-wrap="customer" data-load="'+esc(l.id)+'">'+slotHtml(l,'customer')+'</div>'+
       '<div class="slot" data-slot-wrap="carrier" data-load="'+esc(l.id)+'">'+slotHtml(l,'carrier')+'</div>'+
       '<div class="rstat">'+statHtml+'</div>';
@@ -1222,6 +1325,10 @@ window.openInlineEdit=openInlineEdit;
 window.toggleSelect=toggleSelect;
 window.bulkSetCustomer=bulkSetCustomer;
 window.bulkSetCarrier=bulkSetCarrier;
+window.promptPick=promptPick;
+window.deleteDrafts=deleteDrafts;
+window.editDraft=editDraft;
+window.portalPageUrl=portalPageUrl;
 window.submitAllReady=submitAllReady;
 window.submitOne=submitOne;
 window.handleSubmitResult=handleSubmitResult;

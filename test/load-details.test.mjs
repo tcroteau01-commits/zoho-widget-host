@@ -337,6 +337,31 @@ test('saveDraft POSTs /draft-loads with source Manual and the collected fields, 
   assert.deepStrictEqual(body.source_payload, { customer_id: 'c9', customer_reference_number: 'PO-7' });
 });
 
+function makeStorageDom() {
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously', pretendToBeVisual: true,
+    url: 'https://tcroteau01-commits.github.io/index.html'
+  });
+  const w = dom.window;
+  w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  w.ZOHO = { CREATOR: { UTIL: { getInitParams: () => ({ loginUser: 'b@x.com' }) }, init: () => Promise.resolve() } };
+  return dom;
+}
+
+test('_resolveDraftId reads sessionStorage.draftId (Edit handoff) and clears it', () => {
+  const w = makeStorageDom().window;
+  w.sessionStorage.setItem('draftId', '777');
+  const id = w._resolveDraftId({});
+  assert.strictEqual(id, '777');
+  assert.strictEqual(w.sessionStorage.getItem('draftId'), null, 'draftId cleared after read');
+});
+
+test('_resolveDraftId still prefers an explicit param over sessionStorage', () => {
+  const w = makeStorageDom().window;
+  w.sessionStorage.setItem('draftId', '777');
+  assert.strictEqual(w._resolveDraftId({ draftId: '900' }), '900');
+});
+
 test('a second saveDraft PATCHes the stored record id instead of POSTing again', async () => {
   const seen = [];
   const dom = makeB2Dom((url, opts) => { seen.push({ url: String(url), opts: opts || {} });

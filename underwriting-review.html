@@ -450,7 +450,7 @@ function liveLoadByUSDOT(usdot) {
       getRecords(RPT.owner, APPLICATION_LOOKUP + ' == ' + appId),
       getRecords(RPT.document, APPLICATION_LOOKUP + ' == ' + appId),
       getRecords(RPT.review, APPLICATION_LOOKUP + ' == ' + appId),
-      fetchChecks(usdot)   // automated fraud/ownership/UCC results stored at submit time
+      fetchChecks(a)   // automated fraud/authority — backend runs IPQS + CarrierOK and caches by USDOT
     ]).then(function (res) {
       var rev = res[2][0] || {};
       var checks = res[3]; // null if the backend hasn't returned results yet
@@ -472,12 +472,27 @@ function liveLoadByUSDOT(usdot) {
   });
 }
 
-// Fetch the automated check results the backend stored when the application was submitted.
-function fetchChecks(usdot) {
+// Get the automated checks from the backend. POSTs the applicant fields this widget already
+// loaded (usdot/phone/email/mc) so the endpoint can run IPQS + CarrierOK and cache by USDOT;
+// falls back to a GET cache-read. Returns null if nothing's ready (widget shows "pending").
+function fetchChecks(app) {
   if (typeof fetch !== 'function') return Promise.resolve(null);
-  return fetch(API_BASE + CHECKS_PATH + '?usdot=' + encodeURIComponent(usdot))
+  var usdot = String((app && (app.USDOT != null ? app.USDOT : app)) || '');
+  var body = {
+    usdot: usdot,
+    phone: (app && (app.Business_Phone || app.SMS_Admin_Phone)) || '',
+    email: (app && app.Business_Admin_Email) || '',
+    mc: (app && app.MC_Number) || ''
+  };
+  return fetch(API_BASE + CHECKS_PATH, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  })
     .then(function (r) { return r.ok ? r.json() : null; })
-    .catch(function () { return null; });
+    .catch(function () {
+      return fetch(API_BASE + CHECKS_PATH + '?usdot=' + encodeURIComponent(usdot))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+    });
 }
 
 function saveReview(payload, existingId) {

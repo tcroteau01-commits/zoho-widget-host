@@ -256,6 +256,28 @@ test('promptPick carrier self-heals an empty carrier list', async () => {
   assert.ok(sel.querySelectorAll('option').length > 1, 'carrier options populated');
 });
 
+// ---- New Draft + bulk Attach docs (were stubs) ----
+test('New Draft clears any stale draftId before opening the Load Details form', () => {
+  const { window } = makeWidget();
+  window.sessionStorage.setItem('draftId', '999');
+  window.newDraft();
+  assert.equal(window.sessionStorage.getItem('draftId'), null);
+});
+
+test('bulk Attach docs opens the paperwork view for the selected drafts', () => {
+  const { window } = makeWidget();
+  window.__state.drafts = [
+    { id: '900', customer_reference_number: 'R1', carrier_factoring_invoice: 'INV1', customer_name: 'ACME', carrier_name: 'SWIFT', carrier_mc: '1' },
+    { id: '901', customer_reference_number: 'R2', carrier_factoring_invoice: 'INV2', customer_name: 'BETA', carrier_name: 'RELIANT' }
+  ];
+  window.__state.selected = ['900', '901'];
+  window.bulkAttachDocs();
+  assert.equal(window.__pw.loads.length, 2);
+  assert.equal(window.__pw.loads[0].ref, 'R1');
+  assert.equal(window.__pw.loads[0].invoice, 'INV1');
+  assert.ok(!window.document.getElementById('paperwork-wrap').classList.contains('pw-hidden'), 'paperwork view shown');
+});
+
 // ---- Edit a draft → Load Details form (sessionStorage handoff) ----
 test('editDraft stashes the draft id in sessionStorage for the Load Details form', () => {
   const { window } = makeWidget();

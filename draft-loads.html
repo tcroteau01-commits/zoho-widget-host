@@ -435,6 +435,24 @@ function editDraft(id){
   var url=portalPageUrl(LOAD_DETAILS_PAGE);
   try { window.top.location.href=url; } catch(e){ window.location.href=url; }
 }
+// New Draft = a fresh blank Load Details form (clear any stale draft handoff first).
+function newDraft(){
+  try { sessionStorage.removeItem('draftId'); } catch(e){}
+  var url=portalPageUrl(LOAD_DETAILS_PAGE);
+  try { window.top.location.href=url; } catch(e){ window.location.href=url; }
+}
+// Bulk "Attach docs" = open the paperwork assembly view for the selected drafts.
+function bulkAttachDocs(){
+  var sel=__state.selected.slice();
+  var loads=__state.drafts.filter(function(d){ return sel.indexOf(d.id)!==-1; }).map(function(d){
+    return { id:d.id, ref:d.customer_reference_number, invoice:d.carrier_factoring_invoice,
+      customer_name:d.customer_name||d.customer_raw||'', carrier_name:d.carrier_name||'',
+      carrier_mc:d.carrier_mc||'', carrier_dot:d.carrier_dot||'' };
+  });
+  if(!loads.length){ showToast('Select at least one draft'); return; }
+  clearSelection();
+  openPaperwork(loads);
+}
 
 /* ---------------- delete drafts (single + bulk) ---------------- */
 
@@ -830,14 +848,14 @@ window.addEventListener('load', function(){
   bind('pw-back', function(){ closePaperwork(); loadQueue(); });
   bind('pw-back-link', function(e){ if(e&&e.preventDefault) e.preventDefault(); closePaperwork(); loadQueue(); });
   bind('pw-done', function(){ finishPaperwork(); });
-  bind('new-draft', function(){ showToast('New draft coming soon'); });
+  bind('new-draft', function(){ newDraft(); });
   bind('submit-all', function(){ submitAllReady(); });
   bind('resolve-cust', function(){ openResolveModal('customer'); });
   bind('resolve-carr', function(){ openResolveModal('carrier'); });
   bind('bulk-cust', function(){ promptPick('customer'); });
   bind('bulk-carr', function(){ promptPick('carrier'); });
   bind('bulk-clear', clearSelection);
-  bind('bulk-docs', function(){ showToast('Attach docs coming soon'); });
+  bind('bulk-docs', function(){ bulkAttachDocs(); });
   bind('bulk-del', function(){ deleteDrafts(__state.selected.slice()); });
   var cbAll=document.getElementById('cb-all');
   if (cbAll) cbAll.addEventListener('change', function(){
@@ -1349,6 +1367,8 @@ window.bulkSetCarrier=bulkSetCarrier;
 window.promptPick=promptPick;
 window.deleteDrafts=deleteDrafts;
 window.editDraft=editDraft;
+window.newDraft=newDraft;
+window.bulkAttachDocs=bulkAttachDocs;
 window.portalPageUrl=portalPageUrl;
 window.submitAllReady=submitAllReady;
 window.submitOne=submitOne;

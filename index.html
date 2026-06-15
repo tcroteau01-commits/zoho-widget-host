@@ -145,6 +145,7 @@ select {
 input.invalid, select.invalid { border-color: #e53935; }
 textarea { resize: vertical; min-height: 90px; }
 .field-hint { font-size: 11px; color: #aaa; margin-top: 5px; }
+.draft-warning { font-size: 12px; color: #8a5a00; background: #fff6e0; border: 1px solid #f0d28a; border-radius: 8px; padding: 8px 10px; margin-top: 8px; line-height: 1.4; }
 .field-err { font-size: 11px; color: #e53935; margin-top: 5px; display: none; }
 .field-err.show { display: block; }
 
@@ -341,6 +342,7 @@ textarea { resize: vertical; min-height: 90px; }
             <option value="">Select a customer…</option>
           </select>
           <div class="field-hint">Only approved customers are shown. If you don't see your customer, add them in your <strong>Customer Submission</strong> section first.</div>
+          <div class="draft-warning" id="draft-customer-warning" style="display:none;"></div>
         </div>
 
         <div class="field row">
@@ -1200,7 +1202,28 @@ function prefillFromDraft(draft) {
   if (typeof onCarrierChange === 'function') onCarrierChange();
   if (typeof updateMargin === 'function') updateMargin();
   if (typeof refreshValidity === 'function') refreshValidity();
+
+  // Flag (don't silently blank) when the draft's customer isn't selectable because
+  // it's not in the approved list (e.g. Boost pending).
+  _flagDraftCustomer(pick('customer_id'), draft.customer_name || draft.customer_raw || pick('customer_id'));
 }
+
+// Show a clear warning when a reopened draft references a customer that isn't in
+// the approved dropdown, so the field doesn't just appear blank.
+function _flagDraftCustomer(customerId, label) {
+  var warn = document.getElementById('draft-customer-warning');
+  var sel = document.getElementById('customer-select');
+  if (!warn || !sel) return;
+  var missing = customerId && String(sel.value) !== String(customerId);
+  if (missing) {
+    warn.textContent = '⚠ This draft’s customer "' + (label || customerId) +
+      '" isn’t in your approved list (it may be pending approval). Approve it in Customer Submission, then it can be selected and submitted.';
+    warn.style.display = '';
+  } else {
+    warn.style.display = 'none';
+  }
+}
+window._flagDraftCustomer = _flagDraftCustomer;
 
 // Resolve a draft id from init params or the URL query string.
 function _resolveDraftId(params) {

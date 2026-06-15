@@ -355,6 +355,14 @@ test('skipped ids surface their reasons', () => {
   assert.ok(window.__state.lastSkipped && window.__state.lastSkipped.length === 1);
 });
 
+test('skip reason codes are shown as readable text, not raw codes', () => {
+  const { window } = makeWidget();
+  window.handleSubmitResult({ submitted: [], skipped: [{ id: '901', reasons: ['carrier_not_on_account'] }], count: 0 });
+  const toast = window.document.getElementById('toast').textContent;
+  assert.doesNotMatch(toast, /carrier_not_on_account/, 'raw code must not leak');
+  assert.match(toast, /carrier not on your account/i);
+});
+
 // ---- Code-quality fixes ----
 test('margin tolerates formatted money strings like "$2,850"', () => {
   const { window } = makeWidget();

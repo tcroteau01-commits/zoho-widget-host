@@ -1005,11 +1005,13 @@ function renderPanel() {
           '<button class="ca-edit-billing-btn" id="ca-edit-billing">Edit Billing Info</button>' +
         '</div>' +
         '<div class="field-grid">' +
+          // Pair customer (left) and billing (right) so they line up row-by-row:
+          // POC | Billing POC, Phone | Billing Phone, Email | Billing Email.
           field('Point of Contact', r.Customer_Point_of_Contact) +
-          field('Phone', formatPhone(r.Phone_Number1)) +
-          field('Email', r.Email) +
           field('Billing POC', r.Billing_Point_of_Contact || '—') +
+          field('Phone', formatPhone(r.Phone_Number1)) +
           field('Billing Phone', r.Billing_AP_Contact_Number ? formatPhone(r.Billing_AP_Contact_Number) : '—') +
+          field('Email', r.Email) +
           field('Billing Email', r.Billing_Email || '—') +
         '</div>' +
         '<div id="ca-billing-edit" style="display:none;margin-top:14px;">' +

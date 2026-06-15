@@ -1076,11 +1076,10 @@ function submitApplication() {
     btn.disabled = false; btn.textContent = '✓ Validated (demo)';
   }
 
-  // Only attempt a REAL submit when actually embedded in Creator (in an iframe, with the SDK).
-  // Opened standalone, ZOHO.CREATOR.init() never resolves — so we must not call it, or it hangs.
-  var inIframe; try { inIframe = global.self !== global.top; } catch (e) { inIframe = true; }
+  // Attempt a REAL submit whenever the Creator SDK is present. init() below is wrapped in a
+  // timeout so it can never hang (standalone, init never resolves → falls back to demo).
   var hasSDK = (typeof ZOHO !== 'undefined') && ZOHO.CREATOR && typeof ZOHO.CREATOR.init === 'function';
-  if (!inIframe || !hasSDK) { doDemo(); return; }
+  if (!hasSDK) { doDemo('Creator SDK not detected — this page is not running as a Creator widget.'); return; }
 
   function withTimeout(p, ms) {
     return new Promise(function (resolve, reject) {
@@ -1099,7 +1098,7 @@ function submitApplication() {
     showStatus('✓ Application submitted. Check your email for a link to track status and upload documents.', 'success');
     btn.textContent = '✓ Submitted';
   }).catch(function (e) {
-    if (e && e.message === 'sdk-timeout') { doDemo('Creator did not respond (not embedded?) — validated in demo mode instead.'); return; }
+    if (e && e.message === 'sdk-timeout') { doDemo('Creator SDK did not respond — add this page to Creator as a Widget (with SDK access), not an inline HTML snippet.'); return; }
     console.error('submit failed', e);
     showStatus('Submission failed: ' + (e && e.message ? e.message : e) + '. Please try again or contact your OperFi rep.', 'error');
     btn.disabled = false; btn.textContent = '✓ Submit Application';

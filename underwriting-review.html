@@ -411,12 +411,9 @@ var DEMO_APPS = {
 };
 
 // ── LIVE detection + helpers ─────────────────────────────────────────────────
-// LIVE only when truly embedded in Creator (in an iframe, with the SDK). Standalone,
-// ZOHO exists but ZOHO.CREATOR.init() never resolves — so we stay in demo or it hangs.
-var LIVE = (function () {
-  var f; try { f = global.self !== global.top; } catch (e) { f = true; }
-  return f && (typeof ZOHO !== 'undefined') && !!(ZOHO && ZOHO.CREATOR);
-})();
+// LIVE when the Creator SDK is present. The init() calls below are timeout-wrapped, so a
+// standalone page (where init never resolves) falls back to demo instead of hanging.
+var LIVE = (typeof ZOHO !== 'undefined') && !!(ZOHO && ZOHO.CREATOR && typeof ZOHO.CREATOR.init === 'function');
 function withTimeout(p, ms) {
   return new Promise(function (resolve, reject) {
     var to = setTimeout(function () { reject(new Error('sdk-timeout')); }, ms);
@@ -429,7 +426,10 @@ function loadByUSDOT(usdot) {
   usdot = String(usdot || '').trim();
   if (!usdot) return Promise.resolve(null);
   if (!LIVE) return Promise.resolve(DEMO_APPS[usdot] || null);
-  return liveLoadByUSDOT(usdot);
+  return liveLoadByUSDOT(usdot).catch(function (e) {
+    if (e && e.message === 'sdk-timeout') return DEMO_APPS[usdot] || null; // SDK present but not in Creator → demo
+    throw e;
+  });
 }
 
 // Live Creator read. NOTE for Creator setup: report names come from the .ds reports block;

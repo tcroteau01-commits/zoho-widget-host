@@ -46,6 +46,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .tab.active.client { background: var(--of-orange); color: #fff; }
 .tab.active.sales { background: var(--of-blue-text); color: #fff; }
 
+/* USDOT search (top-right) */
+.usdot-search { display: flex; align-items: center; gap: 8px; }
+.usdot-search .us-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--of-gray-500); }
+.usdot-search input { border: 1px solid var(--of-beige-line); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit; width: 190px; background: #fff; color: var(--of-charcoal); }
+.usdot-search input:focus { outline: none; border-color: var(--of-orange); box-shadow: 0 0 0 3px rgba(232,160,32,0.15); }
+.usdot-search input::placeholder { color: var(--of-gray-500); }
+
 .view { display: none; }
 .view.active { display: block; }
 .view-note { background: var(--of-charcoal); color: rgba(255,255,255,0.92); border-radius: 10px; padding: 11px 18px; margin-bottom: 18px; font-size: 12.5px; line-height: 1.5; }
@@ -193,10 +200,10 @@ tr:last-child td { border-bottom: none; }
       <div class="logo">Oper<span>Fi</span></div>
       <div class="tag">Underwriting Module · Persona Mockups</div>
     </div>
-    <div class="tabs">
-      <button class="tab" data-view="uw" onclick="show('uw',this)"><span class="ic">🔍</span> Underwriter</button>
-      <button class="tab active sales" data-view="sales" onclick="show('sales',this)"><span class="ic">📋</span> Sales</button>
-      <button class="tab" data-view="client" onclick="show('client',this)"><span class="ic">🚚</span> Client / Prospect</button>
+    <div class="usdot-search">
+      <span class="us-label">USDOT</span>
+      <input id="usdotInput" type="text" inputmode="numeric" autocomplete="off" placeholder="Search by USDOT #" oninput="usdotSearch()" onkeyup="if(event.key==='Enter')usdotSearch()">
+      <button class="btn" onclick="usdotSearch()">Search</button>
     </div>
   </div>
 </div>
@@ -383,6 +390,7 @@ tr:last-child td { border-bottom: none; }
 
   <div class="card">
     <div class="card-title">My Pipeline</div>
+    <div id="usdotNoMatch" style="display:none;font-size:12.5px;color:var(--of-gray-500);padding:10px 2px">No application in your pipeline matches that USDOT.</div>
     <div class="list-row">
       <div><div class="lr-name">Brennan Eslinger Trucking LLC</div><div class="lr-sub">Carrier · DOT 4366362 · submitted Jun 8</div></div>
       <div class="lr-right"><span class="pill a">Docs Needed</span><span class="lr-sub">UW: M. Reyes</span></div>
@@ -528,6 +536,22 @@ function show(v, el){
   if(v==='client') el.classList.add('client');
   if(v==='sales') el.classList.add('sales');
   window.scrollTo(0,0);
+}
+
+// Filter the Sales pipeline by USDOT number (digits only; empty = show all).
+function usdotSearch(){
+  var input = document.getElementById('usdotInput');
+  var q = (input ? input.value : '').replace(/\D/g,'');
+  var rows = document.querySelectorAll('#view-sales .list-row');
+  var shown = 0;
+  rows.forEach(function(r){
+    var digits = r.textContent.replace(/\D/g,'');
+    var match = !q || digits.indexOf(q) !== -1;
+    r.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  var none = document.getElementById('usdotNoMatch');
+  if (none) none.style.display = (q && shown === 0) ? 'block' : 'none';
 }
 </script>
 </body>

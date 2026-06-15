@@ -256,6 +256,77 @@ test('promptPick carrier self-heals an empty carrier list', async () => {
   assert.ok(sel.querySelectorAll('option').length > 1, 'carrier options populated');
 });
 
+// ---- Edit a draft → Load Details form (sessionStorage handoff) ----
+test('editDraft stashes the draft id in sessionStorage for the Load Details form', () => {
+  const { window } = makeWidget();
+  try { window.sessionStorage.removeItem('draftId'); } catch (e) {}
+  window.editDraft('901');
+  assert.equal(window.sessionStorage.getItem('draftId'), '901');
+});
+
+test('portalPageUrl targets the Load Details page on the portal origin', () => {
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously',
+    url: 'https://tcroteau01-commits.github.io/draft-loads.html?serviceOrigin=https://portal.example.com/app',
+    beforeParse(window) {
+      window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => new Promise(() => {}) } } };
+      window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    }
+  });
+  const url = dom.window.portalPageUrl('Load_Details_NEW');
+  assert.equal(url, 'https://portal.example.com/app/#Page:Load_Details_NEW');
+});
+
+test('each queue row exposes an Edit action', () => {
+  const { window } = makeWidget();
+  window.renderQueue(DRAFTS);
+  const rows = window.document.querySelectorAll('#queue-body tr');
+  assert.ok(rows[0].querySelector('[data-edit-row]'), 'row has an edit control');
+});
+
+// ---- Delete drafts (single + bulk) ----
+test('deleteDrafts issues a DELETE and removes the draft from state', async () => {
+  const { window, records } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.confirm = () => true;
+  window.__state.drafts = DRAFTS.slice();
+  await window.deleteDrafts(['901']);
+  const dels = records.filter(r => /\/draft-loads\/901/.test(r.url) && r.opts.method === 'DELETE');
+  assert.equal(dels.length, 1);
+  assert.ok(!window.__state.drafts.some(d => d.id === '901'), '901 removed from state');
+  assert.ok(window.__state.drafts.some(d => d.id === '900'), '900 untouched');
+});
+
+test('deleteDrafts cancelled at the confirm does nothing', async () => {
+  const { window, records } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.confirm = () => false;
+  window.__state.drafts = DRAFTS.slice();
+  await window.deleteDrafts(['901']);
+  const dels = records.filter(r => r.opts && r.opts.method === 'DELETE');
+  assert.equal(dels.length, 0);
+  assert.equal(window.__state.drafts.length, 2);
+});
+
+test('bulk Delete button removes all selected drafts', async () => {
+  const { window, records } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.confirm = () => true;
+  window.__state.drafts = DRAFTS.slice();
+  window.__state.selected = ['900', '901'];
+  await window.deleteDrafts(window.__state.selected.slice());
+  const dels = records.filter(r => r.opts && r.opts.method === 'DELETE');
+  assert.equal(dels.length, 2);
+  assert.equal(window.__state.drafts.length, 0);
+});
+
+test('each queue row exposes a Delete action', () => {
+  const { window } = makeWidget();
+  window.renderQueue(DRAFTS);
+  const rows = window.document.querySelectorAll('#queue-body tr');
+  assert.ok(rows[0].querySelector('[data-del]'), 'row has a delete control');
+});
+
 // ---- Task 18 ----
 test('submit-all posts only ready ids', async () => {
   const { window, records } = makeWidget();

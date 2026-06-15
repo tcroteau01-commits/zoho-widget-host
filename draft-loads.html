@@ -89,6 +89,11 @@ select.cell{border:1px solid var(--amber);background:#fffdf7;border-radius:7px;p
 .editable{cursor:pointer;border-bottom:1px dashed transparent;display:inline-block}
 tr:hover .editable{border-bottom-color:#cfc9bb}
 .rowsubmit{font-size:11.5px;color:var(--green);font-weight:700;cursor:pointer;background:none;border:0;font-family:inherit;margin-left:8px}
+.rowacts{display:flex;gap:6px;align-items:center}
+.actbtn{font-size:11.5px;font-weight:600;cursor:pointer;background:#fff;border:1px solid var(--line);border-radius:7px;padding:5px 9px;color:var(--ink);font-family:inherit}
+.actbtn:hover{border-color:#cfc9bb}
+.actbtn.del{color:var(--red);border-color:#ecc7c2;font-weight:700}
+.actbtn.del:hover{background:#fbe6e2}
 .empty{text-align:center;color:var(--muted);padding:40px 0}
 
 /* Modal: grouped resolve */
@@ -237,9 +242,10 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
           <th style="width:74px">Margin</th>
           <th style="width:56px">Docs</th>
           <th style="width:170px">Status</th>
+          <th style="width:92px">Actions</th>
         </tr>
       </thead>
-      <tbody id="queue-body"><tr><td colspan="9" class="empty">Loading drafts…</td></tr></tbody>
+      <tbody id="queue-body"><tr><td colspan="10" class="empty">Loading drafts…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -363,7 +369,7 @@ function renderQueue(drafts){
   var rows = visibleDrafts();
   var body=document.getElementById('queue-body');
   if(!body) return;
-  if(!rows.length){ body.innerHTML='<tr><td colspan="9" class="empty">No drafts.</td></tr>'; return; }
+  if(!rows.length){ body.innerHTML='<tr><td colspan="10" class="empty">No drafts.</td></tr>'; return; }
   body.innerHTML='';
   rows.forEach(function(d){
     var tr=document.createElement('tr');
@@ -379,7 +385,11 @@ function renderQueue(drafts){
       '<td data-label="Carr. Rate" class="rt">'+money(d.carrier_rate)+'</td>'+
       '<td data-label="Margin" class="marg">'+money(marginOf(d))+'</td>'+
       '<td data-label="Docs"><span class="'+docCls+'">'+docCount+(docCount===2?' ✓':'')+'</span></td>'+
-      '<td data-label="Status">'+statusCellHtml(d)+'</td>';
+      '<td data-label="Status">'+statusCellHtml(d)+'</td>'+
+      '<td data-label="Actions"><div class="rowacts">'+
+        '<button class="actbtn" data-edit-row="'+esc(d.id)+'" title="Open this load">Edit</button>'+
+        '<button class="actbtn del" data-del="'+esc(d.id)+'" title="Delete draft">✕</button>'+
+      '</div></td>';
     tr.setAttribute('data-row', d.id);
     wireRow(tr, d);
     body.appendChild(tr);
@@ -398,6 +408,52 @@ function wireRow(tr, d){
   });
   var sb=tr.querySelector('[data-submit]');
   if (sb) sb.addEventListener('click', function(e){ e.stopPropagation(); submitOne(d.id); });
+  var del=tr.querySelector('[data-del]');
+  if (del) del.addEventListener('click', function(e){ e.stopPropagation(); deleteDrafts([d.id]); });
+  var ed=tr.querySelector('[data-edit-row]');
+  if (ed) ed.addEventListener('click', function(e){ e.stopPropagation(); editDraft(d.id); });
+}
+
+/* ---------------- edit a draft → Load Details form ---------------- */
+
+// Creator page link-name of the Load Details / Submit Load form. Tom: confirm
+// the exact link-name; everything else keys off this one constant.
+var LOAD_DETAILS_PAGE = 'Load_Details_NEW';
+
+// Widgets share one GH-Pages origin but live on separate Creator pages. Creator
+// passes the portal origin in ?serviceOrigin=; build an absolute hash route to it.
+function portalPageUrl(page){
+  var svc=''; try { svc=new URLSearchParams(window.location.search).get('serviceOrigin')||''; } catch(e){}
+  return svc.replace(/\/+$/,'') + '/#Page:' + page;
+}
+
+// Hand the draft id to the Load Details form via sessionStorage (shared across
+// pages on the same GH origin; Creator hash-route query params don't reach the
+// widget), then navigate the parent Creator frame to that form.
+function editDraft(id){
+  try { sessionStorage.setItem('draftId', String(id)); } catch(e){}
+  var url=portalPageUrl(LOAD_DETAILS_PAGE);
+  try { window.top.location.href=url; } catch(e){ window.location.href=url; }
+}
+
+/* ---------------- delete drafts (single + bulk) ---------------- */
+
+function deleteDrafts(ids){
+  ids=(ids||[]).filter(Boolean);
+  if(!ids.length) return Promise.resolve();
+  if(!window.confirm('Delete '+ids.length+' draft'+(ids.length===1?'':'s')+'? This cannot be undone.')) return Promise.resolve();
+  return Promise.all(ids.map(function(id){
+    return fetch(BROKER_API_BASE+'/draft-loads/'+id+'?email='+encodeURIComponent(brokerEmail), { method:'DELETE' })
+      .then(function(r){ return r && r.ok ? id : null; })
+      .catch(function(){ return null; });
+  })).then(function(done){
+    var ok=done.filter(Boolean);
+    __state.drafts=__state.drafts.filter(function(d){ return ok.indexOf(d.id)===-1; });
+    __state.selected=__state.selected.filter(function(id){ return ok.indexOf(id)===-1; });
+    clearSelection(); renderQueue(); renderSummary();
+    var failed=ids.length-ok.length;
+    showToast(ok.length+' draft'+(ok.length===1?'':'s')+' deleted'+(failed?' · '+failed+' failed':''));
+  });
 }
 
 /* ---------------- inline cell edit ---------------- */
@@ -761,7 +817,7 @@ window.addEventListener('load', function(){
   bind('bulk-carr', function(){ promptPick('carrier'); });
   bind('bulk-clear', clearSelection);
   bind('bulk-docs', function(){ showToast('Attach docs coming soon'); });
-  bind('bulk-del', function(){ showToast('Delete coming soon'); });
+  bind('bulk-del', function(){ deleteDrafts(__state.selected.slice()); });
   var cbAll=document.getElementById('cb-all');
   if (cbAll) cbAll.addEventListener('change', function(){
     var on=cbAll.checked;
@@ -1251,6 +1307,9 @@ window.toggleSelect=toggleSelect;
 window.bulkSetCustomer=bulkSetCustomer;
 window.bulkSetCarrier=bulkSetCarrier;
 window.promptPick=promptPick;
+window.deleteDrafts=deleteDrafts;
+window.editDraft=editDraft;
+window.portalPageUrl=portalPageUrl;
 window.submitAllReady=submitAllReady;
 window.submitOne=submitOne;
 window.handleSubmitResult=handleSubmitResult;

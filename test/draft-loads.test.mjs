@@ -453,3 +453,11 @@ test('createDraftsFromPreview with zero successes shows error and does not open 
   assert.deepEqual(window.__pw.loads, ['SENTINEL']);
   assert.match(window.document.getElementById('toast').textContent, /fail/i);
 });
+
+test('toolbar Template link is a working download link to /draft-loads/template', () => {
+  const dom = new JSDOM(HTML);
+  const a = dom.window.document.getElementById('tmpl');
+  assert.ok(a, '#tmpl exists');
+  assert.ok(a.hasAttribute('download'), 'has download attribute');
+  assert.ok(/\/draft-loads\/template$/.test(a.getAttribute('href') || ''), 'href ends with /draft-loads/template');
+});

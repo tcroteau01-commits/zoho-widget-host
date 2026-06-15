@@ -67,6 +67,16 @@ test('populateCarriers marks DNU carriers and shows a warning on select', () => 
   assert.match(window.document.getElementById('vetting-badge').textContent, /Do Not Use|DNU/i);
 });
 
+test('Customer Payment Terms input offers a datalist of common terms (still free-text)', () => {
+  const { window } = makeWidget();
+  const input = window.document.getElementById('f-customer_payment_terms');
+  assert.equal(input.getAttribute('list'), 'tms-cust-terms');
+  const dl = window.document.getElementById('tms-cust-terms');
+  assert.ok(dl, 'datalist present');
+  const opts = Array.from(dl.querySelectorAll('option')).map(o => o.value);
+  assert.ok(opts.includes('Net 30') && opts.includes('Quick Pay'));
+});
+
 test('onCarrierChange fetches /noa-status and shows pay terms, factor, and NOA on file', async () => {
   const { window } = makeWidget();
   window.brokerEmail = 'b@op.com';

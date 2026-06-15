@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OperFi Underwriting Review</title>
 <!--
-  EMPLOYEE widget — verify + administer an onboarding application.
+  EMPLOYEE widget — verify + administer an onboarding application, opened BY USDOT.
   Reads Application/Owner/Document and reads/writes Underwriting_Review (1:1 with Application).
   Field link-names verbatim from OperFi_Client_Onboarding.ds. Runs in DEMO mode when not
-  embedded in Creator (sample applicant; Save logs the payload). Testable logic on window.OFUW.
+  embedded in Creator (sample applicants by USDOT; Save logs the payload). Logic on window.OFUW.
 -->
 <style>
 :root {
@@ -30,11 +30,21 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .avatar { width:26px; height:26px; border-radius:50%; background:var(--of-orange); color:#fff; font-weight:800; font-size:11px; display:inline-flex; align-items:center; justify-content:center; }
 .page { max-width:1340px; margin:0 auto; padding:18px 24px 90px; }
 
+/* USDOT lookup bar */
+.lookup-bar { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--of-beige-line); border-radius:12px; padding:12px 18px; margin-bottom:14px; flex-wrap:wrap; }
+.lookup-bar .ll { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--of-gray-500); }
+.lookup-bar input { flex:1; min-width:160px; padding:10px 14px; border:1.5px solid var(--of-beige-line); border-radius:9px; font-size:15px; font-weight:600; letter-spacing:1px; font-family:inherit; background:var(--of-beige-soft); }
+.lookup-bar input:focus { outline:none; border-color:var(--of-orange); background:#fff; }
+.lookup-bar .hint { font-size:11px; color:var(--of-gray-500); width:100%; }
+
 .status-msg { padding:11px 16px; border-radius:8px; font-size:13px; font-weight:600; margin-bottom:14px; display:none; }
 .status-msg.show { display:block; }
 .status-msg.success { background:var(--of-green-soft); color:var(--of-green-text); border:1px solid #a5d6a7; }
 .status-msg.error { background:var(--of-red-soft); color:var(--of-red-text); border:1px solid #ef9a9a; }
 .status-msg.loading { background:var(--of-amber-soft); color:var(--of-amber-text); border:1px solid #ffe082; }
+
+.console { display:none; }
+.console.show { display:block; }
 
 .hero { background:var(--of-charcoal); color:#fff; border-radius:14px; padding:20px 24px; display:grid; grid-template-columns:1fr auto; gap:18px; align-items:center; margin-bottom:12px; }
 .hero-eyebrow { font-size:11px; text-transform:uppercase; letter-spacing:0.7px; color:rgba(255,255,255,0.5); font-weight:700; }
@@ -70,6 +80,7 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .flag .fic { width:20px; height:20px; border-radius:50%; flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#fff; }
 .flag.clear .fic{background:var(--of-green);} .flag.warn .fic{background:var(--of-amber);} .flag.bad .fic{background:var(--of-red);}
 .flag .ft { font-weight:600; } .flag .fd { color:var(--of-gray-700); font-size:11px; }
+.flag-empty { font-size:12.5px; color:var(--of-gray-500); padding:6px 2px; }
 
 table { width:100%; border-collapse:collapse; font-size:12.5px; }
 th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--of-gray-500); font-weight:700; padding:6px 10px; border-bottom:1px solid var(--of-beige-line); }
@@ -115,99 +126,110 @@ tr:last-child td { border-bottom:none; }
 </div>
 
 <div class="page">
+
+  <!-- Open an application by USDOT -->
+  <div class="lookup-bar">
+    <span class="ll">Open application · USDOT</span>
+    <input type="text" id="usdotInput" placeholder="e.g. 4366362" inputmode="numeric" autocomplete="off">
+    <button class="btn orange" id="usdotBtn">Open ➜</button>
+    <div class="hint" id="lookupHint">Enter the prospect's USDOT to pull up their application. Demo: try 4366362 (carrier) or 3421250 (broker).</div>
+  </div>
+
   <div id="statusMsg" class="status-msg"></div>
 
-  <div class="hero">
-    <div>
-      <div class="hero-eyebrow" id="hAppLine">Application —</div>
-      <div class="hero-name" id="hBiz">—</div>
-      <div class="hero-meta" id="hMeta"></div>
-    </div>
-    <div class="verdict">
-      <span class="verdict-badge med" id="hRisk">Medium Risk</span>
-      <span class="state-pill" id="hState">In Review</span>
-    </div>
-  </div>
-
-  <div class="kpi-row">
-    <div class="kpi warn"><div class="kpi-label">Fraud Flags</div><div class="kpi-value warn" id="kFraud">—</div><div class="kpi-sub">to clear of 10</div></div>
-    <div class="kpi good"><div class="kpi-label">Intake Packet</div><div class="kpi-value good" id="kDocs">—</div><div class="kpi-sub">documents received</div></div>
-    <div class="kpi warn"><div class="kpi-label">UCC Status</div><div class="kpi-value warn" id="kUcc">—</div><div class="kpi-sub">prior filings</div></div>
-    <div class="kpi good"><div class="kpi-label">Gates Passed</div><div class="kpi-value good" id="kGates">—</div><div class="kpi-sub">of 6 before approval</div></div>
-  </div>
-
-  <div class="col-main">
-    <!-- LEFT: verification (read-only from model) -->
-    <div>
-      <div class="card">
-        <div class="card-title">Submitted Application <span class="count">prospect data · read-only</span></div>
-        <div class="kv" id="appSummary"></div>
+  <div class="console" id="console">
+    <div class="hero">
+      <div>
+        <div class="hero-eyebrow" id="hAppLine">Application —</div>
+        <div class="hero-name" id="hBiz">—</div>
+        <div class="hero-meta" id="hMeta"></div>
       </div>
-      <div class="card">
-        <div class="card-title">Fraud Quick Glance <span class="count">IPQS · FMCSA · Carrier411</span></div>
-        <div class="flag-grid" id="fraudGrid"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Ownership &amp; Entity</div>
-        <table id="ownTable"></table>
-      </div>
-      <div class="card">
-        <div class="card-title">Documents <span class="count" id="docCount">—</span></div>
-        <table id="docTable"></table>
+      <div class="verdict">
+        <span class="verdict-badge med" id="hRisk">Medium Risk</span>
+        <span class="state-pill" id="hState">In Review</span>
       </div>
     </div>
 
-    <!-- RIGHT: administration / Underwriting_Review -->
-    <div>
-      <div class="card">
-        <div class="card-title">Decision &amp; Administration</div>
-        <div class="fld"><label>Decision</label>
-          <select id="uwDecision"><option>Pending</option><option>Approved</option><option>Denied</option><option>More Information Needed</option></select>
-        </div>
-        <div class="verify-row"><span class="toggle" id="tgAuthority">✓</span> Authority Verified</div>
-        <div class="verify-row"><span class="toggle" id="tgOwnership">✓</span> Ownership Verified</div>
-        <div class="verify-row"><span class="toggle" id="tgUcc">✓</span> UCC Checked &amp; cleared</div>
-        <div class="fld" style="margin-top:14px"><label>Fraud Flag</label>
-          <select id="uwFraudFlag"><option>None</option><option>Low</option><option>Medium</option><option>High</option></select>
-        </div>
-        <div class="fld"><label>Fraud Notes</label><textarea id="uwFraudNotes" rows="2"></textarea></div>
-        <div class="fld"><label>Checklist Status</label>
-          <select id="uwChecklist"><option>Not Started</option><option>In Progress</option><option>Complete</option></select>
-        </div>
-        <div class="fld"><label>Underwriting Notes</label><textarea id="uwNotes" rows="3"></textarea></div>
-        <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
-          <button class="btn green block" id="btnApprove">✓ Approve</button>
-          <button class="btn red block" id="btnDecline">✕ Decline</button>
-          <button class="btn ghost block" id="btnSave">💾 Save progress</button>
-        </div>
-        <div style="font-size:11px;color:var(--of-gray-500);margin-top:10px;text-align:center">Approve requires all 6 gates green. Decision syncs to CRM Deal stage.</div>
-      </div>
+    <div class="kpi-row">
+      <div class="kpi warn"><div class="kpi-label">Fraud Flags</div><div class="kpi-value warn" id="kFraud">—</div><div class="kpi-sub">to clear of 10</div></div>
+      <div class="kpi good"><div class="kpi-label">Intake Packet</div><div class="kpi-value good" id="kDocs">—</div><div class="kpi-sub">documents received</div></div>
+      <div class="kpi warn"><div class="kpi-label">UCC Status</div><div class="kpi-value warn" id="kUcc">—</div><div class="kpi-sub">prior filings</div></div>
+      <div class="kpi good"><div class="kpi-label">Gates Passed</div><div class="kpi-value good" id="kGates">—</div><div class="kpi-sub">of 6 before approval</div></div>
+    </div>
 
-      <div class="card">
-        <div class="card-title">Approval Gate <span class="count" id="gateCount">—</span></div>
-        <div class="gate" id="gateList"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Credit Structuring</div>
-        <div class="rate-box">
-          <div class="rate-item"><div class="rv" id="rbLimit">—</div><div class="rl">Credit Limit</div></div>
-          <div class="rate-item"><div class="rv" id="rbRate">—</div><div class="rl">Rec. Rate</div></div>
-          <div class="rate-item"><div class="rv" id="rbReserve">0%</div><div class="rl">Reserve</div></div>
+    <div class="col-main">
+      <!-- LEFT: verification -->
+      <div>
+        <div class="card">
+          <div class="card-title">Submitted Application <span class="count">prospect data · read-only</span></div>
+          <div class="kv" id="appSummary"></div>
         </div>
-        <div class="fld row2" style="margin-top:12px">
-          <div><label>Approved Credit Limit</label><input type="text" id="uwLimit"></div>
-          <div><label>Recommended Rate</label><input type="text" id="uwRate"></div>
+        <div class="card">
+          <div class="card-title">Fraud Quick Glance <span class="count">IPQS · FMCSA · Carrier411</span></div>
+          <div class="flag-grid" id="fraudGrid"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Ownership &amp; Entity</div>
+          <table id="ownTable"></table>
+        </div>
+        <div class="card">
+          <div class="card-title">Documents <span class="count" id="docCount">—</span></div>
+          <table id="docTable"></table>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">Buyout Administration</div>
-        <div class="verify-row"><span class="toggle" id="tgBuyout">✓</span> Buyout Required</div>
-        <div class="fld row2" style="margin-top:12px">
-          <div><label>Buyout Factor</label><input type="text" id="uwBuyoutFactor"></div>
-          <div><label>Est. Buyout Date</label><input type="text" id="uwBuyoutDate" placeholder="MM/DD/YYYY"></div>
+      <!-- RIGHT: administration / Underwriting_Review -->
+      <div>
+        <div class="card">
+          <div class="card-title">Decision &amp; Administration</div>
+          <div class="fld"><label>Decision</label>
+            <select id="uwDecision"><option>Pending</option><option>Approved</option><option>Denied</option><option>More Information Needed</option></select>
+          </div>
+          <div class="verify-row"><span class="toggle" id="tgAuthority">✓</span> Authority Verified</div>
+          <div class="verify-row"><span class="toggle" id="tgOwnership">✓</span> Ownership Verified</div>
+          <div class="verify-row"><span class="toggle" id="tgUcc">✓</span> UCC Checked &amp; cleared</div>
+          <div class="fld" style="margin-top:14px"><label>Fraud Flag</label>
+            <select id="uwFraudFlag"><option>None</option><option>Low</option><option>Medium</option><option>High</option></select>
+          </div>
+          <div class="fld"><label>Fraud Notes</label><textarea id="uwFraudNotes" rows="2"></textarea></div>
+          <div class="fld"><label>Checklist Status</label>
+            <select id="uwChecklist"><option>Not Started</option><option>In Progress</option><option>Complete</option></select>
+          </div>
+          <div class="fld"><label>Underwriting Notes</label><textarea id="uwNotes" rows="3"></textarea></div>
+          <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <button class="btn green block" id="btnApprove">✓ Approve</button>
+            <button class="btn red block" id="btnDecline">✕ Decline</button>
+            <button class="btn ghost block" id="btnSave">💾 Save progress</button>
+          </div>
+          <div style="font-size:11px;color:var(--of-gray-500);margin-top:10px;text-align:center">Approve requires all 6 gates green. Decision syncs to CRM Deal stage.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Approval Gate <span class="count" id="gateCount">—</span></div>
+          <div class="gate" id="gateList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Credit Structuring</div>
+          <div class="rate-box">
+            <div class="rate-item"><div class="rv" id="rbLimit">—</div><div class="rl">Credit Limit</div></div>
+            <div class="rate-item"><div class="rv" id="rbRate">—</div><div class="rl">Rec. Rate</div></div>
+            <div class="rate-item"><div class="rv" id="rbReserve">0%</div><div class="rl">Reserve</div></div>
+          </div>
+          <div class="fld row2" style="margin-top:12px">
+            <div><label>Approved Credit Limit</label><input type="text" id="uwLimit"></div>
+            <div><label>Recommended Rate</label><input type="text" id="uwRate"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Buyout Administration</div>
+          <div class="verify-row"><span class="toggle" id="tgBuyout">✓</span> Buyout Required</div>
+          <div class="fld row2" style="margin-top:12px">
+            <div><label>Buyout Factor</label><input type="text" id="uwBuyoutFactor"></div>
+            <div><label>Est. Buyout Date</label><input type="text" id="uwBuyoutDate" placeholder="MM/DD/YYYY"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -220,17 +242,19 @@ tr:last-child td { border-bottom:none; }
 /*
  * OperFi Underwriting Review widget — testable logic on window.OFUW.
  * Field link-names verbatim from OperFi_Client_Onboarding.ds (Underwriting_Review form).
+ * Opens an application BY USDOT (URL ?usdot= or the search bar).
  */
 (function (global) {
 'use strict';
 
 var APPLICATION_LOOKUP = 'Application'; // 1:1 lookup on Underwriting_Review (hand-add in Creator)
 var FORM_REVIEW = 'Underwriting_Review';
+// Creator report names (from the .ds reports block) used for live reads.
+var RPT = { application: 'Application_Report', owner: 'Owner_Report', document: 'Document_Report', review: 'Underwriting_Review_Report' };
 
-// ── Pure logic ───────────────────────────────────────────────────────────────
+// ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
 
-// The six approval gates (manual §10.1). ctx carries verification facts from data.
 function computeGate(s, ctx) {
   ctx = ctx || {};
   var gates = {
@@ -246,7 +270,6 @@ function computeGate(s, ctx) {
   return gates;
 }
 
-// Decision validation — Approve is gated; Denied/More-Info need a reason note.
 function validateDecision(s, ctx) {
   var errors = [];
   if (s.decision === 'Approved') {
@@ -264,7 +287,6 @@ function validateDecision(s, ctx) {
   return { ok: errors.length === 0, errors: errors };
 }
 
-// Map UI state -> Underwriting_Review record (REAL .ds link-names).
 function buildReviewPayload(s, appId) {
   var p = {
     Decision2: s.decision || 'Pending',
@@ -289,38 +311,67 @@ function buildReviewPayload(s, appId) {
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, APPLICATION_LOOKUP: APPLICATION_LOOKUP };
 global.OFUW = OFUW;
 
-// ── Demo data (used when not embedded in Creator) ────────────────────────────
-var DEMO = {
-  appId: 'UW-2026-0418',
-  application: { Business_Name:'Brennan Eslinger Trucking LLC', Authority_Type:'Carrier', Factoring_Authority_Selected:'Carrier',
-    USDOT:'4366362', MC_Number:'1709488', EIN:'84-21••••', Business_Formation_Type:'LLC', Equipment_Types:['Dry Van','Flatbed'],
-    Number_of_Trucks:1, Number_of_Drivers:1, Monthly_Invoices_to_Factor:'$22,000', Has_Prior_Factor:'Yes',
-    Current_Previous_Factor:'TBS Factoring', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'Recourse',
-    Credit_Issues:['None'], loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes' },
-  owners: [{ First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'Managing Member', Ownership_Percent:100, sosRole:'Managing Member' }],
-  fraud: [
-    ['IP Address','Glendale, AZ · no proxy','clear'],['Phone (IPQS)','VOIP detected · score 78','bad'],
-    ['Email','Business domain match','clear'],['Insurance / COI','Producer phone mismatch','warn'],
-    ['COI Created Date','9 days before submit','clear'],['Bank Account Name','Matches legal entity','clear'],
-    ['DL / SSN (IDI/TLO)','Clean scan · identity match','clear'],['Carrier411','No FreightGuard · active','clear'],
-    ['State Match','Formation = mailing (AZ)','clear'],['Dispatch History','No prior internal flags','clear']
-  ],
-  documents: [
-    ['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
-    ['Voided Check','Prospect Upload','Received'],['Certificate of Insurance','Prospect Upload','Received'],
-    ['W-9','Prospect Upload','Verified'],['SOS Filing','Staff Upload','Verified'],
-    ['Operating Agreement','—','Requested'],['Prior aging report','—','Requested']
-  ],
-  ucc: 1,
-  review: { Decision2:'Pending', Authority_Verified:true, Ownership_Verified:true, UCC_Checked:false,
-    Fraud_Flag1:'Low', Fraud_Notes:'VOIP phone + COI producer mismatch — re-verifying.', Checklist_Status1:'In Progress',
-    UW_Notes:'', Approved_Credit_Limit:'$30,000', Recommended_Rate:'3.00%', Buyout_Required:true, Buyout_Factor:'TBS Factoring',
-    Estimated_Buyout_Date:'', Decision_Date:'' }
+// ── Demo data, keyed by USDOT (used when not embedded in Creator) ─────────────
+var DEMO_APPS = {
+  '4366362': {
+    appId: 'UW-2026-0418', reviewId: null,
+    application: { Business_Name:'Brennan Eslinger Trucking LLC', Authority_Type:'Carrier', Factoring_Authority_Selected:'Carrier',
+      USDOT:'4366362', MC_Number:'1709488', EIN:'84-21••••', Business_Formation_Type:'LLC', Equipment_Types:['Dry Van','Flatbed'],
+      Number_of_Trucks:1, Number_of_Drivers:1, Monthly_Invoices_to_Factor:'$22,000', Has_Prior_Factor:'Yes',
+      Current_Previous_Factor:'TBS Factoring', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'Recourse',
+      Credit_Issues:['None'], loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes' },
+    owners: [{ First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'Managing Member', Ownership_Percent:100, sosRole:'Managing Member' }],
+    fraud: [
+      ['IP Address','Glendale, AZ · no proxy','clear'],['Phone (IPQS)','VOIP detected · score 78','bad'],
+      ['Email','Business domain match','clear'],['Insurance / COI','Producer phone mismatch','warn'],
+      ['COI Created Date','9 days before submit','clear'],['Bank Account Name','Matches legal entity','clear'],
+      ['DL / SSN (IDI/TLO)','Clean scan · identity match','clear'],['Carrier411','No FreightGuard · active','clear'],
+      ['State Match','Formation = mailing (AZ)','clear'],['Dispatch History','No prior internal flags','clear']
+    ],
+    documents: [
+      ['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
+      ['Voided Check','Prospect Upload','Received'],['Certificate of Insurance','Prospect Upload','Received'],
+      ['W-9','Prospect Upload','Verified'],['SOS Filing','Staff Upload','Verified'],
+      ['Operating Agreement','—','Requested'],['Prior aging report','—','Requested']
+    ],
+    ucc: 1, risk: 'med',
+    review: { Decision2:'Pending', Authority_Verified:true, Ownership_Verified:true, UCC_Checked:false,
+      Fraud_Flag1:'Low', Fraud_Notes:'VOIP phone + COI producer mismatch — re-verifying.', Checklist_Status1:'In Progress',
+      UW_Notes:'', Approved_Credit_Limit:'$30,000', Recommended_Rate:'3.00%', Buyout_Required:true, Buyout_Factor:'TBS Factoring',
+      Estimated_Buyout_Date:'', Decision_Date:'' }
+  },
+  '3421250': {
+    appId: 'UW-2026-0405', reviewId: null,
+    application: { Business_Name:'Princeton Logistics Group LLC', Authority_Type:'Broker', Factoring_Authority_Selected:'Broker',
+      USDOT:'3421250', MC_Number:'1106008', EIN:'84-5097931', Business_Formation_Type:'LLC', Equipment_Types:[],
+      Number_of_Trucks:0, Number_of_Drivers:0, Monthly_Invoices_to_Factor:'$48,000', Has_Prior_Factor:'No',
+      Current_Previous_Factor:'', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'',
+      Credit_Issues:['None'], loc:'Atlanta, GA', Assigned_Underwriter:'D. Okafor' },
+    owners: [{ First_Name1:'Jim', Last_Name1:'Princeton', Title:'Managing Member', Ownership_Percent:100, sosRole:'Managing Member' }],
+    fraud: [
+      ['IP Address','Atlanta, GA · no proxy','clear'],['Phone (IPQS)','Landline · score 12','clear'],
+      ['Email','Business domain match','clear'],['Insurance / COI','Not required (broker)','clear'],
+      ['COI Created Date','N/A','clear'],['Bank Account Name','Matches legal entity','clear'],
+      ['DL / SSN (IDI/TLO)','Clean scan · identity match','clear'],['Carrier411','N/A (broker)','clear'],
+      ['State Match','Formation = mailing (GA)','clear'],['Dispatch History','No prior internal flags','clear']
+    ],
+    documents: [
+      ['Signed Application','Prospect Upload','Received'],["Driver's License",'Prospect Upload','Received'],
+      ['Voided Check','Prospect Upload','Requested'],['W-9','Prospect Upload','Received'],
+      ['SOS Filing','Staff Upload','Verified'],['Broker-Carrier Agreement','—','Requested'],
+      ['Credit Application','—','Requested']
+    ],
+    ucc: 0, risk: 'low',
+    review: { Decision2:'Pending', Authority_Verified:false, Ownership_Verified:false, UCC_Checked:false,
+      Fraud_Flag1:'None', Fraud_Notes:'', Checklist_Status1:'Not Started',
+      UW_Notes:'', Approved_Credit_Limit:'', Recommended_Rate:'3.00%', Buyout_Required:false, Buyout_Factor:'',
+      Estimated_Buyout_Date:'', Decision_Date:'' }
+  }
 };
 
-// ── Data access layer (SDK when embedded, demo otherwise) ─────────────────────
+// ── LIVE detection + helpers ─────────────────────────────────────────────────
 // LIVE only when truly embedded in Creator (in an iframe, with the SDK). Standalone,
-// ZOHO exists but ZOHO.CREATOR.init() never resolves — so we must stay in demo or it hangs.
+// ZOHO exists but ZOHO.CREATOR.init() never resolves — so we stay in demo or it hangs.
 var LIVE = (function () {
   var f; try { f = global.self !== global.top; } catch (e) { f = true; }
   return f && (typeof ZOHO !== 'undefined') && !!(ZOHO && ZOHO.CREATOR);
@@ -331,17 +382,56 @@ function withTimeout(p, ms) {
     Promise.resolve(p).then(function (v) { clearTimeout(to); resolve(v); }, function (e) { clearTimeout(to); reject(e); });
   });
 }
-function loadModel() {
-  // Live read would use ZOHO.CREATOR.DATA.getRecords for Application/Owner/Document/
-  // Underwriting_Review filtered by the Application id (confirm exact SDK signature).
-  // For v1/demo we resolve the sample model; wire the live reads when embedded.
-  return Promise.resolve(DEMO);
+
+// Open an application by USDOT. Returns a model object, or null if not found.
+function loadByUSDOT(usdot) {
+  usdot = String(usdot || '').trim();
+  if (!usdot) return Promise.resolve(null);
+  if (!LIVE) return Promise.resolve(DEMO_APPS[usdot] || null);
+  return liveLoadByUSDOT(usdot);
 }
-function saveReview(payload, hasExisting) {
+
+// Live Creator read. NOTE for Creator setup: report names come from the .ds reports block;
+// the child reads require the Application lookup to exist. Confirm criteria syntax in Creator.
+function liveLoadByUSDOT(usdot) {
+  function getRecords(report, criteria) {
+    return ZOHO.CREATOR.DATA.getRecords({ report_name: report, criteria: criteria, page: 1, pageSize: 50 })
+      .then(function (r) { return (r && r.data) ? r.data : []; })
+      .catch(function () { return []; });
+  }
+  return withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
+    return getRecords(RPT.application, 'USDOT == ' + usdot);
+  }).then(function (apps) {
+    var a = apps[0];
+    if (!a) return null;
+    var appId = a.ID;
+    return Promise.all([
+      getRecords(RPT.owner, APPLICATION_LOOKUP + ' == ' + appId),
+      getRecords(RPT.document, APPLICATION_LOOKUP + ' == ' + appId),
+      getRecords(RPT.review, APPLICATION_LOOKUP + ' == ' + appId)
+    ]).then(function (res) {
+      var rev = res[2][0] || {};
+      return {
+        appId: appId,
+        reviewId: rev.ID || null,
+        application: a,
+        owners: res[0].map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, sosRole:'—' }; }),
+        // Fraud quick-glance comes from external checks (IPQS/FMCSA/Carrier411) via the backend, not Creator.
+        fraud: [],
+        documents: res[1].map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested']; }),
+        ucc: 0,
+        risk: 'med',
+        review: rev
+      };
+    });
+  });
+}
+
+function saveReview(payload, existingId) {
   if (!LIVE) { console.log('DEMO save — Underwriting_Review payload:', JSON.stringify(payload, null, 2)); return Promise.resolve({ demo:true }); }
   return withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
-    if (hasExisting) return ZOHO.CREATOR.DATA.updateRecord({ report_name:'Underwriting_Review_Report', id: hasExisting, payload:{ data: payload } });
-    return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM_REVIEW, payload:{ data: payload } });
+    if (existingId) return ZOHO.CREATOR.DATA.updateRecord({ report_name: RPT.review, id: existingId, payload: { data: payload } });
+    return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM_REVIEW, payload: { data: payload } });
   });
 }
 
@@ -372,11 +462,13 @@ function readState() {
 }
 
 function ctx() {
+  if (!MODEL) return { docsReceived:0, docsRequired:0, fraudBad:0 };
   var received = MODEL.documents.filter(function(d){ return d[2]==='Verified'||d[2]==='Received'; }).length;
   return { docsReceived: received, docsRequired: MODEL.documents.length, fraudBad: MODEL.fraud.filter(function(f){return f[2]==='bad';}).length };
 }
 
 function renderGate() {
+  if (!MODEL) return;
   var s = readState(); var g = computeGate(s, ctx());
   var rows = [
     ['Intake packet verified', g.intakePacket],['Fraud screening clear', g.fraudClear],
@@ -394,85 +486,109 @@ function renderGate() {
 }
 
 function showStatus(msg, type){ var el=$('statusMsg'); el.textContent=msg; el.className='status-msg show '+type; }
-
+function clearStatus(){ $('statusMsg').className='status-msg'; }
 function bindToggle(id){ $(id).addEventListener('click', function(){ this.classList.toggle('on'); renderGate(); }); }
+function initials(n){ return (n||'UW').split(' ').map(function(x){return x[0];}).join('').slice(0,2); }
 
-function boot() {
-  showStatus('Loading application…', 'loading');
-  loadModel().then(function(m){
-    MODEL = m;
-    $('modePill').textContent = LIVE ? 'Live' : 'Demo';
-    var a = m.application;
-    $('uwName').textContent = a.Assigned_Underwriter || 'Underwriter';
-    $('uwAvatar').textContent = (a.Assigned_Underwriter||'UW').split(' ').map(function(x){return x[0];}).join('').slice(0,2);
-    $('hAppLine').textContent = 'Application #' + m.appId + ' · ' + a.Authority_Type;
-    $('hBiz').textContent = a.Business_Name;
-    $('hMeta').innerHTML = '<span><span class="key">USDOT</span> '+a.USDOT+'</span><span class="sep">·</span>' +
-      '<span><span class="key">MC</span> '+a.MC_Number+'</span><span class="sep">·</span>' +
-      '<span>'+a.Business_Formation_Type+'</span><span class="sep">·</span><span>'+(a.loc||'')+'</span>' +
-      '<span class="sep">·</span><span>Assigned: <b style="color:#fff">'+(a.Assigned_Underwriter||'—')+'</b></span>';
+function renderModel(m) {
+  MODEL = m;
+  var a = m.application;
+  $('console').classList.add('show');
+  $('modePill').textContent = LIVE ? 'Live' : 'Demo';
+  $('uwName').textContent = a.Assigned_Underwriter || 'Underwriter';
+  $('uwAvatar').textContent = initials(a.Assigned_Underwriter);
+  $('hAppLine').textContent = 'Application #' + m.appId + ' · ' + a.Authority_Type;
+  $('hBiz').textContent = a.Business_Name;
+  $('hMeta').innerHTML = '<span><span class="key">USDOT</span> '+a.USDOT+'</span><span class="sep">·</span>' +
+    '<span><span class="key">MC</span> '+a.MC_Number+'</span><span class="sep">·</span>' +
+    '<span>'+(a.Business_Formation_Type||'')+'</span><span class="sep">·</span><span>'+(a.loc||'')+'</span>' +
+    '<span class="sep">·</span><span>Assigned: <b style="color:#fff">'+(a.Assigned_Underwriter||'—')+'</b></span>';
+  var risk = m.risk || 'med';
+  $('hRisk').className = 'verdict-badge ' + risk;
+  $('hRisk').textContent = (risk==='low'?'Low':risk==='high'?'High':'Medium') + ' Risk';
 
-    // Application summary
-    $('appSummary').innerHTML = [
-      ['Authority', a.Authority_Type],['Factoring As', a.Factoring_Authority_Selected],
-      ['Formation', a.Business_Formation_Type],['Equipment', (a.Equipment_Types||[]).join(', ')],
-      ['Trucks / Drivers', a.Number_of_Trucks+' / '+a.Number_of_Drivers],['Monthly Invoices', a.Monthly_Invoices_to_Factor],
-      ['Prior Factor', a.Has_Prior_Factor==='Yes' ? a.Current_Previous_Factor : 'None'],['Veteran', a.Veteran],
-      ['Requested Term', a.Rate_Term_Selection.replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],['Credit Issues',(a.Credit_Issues||[]).join(', ')]
-    ].map(function(r){ return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+(r[1]||'—')+'</div></div>'; }).join('');
+  $('appSummary').innerHTML = [
+    ['Authority', a.Authority_Type],['Factoring As', a.Factoring_Authority_Selected],
+    ['Formation', a.Business_Formation_Type],['Equipment', (a.Equipment_Types||[]).join(', ')],
+    ['Trucks / Drivers', a.Number_of_Trucks+' / '+a.Number_of_Drivers],['Monthly Invoices', a.Monthly_Invoices_to_Factor],
+    ['Prior Factor', a.Has_Prior_Factor==='Yes' ? a.Current_Previous_Factor : 'None'],['Veteran', a.Veteran],
+    ['Requested Term', (a.Rate_Term_Selection||'').replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],['Credit Issues',(a.Credit_Issues||[]).join(', ')]
+  ].map(function(r){ return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+(r[1]||'—')+'</div></div>'; }).join('');
 
-    // Fraud grid
-    $('fraudGrid').innerHTML = m.fraud.map(function(f){
-      var cls=f[2], ic=cls==='clear'?'✓':'!';
-      return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f[0]+'</div><div class="fd">'+f[1]+'</div></div></div>';
-    }).join('');
+  $('fraudGrid').innerHTML = m.fraud.length
+    ? m.fraud.map(function(f){ var cls=f[2], ic=cls==='clear'?'✓':'!'; return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f[0]+'</div><div class="fd">'+f[1]+'</div></div></div>'; }).join('')
+    : '<div class="flag-empty">Run external checks (IPQS / FMCSA / Carrier411) via the backend to populate fraud results.</div>';
 
-    // Ownership table
-    var ot = '<tr><th>Owner</th><th>Title</th><th>Stake</th><th>SOS Role</th></tr>';
-    m.owners.forEach(function(o){ ot += '<tr><td>'+o.First_Name1+' '+o.Last_Name1+'</td><td>'+o.Title+'</td><td>'+o.Ownership_Percent+'%</td><td><span class="pill g">'+o.sosRole+'</span></td></tr>'; });
-    $('ownTable').innerHTML = ot;
+  var ot = '<tr><th>Owner</th><th>Title</th><th>Stake</th><th>SOS Role</th></tr>';
+  (m.owners||[]).forEach(function(o){ ot += '<tr><td>'+(o.First_Name1||'')+' '+(o.Last_Name1||'')+'</td><td>'+(o.Title||'')+'</td><td>'+(o.Ownership_Percent||'')+'%</td><td><span class="pill g">'+(o.sosRole||'—')+'</span></td></tr>'; });
+  $('ownTable').innerHTML = ot;
 
-    // Documents table
-    var pillFor = function(s){ return s==='Verified'?'g':(s==='Received'?'b':(s==='Rejected'?'r':'r')); };
-    var dt = '<tr><th>Document</th><th>Source</th><th>Status</th></tr>';
-    m.documents.forEach(function(d){ dt += '<tr><td>'+d[0]+'</td><td>'+d[1]+'</td><td><span class="pill '+pillFor(d[2])+'">'+d[2]+'</span></td></tr>'; });
-    $('docTable').innerHTML = dt;
-    var recv = m.documents.filter(function(d){return d[2]==='Verified'||d[2]==='Received';}).length;
-    $('docCount').textContent = recv + ' / ' + m.documents.length;
-    $('kDocs').textContent = recv + ' / ' + m.documents.length;
-    $('kFraud').textContent = m.fraud.filter(function(f){return f[2]!=='clear';}).length;
-    $('kUcc').textContent = m.ucc;
+  var pillFor = function(s){ return s==='Verified'?'g':(s==='Received'?'b':(s==='Rejected'?'r':'r')); };
+  var dt = '<tr><th>Document</th><th>Source</th><th>Status</th></tr>';
+  (m.documents||[]).forEach(function(d){ dt += '<tr><td>'+d[0]+'</td><td>'+d[1]+'</td><td><span class="pill '+pillFor(d[2])+'">'+d[2]+'</span></td></tr>'; });
+  $('docTable').innerHTML = dt;
+  var recv = (m.documents||[]).filter(function(d){return d[2]==='Verified'||d[2]==='Received';}).length;
+  $('docCount').textContent = recv + ' / ' + (m.documents||[]).length;
+  $('kDocs').textContent = recv + ' / ' + (m.documents||[]).length;
+  $('kFraud').textContent = m.fraud.filter(function(f){return f[2]!=='clear';}).length;
+  $('kUcc').textContent = m.ucc;
 
-    // Prefill admin controls from existing review
-    var r = m.review;
-    $('uwDecision').value = r.Decision2 || 'Pending';
-    $('tgAuthority').classList.toggle('on', !!r.Authority_Verified);
-    $('tgOwnership').classList.toggle('on', !!r.Ownership_Verified);
-    $('tgUcc').classList.toggle('on', !!r.UCC_Checked);
-    $('uwFraudFlag').value = r.Fraud_Flag1 || 'None';
-    $('uwFraudNotes').value = r.Fraud_Notes || '';
-    $('uwChecklist').value = r.Checklist_Status1 || 'Not Started';
-    $('uwNotes').value = r.UW_Notes || '';
-    $('uwDecisionDate').value = r.Decision_Date || '';
-    $('uwLimit').value = r.Approved_Credit_Limit || '';
-    $('uwRate').value = r.Recommended_Rate || '';
-    $('tgBuyout').classList.toggle('on', !!r.Buyout_Required);
-    $('uwBuyoutFactor').value = r.Buyout_Factor || '';
-    $('uwBuyoutDate').value = r.Estimated_Buyout_Date || '';
+  var r = m.review || {};
+  $('uwDecision').value = r.Decision2 || 'Pending';
+  $('tgAuthority').classList.toggle('on', !!r.Authority_Verified);
+  $('tgOwnership').classList.toggle('on', !!r.Ownership_Verified);
+  $('tgUcc').classList.toggle('on', !!r.UCC_Checked);
+  $('uwFraudFlag').value = r.Fraud_Flag1 || 'None';
+  $('uwFraudNotes').value = r.Fraud_Notes || '';
+  $('uwChecklist').value = r.Checklist_Status1 || 'Not Started';
+  $('uwNotes').value = r.UW_Notes || '';
+  $('uwDecisionDate').value = r.Decision_Date || '';
+  $('uwLimit').value = r.Approved_Credit_Limit || '';
+  $('uwRate').value = r.Recommended_Rate || '';
+  $('tgBuyout').classList.toggle('on', !!r.Buyout_Required);
+  $('uwBuyoutFactor').value = r.Buyout_Factor || '';
+  $('uwBuyoutDate').value = r.Estimated_Buyout_Date || '';
 
-    // Wire
-    ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
-    ['uwDecision','uwFraudFlag','uwChecklist','uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
-    $('btnApprove').addEventListener('click', function(){ submit('Approved'); });
-    $('btnDecline').addEventListener('click', function(){ submit('Denied'); });
-    $('btnSave').addEventListener('click', function(){ submit(null); });
+  renderGate();
+}
 
-    $('statusMsg').className = 'status-msg';
-    renderGate();
+function load(usdot) {
+  usdot = String(usdot||'').trim();
+  if (!usdot) { showStatus('Enter a USDOT number to open an application.', 'error'); return; }
+  showStatus('Opening application for USDOT ' + usdot + '…', 'loading');
+  $('usdotBtn').disabled = true;
+  loadByUSDOT(usdot).then(function(m){
+    $('usdotBtn').disabled = false;
+    if (!m) { $('console').classList.remove('show'); showStatus('No application found for USDOT ' + usdot + (LIVE ? '.' : ' (demo — try 4366362 or 3421250).'), 'error'); return; }
+    clearStatus();
+    renderModel(m);
+  }).catch(function(e){
+    $('usdotBtn').disabled = false;
+    showStatus('Lookup failed: ' + (e && e.message ? e.message : e), 'error');
   });
 }
 
+function boot() {
+  // Wire controls once.
+  $('usdotBtn').addEventListener('click', function(){ load($('usdotInput').value); });
+  $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
+  ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
+  ['uwDecision','uwFraudFlag','uwChecklist','uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
+  $('btnApprove').addEventListener('click', function(){ submit('Approved'); });
+  $('btnDecline').addEventListener('click', function(){ submit('Denied'); });
+  $('btnSave').addEventListener('click', function(){ submit(null); });
+
+  // Open from ?usdot= if present; otherwise (demo) preload a sample so the console isn't empty.
+  var param = getQueryParam('usdot');
+  if (param) { $('usdotInput').value = param; load(param); }
+  else if (!LIVE) { $('usdotInput').value = '4366362'; load('4366362'); }
+  else { showStatus('Enter a USDOT number above to open an application.', 'loading'); }
+}
+
+function getQueryParam(name){ try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; } }
+
 function submit(forceDecision) {
+  if (!MODEL) { showStatus('Open an application first.', 'error'); return; }
   var s = readState();
   if (forceDecision) { s.decision = forceDecision; $('uwDecision').value = forceDecision; }
   var v = validateDecision(s, ctx());
@@ -481,7 +597,10 @@ function submit(forceDecision) {
   var payload = buildReviewPayload(s, MODEL.appId);
   saveReview(payload, MODEL.reviewId).then(function(res){
     if (res && res.demo) { showStatus('✓ Demo: decision "'+payload.Decision2+'" validated and Underwriting_Review payload logged to the console.', 'success'); }
-    else { showStatus('✓ Saved. Decision "'+payload.Decision2+'" written to Underwriting_Review and synced to CRM.', 'success'); }
+    else {
+      if (res && res.data && res.data.ID) MODEL.reviewId = res.data.ID;
+      showStatus('✓ Saved. Decision "'+payload.Decision2+'" written to Underwriting_Review for USDOT '+MODEL.application.USDOT+'.', 'success');
+    }
   }).catch(function(e){ showStatus('Save failed: ' + (e && e.message ? e.message : e), 'error'); });
 }
 

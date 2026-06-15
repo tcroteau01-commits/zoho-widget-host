@@ -321,18 +321,32 @@ test('renderPreview renders one row per preview row and flags error + duplicate'
   assert.equal(w.document.querySelectorAll('.prevrow .badge-dup').length, 1);
 });
 
-test('createDraftsFromPreview posts only the clean rows and opens paperwork', async () => {
+test('createDraftsFromPreview creates every non-duplicate row (unresolved = exceptions) and opens paperwork', async () => {
   const { window, records } = makeWidget();
   window.openImportModal();
   window.renderPreview(PREVIEW.rows);
   await window.createDraftsFromPreview();
   const posts = records.filter(r => /\/draft-loads$/.test(r.url.split('?')[0]) && r.opts.method === 'POST');
-  assert.equal(posts.length, 1);
-  const body = JSON.parse(posts[0].opts.body);
-  assert.equal(body.source, 'CSV');
-  assert.equal(body.customer_reference_number, 'WMT-90021');
-  assert.ok(body.source_payload && body.source_payload.carrier_factoring_invoice === 'INV-7741');
+  // PREVIEW = [matched, unresolved/missing-fields, duplicate]; the duplicate is skipped,
+  // both the matched AND the unresolved row come in as drafts.
+  assert.equal(posts.length, 2);
+  const matched = JSON.parse(posts[0].opts.body);
+  assert.equal(matched.source, 'CSV');
+  assert.equal(matched.customer_reference_number, 'WMT-90021');
+  assert.equal(matched.customer_id, '1');
+  const unresolved = JSON.parse(posts[1].opts.body);
+  assert.ok(!unresolved.customer_id, 'unresolved row has no customer_id but is still created');
+  assert.ok(!unresolved.carrier_id, 'unresolved row has no carrier_id but is still created');
   assert.ok(window.document.getElementById('paperwork'), 'paperwork view opened');
+});
+
+test('createDraftsFromPreview never posts pay terms (derived server-side from carrier)', async () => {
+  const { window, records } = makeWidget();
+  window.openImportModal();
+  window.renderPreview(PREVIEW.rows);
+  await window.createDraftsFromPreview();
+  const posts = records.filter(r => /\/draft-loads$/.test(r.url.split('?')[0]) && r.opts.method === 'POST');
+  posts.forEach(p => assert.ok(!('payment_terms' in JSON.parse(p.opts.body)), 'no payment_terms sent'));
 });
 
 // ---- Task 20: paperwork assembly + auto-route ----

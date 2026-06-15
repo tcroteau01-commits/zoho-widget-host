@@ -804,6 +804,11 @@ function importFile(file){
 }
 
 function isBadRow(row){ return (row.errors&&row.errors.length)||row.duplicate; }
+// Only true within-file duplicate refs are NOT created — identical Source_Load_Ref
+// would collapse onto one record via POST idempotency. Everything else (including
+// unmatched customer/carrier and missing fields) lands as a Draft "exception".
+function isDuplicateRow(row){ return !!row.duplicate; }
+function creatableRows(){ return __import.rows.filter(function(r){ return !isDuplicateRow(r); }); }
 
 function renderPreview(rows){
   __import.rows = rows||[];
@@ -835,16 +840,19 @@ function renderPreview(rows){
     html+='</tbody></table>';
     host.innerHTML=html;
   }
+  var creatable=creatableRows().length;
+  var dupes=__import.rows.length-creatable;
   var clean=__import.rows.filter(function(r){ return !isBadRow(r); }).length;
-  var bad=__import.rows.length-clean;
-  setText('imp-summary', __import.rows.length+' row'+(__import.rows.length===1?'':'s')+' · '+clean+' ready'+(bad?' · '+bad+' skipped':''));
+  var needFix=creatable-clean;
+  setText('imp-summary', __import.rows.length+' row'+(__import.rows.length===1?'':'s')+' · '+creatable+' will import'+
+    (needFix>0?' ('+needFix+' need attention)':'')+(dupes?' · '+dupes+' duplicate'+(dupes===1?'':'s')+' skipped':''));
   var btn=document.getElementById('imp-create');
-  if (btn){ btn.textContent='Create '+clean+' draft'+(clean===1?'':'s'); btn.disabled=!clean; }
+  if (btn){ btn.textContent='Create '+creatable+' draft'+(creatable===1?'':'s'); btn.disabled=!creatable; }
 }
 
 function createDraftsFromPreview(){
-  var clean=__import.rows.filter(function(r){ return !isBadRow(r); });
-  if(!clean.length){ showToast('No clean rows to create'); return Promise.resolve(); }
+  var clean=creatableRows();
+  if(!clean.length){ showToast('No rows to create'); return Promise.resolve(); }
   return Promise.all(clean.map(function(row){
     var m=row.mapped||{}, cm=row.customer_match||{}, vm=row.carrier_match||{};
     var body={
@@ -860,7 +868,7 @@ function createDraftsFromPreview(){
     };
     if (cm.best && cm.best.customer_id) body.customer_id=cm.best.customer_id;
     if (vm.vendor_id) body.carrier_id=vm.vendor_id;
-    if (m.payment_terms) body.payment_terms=m.payment_terms;
+    // payment_terms is derived server-side from the carrier's Account_Vendor record.
     if (m.load_comments) body.load_comments=m.load_comments;
     return fetch(BROKER_API_BASE+'/draft-loads', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)

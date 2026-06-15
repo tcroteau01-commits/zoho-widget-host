@@ -481,6 +481,7 @@ textarea { resize: vertical; min-height: 90px; }
 
         <div class="submit-status" id="submit-status"></div>
         <button class="btn primary full" id="submit-btn" disabled>Submit Load for Funding</button>
+        <button class="btn ghost full" id="save-draft-btn" style="margin-top:8px;">Save as Draft</button>
         <div class="rail-note" id="rail-note">Finish all 3 steps to enable submit</div>
       </div>
     </div>
@@ -491,6 +492,7 @@ textarea { resize: vertical; min-height: 90px; }
 // ── Base + state ────────────────────────────────────────────────────────────
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
 var brokerEmail = '';
+var _pendingDraftId = '';  // set during init when reopening via ?draftId=
 
 // In-memory file store keyed by input id (read by the merge pipeline below).
 var fileStore = {};
@@ -501,6 +503,7 @@ function resolveEmail() {
     var p = ZOHO.CREATOR.UTIL.getInitParams();
     var go = function (params) {
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      _pendingDraftId = _resolveDraftId(params);
       if (typeof onReady === 'function') onReady();
     };
     if (p && typeof p.then === 'function') { p.then(go); } else { go(p); }
@@ -684,13 +687,21 @@ function onCustomerChange() {
 
 function onReady() {
   if (!brokerEmail) return;
-  loadCustomers().then(function () {
+  var custLoad = loadCustomers().then(function () {
     var custSel = document.getElementById('customer-select');
     if (custSel) custSel.addEventListener('change', onCustomerChange);
     // Note: #customer-rate input listener is wired in the boot block below
     // so it is always attached regardless of whether loadCustomers resolves.
   });
-  loadCarriers();
+  var carrLoad = loadCarriers();
+
+  // Reopen an existing draft once both dropdowns have populated, so prefilling
+  // the <select>s lands on real <option>s.
+  if (_pendingDraftId) {
+    Promise.all([custLoad, carrLoad]).then(function () {
+      reopenDraft(_pendingDraftId);
+    });
+  }
 }
 
 // ── Stepper navigation (gated) ────────────────────────────────────────────────
@@ -998,6 +1009,10 @@ window.addEventListener('load', function () {
   var submitBtn = document.getElementById('submit-btn');
   if (submitBtn) { submitBtn.addEventListener('click', function () { submitLoad(); }); }
 
+  // Save as Draft button — NOT validity-gated (drafts are lenient)
+  var saveDraftBtn = document.getElementById('save-draft-btn');
+  if (saveDraftBtn) { saveDraftBtn.addEventListener('click', function () { saveDraft(); }); }
+
   refreshValidity();  // reflect any browser-autofilled fields in the initial submit state
   resolveEmail();
 });
@@ -1104,6 +1119,114 @@ window._collectFields = _collectFields;
 window._mergedPdfs = _mergedPdfs;
 window._uploadDoc = _uploadDoc;
 window.submitLoad = submitLoad;
+
+// ── Task 22: Save as Draft (manual feeder) + draft reopen ─────────────────────
+// Drafts are LENIENT: not gated on full-form validity. First save POSTs to
+// /draft-loads; once we hold a record id, subsequent saves PATCH it (no dup).
+var currentDraftId = null;
+var _savingDraft = false;
+
+function saveDraft() {
+  if (_savingDraft) return Promise.resolve();
+  _savingDraft = true;
+  var statusEl = document.getElementById('submit-status');
+  if (statusEl) { statusEl.className = 'submit-status loading'; statusEl.textContent = 'Saving draft…'; }
+
+  var fields = _collectFields();
+  var editing = !!currentDraftId;
+  var url, opts;
+  if (editing) {
+    url = BROKER_API_BASE + '/draft-loads/' + encodeURIComponent(currentDraftId);
+    opts = {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ email: brokerEmail }, fields))
+    };
+  } else {
+    url = BROKER_API_BASE + '/draft-loads';
+    opts = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({
+        email: brokerEmail,
+        source: 'Manual',
+        source_load_ref: fields.customer_reference_number || '',
+        source_payload: fields
+      }, fields))
+    };
+  }
+
+  return fetch(url, opts)
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok) {
+        if (statusEl) { statusEl.className = 'submit-status error'; statusEl.textContent = 'Could not save draft — please try again.'; }
+        return;
+      }
+      if (!editing && res.j && res.j.record_id) { currentDraftId = res.j.record_id; }
+      if (statusEl) {
+        statusEl.className = 'submit-status success';
+        statusEl.textContent = editing ? 'Draft updated.' : 'Draft saved.';
+      }
+    })
+    .catch(function () {
+      if (statusEl) { statusEl.className = 'submit-status error'; statusEl.textContent = 'Could not save draft — please try again.'; }
+    })
+    .then(function () { _savingDraft = false; });
+}
+
+// Prefill the form from a draft record (used when reopening via ?draftId=).
+// Must run AFTER the customer/carrier dropdowns are populated so select.value sticks.
+function prefillFromDraft(draft) {
+  if (!draft) return;
+  if (draft.id != null) currentDraftId = draft.id;
+  var sp = draft.source_payload || {};
+  var pick = function (k) { return draft[k] != null ? draft[k] : sp[k]; };
+  var setVal = function (id, val) {
+    var el = document.getElementById(id);
+    if (el && val != null) el.value = val;
+  };
+  setVal('customer-select', pick('customer_id'));
+  setVal('customer-reference', pick('customer_reference_number'));
+  setVal('customer-rate', pick('customer_rate'));
+  setVal('carrier-select', pick('carrier_id'));
+  setVal('carrier-rate', pick('carrier_rate'));
+  setVal('carrier-factoring-invoice', pick('carrier_factoring_invoice'));
+  setVal('rate-con', pick('load_rate_confirmation_number'));
+  setVal('Load_Comments', pick('load_comments'));
+
+  // Re-run dependent UI: customer change (credit), carrier change (terms), margin, validity.
+  if (typeof onCustomerChange === 'function') onCustomerChange();
+  if (typeof onCarrierChange === 'function') onCarrierChange();
+  if (typeof updateMargin === 'function') updateMargin();
+  if (typeof refreshValidity === 'function') refreshValidity();
+}
+
+// Resolve a draft id from init params or the URL query string.
+function _resolveDraftId(params) {
+  var id = params && params.draftId;
+  if (!id) {
+    try { id = new URLSearchParams(location.search).get('draftId'); } catch (e) {}
+  }
+  return id || '';
+}
+
+// Fetch the draft collection and prefill from the matching draft.
+function reopenDraft(draftId) {
+  if (!draftId || !brokerEmail) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/draft-loads?email=' + encodeURIComponent(brokerEmail))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (data) {
+      var drafts = (data && data.drafts) || [];
+      var d = drafts.filter(function (x) { return String(x.id) === String(draftId); })[0];
+      if (d) prefillFromDraft(d);
+    })
+    .catch(function () {});
+}
+
+window.saveDraft = saveDraft;
+window.prefillFromDraft = prefillFromDraft;
+window.reopenDraft = reopenDraft;
 
 // Test helper: set a field value and fire the appropriate event.
 // For SELECT elements, inserts a temporary option if the value isn't already present

@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Draft Loads</title>
+<!-- File-merge pipeline libraries (used by mergeFilesToPDF & helpers — only invoked on user attach, never at boot) -->
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js"></script>
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<style>
+:root{
+  --ink:#272727;--amber:#e8a020;--amber-dk:#c9871a;--body:#f0efe9;--card:#fff;
+  --line:#e3e0d6;--muted:#7a766c;--green:#1f8f4e;--amber-soft:#fbf0d8;--red:#c0392b;--blue:#2c6fb5;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--body);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.4}
+.wrap{max-width:1180px;margin:0 auto;padding:22px}
+.crumb{color:var(--muted);font-size:12px;margin-bottom:14px}
+.head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.head h1{font-size:21px;margin:0;color:var(--ink)}
+.head .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;font-size:13px;
+  font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-family:inherit}
+.btn:hover{border-color:#cfc9bb}
+.btn.amber{background:var(--amber);border-color:var(--amber);color:#3a2a05}
+.btn.dark{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.sm{padding:6px 11px;font-size:12px}
+.btn[disabled]{opacity:.5;cursor:default}
+
+/* Smart resolve bar */
+.smart{background:linear-gradient(180deg,#fff8ea,#fdf0d6);border:1px solid #ecd49a;border-radius:12px;
+  padding:14px 18px;margin:16px 0 14px;display:flex;align-items:center;gap:16px}
+.smart.hidden{display:none}
+.smart .ic{width:36px;height:36px;border-radius:9px;background:var(--amber);color:#3a2a05;
+  display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;flex-shrink:0}
+.smart .txt{flex:1}
+.smart .txt b{font-size:14.5px}
+.smart .txt .d{font-size:12.5px;color:#7a5e1e;margin-top:2px}
+
+/* Toolbar */
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.filters{display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:4px}
+.chip{border:0;background:transparent;padding:6px 13px;border-radius:7px;font-size:12.5px;color:var(--ink);cursor:pointer;font-weight:600;font-family:inherit}
+.chip.on{background:var(--ink);color:#fff}
+.chip .ct{opacity:.6;font-weight:500;margin-left:4px}
+.tmpl{font-size:12px;color:var(--blue);text-decoration:none;font-weight:600;cursor:pointer}
+.spacer{flex:1}
+.search{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;font-size:13px;min-width:170px;font-family:inherit}
+
+/* Bulk-select bar */
+.bulkbar{background:var(--ink);color:#fff;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.bulkbar.hidden{display:none}
+.bulkbar .cnt{font-weight:700}
+.bulkbar .btn{background:#3a3a3a;border-color:#4a4a4a;color:#fff}
+.bulkbar .btn:hover{background:#454545}
+.bulkbar .x{margin-left:auto;cursor:pointer;opacity:.6}
+
+/* Table */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:visible}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+  padding:11px 14px;border-bottom:1px solid var(--line);background:#faf9f5;font-weight:700}
+tbody td{padding:11px 14px;border-bottom:1px solid #f0eee6;vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fcfbf7}
+tbody tr.sel{background:#fff7e8}
+.co{font-weight:600}
+.small{font-size:11.5px;color:var(--muted);margin-top:2px}
+.mono{font-variant-numeric:tabular-nums}
+.rt{font-weight:600;font-variant-numeric:tabular-nums}
+.marg{font-weight:700;color:var(--green);font-variant-numeric:tabular-nums}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber-dk);cursor:pointer}
+.src{display:inline-flex;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
+.src.tms{background:#e8eff7;color:#2c6fb5}.src.csv{background:#eaf6ee;color:#1f8f4e}.src.manual{background:#f1eef9;color:#6a4bb5}
+.stat{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:20px;white-space:nowrap}
+.stat.ready{background:#e7f5ec;color:var(--green)}.stat.attn{background:var(--amber-soft);color:var(--amber-dk)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.docs{font-size:12px;color:var(--muted)}.docs.ok{color:var(--green);font-weight:600}
+.raw-mini{font-size:11px;color:#9a7a2e;font-style:italic}
+.celledit{display:flex;flex-direction:column;gap:5px}
+select.cell{border:1px solid var(--amber);background:#fffdf7;border-radius:7px;padding:6px 8px;font-size:12.5px;font-weight:600;color:var(--ink);width:100%;max-width:230px;font-family:inherit}
+.applyall{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--amber-dk);font-weight:600;cursor:pointer}
+.applyall input{width:13px;height:13px}
+.editable{cursor:pointer;border-bottom:1px dashed transparent;display:inline-block}
+tr:hover .editable{border-bottom-color:#cfc9bb}
+.rowsubmit{font-size:11.5px;color:var(--green);font-weight:700;cursor:pointer;background:none;border:0;font-family:inherit;margin-left:8px}
+.empty{text-align:center;color:var(--muted);padding:40px 0}
+
+/* Modal: grouped resolve */
+.scrim{position:fixed;inset:0;background:rgba(20,18,14,.4);display:flex;align-items:flex-start;justify-content:center;padding-top:60px;z-index:9999}
+.scrim.hidden{display:none}
+.modal{background:var(--body);width:620px;max-width:94vw;border-radius:14px;border:1px solid var(--line);box-shadow:0 24px 60px rgba(0,0,0,.28);overflow:hidden}
+.modal-head{background:var(--ink);color:#fff;padding:16px 22px}
+.modal-head .x{float:right;cursor:pointer;opacity:.7}
+.modal-head h2{margin:0;font-size:16px}
+.modal-head .ms{font-size:12px;opacity:.72;margin-top:3px}
+.modal-body{padding:8px 22px 4px;max-height:54vh;overflow-y:auto}
+.grp{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+.grp-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.grp-raw{font-size:13.5px}
+.grp-raw b{font-weight:700}
+.grp-raw .sentby{font-size:11px;color:var(--muted);display:block;margin-top:2px}
+.grp-count{font-size:11.5px;font-weight:700;color:var(--amber-dk);background:var(--amber-soft);padding:4px 10px;border-radius:20px;white-space:nowrap}
+.grp-resolve{display:flex;align-items:center;gap:9px}
+select.gsel{flex:1;border:1px solid var(--amber);background:#fffdf7;border-radius:8px;padding:9px 11px;font-size:13px;font-weight:600;color:var(--ink);font-family:inherit}
+select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
+.grp.done{opacity:.75}
+.remember{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);margin-top:8px}
+.remember input{width:14px;height:14px}
+.remember b{color:var(--ink)}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;background:var(--body)}
+.modal-foot .left{flex:1;font-size:12.5px;color:var(--muted)}
+
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2a44;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;box-shadow:0 8px 24px rgba(16,24,40,.3)}
+#toast.hidden{display:none}
+
+/* Import CSV modal */
+.modal.wide{width:860px}
+.imp-top{display:flex;align-items:center;gap:14px;padding:12px 0}
+.imp-top .dl{font-size:12.5px;color:var(--blue);text-decoration:none;font-weight:700}
+.imp-file{font-size:13px;font-family:inherit}
+.prevtbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+.prevtbl th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:7px 8px;border-bottom:1px solid var(--line);background:#faf9f5;font-weight:700}
+.prevtbl td{padding:7px 8px;border-bottom:1px solid #f0eee6;vertical-align:top}
+.prevrow.bad{background:#fff6f4}
+.prevrow.dup{background:#fffaf0}
+.pct{font-size:10.5px;color:var(--amber-dk);font-weight:700}
+.badge-error,.badge-dup,.badge-ok{display:inline-flex;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
+.badge-error{background:#fbe6e2;color:var(--red)}
+.badge-dup{background:var(--amber-soft);color:var(--amber-dk)}
+.badge-ok{background:#e7f5ec;color:var(--green)}
+.conflict{color:var(--red);font-weight:700;font-size:10.5px}
+
+/* Paperwork view */
+.pw-hidden{display:none}
+.dropzone{border:2px dashed var(--amber);background:linear-gradient(180deg,#fffaf0,#fdf3df);border-radius:14px;padding:22px;text-align:center;margin:16px 0 14px;position:relative}
+.dropzone.drag{border-style:solid;background:#fff6e4}
+.dropzone .cloud{font-size:30px;margin-bottom:4px}
+.dropzone .big{font-size:16px;font-weight:700;color:#5d460f}
+.dropzone .sm{font-size:12.5px;color:#8a6e2e;margin-top:4px}
+.statusrow{display:flex;gap:14px;margin-bottom:14px;align-items:stretch}
+.prog{flex:1;background:#fff;border:1px solid var(--line);border-radius:11px;padding:13px 16px}
+.prog .lbl{font-size:12.5px;font-weight:700}.prog .lbl b{color:var(--green)}
+.prog .barwrap{height:9px;background:#eee9dc;border-radius:6px;overflow:hidden;margin-top:8px}
+.prog .bar{height:100%;width:0;background:var(--green);border-radius:6px;transition:width .2s}
+.tray{flex:1.1;background:#fff;border:1px solid #ecd49a;border-radius:11px;padding:11px 14px}
+.tray .th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--amber-dk);font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between}
+.files{display:flex;gap:7px;flex-wrap:wrap}
+.file{background:var(--amber-soft);border:1px solid #e7cf94;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:600;color:#5d460f;display:flex;align-items:center;gap:6px;cursor:grab}
+.file .pdf{background:var(--red);color:#fff;border-radius:3px;font-size:8px;padding:1px 3px;font-weight:800}
+.lhead{display:grid;grid-template-columns:1fr 200px 200px 110px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;background:#faf9f5;border-bottom:1px solid var(--line);padding:10px 16px}
+.lhead .req{color:var(--amber-dk)}
+.lrow{display:grid;grid-template-columns:1fr 200px 200px 110px;align-items:center;padding:12px 16px;border-bottom:1px solid #f0eee6}
+.lrow:last-child{border-bottom:0}
+.slot{margin-right:12px}
+.filled{display:flex;align-items:center;gap:7px;background:#f1faf4;border:1px solid #bfe3cc;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:600;color:var(--green)}
+.filled .pdf{background:var(--green);color:#fff;border-radius:3px;font-size:8px;padding:1px 3px;font-weight:800}
+.filled .nm{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.empty-slot{border:1.5px dashed #cfc9bb;border-radius:8px;padding:7px 9px;font-size:11.5px;color:var(--muted);text-align:center}
+.empty-slot.req{border-color:#e0a93f;color:var(--amber-dk);font-weight:600;background:#fffdf7}
+.empty-slot.target{border-color:var(--amber);border-style:solid;background:#fff6e4;color:var(--amber-dk);font-weight:700}
+.auto{font-size:9.5px;color:var(--green);font-weight:700;margin-top:3px}
+.rstat{text-align:right}
+.foot{display:flex;align-items:center;gap:12px;margin-top:16px}
+.foot .l{flex:1;font-size:12.5px;color:var(--muted)}.foot .l b{color:var(--green)}
+
+@media (max-width:640px){
+  body{overflow-x:hidden}
+  .wrap{padding:14px 12px 40px}
+  .head{flex-direction:column;align-items:stretch;gap:12px}
+  .toolbar{flex-direction:column;align-items:stretch}
+  .search{min-width:0;width:100%}
+  thead{display:none}
+  table,tbody,tr,td{display:block;width:100%}
+  tbody tr{padding:8px 14px}
+  tbody td{display:flex;justify-content:space-between;gap:12px;text-align:right;padding:5px 0}
+  tbody td[data-label]::before{content:attr(data-label);font-weight:700;color:var(--muted);text-align:left;text-transform:uppercase;font-size:10px;letter-spacing:.5px}
+  .btn,.chip{min-height:44px}
+  input,select,textarea,.search{font-size:16px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="crumb">Broker Portal &nbsp;›&nbsp; Loads &nbsp;›&nbsp; <b style="color:var(--ink)">Draft Loads</b></div>
+  <div class="head">
+    <div><h1>Draft Loads</h1><div class="sub" id="sub">Loading…</div></div>
+    <div style="display:flex;gap:9px">
+      <button class="btn" id="import-csv">⬍ Import CSV</button>
+      <button class="btn amber" id="new-draft">＋ New Draft</button>
+    </div>
+  </div>
+
+  <div class="smart hidden" id="smart">
+    <div class="ic">!</div>
+    <div class="txt"><b id="smart-title"></b><div class="d" id="smart-desc"></div></div>
+    <button class="btn dark" id="resolve-cust">Resolve customers</button>
+    <button class="btn" id="resolve-carr">Resolve carriers</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="filters" id="filters">
+      <button class="chip on" data-filter="all">All <span class="ct" id="ct-all">0</span></button>
+      <button class="chip" data-filter="attention">Needs attention <span class="ct" id="ct-attn">0</span></button>
+      <button class="chip" data-filter="ready">Ready <span class="ct" id="ct-ready">0</span></button>
+    </div>
+    <a class="tmpl" id="tmpl">⬇ Template</a>
+    <div class="spacer"></div>
+    <input class="search" id="search" placeholder="Search…">
+    <button class="btn dark" id="submit-all">Submit all Ready (0)</button>
+  </div>
+
+  <div class="bulkbar hidden" id="bulkbar">
+    <span class="cnt" id="bulk-count">0 selected</span>
+    <button class="btn sm" id="bulk-cust">Set customer ▾</button>
+    <button class="btn sm" id="bulk-carr">Set carrier ▾</button>
+    <button class="btn sm" id="bulk-docs">Attach docs</button>
+    <button class="btn sm" id="bulk-del">Delete</button>
+    <span class="x" id="bulk-clear">✕ clear</span>
+  </div>
+
+  <div class="panel">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34px"><input type="checkbox" id="cb-all"></th>
+          <th style="width:70px">Source</th>
+          <th>Customer</th>
+          <th>Carrier</th>
+          <th style="width:88px">Cust. Rate</th>
+          <th style="width:88px">Carr. Rate</th>
+          <th style="width:74px">Margin</th>
+          <th style="width:56px">Docs</th>
+          <th style="width:170px">Status</th>
+        </tr>
+      </thead>
+      <tbody id="queue-body"><tr><td colspan="9" class="empty">Loading drafts…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="wrap pw-hidden" id="paperwork-wrap">
+  <div class="crumb"><a href="#" id="pw-back-link" style="color:var(--blue);text-decoration:none">‹ Draft Loads</a> &nbsp;›&nbsp; <b style="color:var(--ink)">Attach Paperwork</b></div>
+  <div class="head">
+    <div><h1>Attach Paperwork</h1><div class="sub" id="pw-sub">data resolved — now both packets required per load</div></div>
+  </div>
+  <div class="dropzone" id="pw-drop">
+    <div class="cloud">⬍</div>
+    <div class="big">Drop all your packets here — customer and carrier</div>
+    <div class="sm">A name with the <b>load ref #</b> → Customer Docs, a name with the <b>invoice #</b> → Carrier Docs · anything unmatched lands in the tray</div>
+  </div>
+  <div class="statusrow">
+    <div class="prog">
+      <div class="lbl" id="pw-prog-lbl"><b>0 of 0</b> loads have both packets</div>
+      <div class="barwrap"><div class="bar" id="pw-bar"></div></div>
+      <div class="small" id="pw-prog-sub" style="margin-top:7px"></div>
+    </div>
+    <div class="tray">
+      <div class="th"><span>⬍ Unmatched files — drag onto a slot</span><span id="pw-tray-ct">0</span></div>
+      <div class="files" id="pw-tray"></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="lhead">
+      <span>Load</span><span>Customer Docs <span class="req">· required</span></span><span>Carrier Docs <span class="req">· required</span></span><span style="text-align:right">Status</span>
+    </div>
+    <div id="paperwork"></div>
+  </div>
+  <div class="foot">
+    <div class="l" id="pw-foot"><b>0 ready</b></div>
+    <button class="btn" id="pw-back">Back to drafts</button>
+    <button class="btn amber" id="pw-done">Done — return to queue</button>
+  </div>
+</div>
+
+<div class="scrim hidden" id="scrim"><div class="modal" id="modal"></div></div>
+<div id="toast" class="hidden"></div>
+
+<script>
+var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+var brokerEmail = '';
+var __state = {
+  drafts: [],
+  filter: 'all',
+  search: '',
+  selected: [],
+  customers: [],
+  carriers: [],
+  candidatesByRaw: {},
+  lastSkipped: []
+};
+window.__state = __state;
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function num(n){ return Number(String(n==null?'':n).replace(/[^0-9.\-]/g,''))||0; }
+function money(n){ var v = num(n); return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function setText(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
+
+function showToast(msg){
+  var t=document.getElementById('toast'); if(!t) return;
+  t.textContent=msg; t.classList.remove('hidden');
+  clearTimeout(window._toastTimer);
+  window._toastTimer=setTimeout(function(){ t.classList.add('hidden'); },3000);
+}
+
+/* ---------------- queue render ---------------- */
+
+function marginOf(d){ return num(d.customer_rate) - num(d.carrier_rate); }
+
+function visibleDrafts(){
+  var f=__state.filter, s=(__state.search||'').toLowerCase();
+  return __state.drafts.filter(function(d){
+    if (f==='ready' && d.status!=='ready') return false;
+    if (f==='attention' && d.status!=='attention') return false;
+    if (s){
+      var hay=((d.customer_name||'')+' '+(d.customer_raw||'')+' '+(d.carrier_name||'')+' '+(d.carrier_raw||'')+' '+(d.customer_reference_number||'')).toLowerCase();
+      if (hay.indexOf(s)===-1) return false;
+    }
+    return true;
+  });
+}
+
+function customerCellHtml(d){
+  if (d.customer_name){
+    return '<div class="co editable" data-edit="customer">'+esc(d.customer_name)+'</div>'+
+           (d.customer_reference_number?'<div class="small mono">Ref '+esc(d.customer_reference_number)+'</div>':'');
+  }
+  return '<div class="editable" data-edit="customer">'+
+         '<div class="raw-mini">sent: “'+esc(d.customer_raw||'—')+'”</div>'+
+         '<div class="co" style="color:var(--amber-dk)">Pick customer ▾</div></div>';
+}
+function carrierCellHtml(d){
+  if (d.carrier_name){
+    var line = d.carrier_mc ? 'MC '+esc(d.carrier_mc)+' ✓' : (d.carrier_dot ? 'DOT '+esc(d.carrier_dot)+' ✓' : '');
+    return '<div class="co editable" data-edit="carrier">'+esc(d.carrier_name)+'</div>'+
+           (line?'<div class="small mono">'+line+'</div>':'');
+  }
+  return '<div class="editable" data-edit="carrier">'+
+         '<div class="raw-mini">sent: '+esc(d.carrier_raw||'—')+'</div>'+
+         '<div class="co" style="color:var(--amber-dk)">Pick carrier ▾</div></div>';
+}
+
+function statusCellHtml(d){
+  if (d.status==='ready') return '<span class="stat ready"><span class="dot"></span>Ready</span>'+
+    '<button class="rowsubmit" data-submit="'+esc(d.id)+'">Submit ▸</button>';
+  return '<span class="stat attn"><span class="dot"></span>'+esc(reasonLabel(d.reasons))+'</span>';
+}
+function reasonLabel(reasons){
+  reasons = reasons||[];
+  if (reasons.indexOf('customer')!==-1) return 'Customer';
+  if (reasons.indexOf('carrier')!==-1) return 'Carrier';
+  if (reasons.indexOf('customer_docs')!==-1 || reasons.indexOf('carrier_docs')!==-1) return 'Docs needed';
+  return 'Needs info';
+}
+
+function renderQueue(drafts){
+  if (drafts) __state.drafts = drafts;
+  var rows = visibleDrafts();
+  var body=document.getElementById('queue-body');
+  if(!body) return;
+  if(!rows.length){ body.innerHTML='<tr><td colspan="9" class="empty">No drafts.</td></tr>'; return; }
+  body.innerHTML='';
+  rows.forEach(function(d){
+    var tr=document.createElement('tr');
+    if (__state.selected.indexOf(d.id)!==-1) tr.className='sel';
+    var docCount=(d.has_customer_docs?1:0)+(d.has_carrier_docs?1:0);
+    var docCls='docs'+(docCount===2?' ok':'');
+    tr.innerHTML=
+      '<td data-label=""><input type="checkbox" class="rowcb" data-id="'+esc(d.id)+'"'+(__state.selected.indexOf(d.id)!==-1?' checked':'')+'></td>'+
+      '<td data-label="Source"><span class="src '+srcClass(d.source)+'">'+esc(d.source||'')+'</span></td>'+
+      '<td data-label="Customer">'+customerCellHtml(d)+'</td>'+
+      '<td data-label="Carrier">'+carrierCellHtml(d)+'</td>'+
+      '<td data-label="Cust. Rate" class="rt">'+money(d.customer_rate)+'</td>'+
+      '<td data-label="Carr. Rate" class="rt">'+money(d.carrier_rate)+'</td>'+
+      '<td data-label="Margin" class="marg">'+money(marginOf(d))+'</td>'+
+      '<td data-label="Docs"><span class="'+docCls+'">'+docCount+(docCount===2?' ✓':'')+'</span></td>'+
+      '<td data-label="Status">'+statusCellHtml(d)+'</td>';
+    tr.setAttribute('data-row', d.id);
+    wireRow(tr, d);
+    body.appendChild(tr);
+  });
+}
+function srcClass(s){ return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
+
+function wireRow(tr, d){
+  var cb=tr.querySelector('input.rowcb');
+  if (cb) cb.addEventListener('change', function(){ toggleSelect(d.id, cb.checked); });
+  tr.querySelectorAll('[data-edit]').forEach(function(cell){
+    cell.addEventListener('click', function(e){
+      e.stopPropagation();
+      openInlineEdit(tr, d, cell.getAttribute('data-edit'));
+    });
+  });
+  var sb=tr.querySelector('[data-submit]');
+  if (sb) sb.addEventListener('click', function(e){ e.stopPropagation(); submitOne(d.id); });
+}
+
+/* ---------------- inline cell edit ---------------- */
+
+function matchingUnresolved(sameRaw, kind){
+  return __state.drafts.filter(function(x){
+    var raw = kind==='customer' ? (x.customer_raw||'') : (x.carrier_raw||'');
+    var named = kind==='customer' ? x.customer_name : x.carrier_name;
+    return raw===sameRaw && !named;
+  });
+}
+
+function openInlineEdit(tr, d, kind){
+  var anchor=tr.querySelector('[data-edit="'+kind+'"]');
+  var cell = anchor && anchor.closest('td');
+  if (!cell || cell.querySelector('select.cell')) return;
+  var sameRaw = kind==='customer' ? (d.customer_raw||'') : (d.carrier_raw||'');
+  var matchCount = sameRaw ? matchingUnresolved(sameRaw, kind).length : 1;
+  var wrap=document.createElement('div'); wrap.className='celledit';
+  var rawTxt = kind==='customer' ? d.customer_raw : d.carrier_raw;
+  if (rawTxt){ var r=document.createElement('div'); r.className='raw-mini'; r.textContent='sent: “'+rawTxt+'”'; wrap.appendChild(r); }
+  var sel=document.createElement('select'); sel.className='cell';
+  sel.innerHTML = kind==='customer' ? customerOptions('', []) : carrierOptions('');
+  wrap.appendChild(sel);
+  var applyAll=null;
+  if (matchCount>1){
+    var lbl=document.createElement('label'); lbl.className='applyall';
+    lbl.innerHTML='<input type="checkbox" checked> Apply to all '+matchCount+' with this name';
+    applyAll=lbl.querySelector('input'); wrap.appendChild(lbl);
+  }
+  cell.innerHTML=''; cell.appendChild(wrap);
+  if (kind==='customer' && rawTxt){
+    resolveCustomerCandidates(rawTxt, d.source).then(function(cands){ sel.innerHTML=customerOptions('', cands); });
+  }
+  if (sel.focus) sel.focus();
+  sel.addEventListener('change', function(){
+    var val=sel.value; if(!val) return;
+    var ids=[d.id];
+    if (applyAll && applyAll.checked && sameRaw){
+      ids=matchingUnresolved(sameRaw, kind).map(function(x){return x.id;});
+    }
+    var patchKey = kind==='customer'?'customer_id':'carrier_id';
+    Promise.all(ids.map(function(id){ var p={}; p[patchKey]=val; return patchDraft(id,p); }))
+      .then(function(){ return loadQueue(); })
+      .then(function(){ showToast('Updated'); })
+      .catch(function(){ showToast('Update failed'); });
+  });
+}
+
+/* ---------------- bulk select ---------------- */
+
+function toggleSelect(id, on){
+  var i=__state.selected.indexOf(id);
+  if (on && i===-1) __state.selected.push(id);
+  if (!on && i!==-1) __state.selected.splice(i,1);
+  renderBulkBar();
+  var tr=document.querySelector('[data-row="'+id+'"]');
+  if (tr) tr.classList.toggle('sel', on);
+}
+function clearSelection(){
+  __state.selected=[];
+  document.querySelectorAll('#queue-body input.rowcb').forEach(function(c){ c.checked=false; });
+  document.querySelectorAll('#queue-body tr.sel').forEach(function(t){ t.classList.remove('sel'); });
+  renderBulkBar();
+}
+function renderBulkBar(){
+  var bar=document.getElementById('bulkbar'); if(!bar) return;
+  var n=__state.selected.length;
+  if (!n){ bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  setText('bulk-count', n+' selected');
+}
+function bulkSetCustomer(customerId){
+  return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { customer_id: customerId }); }))
+    .then(function(){ clearSelection(); return loadQueue(); })
+    .catch(function(){ showToast('Update failed'); });
+}
+function bulkSetCarrier(carrierId){
+  return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { carrier_id: carrierId }); }))
+    .then(function(){ clearSelection(); return loadQueue(); })
+    .catch(function(){ showToast('Update failed'); });
+}
+
+function promptPick(kind){
+  var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
+  if(!scrim||!modal||!__state.selected.length) return;
+  var title = kind==='customer'?'Set customer for '+__state.selected.length+' loads':'Set carrier for '+__state.selected.length+' loads';
+  modal.innerHTML=
+    '<div class="modal-head"><span class="x" id="modal-x">✕</span><h2>'+esc(title)+'</h2></div>'+
+    '<div class="modal-body"><div class="grp"><div class="grp-resolve"><select class="gsel" id="bulk-sel">'+
+    (kind==='customer'?customerOptions('',[]):carrierOptions(''))+'</select></div></div></div>'+
+    '<div class="modal-foot"><div class="left"></div><button class="btn" id="modal-cancel">Cancel</button>'+
+    '<button class="btn amber" id="modal-apply">Apply</button></div>';
+  scrim.classList.remove('hidden');
+  modal.querySelector('#modal-x').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+  modal.querySelector('#modal-apply').addEventListener('click', function(){
+    var val=modal.querySelector('#bulk-sel').value; if(!val){ closeModal(); return; }
+    (kind==='customer'?bulkSetCustomer(val):bulkSetCarrier(val)).then(function(){ closeModal(); showToast('Updated'); });
+  });
+}
+
+function renderSummary(summary){
+  summary=summary||{};
+  setText('ct-all', summary.total!=null?summary.total:__state.drafts.length);
+  setText('ct-ready', summary.ready!=null?summary.ready:__state.drafts.filter(function(d){return d.status==='ready';}).length);
+  setText('ct-attn', summary.attention!=null?summary.attention:__state.drafts.filter(function(d){return d.status==='attention';}).length);
+  var ready = summary.ready!=null?summary.ready:__state.drafts.filter(function(d){return d.status==='ready';}).length;
+  setText('submit-all', 'Submit all Ready ('+ready+')');
+  var sb=document.getElementById('submit-all'); if(sb) sb.disabled = !ready;
+  renderSmartBar();
+}
+
+function renderSmartBar(){
+  var smart=document.getElementById('smart'); if(!smart) return;
+  var attn=__state.drafts.filter(function(d){return d.status==='attention';});
+  var custGroups=computeGroups(attn,'customer');
+  var carrGroups=computeGroups(attn,'carrier');
+  var fixes=custGroups.length+carrGroups.length;
+  if (!attn.length || !fixes){ smart.classList.add('hidden'); return; }
+  smart.classList.remove('hidden');
+  setText('smart-title', attn.length+' load'+(attn.length===1?'':'s')+' need attention — but only '+fixes+' thing'+(fixes===1?'':'s')+' to fix');
+  setText('smart-desc', custGroups.length+' unmatched customer'+(custGroups.length===1?'':'s')+' and '+carrGroups.length+' unmatched carrier'+(carrGroups.length===1?'':'s')+' cover all '+attn.length+'. Resolve each once and they all clear.');
+  var rc=document.getElementById('resolve-cust'), rr=document.getElementById('resolve-carr');
+  if (rc){ rc.textContent='Resolve customers ('+custGroups.length+')'; rc.style.display=custGroups.length?'':'none'; }
+  if (rr){ rr.textContent='Resolve carriers ('+carrGroups.length+')'; rr.style.display=carrGroups.length?'':'none'; }
+}
+
+function setFilter(f){
+  __state.filter=f;
+  document.querySelectorAll('#filters .chip').forEach(function(c){
+    c.classList.toggle('on', c.getAttribute('data-filter')===f);
+  });
+  renderQueue();
+}
+
+/* ---------------- grouped resolve ---------------- */
+
+function rawKeyFor(d, kind){
+  if (kind==='customer') return d.customer_raw || ('(no name · load '+d.id+')');
+  return d.carrier_raw || ('(no carrier · load '+d.id+')');
+}
+
+function computeGroups(drafts, kind){
+  drafts = drafts || __state.drafts.filter(function(d){return d.status==='attention';});
+  var map={};
+  drafts.forEach(function(d){
+    var miss = kind==='customer' ? (!d.customer_name && (d.reasons||[]).indexOf('customer')!==-1)
+                                 : (!d.carrier_name && (d.reasons||[]).indexOf('carrier')!==-1);
+    if (!miss) return;
+    var raw=rawKeyFor(d,kind);
+    if (!map[raw]) map[raw]={ raw:raw, count:0, ids:[], source:d.source };
+    map[raw].count++;
+    map[raw].ids.push(d.id);
+  });
+  return Object.keys(map).map(function(k){ return map[k]; });
+}
+
+function patchDraft(id, patch){
+  var body=Object.assign({ email: brokerEmail }, patch);
+  return fetch(BROKER_API_BASE+'/draft-loads/'+id, {
+    method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  }).then(function(r){ if(r&&r.ok===false) throw new Error('patch failed'); return r.json(); });
+}
+
+function applyGroup(raw, value, ids, remember, kind){
+  kind = kind||'customer';
+  var patchKey = kind==='customer' ? 'customer_id' : 'carrier_id';
+  var patches = ids.map(function(id){ var p={}; p[patchKey]=value; return patchDraft(id, p); });
+  return Promise.all(patches).then(function(){
+    if (remember && kind==='customer'){
+      var g=computeGroups(undefined,'customer').find(function(x){return x.raw===raw;});
+      return fetch(BROKER_API_BASE+'/draft-loads/alias', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ email:brokerEmail, source:(g&&g.source)||'', raw_name:raw, customer_id:value })
+      }).then(function(r){ if(r&&r.ok===false) throw new Error('alias failed'); return r.json(); });
+    }
+  }).then(function(){ return loadQueue(); })
+    .catch(function(){ showToast('Update failed'); });
+}
+
+function customerOptions(selectedId, candidates){
+  var opts='', seen={};
+  (candidates||[]).forEach(function(c){
+    seen[c.customer_id]=true;
+    opts+='<option value="'+esc(c.customer_id)+'"'+(c.customer_id===selectedId?' selected':'')+'>'+esc(c.name||c.customer_name)+(c.score!=null?' — '+Math.round(c.score*100)+'% match':'')+'</option>';
+  });
+  __state.customers.forEach(function(c){
+    if (seen[c.customer_id]) return;
+    opts+='<option value="'+esc(c.customer_id)+'"'+(c.customer_id===selectedId?' selected':'')+'>'+esc(c.customer_name)+'</option>';
+  });
+  return '<option value="">— pick a customer —</option>'+opts;
+}
+function carrierOptions(selectedId){
+  var opts='<option value="">— pick a carrier —</option>';
+  __state.carriers.forEach(function(c){
+    opts+='<option value="'+esc(c.vendor_id)+'"'+(c.vendor_id===selectedId?' selected':'')+'>'+esc(c.carrier_name)+(c.mc?' (MC '+esc(c.mc)+')':'')+(c.dnu?' · DNU':'')+'</option>';
+  });
+  return opts;
+}
+
+function resolveCustomerCandidates(raw, source){
+  if (__state.candidatesByRaw[raw]) return Promise.resolve(__state.candidatesByRaw[raw]);
+  return fetch(BROKER_API_BASE+'/draft-loads/resolve-customer', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ email:brokerEmail, raw_name:raw, source:source||'' })
+  }).then(function(r){ return r.json(); }).then(function(res){
+    var cands=(res&&res.candidates)||[];
+    __state.candidatesByRaw[raw]=cands;
+    return cands;
+  }).catch(function(){ return []; });
+}
+
+function openResolveModal(kind){
+  var groups=computeGroups(undefined, kind);
+  var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
+  if(!scrim||!modal) return;
+  var totalLoads=groups.reduce(function(a,g){return a+g.count;},0);
+  var title = kind==='customer'?'Resolve customers':'Resolve carriers';
+  modal.innerHTML=
+    '<div class="modal-head"><span class="x" id="modal-x">✕</span><h2>'+title+'</h2>'+
+    '<div class="ms">'+groups.length+' unmatched name'+(groups.length===1?'':'s')+' across '+totalLoads+' loads — match each once to clear all of them</div></div>'+
+    '<div class="modal-body" id="modal-body"></div>'+
+    '<div class="modal-foot"><div class="left">'+groups.length+' to resolve</div>'+
+    '<button class="btn" id="modal-cancel">Close</button></div>';
+  var mb=modal.querySelector('#modal-body');
+  groups.forEach(function(g, i){
+    var div=document.createElement('div');
+    div.className='grp'; div.setAttribute('data-raw', g.raw);
+    var selHtml = kind==='customer' ? customerOptions('', []) : carrierOptions('');
+    div.innerHTML=
+      '<div class="grp-top"><div class="grp-raw"><b>“'+esc(g.raw)+'”</b>'+(g.source?'<span class="sentby">sent by '+esc(g.source)+'</span>':'')+'</div>'+
+      '<span class="grp-count">'+g.count+' load'+(g.count===1?'':'s')+'</span></div>'+
+      '<div class="grp-resolve"><select class="gsel">'+selHtml+'</select></div>'+
+      (kind==='customer'?'<label class="remember"><input type="checkbox" class="remember-cb" checked> <b>Remember</b> this match for future imports from this TMS</label>':'');
+    mb.appendChild(div);
+    var sel=div.querySelector('select');
+    if (kind==='customer'){
+      resolveCustomerCandidates(g.raw, g.source).then(function(cands){ sel.innerHTML=customerOptions('', cands); });
+    }
+    sel.addEventListener('change', function(){
+      var val=sel.value; if(!val) return;
+      var remember = kind==='customer' ? !!(div.querySelector('.remember-cb') && div.querySelector('.remember-cb').checked) : false;
+      sel.classList.add('done'); div.classList.add('done');
+      applyGroup(g.raw, val, g.ids, remember, kind).then(function(){
+        showToast(g.count+' load'+(g.count===1?'':'s')+' cleared');
+      });
+    });
+  });
+  scrim.classList.remove('hidden');
+  modal.querySelector('#modal-x').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+}
+function closeModal(){ var s=document.getElementById('scrim'); if(s) s.classList.add('hidden'); }
+
+/* ---------------- submit gating ---------------- */
+
+function submitIds(ids){
+  return fetch(BROKER_API_BASE+'/draft-loads/submit', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ email:brokerEmail, ids:ids })
+  }).then(function(r){ if(r&&r.ok===false) throw new Error('submit failed'); return r.json(); })
+    .then(function(res){ handleSubmitResult(res); return res; })
+    .catch(function(){ showToast('Submit failed'); });
+}
+function submitAllReady(){
+  var ids=__state.drafts.filter(function(d){return d.status==='ready';}).map(function(d){return d.id;});
+  if (!ids.length){ showToast('Nothing ready to submit'); return Promise.resolve(); }
+  return submitIds(ids);
+}
+function submitOne(id){ return submitIds([id]); }
+
+function handleSubmitResult(res){
+  res=res||{};
+  var submitted=(res.submitted||[]);
+  __state.lastSkipped=(res.skipped||[]);
+  if (submitted.length){
+    __state.drafts=__state.drafts.filter(function(d){ return submitted.indexOf(d.id)===-1; });
+  }
+  var msg = submitted.length+' submitted';
+  if (__state.lastSkipped.length){
+    msg += ' · '+__state.lastSkipped.length+' skipped ('+
+      __state.lastSkipped.map(function(s){ return (s.reasons||[]).join(','); }).join('; ')+')';
+  }
+  showToast(msg);
+  renderQueue();
+  renderSummary();
+}
+
+/* ---------------- data load ---------------- */
+
+function loadQueue(){
+  if (!brokerEmail) return Promise.resolve();
+  return fetch(BROKER_API_BASE+'/draft-loads?email='+encodeURIComponent(brokerEmail))
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      __state.drafts=(p&&p.drafts)||[];
+      __state.candidatesByRaw={};
+      setText('sub', __state.drafts.length+' draft'+(__state.drafts.length===1?'':'s')+' · resolve once, submit in bulk.');
+      renderQueue();
+      renderSummary((p&&p.summary)||{});
+    })
+    .catch(function(){ setText('sub','Could not load drafts.'); });
+}
+
+function loadPickLists(){
+  if (!brokerEmail) return Promise.resolve();
+  var c=fetch(BROKER_API_BASE+'/tms-customers?email='+encodeURIComponent(brokerEmail))
+    .then(function(r){return r.json();}).then(function(p){ __state.customers=(p&&p.customers)||[]; }).catch(function(){});
+  var v=fetch(BROKER_API_BASE+'/tms-carriers?email='+encodeURIComponent(brokerEmail))
+    .then(function(r){return r.json();}).then(function(p){ __state.carriers=(p&&p.carriers)||[]; }).catch(function(){});
+  return Promise.all([c,v]);
+}
+
+function boot(){
+  if (typeof ZOHO==='undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) return;
+  var result=ZOHO.CREATOR.UTIL.getInitParams();
+  if (result && typeof result.then==='function'){
+    result.then(function(params){
+      brokerEmail=(params && (params.loginUser||params.login_user||params.email))||'';
+      loadPickLists().then(loadQueue);
+    });
+  }
+}
+
+window.addEventListener('load', function(){
+  document.querySelectorAll('#filters .chip').forEach(function(c){
+    c.addEventListener('click', function(){ setFilter(c.getAttribute('data-filter')); });
+  });
+  var s=document.getElementById('search');
+  if (s) s.addEventListener('input', function(){ __state.search=s.value; renderQueue(); });
+  bind('import-csv', function(){ openImportModal(); });
+  bind('pw-back', function(){ closePaperwork(); loadQueue(); });
+  bind('pw-back-link', function(e){ if(e&&e.preventDefault) e.preventDefault(); closePaperwork(); loadQueue(); });
+  bind('pw-done', function(){ finishPaperwork(); });
+  bind('new-draft', function(){ showToast('New draft coming soon'); });
+  bind('submit-all', function(){ submitAllReady(); });
+  bind('resolve-cust', function(){ openResolveModal('customer'); });
+  bind('resolve-carr', function(){ openResolveModal('carrier'); });
+  bind('bulk-cust', function(){ promptPick('customer'); });
+  bind('bulk-carr', function(){ promptPick('carrier'); });
+  bind('bulk-clear', clearSelection);
+  bind('bulk-docs', function(){ showToast('Attach docs coming soon'); });
+  bind('bulk-del', function(){ showToast('Delete coming soon'); });
+  var cbAll=document.getElementById('cb-all');
+  if (cbAll) cbAll.addEventListener('change', function(){
+    var on=cbAll.checked;
+    if (on){ visibleDrafts().forEach(function(d){ if(__state.selected.indexOf(d.id)===-1) __state.selected.push(d.id); }); }
+    else { __state.selected=[]; }
+    renderQueue(); renderBulkBar();
+  });
+  var scrim=document.getElementById('scrim');
+  if (scrim) scrim.addEventListener('click', function(e){ if(e.target===scrim) closeModal(); });
+  var drop=document.getElementById('pw-drop');
+  if (drop){
+    drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('drag'); });
+    drop.addEventListener('dragleave', function(){ drop.classList.remove('drag'); });
+    drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag'); if(e.dataTransfer&&e.dataTransfer.files.length) dropAllFiles(e.dataTransfer.files); });
+  }
+  boot();
+});
+function bind(id, fn){ var el=document.getElementById(id); if(el) el.addEventListener('click', fn); }
+
+document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeModal(); } });
+
+/* ================= Task 19: CSV import modal + preview ================= */
+
+var __import = { rows: [] };
+
+function openImportModal(){
+  var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
+  if(!scrim||!modal) return;
+  __import.rows=[];
+  modal.className='modal wide';
+  modal.innerHTML=
+    '<div class="modal-head"><span class="x" id="modal-x">✕</span><h2>Import loads from CSV</h2>'+
+    '<div class="ms">Upload your TMS export — we match customers &amp; carriers, then you attach paperwork.</div></div>'+
+    '<div class="modal-body">'+
+      '<div class="imp-top">'+
+        '<a class="dl tmpl" id="imp-template" download href="'+esc(BROKER_API_BASE)+'/draft-loads/template">⬇ Download template</a>'+
+        '<input type="file" class="imp-file" id="imp-file" accept=".csv,text/csv">'+
+      '</div>'+
+      '<div id="imp-preview"></div>'+
+    '</div>'+
+    '<div class="modal-foot"><div class="left" id="imp-summary"></div>'+
+      '<button class="btn" id="modal-cancel">Cancel</button>'+
+      '<button class="btn amber" id="imp-create" disabled>Create 0 drafts</button></div>';
+  scrim.classList.remove('hidden');
+  modal.querySelector('#modal-x').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+  var fi=modal.querySelector('#imp-file');
+  if (fi) fi.addEventListener('change', function(){ if (fi.files && fi.files[0]) importFile(fi.files[0]); });
+  modal.querySelector('#imp-create').addEventListener('click', function(){ createDraftsFromPreview(); });
+}
+
+function importFile(file){
+  var fd=new FormData();
+  fd.append('file', file, file.name);
+  var url=BROKER_API_BASE+'/draft-loads/import-preview?email='+encodeURIComponent(brokerEmail);
+  return fetch(url, { method:'POST', body:fd })
+    .then(function(r){ return r.json(); })
+    .then(function(res){ renderPreview((res&&res.rows)||[]); })
+    .catch(function(){ showToast('Import preview failed'); });
+}
+
+function isBadRow(row){ return (row.errors&&row.errors.length)||row.duplicate; }
+
+function renderPreview(rows){
+  __import.rows = rows||[];
+  var host=document.getElementById('imp-preview');
+  if(!host) return;
+  if(!__import.rows.length){ host.innerHTML='<div class="empty">No rows in this file.</div>'; }
+  else {
+    var html='<table class="prevtbl"><thead><tr>'+
+      '<th>Customer</th><th>Carrier</th><th>Cust. Rate</th><th>Carr. Rate</th><th>Status</th></tr></thead><tbody>';
+    __import.rows.forEach(function(row){
+      var m=row.mapped||{}, cm=row.customer_match||{}, vm=row.carrier_match||{};
+      var bad=isBadRow(row);
+      var cls='prevrow'+((row.errors&&row.errors.length)?' bad':(row.duplicate?' dup':''));
+      var custCell;
+      if (cm.exact && cm.best){ custCell=esc(cm.best.name); }
+      else if (cm.best){ custCell=esc(cm.best.name)+' <span class="pct">'+Math.round((cm.best.score||0)*100)+'%</span>'; }
+      else { custCell='<span style="color:var(--amber-dk)">'+esc(m.customer_name_raw||'—')+'</span>'; }
+      if (m.customer_reference_number) custCell+='<div class="small mono">Ref '+esc(m.customer_reference_number)+'</div>';
+      var carrId = m.carrier_mc ? 'MC '+esc(m.carrier_mc) : (m.carrier_dot ? 'DOT '+esc(m.carrier_dot) : '<span style="color:var(--amber-dk)">no MC/DOT</span>');
+      var carrCell=carrId+(vm.vendor_id?' ✓':'')+(vm.conflict?'<div class="conflict">⚠ MC/DOT conflict</div>':'');
+      var badge;
+      if (row.errors && row.errors.length) badge='<span class="badge-error">Error: '+esc(row.errors.join(', '))+'</span>';
+      else if (row.duplicate) badge='<span class="badge-dup">Duplicate ref</span>';
+      else badge='<span class="badge-ok">Ready</span>';
+      html+='<tr class="'+cls+'"><td>'+custCell+'</td><td>'+carrCell+'</td>'+
+        '<td class="mono">'+money(m.customer_rate)+'</td><td class="mono">'+money(m.carrier_rate)+'</td>'+
+        '<td>'+badge+'</td></tr>';
+    });
+    html+='</tbody></table>';
+    host.innerHTML=html;
+  }
+  var clean=__import.rows.filter(function(r){ return !isBadRow(r); }).length;
+  var bad=__import.rows.length-clean;
+  setText('imp-summary', __import.rows.length+' row'+(__import.rows.length===1?'':'s')+' · '+clean+' ready'+(bad?' · '+bad+' skipped':''));
+  var btn=document.getElementById('imp-create');
+  if (btn){ btn.textContent='Create '+clean+' draft'+(clean===1?'':'s'); btn.disabled=!clean; }
+}
+
+function createDraftsFromPreview(){
+  var clean=__import.rows.filter(function(r){ return !isBadRow(r); });
+  if(!clean.length){ showToast('No clean rows to create'); return Promise.resolve(); }
+  return Promise.all(clean.map(function(row){
+    var m=row.mapped||{}, cm=row.customer_match||{}, vm=row.carrier_match||{};
+    var body={
+      email: brokerEmail,
+      source: 'CSV',
+      source_load_ref: m.customer_reference_number,
+      customer_reference_number: m.customer_reference_number,
+      customer_rate: m.customer_rate,
+      carrier_rate: m.carrier_rate,
+      carrier_factoring_invoice: m.carrier_factoring_invoice,
+      load_rate_confirmation_number: m.load_rate_confirmation_number,
+      source_payload: m
+    };
+    if (cm.best && cm.best.customer_id) body.customer_id=cm.best.customer_id;
+    if (vm.vendor_id) body.carrier_id=vm.vendor_id;
+    if (m.payment_terms) body.payment_terms=m.payment_terms;
+    if (m.load_comments) body.load_comments=m.load_comments;
+    return fetch(BROKER_API_BASE+'/draft-loads', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    }).then(function(r){
+      if(!r.ok) return null;
+      return r.json();
+    }).then(function(res){
+      if(!res || !res.record_id) return null;
+      return { id:res.record_id, ref:m.customer_reference_number, invoice:m.carrier_factoring_invoice,
+               customer_name:(cm.best&&cm.best.name)||m.customer_name_raw||'', carrier_name:m.carrier_mc?('MC '+m.carrier_mc):(m.carrier_dot?('DOT '+m.carrier_dot):'') };
+    }).catch(function(){ return null; });
+  })).then(function(loads){
+    var ok=loads.filter(function(l){ return l && l.id; });
+    var total=clean.length, made=ok.length, failed=total-made;
+    if(!made){
+      showToast(total===1?'Draft failed to create':'All '+total+' drafts failed to create');
+      return;
+    }
+    closeModal();
+    if(failed){
+      showToast(made+' of '+total+' drafts created — '+failed+' failed');
+    } else {
+      showToast(made+' draft'+(made===1?'':'s')+' created — attach paperwork');
+    }
+    openPaperwork(ok);
+  });
+}
+
+/* ================= Task 20: paperwork assembly + auto-route ================= */
+
+var __pw = { loads: [], slots: {}, files: {}, tray: [] };
+
+function tokenMatch(filename, key){
+  key=String(key==null?'':key).toLowerCase();
+  if(!key) return false;
+  // True only when key appears bounded by start/end or a non-alphanumeric char,
+  // so 'WMT-9002' does NOT match 'WMT-90021.pdf'.
+  var esc=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  var re=new RegExp('(^|[^a-z0-9])'+esc+'([^a-z0-9]|$)');
+  return re.test(String(filename||'').toLowerCase());
+}
+
+function routeFileToSlot(filename, loads){
+  for (var i=0;i<loads.length;i++){
+    var l=loads[i];
+    if (l.ref && tokenMatch(filename, l.ref)) return { loadId:l.id, slot:'customer' };
+  }
+  for (var j=0;j<loads.length;j++){
+    var c=loads[j];
+    if (c.invoice && tokenMatch(filename, c.invoice)) return { loadId:c.id, slot:'carrier' };
+  }
+  return null;
+}
+
+function paperworkStatus(slots){
+  slots=slots||{};
+  return (slots.customer===true && slots.carrier===true) ? 'ready' : 'attention';
+}
+
+function openPaperwork(loads){
+  __pw.loads = loads||[];
+  __pw.slots = {};
+  __pw.files = {};
+  __pw.tray = [];
+  __pw.loads.forEach(function(l){ __pw.slots[l.id]={customer:false,carrier:false}; __pw.files[l.id]={customer:[],carrier:[]}; });
+  document.querySelectorAll('.wrap').forEach(function(w){ if (w.id!=='paperwork-wrap') w.classList.add('pw-hidden'); });
+  var pw=document.getElementById('paperwork-wrap'); if (pw) pw.classList.remove('pw-hidden');
+  renderPaperwork(__pw.loads);
+}
+function closePaperwork(){
+  var pw=document.getElementById('paperwork-wrap'); if (pw) pw.classList.add('pw-hidden');
+  document.querySelectorAll('.wrap').forEach(function(w){ if (w.id!=='paperwork-wrap') w.classList.remove('pw-hidden'); });
+}
+
+function slotHtml(l, slot){
+  var state=__pw.slots[l.id] && __pw.slots[l.id][slot];
+  var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
+  if (state==='uploading' && files.length){
+    var upn=files[files.length-1].name;
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(upn)+'</span></div>'+
+           '<div class="auto">uploading…</div>';
+  }
+  if (state===true && files.length){
+    var nm=files[files.length-1].name;
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span> ✓</div>'+
+           '<div class="auto">✓ routed by '+(slot==='customer'?'ref #':'invoice #')+'</div>';
+  }
+  var label = slot==='customer' ? 'customer packet needed' : 'carrier invoice needed';
+  return '<div class="empty-slot req" data-slot="'+slot+'" data-load="'+esc(l.id)+'">⬍ '+label+'</div>';
+}
+
+function renderPaperwork(loads){
+  if (loads) __pw.loads = loads;
+  __pw.loads.forEach(function(l){ if(!__pw.slots[l.id]){ __pw.slots[l.id]={customer:false,carrier:false}; __pw.files[l.id]={customer:[],carrier:[]}; } });
+  var host=document.getElementById('paperwork');
+  if(!host) return;
+  host.innerHTML='';
+  __pw.loads.forEach(function(l){
+    var st=paperworkStatus(__pw.slots[l.id]);
+    var statHtml = st==='ready'
+      ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
+      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer===true?'Carrier doc':(__pw.slots[l.id].carrier===true?'Customer doc':'Both needed')) +'</span>';
+    var row=document.createElement('div');
+    row.className='lrow'; row.setAttribute('data-row', l.id);
+    row.innerHTML=
+      '<div><div class="co">'+esc(l.customer_name||'—')+'</div><div class="small mono">Ref '+esc(l.ref||'')+' · '+esc(l.carrier_name||'')+'</div></div>'+
+      '<div class="slot" data-slot-wrap="customer" data-load="'+esc(l.id)+'">'+slotHtml(l,'customer')+'</div>'+
+      '<div class="slot" data-slot-wrap="carrier" data-load="'+esc(l.id)+'">'+slotHtml(l,'carrier')+'</div>'+
+      '<div class="rstat">'+statHtml+'</div>';
+    host.appendChild(row);
+  });
+  wirePaperworkSlots();
+  renderTray();
+  renderPaperworkProgress();
+}
+
+function wirePaperworkSlots(){
+  document.querySelectorAll('#paperwork .slot').forEach(function(cell){
+    cell.addEventListener('dragover', function(e){ e.preventDefault(); cell.classList.add('drag'); });
+    cell.addEventListener('dragleave', function(){ cell.classList.remove('drag'); });
+    cell.addEventListener('drop', function(e){
+      e.preventDefault(); cell.classList.remove('drag');
+      var idx=e.dataTransfer && e.dataTransfer.getData('text/plain');
+      if (idx===''||idx==null) return;
+      var f=__pw.tray[Number(idx)];
+      if (!f) return;
+      __pw.tray.splice(Number(idx),1);
+      attachToSlot(cell.getAttribute('data-load'), cell.getAttribute('data-slot-wrap'), f);
+    });
+  });
+}
+
+function attachToSlot(loadId, slot, file){
+  if(!__pw.files[loadId]) __pw.files[loadId]={customer:[],carrier:[]};
+  if(!__pw.slots[loadId]) __pw.slots[loadId]={customer:false,carrier:false};
+  __pw.files[loadId][slot].push(file);
+  __pw.slots[loadId][slot]='uploading';   // transient; only ===true counts as Ready
+  renderPaperwork(__pw.loads);
+  return uploadSlot(loadId, slot).then(function(ok){
+    if(ok){ __pw.slots[loadId][slot]=true; }
+    else { __pw.slots[loadId][slot]=false; __pw.files[loadId][slot].pop(); showToast('Upload failed — try again'); }
+    renderPaperwork(__pw.loads);
+    return ok;
+  });
+}
+
+function uploadSlot(loadId, slot){
+  var files=(__pw.files[loadId]&&__pw.files[loadId][slot])||[];
+  if(!files.length) return Promise.resolve(false);
+  var field = slot==='customer' ? 'Customer_Documents' : 'Carrier_Documents';
+  return window.mergeFilesToPDF(files).then(function(blob){
+    return window._uploadDoc(loadId, field, blob, (slot==='customer'?'customer':'carrier')+'-'+loadId+'.pdf');
+  }).then(function(ok){ return !!ok; })
+    .catch(function(){ return false; });
+}
+
+function dropAllFiles(fileList){
+  var files=Array.prototype.slice.call(fileList||[]);
+  files.forEach(function(f){
+    var route=routeFileToSlot(f.name, __pw.loads);
+    if (route){ attachToSlot(route.loadId, route.slot, f); }
+    else { __pw.tray.push(f); }
+  });
+  renderPaperwork(__pw.loads);
+}
+
+function renderTray(){
+  var host=document.getElementById('pw-tray'); if(!host) return;
+  setText('pw-tray-ct', __pw.tray.length);
+  host.innerHTML='';
+  __pw.tray.forEach(function(f, i){
+    var el=document.createElement('span');
+    el.className='file'; el.setAttribute('draggable','true');
+    el.innerHTML='<span class="pdf">PDF</span> '+esc(f.name);
+    el.addEventListener('dragstart', function(e){ if(e.dataTransfer) e.dataTransfer.setData('text/plain', String(i)); });
+    host.appendChild(el);
+  });
+}
+
+function renderPaperworkProgress(){
+  var total=__pw.loads.length;
+  var ready=__pw.loads.filter(function(l){ return paperworkStatus(__pw.slots[l.id])==='ready'; }).length;
+  var lbl=document.getElementById('pw-prog-lbl'); if(lbl) lbl.innerHTML='<b>'+ready+' of '+total+'</b> loads have both packets';
+  var bar=document.getElementById('pw-bar'); if(bar) bar.style.width=(total?Math.round(ready/total*100):0)+'%';
+  setText('pw-prog-sub', (total-ready)+' load'+((total-ready)===1?'':'s')+' still missing a packet');
+  var foot=document.getElementById('pw-foot'); if(foot) foot.innerHTML='<b>'+ready+' ready</b> · '+(total-ready)+' still missing a packet';
+}
+
+function finishPaperwork(){ closePaperwork(); loadQueue(); }
+
+/* expose import + paperwork */
+window.openImportModal=openImportModal;
+window.renderPreview=renderPreview;
+window.createDraftsFromPreview=createDraftsFromPreview;
+window.routeFileToSlot=routeFileToSlot;
+window.paperworkStatus=paperworkStatus;
+window.renderPaperwork=renderPaperwork;
+window.openPaperwork=openPaperwork;
+window.attachToSlot=attachToSlot;
+window.dropAllFiles=dropAllFiles;
+window.mergeFilesToPDF=mergeFilesToPDF;
+window._uploadDoc=_uploadDoc;
+window.__pw=__pw;
+window.__import=__import;
+
+/* ================= ported merge/upload helpers (only called on user attach) ================= */
+
+async function mergeFilesToPDF(files) {
+  var merged = await PDFLib.PDFDocument.create();
+  for (var i = 0; i < files.length; i++) {
+    var file = files[i];
+    var ext = file.name.split('.').pop().toLowerCase();
+    try {
+      if (ext === 'pdf') {
+        var bytes = await file.arrayBuffer();
+        var src = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+        var pages = await merged.copyPages(src, src.getPageIndices());
+        pages.forEach(function(p) { merged.addPage(p); });
+      } else if (ext === 'heic' || ext === 'heif') {
+        var converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+        if (Array.isArray(converted)) converted = converted[0];
+        var dataUrl = await blobToDataUrl(converted);
+        await addImagePageToPDF(merged, dataUrl);
+      } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'bmp' || ext === 'webp' || ext === 'gif' || ext === 'svg') {
+        var dataUrl2 = await fileToDataUrl(file);
+        await addImagePageToPDF(merged, dataUrl2);
+      } else if (ext === 'tif' || ext === 'tiff') {
+        await addTiffPagesToPDF(merged, file);
+      } else if (ext === 'txt' || ext === 'csv') {
+        var text = await file.text();
+        await addTextPageToPDF(merged, text, file.name);
+      } else if (ext === 'docx') {
+        var ab = await file.arrayBuffer();
+        var result = await mammoth.extractRawText({ arrayBuffer: ab });
+        await addTextPageToPDF(merged, result.value, file.name);
+      } else if (ext === 'doc') {
+        await addTextPageToPDF(merged, '[.doc format cannot be rendered. File: ' + file.name + ' — please re-save as PDF or DOCX.]', file.name);
+      }
+    } catch(e) {
+      console.error('mergeFilesToPDF error on', file.name, e);
+      await addTextPageToPDF(merged, '[Error processing file: ' + file.name + ' — ' + (e.message || e) + ']', file.name);
+    }
+  }
+  var pdfBytes = await merged.save();
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+
+async function addImagePageToPDF(pdfDoc, dataUrl) {
+  var img = new Image();
+  img.src = dataUrl;
+  await new Promise(function(resolve) { img.onload = resolve; });
+  var canvas = document.createElement('canvas');
+  var maxW = 1700, maxH = 2200;
+  var w = img.naturalWidth, h = img.naturalHeight;
+  var scale = Math.min(maxW / w, maxH / h, 1);
+  canvas.width  = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  var pngUrl = canvas.toDataURL('image/png');
+  var base64 = pngUrl.split(',')[1];
+  var binary = atob(base64);
+  var pngBytes = new Uint8Array(binary.length);
+  for (var j = 0; j < binary.length; j++) pngBytes[j] = binary.charCodeAt(j);
+  var pdfImg = await pdfDoc.embedPng(pngBytes);
+  var page = pdfDoc.addPage([pdfImg.width, pdfImg.height]);
+  page.drawImage(pdfImg, { x: 0, y: 0, width: pdfImg.width, height: pdfImg.height });
+}
+
+async function addTextPageToPDF(pdfDoc, text, filename) {
+  var font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  var pageW = 612, pageH = 792, margin = 50, size = 10, lineH = 16;
+  var maxW = pageW - margin * 2;
+  var lines = ['File: ' + filename, ''];
+  var words = (text || '').split(/\s+/);
+  var line = '';
+  words.forEach(function(w) {
+    var test = line ? line + ' ' + w : w;
+    if (font.widthOfTextAtSize(test, size) > maxW) {
+      if (line) lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  });
+  if (line) lines.push(line);
+  var perPage = Math.floor((pageH - margin * 2) / lineH);
+  for (var i = 0; i < lines.length; i += perPage) {
+    var page = pdfDoc.addPage([pageW, pageH]);
+    var chunk = lines.slice(i, i + perPage);
+    chunk.forEach(function(l, idx) {
+      page.drawText(l || ' ', { x: margin, y: pageH - margin - idx * lineH, size: size, font: font });
+    });
+  }
+}
+
+async function addTiffPagesToPDF(pdfDoc, file) {
+  var ab = await file.arrayBuffer();
+  var ifds = UTIF.decode(ab);
+  for (var i = 0; i < ifds.length; i++) {
+    UTIF.decodeImage(ab, ifds[i]);
+    var ifd = ifds[i];
+    var w = ifd.width, h = ifd.height;
+    var tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    var imageData = tmp.getContext('2d').createImageData(w, h);
+    imageData.data.set(new Uint8ClampedArray(ifd.data.buffer));
+    tmp.getContext('2d').putImageData(imageData, 0, 0);
+    var canvas = document.createElement('canvas');
+    var maxW = 1700, maxH = 2200;
+    var scale = Math.min(maxW / w, maxH / h, 1);
+    canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+    canvas.getContext('2d').drawImage(tmp, 0, 0, canvas.width, canvas.height);
+    var base64 = canvas.toDataURL('image/png').split(',')[1];
+    var binary = atob(base64);
+    var pngBytes = new Uint8Array(binary.length);
+    for (var j = 0; j < binary.length; j++) pngBytes[j] = binary.charCodeAt(j);
+    var pdfImg = await pdfDoc.embedPng(pngBytes);
+    var page = pdfDoc.addPage([pdfImg.width, pdfImg.height]);
+    page.drawImage(pdfImg, { x: 0, y: 0, width: pdfImg.width, height: pdfImg.height });
+  }
+}
+
+function fileToDataUrl(file) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function(e) { resolve(e.target.result); };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+function blobToDataUrl(blob) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function(e) { resolve(e.target.result); };
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+function _uploadDoc(recordId, fieldName, blob, filename) {
+  var fd = new FormData();
+  fd.append('record_id', recordId);
+  fd.append('field_name', fieldName);
+  fd.append('report_name', 'All_Funding_Portals');
+  fd.append('file', blob, filename);
+  return fetch(BROKER_API_BASE + '/upload-doc', { method: 'POST', body: fd })
+    .then(function (r) { return r.ok; }).catch(function () { return false; });
+}
+
+// expose for tests
+window.renderQueue=renderQueue;
+window.loadQueue=loadQueue;
+window.renderSummary=renderSummary;
+window.setFilter=setFilter;
+window.computeGroups=computeGroups;
+window.applyGroup=applyGroup;
+window.openResolveModal=openResolveModal;
+window.openInlineEdit=openInlineEdit;
+window.toggleSelect=toggleSelect;
+window.bulkSetCustomer=bulkSetCustomer;
+window.bulkSetCarrier=bulkSetCarrier;
+window.submitAllReady=submitAllReady;
+window.submitOne=submitOne;
+window.handleSubmitResult=handleSubmitResult;
+</script>
+</body>
+</html>

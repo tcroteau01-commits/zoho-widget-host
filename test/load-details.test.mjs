@@ -362,6 +362,27 @@ test('_resolveDraftId still prefers an explicit param over sessionStorage', () =
   assert.strictEqual(w._resolveDraftId({ draftId: '900' }), '900');
 });
 
+test('reopening a draft whose customer is not approved shows a clear warning (no silent blank)', () => {
+  const w = makeStorageDom().window;
+  const sel = w.document.getElementById('customer-select');
+  sel.innerHTML = '<option value="">Select…</option><option value="c1">APPROVED CO</option>';
+  w.prefillFromDraft({ id: 'd1', customer_id: 'cX', customer_name: 'ABC Shipping' });
+  const warn = w.document.getElementById('draft-customer-warning');
+  assert.ok(warn, 'warning element exists');
+  assert.notStrictEqual(warn.style.display, 'none', 'warning visible');
+  assert.match(warn.textContent, /ABC Shipping/);
+});
+
+test('reopening a draft whose customer IS approved keeps the warning hidden', () => {
+  const w = makeStorageDom().window;
+  const sel = w.document.getElementById('customer-select');
+  sel.innerHTML = '<option value="">Select…</option><option value="c1">APPROVED CO</option>';
+  w.prefillFromDraft({ id: 'd1', customer_id: 'c1', customer_name: 'APPROVED CO' });
+  const warn = w.document.getElementById('draft-customer-warning');
+  assert.strictEqual(warn.style.display, 'none');
+  assert.strictEqual(sel.value, 'c1');
+});
+
 test('a second saveDraft PATCHes the stored record id instead of POSTing again', async () => {
   const seen = [];
   const dom = makeB2Dom((url, opts) => { seen.push({ url: String(url), opts: opts || {} });

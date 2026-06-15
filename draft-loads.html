@@ -746,6 +746,21 @@ function submitAllReady(){
 }
 function submitOne(id){ return submitIds([id]); }
 
+var REASON_TEXT = {
+  customer:'missing customer', carrier:'missing carrier',
+  customer_not_on_account:'customer not on your account',
+  carrier_not_on_account:'carrier not on your account',
+  customer_docs:'customer docs needed', carrier_docs:'carrier docs needed',
+  customer_reference_number:'missing customer ref #', customer_rate:'missing customer rate',
+  carrier_rate:'missing carrier rate', carrier_factoring_invoice:'missing carrier invoice',
+  load_rate_confirmation_number:'missing rate confirmation #',
+  not_found:'draft not found', not_authorized:'not your draft',
+  promote_failed:'submit failed — try again'
+};
+function reasonText(code){
+  return REASON_TEXT[code] || String(code||'').replace(/_/g,' ');
+}
+
 function handleSubmitResult(res){
   res=res||{};
   var submitted=(res.submitted||[]);
@@ -755,8 +770,14 @@ function handleSubmitResult(res){
   }
   var msg = submitted.length+' submitted';
   if (__state.lastSkipped.length){
-    msg += ' · '+__state.lastSkipped.length+' skipped ('+
-      __state.lastSkipped.map(function(s){ return (s.reasons||[]).join(','); }).join('; ')+')';
+    var uniq=[];
+    __state.lastSkipped.forEach(function(s){
+      (s.reasons||[]).forEach(function(code){
+        var t=reasonText(code);
+        if (uniq.indexOf(t)===-1) uniq.push(t);
+      });
+    });
+    msg += ' · '+__state.lastSkipped.length+' skipped ('+uniq.join('; ')+')';
   }
   showToast(msg);
   renderQueue();

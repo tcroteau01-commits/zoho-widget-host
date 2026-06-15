@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OperFi — Sales Pipeline</title>
+<!--
+  OperFi Sales workspace widget (Creator widget, GitHub Pages hosted).
+  Built from the Sales view of persona-mockups.html. Pipeline-first:
+  the rep sees their book, current stage, what Underwriting is waiting on,
+  read-only estimated terms, and can nudge prospects / request docs / add notes.
+  Persona guardrails (mirrors the mockup): NO approve/decline, NO fraud/UCC
+  internals, NO credit-decision editing.
+  Pure logic on window.OFS (unit-tested). Demo data when not embedded in Creator
+  (sample pipeline); live reads/writes go through the Creator SDK when present.
+  Field link-names verbatim from OperFi_Client_Onboarding.ds.
+-->
+<style>
+:root {
+  --of-beige: #f0efe9; --of-beige-soft: #fafaf6; --of-beige-line: #e6e3da;
+  --of-charcoal: #272727; --of-charcoal-soft: #444; --of-gray-500: #888; --of-gray-700: #555; --of-gray-100: #f5f5f0;
+  --of-orange: #e8a020; --of-green: #2e7d32; --of-green-text: #1f6321; --of-green-soft: #e3f4e3;
+  --of-amber: #f5a623; --of-amber-text: #b86e00; --of-amber-soft: #fff8e1;
+  --of-red: #c62828; --of-red-text: #a31818; --of-red-soft: #fde4e4;
+  --of-blue-text: #1a5fb4; --of-blue-soft: #e3edfb;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: var(--of-beige); color: var(--of-charcoal); min-height: 100vh; }
+.page { max-width: 1280px; margin: 0 auto; padding: 16px 22px 80px; }
+
+/* topbar */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 4px 0 16px; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand .logo { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+.brand .logo span { color: var(--of-orange); }
+.brand .tag { font-size: 11px; color: var(--of-gray-500); font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; }
+.whoami { font-size: 12px; color: var(--of-gray-700); }
+.whoami b { color: var(--of-charcoal); }
+
+.banner { display: none; border-radius: 10px; padding: 9px 14px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.5; }
+.banner.show { display: block; }
+.banner.info { background: var(--of-blue-soft); color: var(--of-blue-text); }
+.banner.warn { background: var(--of-amber-soft); color: var(--of-amber-text); }
+.banner.demo { background: var(--of-charcoal); color: rgba(255,255,255,0.92); }
+.banner.demo b { color: var(--of-orange); }
+
+/* buttons */
+.btn { background: var(--of-charcoal); color: #fff; border: none; border-radius: 7px; padding: 8px 15px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; letter-spacing: 0.3px; }
+.btn.ghost { background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal); }
+.btn.orange { background: var(--of-orange); }
+.btn.sm { padding: 5px 11px; font-size: 11px; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+/* KPI */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 760px){ .kpi-row { grid-template-columns: 1fr 1fr; } }
+.kpi { background: #fff; border: 1px solid var(--of-beige-line); border-radius: 12px; padding: 15px 18px; position: relative; overflow: hidden; }
+.kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--of-orange); }
+.kpi.good::before { background: var(--of-green); } .kpi.warn::before { background: var(--of-amber); }
+.kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--of-gray-500); font-weight: 700; margin-bottom: 6px; }
+.kpi-value { font-size: 25px; font-weight: 700; letter-spacing: -0.4px; line-height: 1; }
+.kpi-value.good { color: var(--of-green-text); } .kpi-value.warn { color: var(--of-amber-text); }
+.kpi-sub { font-size: 11px; color: var(--of-gray-700); margin-top: 6px; line-height: 1.4; }
+
+/* cards */
+.card { background: #fff; border: 1px solid var(--of-beige-line); border-radius: 12px; padding: 18px 22px; margin-bottom: 14px; }
+.card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 2px solid var(--of-orange); display: flex; justify-content: space-between; align-items: center; }
+.card-title .count { color: var(--of-gray-500); font-weight: 700; }
+
+/* pipeline list */
+.list-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--of-beige-line); border-radius: 10px; margin-bottom: 8px; background: #fff; cursor: pointer; }
+.list-row:hover, .list-row.active { border-color: var(--of-orange); }
+.list-row.active { box-shadow: 0 0 0 2px rgba(232,160,32,0.18); }
+.lr-name { font-weight: 700; font-size: 13.5px; }
+.lr-sub { font-size: 11.5px; color: var(--of-gray-500); margin-top: 2px; }
+.lr-right { text-align: right; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+
+/* hero */
+.hero { background: var(--of-charcoal); color: #fff; border-radius: 14px; padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; margin-bottom: 14px; }
+.hero-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.5); font-weight: 700; }
+.hero-name { font-size: 23px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.1; margin-top: 4px; }
+.hero-meta { display: flex; gap: 12px; font-size: 13px; color: rgba(255,255,255,0.7); flex-wrap: wrap; margin-top: 6px; }
+.hero-meta .sep { color: rgba(255,255,255,0.3); } .hero-meta .key { color: var(--of-orange); font-weight: 600; }
+.decision-state-pill { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 6px 12px; border-radius: 6px; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.15); }
+.decision-state-pill.need-review { background: rgba(245,166,35,0.18); color: #fbc77f; border-color: rgba(245,166,35,0.3); }
+.decision-state-pill.good { background: rgba(46,125,50,0.2); color: #6dcf6d; border-color: rgba(46,125,50,0.3); }
+.decision-state-pill.bad { background: rgba(198,40,40,0.2); color: #ff7a7a; border-color: rgba(198,40,40,0.3); }
+
+/* stepper */
+.stepper { display: flex; align-items: center; gap: 0; margin: 4px 0 6px; }
+.step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
+.step .node { width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 2px solid var(--of-beige-line); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--of-gray-500); z-index: 2; }
+.step.done .node { background: var(--of-green); border-color: var(--of-green); color: #fff; }
+.step.current .node { background: var(--of-orange); border-color: var(--of-orange); color: #fff; box-shadow: 0 0 0 4px rgba(232,160,32,0.2); }
+.step .slabel { font-size: 11px; font-weight: 600; margin-top: 7px; text-align: center; color: var(--of-gray-700); }
+.step.current .slabel { color: var(--of-charcoal); font-weight: 700; }
+.step::before { content: ''; position: absolute; top: 14px; left: -50%; width: 100%; height: 2px; background: var(--of-beige-line); z-index: 1; }
+.step:first-child::before { display: none; }
+.step.done::before, .step.current::before { background: var(--of-green); }
+
+/* check rows */
+.chk { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--of-beige-line); font-size: 13px; }
+.chk:last-child { border-bottom: none; }
+.chk .mark { width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff; }
+.mark.bad { background: var(--of-red); } .mark.ok { background: var(--of-green); }
+.chk-body { flex: 1; } .chk-body .lbl { font-weight: 600; } .chk-body .det { font-size: 12px; color: var(--of-gray-700); margin-top: 2px; line-height: 1.45; }
+
+/* rate box */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px){ .grid2 { grid-template-columns: 1fr; } }
+.rate-box { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+.rate-item { text-align: center; padding: 14px 8px; background: var(--of-beige-soft); border-radius: 10px; }
+.rate-item .rv { font-size: 22px; font-weight: 800; }
+.rate-item .rl { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--of-gray-500); font-weight: 700; margin-top: 3px; }
+
+/* pills */
+.pill { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.3px; display: inline-block; }
+.pill.g { background: var(--of-green-soft); color: var(--of-green-text); }
+.pill.a { background: var(--of-amber-soft); color: var(--of-amber-text); }
+.pill.r { background: var(--of-red-soft); color: var(--of-red-text); }
+.pill.b { background: var(--of-blue-soft); color: var(--of-blue-text); }
+.pill.n { background: var(--of-gray-100); color: var(--of-gray-700); }
+
+/* notes */
+.notes { display: flex; flex-direction: column; gap: 10px; }
+.note { font-size: 12.5px; border-left: 3px solid var(--of-beige-line); padding: 4px 0 4px 12px; }
+.note.uw { border-left-color: var(--of-orange); }
+.note .who { font-weight: 700; font-size: 11px; }
+.note .who .role { font-weight: 600; color: var(--of-gray-500); margin-left: 6px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.4px; }
+.note .txt { color: var(--of-charcoal-soft); margin-top: 2px; line-height: 1.45; }
+.note .when { font-size: 10.5px; color: var(--of-gray-500); margin-top: 2px; }
+.muted { color: var(--of-gray-500); }
+.note-input { width: 100%; border: 1px solid var(--of-beige-line); border-radius: 8px; padding: 9px 11px; font-family: inherit; font-size: 12.5px; resize: vertical; min-height: 56px; }
+.hint { font-size: 11px; color: var(--of-gray-500); margin-top: 8px; line-height: 1.5; }
+.empty { text-align: center; color: var(--of-gray-500); padding: 40px 10px; font-size: 13px; }
+.toast { font-size: 12px; margin-top: 8px; min-height: 16px; }
+.toast.ok { color: var(--of-green-text); } .toast.err { color: var(--of-red-text); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="topbar">
+    <div class="brand"><div class="logo">Oper<span>Fi</span></div><div class="tag">Sales · Pipeline</div></div>
+    <div class="whoami">Viewing as <b id="repName">—</b></div>
+  </div>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="card">
+    <div class="card-title">My Pipeline <span class="count" id="pipeCount"></span></div>
+    <div id="pipeline"><div class="empty">Loading your pipeline…</div></div>
+  </div>
+
+  <div id="detail"></div>
+
+</div>
+
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<script>
+/*
+ * OperFi Sales Pipeline widget — testable logic on window.OFS.
+ * Field link-names verbatim from OperFi_Client_Onboarding.ds.
+ */
+(function (global) {
+'use strict';
+
+// ── Config ───────────────────────────────────────────────────────────────────
+var RPT = { application: 'Application_Report', document: 'Document_Report', review: 'Underwriting_Review_Report' };
+var FORM = { document: 'Document', application: 'Application' };
+var APPLICATION_LOOKUP = 'Application';       // child → Application lookup (hand-add in Creator)
+// How a rep "owns" an application. No dedicated field ships in the .ds; default to a hand-add
+// 'Sales_Rep' field (mirrors how Underwriting uses 'Assigned_Underwriter'). Falls back to showing
+// the whole book if the field/criteria isn't present yet.
+var SALES_ATTR = global.OPERFI_SALES_ATTR || 'Sales_Rep';
+var SALES_NOTES_FIELD = 'Sales_Notes';        // multiline on Application (hand-add in Creator)
+var API_BASE = global.OPERFI_SALES_API_BASE || 'https://operfi-broker-api.onrender.com';
+var NOTIFY_PATH = '/notify-client';           // POST { usdot, application_id, kind } → emails prospect (confirm with Tom)
+
+// The data-backed pipeline stages (each maps to a real Application_Status value).
+var STEPS = ['Submitted', 'In Review', 'Underwriting', 'Approved', 'Signed'];
+var STAGE_INDEX = { 'New': 0, 'In Review': 1, 'Docs Requested': 2, 'Underwriting': 2, 'Approved': 3, 'Signed': 4, 'Declined': 3, 'Abandoned': 0 };
+
+// ── Pure logic (unit-tested) ───────────────────────────────────────────────────
+function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
+
+// Map an Application_Status (+ optional review) onto the stepper.
+function deriveStage(application, review) {
+  var st = (application && application.Application_Status) || 'New';
+  var idx = STAGE_INDEX.hasOwnProperty(st) ? STAGE_INDEX[st] : 0;
+  return {
+    status: st,
+    index: idx,
+    label: STEPS[idx] || st,
+    terminal: st === 'Declined' || st === 'Abandoned',
+    actionNeeded: st === 'Docs Requested'
+  };
+}
+
+// Pipeline list pill ({cls,label}) for a status.
+function statusPill(status) {
+  switch (status) {
+    case 'Docs Requested': return { cls: 'a', label: 'Docs Needed' };
+    case 'In Review':      return { cls: 'b', label: 'In Review' };
+    case 'Underwriting':   return { cls: 'b', label: 'Underwriting' };
+    case 'Approved':       return { cls: 'g', label: 'Approved' };
+    case 'Signed':         return { cls: 'g', label: 'Signed' };
+    case 'Declined':       return { cls: 'r', label: 'Declined' };
+    case 'Abandoned':      return { cls: 'n', label: 'Abandoned' };
+    default:               return { cls: 'n', label: status || 'New' };
+  }
+}
+
+function isClosed(status){ return status === 'Declined' || status === 'Abandoned' || status === 'Signed'; }
+
+// KPI tiles from the rep's book.
+function computeKPIs(apps) {
+  apps = apps || [];
+  function n(pred){ return apps.filter(pred).length; }
+  return {
+    openApps:     n(function(a){ return !isClosed(a.Application_Status); }),
+    actionNeeded: n(function(a){ return a.Application_Status === 'Docs Requested'; }),
+    approved:     n(function(a){ return a.Application_Status === 'Approved'; }),
+    signed:       n(function(a){ return a.Application_Status === 'Signed'; })
+  };
+}
+
+// "What UW is waiting on" — Document records not yet received/verified.
+function isPendingDoc(status){ return !/^(received|verified|approved|complete|on file)$/i.test(String(status || '').trim()); }
+function pendingDocs(documents) {
+  return (documents || []).map(function (d) {
+    if (Array.isArray(d)) return { type: d[0], source: d[1], status: d[2] };
+    return { type: d.Document_Type || 'Document', source: d.Source || '—', status: d.Status || 'Requested' };
+  }).filter(function (d) { return isPendingDoc(d.status); });
+}
+
+// Read-only estimate for setting client expectations (NOT a confirmed offer).
+function estTerms(application) {
+  application = application || {};
+  var rate = application.Factoring_Rate, limit = application.Purchase_Limit;
+  function pct(v){ if (v == null || v === '') return '—'; return /%/.test(String(v)) ? String(v) : (v + '%'); }
+  function money(v){ if (v == null || v === '') return '—'; return /^\$/.test(String(v)) ? String(v) : ('$' + v); }
+  return { rate: pct(rate), limit: money(limit), funding: 'Next-day' };
+}
+
+// Filter the book to the logged-in rep. Empty rep → whole list (admin / demo).
+function filterMyPipeline(apps, rep, attrField) {
+  attrField = attrField || SALES_ATTR;
+  if (!rep) return (apps || []).slice();
+  var r = String(rep).trim().toLowerCase();
+  return (apps || []).filter(function (a) { return String(a[attrField] || '').trim().toLowerCase() === r; });
+}
+
+// Append a timestamped sales note to the Application's Sales_Notes field (non-destructive).
+function buildNotePayload(application, noteText, author, stamp) {
+  var prev = (application && application[SALES_NOTES_FIELD]) || '';
+  var line = '[' + (stamp || '') + '] ' + (author || 'Sales') + ': ' + (noteText || '');
+  var out = {};
+  out[SALES_NOTES_FIELD] = prev ? (prev + '\n' + line) : line;
+  return out;
+}
+
+// Build a Document "requested" record (staff asking the prospect for a doc).
+function buildDocRequestPayload(appId, docType) {
+  var p = { Document_Type: docType || '', Status: 'Requested', Source: 'Staff Request' };
+  if (appId != null) p[APPLICATION_LOOKUP] = appId;
+  return p;
+}
+
+var OFS = {
+  deriveStage: deriveStage, statusPill: statusPill, computeKPIs: computeKPIs,
+  pendingDocs: pendingDocs, isPendingDoc: isPendingDoc, estTerms: estTerms,
+  filterMyPipeline: filterMyPipeline, buildNotePayload: buildNotePayload,
+  buildDocRequestPayload: buildDocRequestPayload,
+  SALES_ATTR: SALES_ATTR, SALES_NOTES_FIELD: SALES_NOTES_FIELD, APPLICATION_LOOKUP: APPLICATION_LOOKUP, STEPS: STEPS
+};
+global.OFS = OFS;
+
+// ── Demo data (used when not embedded in Creator) ──────────────────────────────
+var DEMO_REP = 'Jordan Park';
+var DEMO_PIPELINE = [
+  { ID: 'UW-2026-0418', Business_Name: 'Brennan Eslinger Trucking LLC', Authority_Type: 'Carrier', USDOT: '4366362',
+    Application_Status: 'Docs Requested', Submitted_At: 'Jun 8, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'M. Reyes',
+    loc: 'Glendale, AZ', Factoring_Rate: '3.00%', Purchase_Limit: '$30,000',
+    Sales_Notes: '', UW_Notes: 'Need the Operating Agreement to verify ownership. Everything else looks on track.', UW_When: 'Jun 9, 2:16 PM',
+    documents: [['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
+      ['Voided Check','Prospect Upload','Received'],['Certificate of Insurance','Prospect Upload','Received'],
+      ['W-9','Prospect Upload','Verified'],['SOS Filing','Staff Upload','Verified'],
+      ['Operating Agreement','—','Requested'],['Prior factor aging report','—','Requested']] },
+  { ID: 'UW-2026-0405', Business_Name: 'Princeton Logistics Group LLC', Authority_Type: 'Broker', USDOT: '3421250',
+    Application_Status: 'In Review', Submitted_At: 'Jun 5, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'D. Okafor',
+    loc: 'Atlanta, GA', Factoring_Rate: '3.00%', Purchase_Limit: '$50,000',
+    Sales_Notes: '', UW_Notes: '', UW_When: '',
+    documents: [['Signed Application','Prospect Upload','Received'],['W-9','Prospect Upload','Received'],
+      ['Voided Check','Prospect Upload','Requested'],['Broker-Carrier Agreement','—','Requested']] },
+  { ID: 'UW-2026-0388', Business_Name: 'Sandhill Freight Co', Authority_Type: 'Carrier', USDOT: '3771200',
+    Application_Status: 'Approved', Submitted_At: 'Jun 3, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'M. Reyes',
+    loc: 'Dallas, TX', Factoring_Rate: '2.75%', Purchase_Limit: '$120,000',
+    Sales_Notes: '', UW_Notes: 'Approved — agreement ready to send.', UW_When: 'Jun 6, 10:02 AM', documents: [] },
+  { ID: 'UW-2026-0377', Business_Name: 'Vega Hauling LLC', Authority_Type: 'Carrier', USDOT: '3998211',
+    Application_Status: 'Docs Requested', Submitted_At: 'Jun 1, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'M. Reyes',
+    loc: 'Phoenix, AZ', Factoring_Rate: '3.25%', Purchase_Limit: '$25,000',
+    Sales_Notes: '', UW_Notes: 'Waiting on voided check before I can finish banking verification.', UW_When: 'Jun 4, 1:20 PM',
+    documents: [['Signed Application','Prospect Upload','Verified'],['Voided Check','—','Requested']] },
+  { ID: 'UW-2026-0351', Business_Name: 'Cascade Carriers Inc', Authority_Type: 'Carrier', USDOT: '3550199',
+    Application_Status: 'Signed', Submitted_At: 'May 22, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'D. Okafor',
+    loc: 'Boise, ID', Factoring_Rate: '2.90%', Purchase_Limit: '$80,000',
+    Sales_Notes: '', UW_Notes: 'Signed and moved to Ops.', UW_When: 'May 28, 9:00 AM', documents: [] }
+];
+
+// ── LIVE detection ─────────────────────────────────────────────────────────────
+var LIVE = (typeof ZOHO !== 'undefined') && !!(ZOHO && ZOHO.CREATOR && typeof ZOHO.CREATOR.init === 'function');
+function withTimeout(p, ms) {
+  return new Promise(function (resolve, reject) {
+    var to = setTimeout(function () { reject(new Error('sdk-timeout')); }, ms);
+    Promise.resolve(p).then(function (v) { clearTimeout(to); resolve(v); }, function (e) { clearTimeout(to); reject(e); });
+  });
+}
+function getRecords(report, criteria) {
+  var cfg = { report_name: report, page: 1, pageSize: 100 };
+  if (criteria) cfg.criteria = criteria;
+  return ZOHO.CREATOR.DATA.getRecords(cfg).then(function (r) { return (r && r.data) ? r.data : []; }).catch(function () { return []; });
+}
+
+var STATE = { mode: 'demo', rep: '', apps: [], selected: null };
+
+// Resolve the logged-in rep (best-effort; demo rep when standalone).
+function resolveRep() {
+  if (!LIVE) return Promise.resolve(DEMO_REP);
+  try {
+    var p = (ZOHO.CREATOR.UTIL && ZOHO.CREATOR.UTIL.getInitParams) ? ZOHO.CREATOR.UTIL.getInitParams() : null;
+    return Promise.resolve(p).then(function (params) {
+      return (params && (params.loginUser || params.login_user)) || '';
+    }).catch(function () { return ''; });
+  } catch (e) { return Promise.resolve(''); }
+}
+
+// Load the rep's pipeline. Filters by SALES_ATTR when present; degrades to the whole book.
+function loadPipeline() {
+  if (!LIVE) return Promise.resolve({ mode: 'demo', rep: DEMO_REP, apps: DEMO_PIPELINE.slice() });
+  return withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
+    return resolveRep();
+  }).then(function (rep) {
+    var criteria = rep ? (SALES_ATTR + ' == "' + String(rep).replace(/"/g, '') + '"') : '';
+    return getRecords(RPT.application, criteria).then(function (apps) {
+      // If the attribution field doesn't exist yet, a filtered read returns nothing — fall back to the whole book.
+      if (rep && (!apps || !apps.length)) return getRecords(RPT.application, '').then(function (all) { return { rep: rep, apps: all, unfiltered: true }; });
+      return { rep: rep, apps: apps || [], unfiltered: !rep };
+    });
+  }).then(function (res) {
+    return { mode: 'live', rep: res.rep, apps: res.apps, unfiltered: res.unfiltered };
+  }).catch(function (e) {
+    if (e && e.message === 'sdk-timeout') return { mode: 'demo', rep: DEMO_REP, apps: DEMO_PIPELINE.slice() };
+    throw e;
+  });
+}
+
+// Load the supporting records for one application (documents + UW note).
+function loadDetail(app) {
+  if (STATE.mode === 'demo') {
+    return Promise.resolve({ documents: app.documents || [], uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', salesNotes: app.Sales_Notes || '' });
+  }
+  var appId = app.ID;
+  return Promise.all([
+    getRecords(RPT.document, APPLICATION_LOOKUP + ' == ' + appId),
+    getRecords(RPT.review, APPLICATION_LOOKUP + ' == ' + appId)
+  ]).then(function (res) {
+    var rev = res[1][0] || {};
+    return { documents: res[0] || [], uwNotes: rev.UW_Notes || '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' };
+  });
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────────
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function (c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+function setBanner(kind, html){ var b = el('banner'); if(!b) return; b.className = 'banner show ' + kind; b.innerHTML = html; }
+
+function renderKPIs(apps) {
+  var k = computeKPIs(apps);
+  el('kpiRow').innerHTML =
+    tile('My Open Apps', k.openApps, 'in pipeline', '') +
+    tile('Action Needed', k.actionNeeded, 'UW waiting on docs', 'warn') +
+    tile('Approved', k.approved, 'ready for signature', 'good') +
+    tile('Signed', k.signed, 'moved to ops', '');
+  function tile(label, val, sub, cls){
+    return '<div class="kpi ' + cls + '"><div class="kpi-label">' + label + '</div>' +
+      '<div class="kpi-value ' + cls + '">' + val + '</div><div class="kpi-sub">' + sub + '</div></div>';
+  }
+}
+
+function renderPipeline(apps) {
+  el('pipeCount').textContent = apps.length + (apps.length === 1 ? ' app' : ' apps');
+  if (!apps.length) { el('pipeline').innerHTML = '<div class="empty">No applications in your pipeline yet.</div>'; return; }
+  el('pipeline').innerHTML = apps.map(function (a, i) {
+    var p = statusPill(a.Application_Status);
+    var sub = [a.Authority_Type, a.USDOT ? 'DOT ' + a.USDOT : '', a.Submitted_At ? 'submitted ' + a.Submitted_At : ''].filter(Boolean).join(' · ');
+    var uw = a.Assigned_Underwriter ? '<span class="lr-sub">UW: ' + esc(a.Assigned_Underwriter) + '</span>' : '';
+    return '<div class="list-row" data-i="' + i + '"><div><div class="lr-name">' + esc(a.Business_Name || '(no name)') + '</div>' +
+      '<div class="lr-sub">' + esc(sub) + '</div></div><div class="lr-right"><span class="pill ' + p.cls + '">' + esc(p.label) + '</span>' + uw + '</div></div>';
+  }).join('');
+  Array.prototype.forEach.call(el('pipeline').querySelectorAll('.list-row'), function (row) {
+    row.addEventListener('click', function () { selectApp(parseInt(row.getAttribute('data-i'), 10)); });
+  });
+}
+
+function selectApp(i) {
+  var app = STATE.apps[i];
+  if (!app) return;
+  STATE.selected = i;
+  Array.prototype.forEach.call(el('pipeline').querySelectorAll('.list-row'), function (row) {
+    row.classList.toggle('active', parseInt(row.getAttribute('data-i'), 10) === i);
+  });
+  el('detail').innerHTML = '<div class="card"><div class="empty">Loading application…</div></div>';
+  loadDetail(app).then(function (d) { renderDetail(app, d); });
+}
+
+function renderDetail(app, d) {
+  var stage = deriveStage(app);
+  var pend = pendingDocs(d.documents);
+  var terms = estTerms(app);
+  var statePill = stage.terminal
+    ? (stage.status === 'Declined' ? '<span class="decision-state-pill bad">✕ Declined</span>' : '<span class="decision-state-pill">Abandoned</span>')
+    : (stage.actionNeeded ? '<span class="decision-state-pill need-review">⏳ Docs Needed</span>'
+      : (stage.status === 'Approved' ? '<span class="decision-state-pill good">✓ Approved</span>'
+        : (stage.status === 'Signed' ? '<span class="decision-state-pill good">✓ Signed</span>'
+          : '<span class="decision-state-pill need-review">' + esc(stage.status) + '</span>')));
+
+  var meta = [app.USDOT ? '<span><span class="key">DOT</span> ' + esc(app.USDOT) + '</span>' : '',
+    app.loc ? '<span>' + esc(app.loc) + '</span>' : '',
+    app.Assigned_Underwriter ? '<span>UW: <b style="color:#fff">' + esc(app.Assigned_Underwriter) + '</b></span>' : '']
+    .filter(Boolean).join('<span class="sep">·</span>');
+
+  var stepsHtml = STEPS.map(function (label, idx) {
+    var cls = idx < stage.index ? 'done' : (idx === stage.index ? 'current' : '');
+    var node = idx < stage.index ? '✓' : (idx + 1);
+    return '<div class="step ' + cls + '"><div class="node">' + node + '</div><div class="slabel">' + esc(label) + '</div></div>';
+  }).join('');
+
+  var pendHtml = pend.length
+    ? pend.map(function (x) {
+        return '<div class="chk"><span class="mark bad">○</span><div class="chk-body"><div class="lbl">' + esc(x.type) + '</div>' +
+          (x.status ? '<div class="det">' + esc(x.status) + '</div>' : '') + '</div>' +
+          '<button class="btn ghost sm js-nudge" data-doc="' + esc(x.type) + '">Nudge client</button></div>';
+      }).join('')
+    : '<div class="muted" style="font-size:12.5px">Nothing outstanding — Underwriting has what it needs.</div>';
+
+  var uwNote = d.uwNotes
+    ? '<div class="note uw"><div class="who">Underwriting <span class="role">UW</span></div><div class="txt">' + esc(d.uwNotes) + '</div>' + (d.uwWhen ? '<div class="when">' + esc(d.uwWhen) + '</div>' : '') + '</div>'
+    : '';
+  var salesNotesHtml = (d.salesNotes || '').split('\n').filter(Boolean).map(function (ln) {
+    return '<div class="note"><div class="txt">' + esc(ln) + '</div></div>';
+  }).join('');
+  var notesBody = (uwNote + salesNotesHtml) || '<div class="muted" style="font-size:12.5px">No notes yet.</div>';
+
+  el('detail').innerHTML =
+    '<div class="hero"><div class="hero-left"><div class="hero-eyebrow">Application #' + esc(app.ID) + ' · ' + esc(app.Authority_Type || '') + '</div>' +
+      '<div class="hero-name">' + esc(app.Business_Name || '') + '</div><div class="hero-meta">' + meta + '</div></div>' +
+      '<div>' + statePill + '</div></div>' +
+
+    '<div class="card"><div class="card-title">Where it stands</div><div class="stepper">' + stepsHtml + '</div></div>' +
+
+    '<div class="grid2"><div class="card"><div class="card-title">What Underwriting is waiting on <span class="count">' + pend.length + '</span></div>' + pendHtml +
+      '<div class="hint">Underwriting requests documents from the prospect. Use “Nudge client” to send a reminder — Sales can’t mark docs received.</div></div>' +
+
+      '<div class="card"><div class="card-title">Estimated Terms <span class="count">from rate engine</span></div><div class="rate-box">' +
+        '<div class="rate-item"><div class="rv">' + esc(terms.rate) + '</div><div class="rl">Est. Rate</div></div>' +
+        '<div class="rate-item"><div class="rv">' + esc(terms.limit) + '</div><div class="rl">Est. Limit</div></div>' +
+        '<div class="rate-item"><div class="rv">' + esc(terms.funding) + '</div><div class="rl">Funding</div></div></div>' +
+        '<div class="hint">Estimate only — final terms are set by Underwriting at approval. Use to set expectations, not to confirm a deal.</div></div></div>' +
+
+    '<div class="card"><div class="card-title">Notes &amp; Activity</div><div class="notes" id="notesFeed">' + notesBody + '</div>' +
+      '<div style="margin-top:12px"><textarea class="note-input" id="noteInput" placeholder="Add a note for this deal…"></textarea>' +
+      '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn js-addnote">+ Add note</button>' +
+      '<button class="btn ghost js-reqdoc">✉ Request document</button></div>' +
+      '<div class="toast" id="detailToast"></div></div></div>';
+
+  Array.prototype.forEach.call(el('detail').querySelectorAll('.js-nudge'), function (b) {
+    b.addEventListener('click', function () { nudgeClient(app, b.getAttribute('data-doc'), b); });
+  });
+  el('detail').querySelector('.js-addnote').addEventListener('click', function () { addNote(app); });
+  el('detail').querySelector('.js-reqdoc').addEventListener('click', function () { requestDoc(app); });
+}
+
+function dToast(kind, msg){ var t = el('detailToast'); if (t) { t.className = 'toast ' + kind; t.textContent = msg; } }
+
+// ── Actions (best-effort live; demo = local + toast) ───────────────────────────
+function nudgeClient(app, docType, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Sent ✓'; }
+  if (STATE.mode === 'demo' || typeof fetch !== 'function') { dToast('ok', 'Reminder queued to ' + (app.Business_Name || 'client') + (docType ? ' for ' + docType : '') + ' (demo).'); return; }
+  fetch(API_BASE + NOTIFY_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usdot: app.USDOT, application_id: app.ID, kind: 'doc-reminder', document: docType }) })
+    .then(function () { dToast('ok', 'Reminder sent to ' + (app.Business_Name || 'client') + '.'); })
+    .catch(function () { dToast('err', 'Could not send the reminder — try again shortly.'); if (btn) { btn.disabled = false; btn.textContent = 'Nudge client'; } });
+}
+
+function addNote(app) {
+  var input = el('noteInput'); var text = (input && input.value || '').trim();
+  if (!text) { dToast('err', 'Type a note first.'); return; }
+  var stamp = ''; try { stamp = new Date().toLocaleString(); } catch (e) { stamp = ''; }
+  var payload = buildNotePayload(app, text, STATE.rep || 'Sales', stamp);
+  // Optimistic UI
+  var feed = el('notesFeed'); if (feed) { if (/No notes yet/.test(feed.innerHTML)) feed.innerHTML = '';
+    feed.insertAdjacentHTML('beforeend', '<div class="note"><div class="who">' + esc(STATE.rep || 'You') + ' <span class="role">Sales</span></div><div class="txt">' + esc(text) + '</div><div class="when">' + esc(stamp) + '</div></div>'); }
+  app[SALES_NOTES_FIELD] = payload[SALES_NOTES_FIELD];
+  if (input) input.value = '';
+  if (STATE.mode === 'demo') { dToast('ok', 'Note added (demo).'); return; }
+  ZOHO.CREATOR.DATA.updateRecord({ report_name: RPT.application, id: app.ID, payload: { data: payload } })
+    .then(function (r) { dToast(r && r.code === 3000 ? 'ok' : 'err', r && r.code === 3000 ? 'Note saved.' : 'Saved locally — could not write Sales_Notes (add the field in Creator).'); })
+    .catch(function () { dToast('err', 'Saved locally — Sales_Notes write failed (confirm the field exists in Creator).'); });
+}
+
+function requestDoc(app) {
+  var docType = (typeof prompt === 'function') ? prompt('Document to request from the prospect:') : '';
+  if (!docType) return;
+  var payload = buildDocRequestPayload(app.ID, docType);
+  if (STATE.mode === 'demo') {
+    app.documents = (app.documents || []); app.documents.push([docType, 'Staff Request', 'Requested']);
+    selectApp(STATE.selected); dToast('ok', 'Requested “' + docType + '” (demo).'); return;
+  }
+  ZOHO.CREATOR.DATA.addRecords({ form_name: FORM.document, payload: { data: payload } })
+    .then(function (r) {
+      if (r && r.code === 3000) { dToast('ok', 'Requested “' + docType + '”.'); selectApp(STATE.selected); }
+      else dToast('err', 'Could not create the request (code ' + (r && r.code) + ').');
+    })
+    .catch(function () { dToast('err', 'Could not create the document request — confirm the Application lookup exists on Document.'); });
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
+function boot() {
+  loadPipeline().then(function (res) {
+    STATE.mode = res.mode; STATE.rep = res.rep || (res.mode === 'demo' ? DEMO_REP : '');
+    STATE.apps = filterMyPipeline(res.apps, res.unfiltered ? '' : STATE.rep, SALES_ATTR);
+    // If a live filtered read fell back to the whole book, keep them all (already unfiltered).
+    if (res.unfiltered) STATE.apps = res.apps.slice();
+    el('repName').textContent = STATE.rep || (STATE.mode === 'demo' ? DEMO_REP : 'All reps');
+    if (STATE.mode === 'demo') setBanner('demo', '<b>DEMO.</b> Showing a sample pipeline — this page isn’t embedded in Creator yet. Live, it loads the applications assigned to you.');
+    else if (res.unfiltered) setBanner('warn', 'Showing all applications — add a <b>' + SALES_ATTR + '</b> field on the Application form to scope this to your book.');
+    renderKPIs(STATE.apps);
+    renderPipeline(STATE.apps);
+    if (STATE.apps.length) selectApp(0);
+  }).catch(function (e) {
+    setBanner('warn', 'Could not load the pipeline: ' + esc(e && e.message ? e.message : e));
+    el('pipeline').innerHTML = '<div class="empty">Pipeline unavailable.</div>';
+  });
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  if (document.readyState === 'loading') window.addEventListener('load', boot); else boot();
+}
+
+})(typeof window !== 'undefined' ? window : this);
+</script>
+</body>
+</html>

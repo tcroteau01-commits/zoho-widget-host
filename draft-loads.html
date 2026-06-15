@@ -926,6 +926,14 @@ function renderPreview(rows){
   if (btn){ btn.textContent='Create '+creatable+' draft'+(creatable===1?'':'s'); btn.disabled=!creatable; }
 }
 
+// Resolve a vendor id to its display carrier name (for the paperwork screen).
+// Returns '' when unresolved — the row then shows MC/DOT instead.
+function carrierDisplayName(vendorId){
+  if(!vendorId) return '';
+  var c=(__state.carriers||[]).filter(function(x){ return x.vendor_id===vendorId; })[0];
+  return (c && c.carrier_name) || '';
+}
+
 function createDraftsFromPreview(){
   var clean=creatableRows();
   if(!clean.length){ showToast('No rows to create'); return Promise.resolve(); }
@@ -954,7 +962,9 @@ function createDraftsFromPreview(){
     }).then(function(res){
       if(!res || !res.record_id) return null;
       return { id:res.record_id, ref:m.customer_reference_number, invoice:m.carrier_factoring_invoice,
-               customer_name:(cm.best&&cm.best.name)||m.customer_name_raw||'', carrier_name:m.carrier_mc?('MC '+m.carrier_mc):(m.carrier_dot?('DOT '+m.carrier_dot):'') };
+               customer_name:(cm.best&&cm.best.name)||m.customer_name_raw||'',
+               carrier_name:carrierDisplayName(vm.vendor_id),
+               carrier_mc:m.carrier_mc||'', carrier_dot:m.carrier_dot||'' };
     }).catch(function(){ return null; });
   })).then(function(loads){
     var ok=loads.filter(function(l){ return l && l.id; });
@@ -1033,7 +1043,9 @@ function slotHtml(l, slot){
            '<div class="auto">✓ routed by '+(slot==='customer'?'ref #':'invoice #')+'</div>';
   }
   var label = slot==='customer' ? 'customer packet needed' : 'carrier invoice needed';
-  return '<div class="empty-slot req" data-slot="'+slot+'" data-load="'+esc(l.id)+'">⬍ '+label+'</div>';
+  var key = slot==='customer' ? l.ref : l.invoice;
+  var hint = key ? '<div class="auto" style="color:var(--amber-dk)">drop file named '+esc(key)+'</div>' : '';
+  return '<div class="empty-slot req" data-slot="'+slot+'" data-load="'+esc(l.id)+'">⬍ '+label+'</div>'+hint;
 }
 
 function renderPaperwork(loads){
@@ -1047,10 +1059,17 @@ function renderPaperwork(loads){
     var statHtml = st==='ready'
       ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
       : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer===true?'Carrier doc':(__pw.slots[l.id].carrier===true?'Customer doc':'Both needed')) +'</span>';
+    var carrId = l.carrier_mc ? ('MC '+esc(l.carrier_mc)) : (l.carrier_dot ? ('DOT '+esc(l.carrier_dot)) : '');
+    var idBits=[];
+    if (l.ref) idBits.push('Cust ref '+esc(l.ref));
+    if (l.invoice) idBits.push('Carrier inv '+esc(l.invoice));
+    if (carrId) idBits.push(carrId);
+    var titleHtml = esc(l.customer_name||'—') +
+      (l.carrier_name ? ' <span style="color:var(--muted);font-weight:600">→</span> '+esc(l.carrier_name) : '');
     var row=document.createElement('div');
     row.className='lrow'; row.setAttribute('data-row', l.id);
     row.innerHTML=
-      '<div><div class="co">'+esc(l.customer_name||'—')+'</div><div class="small mono">Ref '+esc(l.ref||'')+' · '+esc(l.carrier_name||'')+'</div></div>'+
+      '<div><div class="co">'+titleHtml+'</div><div class="small mono">'+idBits.join(' · ')+'</div></div>'+
       '<div class="slot" data-slot-wrap="customer" data-load="'+esc(l.id)+'">'+slotHtml(l,'customer')+'</div>'+
       '<div class="slot" data-slot-wrap="carrier" data-load="'+esc(l.id)+'">'+slotHtml(l,'carrier')+'</div>'+
       '<div class="rstat">'+statHtml+'</div>';

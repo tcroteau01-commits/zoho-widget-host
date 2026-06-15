@@ -479,6 +479,40 @@ test('renderPaperwork renders one row per load with two required slots', () => {
   assert.equal(rows[0].querySelectorAll('.slot').length, 2);
 });
 
+test('renderPaperwork row surfaces carrier name, customer ref AND carrier invoice for drag-drop direction', () => {
+  const w = mk();
+  w.renderPaperwork([
+    { id: '900', ref: 'EXAMPLE-10042', invoice: 'INV-7741', customer_name: 'ABC Shipping',
+      carrier_name: 'BRENNAN TRUCKING', carrier_mc: '982341' }
+  ]);
+  const txt = w.document.querySelector('#paperwork .lrow').textContent;
+  assert.match(txt, /ABC Shipping/);
+  assert.match(txt, /BRENNAN TRUCKING/);
+  assert.match(txt, /EXAMPLE-10042/);
+  assert.match(txt, /INV-7741/);
+});
+
+test('empty paperwork slots hint which number routes the file', () => {
+  const w = mk();
+  w.renderPaperwork([{ id: '900', ref: 'EXAMPLE-10042', invoice: 'INV-7741',
+    customer_name: 'ABC Shipping', carrier_name: 'BRENNAN TRUCKING' }]);
+  const slots = w.document.querySelectorAll('#paperwork .slot');
+  assert.match(slots[0].textContent, /EXAMPLE-10042/, 'customer slot hints the ref #');
+  assert.match(slots[1].textContent, /INV-7741/, 'carrier slot hints the invoice #');
+});
+
+test('createDraftsFromPreview passes the resolved carrier NAME (not MC) into paperwork', async () => {
+  const { window } = makeWidget();
+  window.__state.carriers = [{ vendor_id: 'v1', carrier_name: 'BRENNAN TRUCKING', mc: '982341' }];
+  window.openImportModal();
+  window.renderPreview([PREVIEW.rows[0]]);
+  await window.createDraftsFromPreview();
+  const load = window.__pw.loads[0];
+  assert.equal(load.carrier_name, 'BRENNAN TRUCKING');
+  assert.equal(load.invoice, 'INV-7741');
+  assert.equal(load.carrier_mc, '982341');
+});
+
 test('routeFileToSlot: token-boundary match avoids ref substring collision', () => {
   const w = mk();
   const loads = [

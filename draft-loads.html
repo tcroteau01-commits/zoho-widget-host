@@ -481,9 +481,28 @@ function bulkSetCarrier(carrierId){
     .catch(function(){ showToast('Update failed'); });
 }
 
+// Ensure the customer/carrier pick lists are loaded before opening a picker.
+// If they failed to load at boot (quota/impersonation), the dropdown would open
+// empty and feel like "nothing happened" — so fetch them on demand here.
+function ensurePickLists(kind){
+  var need = kind==='customer' ? !(__state.customers && __state.customers.length)
+                               : !(__state.carriers && __state.carriers.length);
+  return need ? loadPickLists() : Promise.resolve();
+}
+
 function promptPick(kind){
   var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
-  if(!scrim||!modal||!__state.selected.length) return;
+  if(!scrim||!modal||!__state.selected.length) return Promise.resolve();
+  return ensurePickLists(kind).then(function(){ promptPickRender(kind, scrim, modal); });
+}
+
+function promptPickRender(kind, scrim, modal){
+  modal.className='modal';
+  var list = kind==='customer' ? __state.customers : __state.carriers;
+  if (!list || !list.length){
+    showToast('Could not load '+(kind==='customer'?'customers':'carriers')+' — try Refresh');
+    return;
+  }
   var title = kind==='customer'?'Set customer for '+__state.selected.length+' loads':'Set carrier for '+__state.selected.length+' loads';
   modal.innerHTML=
     '<div class="modal-head"><span class="x" id="modal-x">✕</span><h2>'+esc(title)+'</h2></div>'+
@@ -615,6 +634,7 @@ function openResolveModal(kind){
   var groups=computeGroups(undefined, kind);
   var scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
   if(!scrim||!modal) return;
+  modal.className='modal';
   var totalLoads=groups.reduce(function(a,g){return a+g.count;},0);
   var title = kind==='customer'?'Resolve customers':'Resolve carriers';
   modal.innerHTML=
@@ -1230,6 +1250,7 @@ window.openInlineEdit=openInlineEdit;
 window.toggleSelect=toggleSelect;
 window.bulkSetCustomer=bulkSetCustomer;
 window.bulkSetCarrier=bulkSetCarrier;
+window.promptPick=promptPick;
 window.submitAllReady=submitAllReady;
 window.submitOne=submitOne;
 window.handleSubmitResult=handleSubmitResult;

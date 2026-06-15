@@ -231,6 +231,31 @@ test('bulk Set customer PATCHes all selected ids', async () => {
   assert.equal(patches.length, 2);
 });
 
+test('promptPick self-heals an empty customer list (the "nothing happens" fix)', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.renderQueue(DRAFTS);
+  window.__state.selected = ['900'];
+  window.__state.customers = [];           // simulate pick lists that never loaded
+  await window.promptPick('customer');
+  const sel = window.document.getElementById('bulk-sel');
+  assert.ok(sel, 'picker modal opened');
+  // options beyond the placeholder = the lists were fetched on demand
+  assert.ok(sel.querySelectorAll('option').length > 1, 'customer options populated');
+  assert.ok(window.__state.customers.length > 0, 'customers loaded into state');
+});
+
+test('promptPick carrier self-heals an empty carrier list', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.renderQueue(DRAFTS);
+  window.__state.selected = ['900'];
+  window.__state.carriers = [];
+  await window.promptPick('carrier');
+  const sel = window.document.getElementById('bulk-sel');
+  assert.ok(sel.querySelectorAll('option').length > 1, 'carrier options populated');
+});
+
 // ---- Task 18 ----
 test('submit-all posts only ready ids', async () => {
   const { window, records } = makeWidget();

@@ -114,6 +114,16 @@ tr:last-child td { border-bottom:none; }
 .btn.orange{background:var(--of-orange);} .btn.green{background:var(--of-green);} .btn.red{background:var(--of-red);}
 .btn.sm { padding:5px 11px; font-size:11px; } .btn.block { width:100%; padding:11px; font-size:13px; } .btn:disabled { opacity:0.45; cursor:not-allowed; }
 
+.recommendation { background:#fff; border:1px solid var(--of-beige-line); border-left:4px solid var(--of-amber); border-radius:12px; padding:16px 20px; margin-bottom:14px; display:none; }
+.recommendation.show { display:block; }
+.recommendation.low { border-left-color:var(--of-green); } .recommendation.high { border-left-color:var(--of-red); }
+.rec-label { font-size:10px; text-transform:uppercase; letter-spacing:0.7px; color:var(--of-gray-500); font-weight:700; margin-bottom:4px; }
+.rec-verdict { font-size:20px; font-weight:700; letter-spacing:-0.3px; color:var(--of-charcoal); line-height:1.1; margin-bottom:10px; }
+.rec-verdict .rec-icon { color:var(--of-amber); margin-right:6px; }
+.rec-reasons { list-style:none; display:flex; flex-direction:column; gap:5px; }
+.rec-reasons li { font-size:13px; color:var(--of-charcoal-soft); padding-left:18px; position:relative; line-height:1.5; }
+.rec-reasons li::before { content:'▸'; position:absolute; left:0; color:var(--of-amber); font-weight:700; }
+
 @media (max-width:1000px){ .col-main{grid-template-columns:1fr;} .kpi-row{grid-template-columns:1fr 1fr;} }
 @media (max-width:640px){ .kpi-row,.kv,.flag-grid{grid-template-columns:1fr;} .hero{grid-template-columns:1fr;} }
 </style>
@@ -150,6 +160,12 @@ tr:last-child td { border-bottom:none; }
       </div>
     </div>
 
+    <div class="recommendation" id="recCard">
+      <div class="rec-label">System Recommendation <span id="recWhen"></span></div>
+      <div class="rec-verdict"><span class="rec-icon">◆</span> <span id="recVerdict">—</span></div>
+      <ul class="rec-reasons" id="recReasons"></ul>
+    </div>
+
     <div class="kpi-row">
       <div class="kpi warn"><div class="kpi-label">Fraud Flags</div><div class="kpi-value warn" id="kFraud">—</div><div class="kpi-sub">to clear of 10</div></div>
       <div class="kpi good"><div class="kpi-label">Intake Packet</div><div class="kpi-value good" id="kDocs">—</div><div class="kpi-sub">documents received</div></div>
@@ -171,6 +187,10 @@ tr:last-child td { border-bottom:none; }
         <div class="card">
           <div class="card-title">Ownership &amp; Entity</div>
           <table id="ownTable"></table>
+        </div>
+        <div class="card">
+          <div class="card-title">UCC Research <span class="count">iLien · SOS · Middesk</span></div>
+          <table id="uccTable"></table>
         </div>
         <div class="card">
           <div class="card-title">Documents <span class="count" id="docCount">—</span></div>
@@ -251,6 +271,9 @@ var APPLICATION_LOOKUP = 'Application'; // 1:1 lookup on Underwriting_Review (ha
 var FORM_REVIEW = 'Underwriting_Review';
 // Creator report names (from the .ds reports block) used for live reads.
 var RPT = { application: 'Application_Report', owner: 'Owner_Report', document: 'Document_Report', review: 'Underwriting_Review_Report' };
+// Backend (operfi-broker-api) that returns the automated check results stored at submit time.
+var API_BASE = global.OPERFI_UW_API_BASE || 'https://operfi-broker-api.onrender.com';
+var CHECKS_PATH = '/application-checks'; // GET ?usdot= → { fraud, ownership, ucc, risk, checkedAt }  (confirm with Tom)
 
 // ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
@@ -308,7 +331,25 @@ function buildReviewPayload(s, appId) {
   return p;
 }
 
-var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, APPLICATION_LOOKUP: APPLICATION_LOOKUP };
+// Rule-based system recommendation from the automated checks (fraud quick-glance + UCC).
+// checks: { fraud: [{label,detail,status:'clear'|'warn'|'bad'}], ucc: [{securedParty,action}] }
+function computeRecommendation(checks) {
+  checks = checks || {};
+  var fraud = checks.fraud || [], ucc = checks.ucc || [];
+  var bad = fraud.filter(function (f) { return f.status === 'bad'; }).length;
+  var warn = fraud.filter(function (f) { return f.status === 'warn'; }).length;
+  var reasons = [];
+  ucc.forEach(function (u) { reasons.push('UCC by ' + (u.securedParty || 'secured party') + (u.action ? ' — ' + u.action : '')); });
+  fraud.filter(function (f) { return f.status !== 'clear'; }).forEach(function (f) { reasons.push(f.label + ': ' + f.detail); });
+  var risk, verdict;
+  if (bad >= 2) { risk = 'high'; verdict = 'Escalate — likely Decline'; }
+  else if (ucc.length || bad >= 1 || warn >= 1) { risk = 'med'; verdict = 'Conditional Approve — clear items first'; }
+  else { risk = 'low'; verdict = 'Approve'; }
+  if (!reasons.length) reasons.push('No fraud flags and no prior UCC filings — clean file.');
+  return { risk: risk, verdict: verdict, reasons: reasons };
+}
+
+var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, APPLICATION_LOOKUP: APPLICATION_LOOKUP };
 global.OFUW = OFUW;
 
 // ── Demo data, keyed by USDOT (used when not embedded in Creator) ─────────────
@@ -334,7 +375,7 @@ var DEMO_APPS = {
       ['W-9','Prospect Upload','Verified'],['SOS Filing','Staff Upload','Verified'],
       ['Operating Agreement','—','Requested'],['Prior aging report','—','Requested']
     ],
-    ucc: 1, risk: 'med',
+    ucc: [{ securedParty:'TBS Factoring Service', type:'Factor', filed:'2024-11-02', action:'LOR Required' }], checksReady: true, checkedAt:'Jun 8, 2026', risk: 'med',
     review: { Decision2:'Pending', Authority_Verified:true, Ownership_Verified:true, UCC_Checked:false,
       Fraud_Flag1:'Low', Fraud_Notes:'VOIP phone + COI producer mismatch — re-verifying.', Checklist_Status1:'In Progress',
       UW_Notes:'', Approved_Credit_Limit:'$30,000', Recommended_Rate:'3.00%', Buyout_Required:true, Buyout_Factor:'TBS Factoring',
@@ -361,7 +402,7 @@ var DEMO_APPS = {
       ['SOS Filing','Staff Upload','Verified'],['Broker-Carrier Agreement','—','Requested'],
       ['Credit Application','—','Requested']
     ],
-    ucc: 0, risk: 'low',
+    ucc: [], checksReady: true, checkedAt:'Jun 5, 2026', risk: 'low',
     review: { Decision2:'Pending', Authority_Verified:false, Ownership_Verified:false, UCC_Checked:false,
       Fraud_Flag1:'None', Fraud_Notes:'', Checklist_Status1:'Not Started',
       UW_Notes:'', Approved_Credit_Limit:'', Recommended_Rate:'3.00%', Buyout_Required:false, Buyout_Factor:'',
@@ -408,23 +449,35 @@ function liveLoadByUSDOT(usdot) {
     return Promise.all([
       getRecords(RPT.owner, APPLICATION_LOOKUP + ' == ' + appId),
       getRecords(RPT.document, APPLICATION_LOOKUP + ' == ' + appId),
-      getRecords(RPT.review, APPLICATION_LOOKUP + ' == ' + appId)
+      getRecords(RPT.review, APPLICATION_LOOKUP + ' == ' + appId),
+      fetchChecks(usdot)   // automated fraud/ownership/UCC results stored at submit time
     ]).then(function (res) {
       var rev = res[2][0] || {};
+      var checks = res[3]; // null if the backend hasn't returned results yet
       return {
         appId: appId,
         reviewId: rev.ID || null,
         application: a,
         owners: res[0].map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, sosRole:'—' }; }),
-        // Fraud quick-glance comes from external checks (IPQS/FMCSA/Carrier411) via the backend, not Creator.
-        fraud: [],
         documents: res[1].map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested']; }),
-        ucc: 0,
-        risk: 'med',
+        // Fraud / ownership / UCC come from the backend enrichment (IPQS/FMCSA/Carrier411/UCC tools).
+        checksReady: !!checks,
+        fraud: (checks && checks.fraud) || [],
+        ucc: (checks && checks.ucc) || [],
+        risk: (checks && checks.risk) || 'med',
+        checkedAt: (checks && checks.checkedAt) || '',
         review: rev
       };
     });
   });
+}
+
+// Fetch the automated check results the backend stored when the application was submitted.
+function fetchChecks(usdot) {
+  if (typeof fetch !== 'function') return Promise.resolve(null);
+  return fetch(API_BASE + CHECKS_PATH + '?usdot=' + encodeURIComponent(usdot))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .catch(function () { return null; });
 }
 
 function saveReview(payload, existingId) {
@@ -503,9 +556,22 @@ function renderModel(m) {
     '<span><span class="key">MC</span> '+a.MC_Number+'</span><span class="sep">·</span>' +
     '<span>'+(a.Business_Formation_Type||'')+'</span><span class="sep">·</span><span>'+(a.loc||'')+'</span>' +
     '<span class="sep">·</span><span>Assigned: <b style="color:#fff">'+(a.Assigned_Underwriter||'—')+'</b></span>';
-  var risk = m.risk || 'med';
+  // Automated checks → System Recommendation + risk. Normalize fraud to {label,detail,status}.
+  var fraud = (m.fraud || []).map(function (f) { return Array.isArray(f) ? { label:f[0], detail:f[1], status:f[2] } : f; });
+  var rec = computeRecommendation({ fraud: fraud, ucc: m.ucc || [] });
+  var risk = (m.checksReady === false) ? 'med' : rec.risk;
   $('hRisk').className = 'verdict-badge ' + risk;
   $('hRisk').textContent = (risk==='low'?'Low':risk==='high'?'High':'Medium') + ' Risk';
+  var recCard = $('recCard');
+  recCard.className = 'recommendation show ' + risk;
+  $('recWhen').textContent = m.checkedAt ? '· checked ' + m.checkedAt : '';
+  if (m.checksReady === false) {
+    $('recVerdict').textContent = 'Automated checks pending';
+    $('recReasons').innerHTML = '<li>Fraud / authority / UCC enrichment has not completed for this application yet.</li>';
+  } else {
+    $('recVerdict').textContent = rec.verdict;
+    $('recReasons').innerHTML = rec.reasons.map(function (x) { return '<li>' + x + '</li>'; }).join('');
+  }
 
   $('appSummary').innerHTML = [
     ['Authority', a.Authority_Type],['Factoring As', a.Factoring_Authority_Selected],
@@ -515,9 +581,9 @@ function renderModel(m) {
     ['Requested Term', (a.Rate_Term_Selection||'').replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],['Credit Issues',(a.Credit_Issues||[]).join(', ')]
   ].map(function(r){ return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+(r[1]||'—')+'</div></div>'; }).join('');
 
-  $('fraudGrid').innerHTML = m.fraud.length
-    ? m.fraud.map(function(f){ var cls=f[2], ic=cls==='clear'?'✓':'!'; return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f[0]+'</div><div class="fd">'+f[1]+'</div></div></div>'; }).join('')
-    : '<div class="flag-empty">Run external checks (IPQS / FMCSA / Carrier411) via the backend to populate fraud results.</div>';
+  $('fraudGrid').innerHTML = fraud.length
+    ? fraud.map(function(f){ var cls=f.status, ic=cls==='clear'?'✓':'!'; return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f.label+'</div><div class="fd">'+f.detail+'</div></div></div>'; }).join('')
+    : '<div class="flag-empty">'+(m.checksReady===false?'Automated checks pending — enrichment has not run for this application yet.':'No fraud results returned.')+'</div>';
 
   var ot = '<tr><th>Owner</th><th>Title</th><th>Stake</th><th>SOS Role</th></tr>';
   (m.owners||[]).forEach(function(o){ ot += '<tr><td>'+(o.First_Name1||'')+' '+(o.Last_Name1||'')+'</td><td>'+(o.Title||'')+'</td><td>'+(o.Ownership_Percent||'')+'%</td><td><span class="pill g">'+(o.sosRole||'—')+'</span></td></tr>'; });
@@ -530,8 +596,13 @@ function renderModel(m) {
   var recv = (m.documents||[]).filter(function(d){return d[2]==='Verified'||d[2]==='Received';}).length;
   $('docCount').textContent = recv + ' / ' + (m.documents||[]).length;
   $('kDocs').textContent = recv + ' / ' + (m.documents||[]).length;
-  $('kFraud').textContent = m.fraud.filter(function(f){return f[2]!=='clear';}).length;
-  $('kUcc').textContent = m.ucc;
+  $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
+  $('kUcc').textContent = (m.ucc||[]).length;
+  // UCC research table
+  var ut = '<tr><th>Secured Party</th><th>Type</th><th>Filed</th><th>Action</th></tr>';
+  if ((m.ucc||[]).length) { m.ucc.forEach(function(u){ ut += '<tr><td>'+(u.securedParty||'—')+'</td><td>'+(u.type||'—')+'</td><td>'+(u.filed||'—')+'</td><td><span class="pill r">'+(u.action||'—')+'</span></td></tr>'; }); }
+  else { ut += '<tr><td colspan="4" style="color:var(--of-gray-500)">'+(m.checksReady===false?'UCC search pending.':'No prior UCC filings found.')+'</td></tr>'; }
+  $('uccTable').innerHTML = ut;
 
   var r = m.review || {};
   $('uwDecision').value = r.Decision2 || 'Pending';

@@ -380,6 +380,9 @@ html, body {
 .ca-fraud-reasons li { margin: 2px 0; }
 .ca-fraud-clean { font-size: 12px; color:#666; }
 .ca-fraud-meta { margin-top: 8px; font-size: 11px; color:#999; }
+.ca-contacts-head { display:flex; justify-content:space-between; align-items:center; }
+.ca-edit-billing-btn { border:1px solid #d8d8d8; background:#fff; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:600; color:#555; cursor:pointer; font-family:inherit; text-transform:none; letter-spacing:0; }
+.ca-edit-billing-btn:hover { border-color:#b8b8b8; background:#fafafa; }
 </style>
 </head>
 <body>
@@ -458,6 +461,7 @@ function brokerName(rec){
 window.brokerName = brokerName;
 window.renderFraudCheck = function(d){ return renderFraudCheck(d); };  // exposed for tests (CC2)
 window.urlVal = function(v){ return urlVal(v); };                      // exposed for tests
+window.wireBillingEdit = function(r){ return wireBillingEdit(r); };    // exposed for tests (CA1)
 var currentSearch = '';
 var openIndex = -1;
 var currentLoadId = 0;
@@ -994,16 +998,30 @@ function renderPanel() {
         (r.Other_Social_Media_Links ? '<div style="margin-top: 14px;">' + fieldLink('Other Social Media', r.Other_Social_Media_Links) + '</div>' : '') +
       '</div>' +
 
-      // Customer Contacts
+      // Customer Contacts (+ editable billing info before funding)
       '<div class="panel-section">' +
-        '<div class="panel-section-title">Customer Contacts</div>' +
+        '<div class="panel-section-title ca-contacts-head">' +
+          '<span>Customer Contacts</span>' +
+          '<button class="ca-edit-billing-btn" id="ca-edit-billing">Edit Billing Info</button>' +
+        '</div>' +
         '<div class="field-grid">' +
           field('Point of Contact', r.Customer_Point_of_Contact) +
           field('Phone', formatPhone(r.Phone_Number1)) +
           field('Email', r.Email) +
-          (r.Billing_Point_of_Contact ? field('Billing POC', r.Billing_Point_of_Contact) : '') +
-          (r.Billing_AP_Contact_Number ? field('Billing Phone', formatPhone(r.Billing_AP_Contact_Number)) : '') +
-          (r.Billing_Email ? field('Billing Email', r.Billing_Email) : '') +
+          field('Billing POC', r.Billing_Point_of_Contact || '—') +
+          field('Billing Phone', r.Billing_AP_Contact_Number ? formatPhone(r.Billing_AP_Contact_Number) : '—') +
+          field('Billing Email', r.Billing_Email || '—') +
+        '</div>' +
+        '<div id="ca-billing-edit" style="display:none;margin-top:14px;">' +
+          '<div class="dec-field"><label class="dec-label" for="ca-bill-poc">Billing Point of Contact</label>' +
+            '<input class="dec-input" id="ca-bill-poc" type="text"></div>' +
+          '<div class="dec-field"><label class="dec-label" for="ca-bill-phone">Billing Phone</label>' +
+            '<input class="dec-input" id="ca-bill-phone" type="text"></div>' +
+          '<div class="dec-field"><label class="dec-label" for="ca-bill-email">Billing Email</label>' +
+            '<input class="dec-input" id="ca-bill-email" type="email"></div>' +
+          '<div class="dec-row"><div class="dec-msg" id="ca-bill-msg"></div>' +
+            '<button class="btn" id="ca-bill-cancel">Cancel</button>' +
+            '<button class="btn primary" id="ca-bill-save">Save Billing Info</button></div>' +
         '</div>' +
       '</div>' +
 
@@ -1046,6 +1064,57 @@ function renderPanel() {
 
   wireDecisionSection(r);
   fetchFraudCheck(r);
+  wireBillingEdit(r);
+}
+
+// CA1 — let the client add/edit a customer's billing contact info before funding.
+// Inline edit on the Customer Contacts section; saves via the account-scoped backend.
+function wireBillingEdit(r) {
+  var btn = document.getElementById('ca-edit-billing');
+  if (!btn) return;
+  var form = document.getElementById('ca-billing-edit');
+  btn.addEventListener('click', function() {
+    document.getElementById('ca-bill-poc').value = r.Billing_Point_of_Contact || '';
+    document.getElementById('ca-bill-phone').value = r.Billing_AP_Contact_Number || '';
+    document.getElementById('ca-bill-email').value = r.Billing_Email || '';
+    form.style.display = ''; btn.style.display = 'none';
+    document.getElementById('ca-bill-poc').focus();
+  });
+  document.getElementById('ca-bill-cancel').addEventListener('click', function() {
+    form.style.display = 'none'; btn.style.display = '';
+  });
+  document.getElementById('ca-bill-save').addEventListener('click', function() {
+    var save = document.getElementById('ca-bill-save');
+    var msg = document.getElementById('ca-bill-msg');
+    var payload = {
+      email: (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail,
+      submission_id: String(r.ID),
+      billing_contact: document.getElementById('ca-bill-poc').value.trim(),
+      billing_phone: document.getElementById('ca-bill-phone').value.trim(),
+      billing_email: document.getElementById('ca-bill-email').value.trim()
+    };
+    save.disabled = true; msg.textContent = 'Saving…'; msg.className = 'dec-msg';
+    fetch(BROKER_API_BASE + '/broker-edit-customer-billing', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    }).then(function(res) {
+      return res.text().then(function(t) { var d = {}; try { d = t ? JSON.parse(t) : {}; } catch (e) {} return { status: res.status, data: d }; });
+    }).then(function(rr) {
+      if (rr.status === 200 && rr.data.ok) {
+        r.Billing_Point_of_Contact = payload.billing_contact;
+        r.Billing_AP_Contact_Number = payload.billing_phone;
+        r.Billing_Email = payload.billing_email;
+        msg.textContent = '✓ Saved'; msg.className = 'dec-msg success';
+        setTimeout(function() { renderPanel(); }, 600);   // re-render with new values
+      } else {
+        var detail = rr.data.error || rr.data.message;
+        msg.textContent = 'Could not save' + (detail ? ': ' + detail : '') + '.';
+        msg.className = 'dec-msg error'; save.disabled = false;
+      }
+    }).catch(function() {
+      msg.textContent = 'Could not save. Check your connection and try again.';
+      msg.className = 'dec-msg error'; save.disabled = false;
+    });
+  });
 }
 
 // CC2 — pull domain/fraud signals for the credit team (gated server-side; a 403

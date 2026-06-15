@@ -38,6 +38,37 @@ test('customer-approvals urlVal extracts the URL from a Creator url-field object
   assert.notEqual(w.urlVal({ value: 'x.com' }), '[object Object]');
 });
 
+test('CA1 wireBillingEdit saves billing info via /broker-edit-customer-billing', async () => {
+  const w = load('customer-approvals.html');
+  assert.equal(typeof w.wireBillingEdit, 'function');
+  const d = w.document;
+  w.brokerEmail = 'b@op.com';
+  if (typeof w.BROKER_API_BASE === 'undefined') w.BROKER_API_BASE = 'http://api';
+  const ids = ['ca-edit-billing','ca-billing-edit','ca-bill-poc','ca-bill-phone','ca-bill-email','ca-bill-save','ca-bill-cancel','ca-bill-msg'];
+  ids.forEach(function(id){
+    var el = d.createElement(/poc|phone|email/.test(id) ? 'input' : (/save|cancel|edit-billing$/.test(id) ? 'button' : 'div'));
+    el.id = id; d.body.appendChild(el);
+  });
+
+  let captured = null;
+  w.fetch = function(url, opts){ captured = { url: url, opts: opts }; return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '555' })) }); };
+
+  w.wireBillingEdit({ ID: '555', Billing_Point_of_Contact: '', Billing_Email: '', Billing_AP_Contact_Number: '' });
+  d.getElementById('ca-edit-billing').click();
+  assert.equal(d.getElementById('ca-billing-edit').style.display, '');
+  d.getElementById('ca-bill-poc').value = 'Pat Pay';
+  d.getElementById('ca-bill-email').value = 'ap@acme.com';
+  d.getElementById('ca-bill-save').click();
+  await new Promise(r => setTimeout(r, 0));
+
+  assert.ok(captured, 'fetch called');
+  assert.match(captured.url, /\/broker-edit-customer-billing/);
+  const sent = JSON.parse(captured.opts.body);
+  assert.equal(sent.submission_id, '555');
+  assert.equal(sent.billing_contact, 'Pat Pay');
+  assert.equal(sent.billing_email, 'ap@acme.com');
+});
+
 test('customer-approvals renderFraudCheck shows risk badge + reasons (CC2)', () => {
   const w = load('customer-approvals.html');
   assert.equal(typeof w.renderFraudCheck, 'function');

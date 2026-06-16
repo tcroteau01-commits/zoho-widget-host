@@ -181,6 +181,19 @@ test('loadCredit delegates to OperFiAV.customerCredit even when customerId is em
   assert.strictEqual(calls[0].customerId, '');
 });
 
+test('loadCredit adds .show to #credit-banner so it becomes visible', async () => {
+  const dom = makeB2Dom(
+    () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }),
+    { avStubs: { customerCredit: () => {} } }
+  );
+  const w = dom.window;
+  const banner = w.document.getElementById('credit-banner');
+  assert.ok(banner, '#credit-banner must exist');
+  assert.ok(!banner.classList.contains('show'), 'banner should start without .show');
+  await w.loadCredit('c9');
+  assert.ok(banner.classList.contains('show'), 'banner must have .show after loadCredit');
+});
+
 test('margin badge computes customer minus carrier rate, $ and %', () => {
   const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
   const w = dom.window;

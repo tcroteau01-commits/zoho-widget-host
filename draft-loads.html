@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js"></script>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-av.js?v=1"></script>
 <style>
 :root{
   --ink:#272727;--amber:#e8a020;--amber-dk:#c9871a;--body:#f0efe9;--card:#fff;
@@ -203,6 +204,9 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
       <button class="btn amber" id="new-draft">＋ New Draft</button>
     </div>
   </div>
+
+  <div id="draft-carrier-av"></div>
+  <div id="draft-credit-av"></div>
 
   <div class="smart hidden" id="smart">
     <div class="ic">!</div>
@@ -522,6 +526,7 @@ function openInlineEdit(tr, d, kind){
       .then(function(){ return loadQueue(); })
       .then(function(){ showToast('Updated'); })
       .catch(function(){ showToast('Update failed'); });
+    if (kind==='carrier'){ onDraftCarrierChange(val); } else { onDraftCustomerChange(val); }
   });
 }
 
@@ -595,6 +600,7 @@ function promptPickRender(kind, scrim, modal){
   modal.querySelector('#modal-apply').addEventListener('click', function(){
     var val=modal.querySelector('#bulk-sel').value; if(!val){ closeModal(); return; }
     (kind==='customer'?bulkSetCustomer(val):bulkSetCarrier(val)).then(function(){ closeModal(); showToast('Updated'); });
+    if (kind==='carrier'){ onDraftCarrierChange(val); } else { onDraftCustomerChange(val); }
   });
 }
 
@@ -744,6 +750,7 @@ function openResolveModal(kind){
       applyGroup(g.raw, val, g.ids, remember, kind).then(function(){
         showToast(g.count+' load'+(g.count===1?'':'s')+' cleared');
       });
+      if (kind==='carrier'){ onDraftCarrierChange(val); } else { onDraftCustomerChange(val); }
     });
   });
   scrim.classList.remove('hidden');
@@ -1454,6 +1461,20 @@ window.submitAllReady=submitAllReady;
 window.submitSelected=submitSelected;
 window.submitOne=submitOne;
 window.handleSubmitResult=handleSubmitResult;
+
+// AV callout helpers — mirrors index.html's onCarrierChange / loadCredit pattern.
+// Called from inline-edit, grouped-resolve, and bulk-pick change handlers above.
+// Also exposed on window so tests can invoke them directly.
+function onDraftCarrierChange(vendorId){
+  if (window.OperFiAV) OperFiAV.carrierBadge(document.getElementById('draft-carrier-av'),
+    { vendorId: vendorId, email: brokerEmail, apiBase: BROKER_API_BASE });
+}
+function onDraftCustomerChange(customerId){
+  if (window.OperFiAV) OperFiAV.customerCredit(document.getElementById('draft-credit-av'),
+    { customerId: customerId, email: brokerEmail, apiBase: BROKER_API_BASE });
+}
+window.onDraftCarrierChange = onDraftCarrierChange;
+window.onDraftCustomerChange = onDraftCustomerChange;
 </script>
 </body>
 </html>

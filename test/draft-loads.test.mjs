@@ -733,3 +733,106 @@ test('toolbar Template link is a working download link to /draft-loads/template'
   assert.ok(a.hasAttribute('download'), 'has download attribute');
   assert.ok(/\/draft-loads\/template$/.test(a.getAttribute('href') || ''), 'href ends with /draft-loads/template');
 });
+
+// ---- Task 4 (AV1): OperFiAV carrier badge + customer credit wiring ----
+
+test('AV containers #draft-carrier-av and #draft-credit-av exist in DOM', () => {
+  const { window } = makeWidget();
+  assert.ok(window.document.getElementById('draft-carrier-av'), '#draft-carrier-av present');
+  assert.ok(window.document.getElementById('draft-credit-av'), '#draft-credit-av present');
+});
+
+test('onDraftCarrierChange calls OperFiAV.carrierBadge with the vendor id', () => {
+  const { window } = makeWidget();
+  const calls = [];
+  window.OperFiAV = {
+    carrierBadge: (el, opts) => calls.push({ el, opts }),
+    customerCredit: () => {}
+  };
+  window.brokerEmail = 'b@x.com';
+  window.onDraftCarrierChange('v1');
+  assert.equal(calls.length, 1, 'carrierBadge called once');
+  assert.equal(calls[0].opts.vendorId, 'v1');
+  assert.equal(calls[0].opts.email, 'b@x.com');
+  assert.equal(calls[0].el, window.document.getElementById('draft-carrier-av'));
+});
+
+test('onDraftCustomerChange calls OperFiAV.customerCredit with the customer id', () => {
+  const { window } = makeWidget();
+  const calls = [];
+  window.OperFiAV = {
+    carrierBadge: () => {},
+    customerCredit: (el, opts) => calls.push({ el, opts })
+  };
+  window.brokerEmail = 'b@x.com';
+  window.onDraftCustomerChange('cust-7');
+  assert.equal(calls.length, 1, 'customerCredit called once');
+  assert.equal(calls[0].opts.customerId, 'cust-7');
+  assert.equal(calls[0].opts.email, 'b@x.com');
+  assert.equal(calls[0].el, window.document.getElementById('draft-credit-av'));
+});
+
+test('onDraftCarrierChange is a no-op when OperFiAV is absent (guard)', () => {
+  const { window } = makeWidget();
+  delete window.OperFiAV;
+  // must not throw
+  assert.doesNotThrow(() => window.onDraftCarrierChange('v1'));
+});
+
+test('onDraftCustomerChange is a no-op when OperFiAV is absent (guard)', () => {
+  const { window } = makeWidget();
+  delete window.OperFiAV;
+  assert.doesNotThrow(() => window.onDraftCustomerChange('cust-7'));
+});
+
+test('inline carrier cell change fires carrierBadge with the selected vendor id', () => {
+  const { window } = makeWidget();
+  const calls = [];
+  window.OperFiAV = {
+    carrierBadge: (el, opts) => calls.push({ el, opts }),
+    customerCredit: () => {}
+  };
+  window.brokerEmail = 'b@x.com';
+  window.renderQueue(DRAFTS);
+  // Click the carrier cell on a row that has a carrier already (row 0, SWIFT HAUL)
+  // The inline edit opens for any cell with [data-edit]
+  const rows = window.document.querySelectorAll('#queue-body tr');
+  const carrierCell = rows[0].querySelector('[data-edit="carrier"]');
+  assert.ok(carrierCell, 'carrier edit cell exists');
+  carrierCell.click();
+  const sel = rows[0].querySelector('select.cell');
+  assert.ok(sel, 'inline select rendered');
+  // Inject an option so the select value sticks
+  const opt = window.document.createElement('option');
+  opt.value = 'v1'; opt.textContent = 'SWIFT HAUL LLC';
+  sel.appendChild(opt);
+  sel.value = 'v1';
+  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.ok(calls.length >= 1, 'carrierBadge called after carrier inline-edit change');
+  assert.equal(calls[0].opts.vendorId, 'v1');
+});
+
+test('inline customer cell change fires customerCredit with the selected customer id', () => {
+  const { window } = makeWidget();
+  const calls = [];
+  window.OperFiAV = {
+    carrierBadge: () => {},
+    customerCredit: (el, opts) => calls.push({ el, opts })
+  };
+  window.brokerEmail = 'b@x.com';
+  // Use the draft that has no customer (row 1 = '901', customer needs attention)
+  window.renderQueue(DRAFTS);
+  const rows = window.document.querySelectorAll('#queue-body tr');
+  const custCell = rows[1].querySelector('[data-edit="customer"]');
+  assert.ok(custCell, 'customer edit cell exists');
+  custCell.click();
+  const sel = rows[1].querySelector('select.cell');
+  assert.ok(sel, 'inline select rendered');
+  const opt = window.document.createElement('option');
+  opt.value = 'cust-1'; opt.textContent = 'DINE SOUTH LLC';
+  sel.appendChild(opt);
+  sel.value = 'cust-1';
+  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.ok(calls.length >= 1, 'customerCredit called after customer inline-edit change');
+  assert.equal(calls[0].opts.customerId, 'cust-1');
+});

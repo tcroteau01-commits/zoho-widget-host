@@ -458,7 +458,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   </div>
 
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.3</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-16.1</div>
 </div>
 
 <!-- Add Trusted Contact modal -->
@@ -550,6 +550,21 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   </div>
 </div>
 
+<!-- View Contact modal -->
+<div class="modal-scrim" id="view-scrim">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="m-title">Contact Details</div>
+        <div class="m-sub">Trusted contact information</div>
+      </div>
+      <button class="modal-close" id="view-close" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" id="view-body"></div>
+    <div class="modal-foot" id="view-foot"></div>
+  </div>
+</div>
+
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
 <script>
@@ -569,7 +584,7 @@ var currentSearch = '';
 var selectedRoles = [];
 var editingContactId = null;     // null = add mode; a contact ID = edit mode
 var selfContactId = '';          // the acting contact (can't delete yourself)
-var selfIsFull = false;          // only Full Access users see edit/delete
+var canManage = false;           // server-authoritative: Full Access client or impersonating admin
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
@@ -619,6 +634,10 @@ function bindGlobalUI() {
     applyUserFilter();
   });
   document.getElementById('btn-add-contact').addEventListener('click', openModal);
+  document.getElementById('view-close').addEventListener('click', closeViewModal);
+  document.getElementById('view-scrim').addEventListener('click', function(e){
+    if (e.target === this) closeViewModal();
+  });
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('modal-cancel').addEventListener('click', closeModal);
   document.getElementById('modal-scrim').addEventListener('click', function(e) {
@@ -626,6 +645,7 @@ function bindGlobalUI() {
   });
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && document.getElementById('modal-scrim').classList.contains('show')) closeModal();
+    if (e.key === 'Escape' && document.getElementById('view-scrim').classList.contains('show')) closeViewModal();
   });
 
   // Permission card behavior
@@ -756,12 +776,10 @@ function loadUsers() {
       var data = (res && res.users) ? res.users : [];
       console.log('[CompanyProfile] users:', data.length);
       selfContactId = (res && res.self_contact_id) ? String(res.self_contact_id) : '';
+      canManage = !!(res && res.can_manage);
       allUsers = data.slice().sort(function(a, b) {
         return parseDate(b.Added_Time) - parseDate(a.Added_Time);
       });
-      // Edit/delete are offered only to a Full Access user (acting on their own roster).
-      var self = allUsers.filter(function(u){ return String(u.ID) === selfContactId; })[0];
-      selfIsFull = self ? hasFullAccess(self) : false;
       applyUserFilter();
     }).catch(function(err) {
       console.error('[CompanyProfile] /broker-users failed', err);
@@ -808,13 +826,10 @@ function renderUsers() {
   html += '</div>';
   body.innerHTML = html;
 
-  body.querySelectorAll('.ua-btn[data-action]').forEach(function(btn) {
+  body.querySelectorAll('.ua-btn[data-action="view"]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      var id = btn.getAttribute('data-id');
-      var u = allUsers.filter(function(x){ return String(x.ID) === String(id); })[0];
-      if (!u) return;
-      if (btn.getAttribute('data-action') === 'edit') openEditModal(u);
-      else deleteUser(u);
+      var u = allUsers.filter(function(x){ return String(x.ID) === String(btn.getAttribute('data-id')); })[0];
+      if (u && typeof openViewModal === 'function') openViewModal(u);
     });
   });
 
@@ -855,15 +870,10 @@ function userRowHtml(u) {
   '</div>';
 }
 
-// Edit/Delete actions — only for a Full Access user; never a Delete on your own row.
+// Whole row opens the View Contact modal; Edit/Delete live inside it.
 function userActionsHtml(u) {
-  if (!selfIsFull) return '<div class="user-actions"></div>';
-  var id = esc(String(u.ID || ''));
-  var del = String(u.ID) === selfContactId ? '' :
-    '<button class="ua-btn danger" data-action="delete" data-id="' + id + '">Delete</button>';
-  return '<div class="user-actions">' +
-    '<button class="ua-btn" data-action="edit" data-id="' + id + '">Edit</button>' + del +
-  '</div>';
+  return '<div class="user-actions"><button class="ua-btn" data-action="view" data-id="' +
+    esc(String(u.ID || '')) + '">View</button></div>';
 }
 
 function hasFullAccess(u) {
@@ -954,21 +964,95 @@ function openEditModal(u) {
   document.getElementById('m-first').focus();
 }
 
-function deleteUser(u) {
+// ── View Contact modal ────────────────────────────────────────────────────
+var viewingUser = null;
+
+function openViewModal(u) {
+  viewingUser = u;
   var name = displayContactName(u);
-  if (!window.confirm('Remove ' + name + '’s access to the portal? This cannot be undone.')) return;
+  var full = hasFullAccess(u);
+  var added = parseDate(u.Added_Time);
+  document.getElementById('view-body').innerHTML =
+    '<div class="form-grid">' +
+      viewField('Name', name) +
+      viewField('Email', u.Email || '—') +
+      viewField('Phone', formatPhone(u.Phone_Number) || '—') +
+      viewField('Access Level', full ? 'Full Access' : 'Vendor Access') +
+      viewField('Added', added ? fmtDateShort(added) : '—') +
+    '</div>';
+  renderViewActions();
+  document.getElementById('view-scrim').classList.add('show');
+}
+
+function viewField(label, value) {
+  return '<div class="field full"><label class="label">' + esc(label) + '</label>' +
+    '<div style="font-size:14px;color:#272727;padding:6px 0;">' + esc(value) + '</div></div>';
+}
+
+function closeViewModal() {
+  document.getElementById('view-scrim').classList.remove('show');
+  viewingUser = null;
+}
+
+// Default footer: Close, plus Edit/Delete when allowed (never Delete on self).
+function renderViewActions() {
+  var u = viewingUser;
+  var foot = document.getElementById('view-foot');
+  var canDelete = canManage && String(u.ID) !== String(selfContactId);
+  var html = '<div class="foot-actions" style="margin-left:auto;">' +
+    '<button class="modal-btn ghost" data-act="close">Close</button>';
+  if (canManage) html += '<button class="modal-btn ghost" data-act="edit">Edit</button>';
+  if (canDelete) html += '<button class="modal-btn danger" data-act="delete">Delete</button>';
+  html += '</div>';
+  foot.innerHTML = html;
+  foot.querySelector('[data-act="close"]').addEventListener('click', closeViewModal);
+  var e = foot.querySelector('[data-act="edit"]');
+  if (e) e.addEventListener('click', function(){ closeViewModal(); openEditModal(u); });
+  var d = foot.querySelector('[data-act="delete"]');
+  if (d) d.addEventListener('click', startDeleteConfirm);
+}
+
+// Swap the footer to a deliberate confirm step (extra caution for Full Access).
+function startDeleteConfirm() {
+  var u = viewingUser;
+  var name = displayContactName(u);
+  var caution = hasFullAccess(u)
+    ? ' ⚠ This is a Full Access user. Removing them revokes their portal login.'
+    : '';
+  var foot = document.getElementById('view-foot');
+  foot.innerHTML =
+    '<div id="view-confirm-msg" style="font-size:13px;color:#b42318;margin-right:auto;">' +
+      'Remove portal access for ' + esc(name) + '?' + esc(caution) +
+    '</div>' +
+    '<div class="foot-actions">' +
+      '<button class="modal-btn ghost" data-act="cancel-delete">Cancel</button>' +
+      '<button class="modal-btn danger" data-act="confirm-delete">Confirm Delete</button>' +
+    '</div>';
+  foot.querySelector('[data-act="cancel-delete"]').addEventListener('click', renderViewActions);
+  foot.querySelector('[data-act="confirm-delete"]').addEventListener('click', doDelete);
+}
+
+function doDelete() {
+  var u = viewingUser;
+  var foot = document.getElementById('view-foot');
+  foot.querySelector('[data-act="confirm-delete"]').disabled = true;
   fetch(BROKER_API_BASE + '/broker-delete-contact', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: brokerEmail, contact_id: String(u.ID) })
   }).then(function(res) {
-    return res.text().then(function(t) { var d={}; try{ d=t?JSON.parse(t):{}; }catch(e){} return { status: res.status, data: d }; });
+    return res.text().then(function(t){ var d={}; try{ d=t?JSON.parse(t):{}; }catch(e){} return { status: res.status, data: d }; });
   }).then(function(r) {
-    if (r.status === 200 && r.data.ok) { loadUsers(); }
-    else { window.alert('Could not remove user' + (r.data.error || r.data.message ? ': ' + (r.data.error || r.data.message) : '') + '.'); }
+    if (r.status === 200 && r.data.ok) { closeViewModal(); loadUsers(); }
+    else {
+      foot.querySelector('#view-confirm-msg').textContent =
+        'Could not remove user' + (r.data.error || r.data.message ? ': ' + (r.data.error || r.data.message) : '') + '.';
+      foot.querySelector('[data-act="confirm-delete"]').disabled = false;
+    }
   }).catch(function(err) {
     console.error('[CompanyProfile] /broker-delete-contact failed', err);
-    window.alert('Could not remove user. Please check your connection and try again.');
+    foot.querySelector('#view-confirm-msg').textContent = 'Could not remove user. Check your connection and try again.';
+    foot.querySelector('[data-act="confirm-delete"]').disabled = false;
   });
 }
 
@@ -1160,10 +1244,12 @@ window.openEditModal = function() {
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
   return openEditModal.apply(this, arguments);
 };
-window.deleteUser = function() {
+window.openViewModal = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
-  return deleteUser.apply(this, arguments);
+  if (typeof window.canManage === 'boolean') canManage = window.canManage;
+  if (typeof window.selfContactId === 'string') selfContactId = window.selfContactId;
+  return openViewModal.apply(this, arguments);
 };
 
 })();

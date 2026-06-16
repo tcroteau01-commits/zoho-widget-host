@@ -67,6 +67,38 @@ test('deleteDraftRow issues a DELETE to /draft-loads/<id> when confirmed', () =>
   assert.ok(del, 'DELETE issued');
 });
 
+function makeDomWithDelete(status) {
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously',
+    url: 'https://tcroteau01-commits.github.io/history.html',
+    beforeParse(window) {
+      window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => new Promise(() => {}) } } };
+      window.fetch = () => Promise.resolve({ ok: status >= 200 && status < 300, status: status, json: () => Promise.resolve({}) });
+    }
+  });
+  return dom.window;
+}
+
+test('deleteDraftRow treats a 404 (already deleted / stale cached row) as success — no error alert', async () => {
+  const w = makeDomWithDelete(404);
+  w.confirm = () => true;
+  let alerted = false;
+  w.alert = () => { alerted = true; };
+  w.deleteDraftRow('900');
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(alerted, false, 'no error alert on 404');
+});
+
+test('deleteDraftRow on a 403 (other account) shows a clear cross-account message', async () => {
+  const w = makeDomWithDelete(403);
+  w.confirm = () => true;
+  let msg = '';
+  w.alert = (m) => { msg = m; };
+  w.deleteDraftRow('900');
+  await new Promise(r => setTimeout(r, 10));
+  assert.match(msg, /different account/i);
+});
+
 test('deleteDraftRow does nothing when the confirm is cancelled', () => {
   const calls = [];
   const dom = new JSDOM(HTML, {

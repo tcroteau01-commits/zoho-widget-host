@@ -641,11 +641,20 @@ function editDraftLoad(id) {
 // widget). On success drop it from the in-memory set and re-render.
 function deleteDraftRow(id) {
   if (!window.confirm('Delete this draft? This cannot be undone.')) return;
+  function dropRow() {
+    allRecords = allRecords.filter(function(x) { return String(x.ID) !== String(id); });
+    applyFilters();
+  }
   fetch(BROKER_API_BASE + '/draft-loads/' + id + '?email=' + encodeURIComponent(brokerEmail), { method: 'DELETE' })
-    .then(function(r) { if (!r || !r.ok) throw new Error('delete failed'); return r.json(); })
-    .then(function() {
-      allRecords = allRecords.filter(function(x) { return String(x.ID) !== String(id); });
-      applyFilters();
+    .then(function(r) {
+      // 404 = already deleted elsewhere (this list is a cached snapshot, so a row
+      // can be a ghost). Treat it as success and just drop the stale row.
+      if (r && (r.ok || r.status === 404)) { dropRow(); return; }
+      if (r && r.status === 403) {
+        window.alert('This draft belongs to a different account, so it can’t be deleted from here.');
+        return;
+      }
+      window.alert('Could not delete this draft — please try again.');
     })
     .catch(function() { window.alert('Could not delete this draft — please try again.'); });
 }

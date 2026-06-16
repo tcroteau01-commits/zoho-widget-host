@@ -299,6 +299,8 @@ textarea { resize: vertical; min-height: 90px; }
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <!-- Admin impersonation bar + fetch wrapper (self-injects into body) -->
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<!-- Shared AV (carrier vetting + credit) component -->
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-av.js?v=1"></script>
 </head>
 <body>
 <div class="page">
@@ -389,6 +391,7 @@ textarea { resize: vertical; min-height: 90px; }
           <select id="carrier-select">
             <option value="">Select a carrier…</option>
           </select>
+          <div id="carrier-av"></div>
         </div>
 
         <!-- read-only payment-terms display -->
@@ -600,28 +603,18 @@ function onCarrierChange() {
 
   updateMargin();
   refreshValidity();
+
+  if (window.OperFiAV) {
+    OperFiAV.carrierBadge(document.getElementById('carrier-av'),
+      { vendorId: vid, email: brokerEmail, apiBase: BROKER_API_BASE });
+  }
 }
 
 // ── Credit banner ─────────────────────────────────────────────────────────────
 function loadCredit(customerId) {
-  var banner = document.getElementById('credit-banner');
-  if (!customerId) { if (banner) banner.textContent = ''; return Promise.resolve(); }
-  return fetch(BROKER_API_BASE + '/funding-credit?email=' + encodeURIComponent(brokerEmail) +
-               '&customer_id=' + encodeURIComponent(customerId))
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      if (!banner) return;
-      if (d && d.available) {
-        banner.textContent = 'Credit available: $' + d.Remaining_Credit + ' (' + d.Percent_Used + ' used)';
-        banner.classList.add('show');
-      } else {
-        banner.textContent = 'Credit availability unavailable';
-        banner.classList.remove('show');
-      }
-    })
-    .catch(function () {
-      if (banner) { banner.textContent = 'Credit availability unavailable'; banner.classList.remove('show'); }
-    });
+  OperFiAV.customerCredit(document.getElementById('credit-banner'),
+    { customerId: customerId, email: brokerEmail, apiBase: BROKER_API_BASE });
+  return Promise.resolve();
 }
 
 // ── Margin computation ────────────────────────────────────────────────────────

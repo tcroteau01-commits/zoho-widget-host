@@ -48,7 +48,7 @@ test('exposes the DOM controls later tasks will target', () => {
 
 // ── B2: Render-backed customer/carrier loads ──────────────────────────────────
 
-function makeB2Dom(fetchImpl) {
+function makeB2Dom(fetchImpl, { avStubs } = {}) {
   const dom = new JSDOM(HTML, { runScripts: 'dangerously', pretendToBeVisual: true });
   const w = dom.window;
   // Stub ZOHO so the inline load handler doesn't throw; getInitParams returns
@@ -62,6 +62,12 @@ function makeB2Dom(fetchImpl) {
       init: () => Promise.resolve()
     }
   };
+  // Stub OperFiAV so loadCredit / onCarrierChange don't throw.
+  // Callers can pass avStubs to inject spies.
+  w.OperFiAV = Object.assign(
+    { carrierBadge: () => {}, customerCredit: () => {} },
+    avStubs || {}
+  );
   // Set brokerEmail directly so we can call loadCustomers/loadCarriers
   // without relying on the auto-boot path
   w.brokerEmail = 'b@x.com';
@@ -148,23 +154,31 @@ test('customer names with & are HTML-escaped (no markup breakage)', async () => 
   assert.strictEqual(opt.textContent, 'J&B Trucking');
 });
 
-// ── B3: /funding-credit banner + live margin badge ────────────────────────────
+// ── B3: credit banner + live margin badge ─────────────────────────────────────
 
-test('selecting a customer fetches /funding-credit and shows remaining credit', async () => {
-  const dom = makeB2Dom((url) => Promise.resolve({ ok: true, json: () => Promise.resolve(
-    String(url).includes('/funding-credit')
-      ? { available: true, Remaining_Credit: '5,500.00', Percent_Used: '45.00%' }
-      : {}) }));
+test('loadCredit delegates to OperFiAV.customerCredit with the customer id', async () => {
+  const calls = [];
+  const dom = makeB2Dom(
+    () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }),
+    { avStubs: { customerCredit: (el, opts) => calls.push(opts) } }
+  );
   const w = dom.window;
   await w.loadCredit('c9');
-  assert.match(w.document.getElementById('credit-banner').textContent, /5,500\.00/);
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].customerId, 'c9');
+  assert.strictEqual(calls[0].email, 'b@x.com');
 });
 
-test('credit unavailable shows a non-blocking message', async () => {
-  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ available: false, reason: 'no_fv_id' }) }));
+test('loadCredit delegates to OperFiAV.customerCredit even when customerId is empty', async () => {
+  const calls = [];
+  const dom = makeB2Dom(
+    () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }),
+    { avStubs: { customerCredit: (el, opts) => calls.push(opts) } }
+  );
   const w = dom.window;
-  await w.loadCredit('c9');
-  assert.match(w.document.getElementById('credit-banner').textContent, /unavailable/i);
+  await w.loadCredit('');
+  assert.strictEqual(calls.length, 1, 'customerCredit still called (component handles empty id)');
+  assert.strictEqual(calls[0].customerId, '');
 });
 
 test('margin badge computes customer minus carrier rate, $ and %', () => {
@@ -183,13 +197,64 @@ test('computeMargin handles zero/blank customer rate without NaN', () => {
   assert.strictEqual(m.percent, 0);
 });
 
-test('empty customer id clears the credit banner and does not fetch', async () => {
-  let calls = 0;
-  const dom = makeB2Dom(() => { calls++; return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); });
+test('loadCredit returns a Promise (callers can await it)', async () => {
+  const dom = makeB2Dom(
+    () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+  );
   const w = dom.window;
-  await w.loadCredit('');
-  assert.strictEqual(calls, 0);
-  assert.strictEqual(w.document.getElementById('credit-banner').textContent.trim(), '');
+  const result = w.loadCredit('c9');
+  assert.ok(result && typeof result.then === 'function', 'loadCredit must return a Promise');
+  await result; // should not throw
+});
+
+// ── AV1: OperFiAV component wiring ───────────────────────────────────────────
+
+test('includes operfi-av.js script tag', () => {
+  assert.match(HTML, /operfi-av\.js/);
+});
+
+test('carrier section has #carrier-av container in markup', () => {
+  const d = new JSDOM(HTML).window.document;
+  assert.ok(d.getElementById('carrier-av'), 'missing #carrier-av');
+});
+
+test('selecting a carrier calls OperFiAV.carrierBadge with the vendor id', async () => {
+  const badgeCalls = [];
+  const dom = makeB2Dom(
+    (url) => Promise.resolve({ ok: true, json: () => Promise.resolve(
+      String(url).includes('/tms-carriers')
+        ? { carriers: [{ vendor_id: 'v3', carrier_name: 'Hauler', payment_terms: 'Quickpay 2%' }] }
+        : { customers: [] }
+    )}),
+    { avStubs: { carrierBadge: (el, opts) => badgeCalls.push(opts) } }
+  );
+  const w = dom.window;
+  await w.loadCarriers();
+  const sel = w.document.getElementById('carrier-select');
+  sel.value = 'v3';
+  sel.dispatchEvent(new w.Event('change'));
+  assert.strictEqual(badgeCalls.length, 1, 'carrierBadge should be called on carrier change');
+  assert.strictEqual(badgeCalls[0].vendorId, 'v3');
+  assert.strictEqual(badgeCalls[0].email, 'b@x.com');
+});
+
+test('deselecting carrier calls OperFiAV.carrierBadge with empty vendor id', async () => {
+  const badgeCalls = [];
+  const dom = makeB2Dom(
+    (url) => Promise.resolve({ ok: true, json: () => Promise.resolve(
+      String(url).includes('/tms-carriers')
+        ? { carriers: [{ vendor_id: 'v3', carrier_name: 'Hauler', payment_terms: 'Quickpay 2%' }] }
+        : { customers: [] }
+    )}),
+    { avStubs: { carrierBadge: (el, opts) => badgeCalls.push(opts) } }
+  );
+  const w = dom.window;
+  await w.loadCarriers();
+  const sel = w.document.getElementById('carrier-select');
+  sel.value = '';
+  sel.dispatchEvent(new w.Event('change'));
+  assert.strictEqual(badgeCalls.length, 1);
+  assert.strictEqual(badgeCalls[0].vendorId, '');
 });
 
 // ── B4: Stepper gating + submit-enable logic ──────────────────────────────────
@@ -345,6 +410,7 @@ function makeStorageDom() {
   const w = dom.window;
   w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   w.ZOHO = { CREATOR: { UTIL: { getInitParams: () => ({ loginUser: 'b@x.com' }) }, init: () => Promise.resolve() } };
+  w.OperFiAV = { carrierBadge: () => {}, customerCredit: () => {} };
   return dom;
 }
 

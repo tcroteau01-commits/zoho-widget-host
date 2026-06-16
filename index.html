@@ -612,8 +612,10 @@ function onCarrierChange() {
 
 // ── Credit banner ─────────────────────────────────────────────────────────────
 function loadCredit(customerId) {
-  OperFiAV.customerCredit(document.getElementById('credit-banner'),
-    { customerId: customerId, email: brokerEmail, apiBase: BROKER_API_BASE });
+  if (window.OperFiAV) {
+    OperFiAV.customerCredit(document.getElementById('credit-banner'),
+      { customerId: customerId, email: brokerEmail, apiBase: BROKER_API_BASE });
+  }
   return Promise.resolve();
 }
 

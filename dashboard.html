@@ -8,6 +8,7 @@
   :root {
     --of-charcoal: #1d1d1f;
     --of-orange: #F97316; --of-orange-soft: #FEF3E8;
+    --of-accent: #e8a020;
     --of-gray-50: #F8F9FB; --of-gray-100: #F1F2F4; --of-gray-200: #E5E7EB;
     --of-gray-300: #D1D5DB; --of-gray-500: #6B7280; --of-gray-700: #374151;
     --of-green: #059669; --of-green-soft: #ECFDF5;
@@ -25,8 +26,8 @@
   .header-strip .meta { text-align: right; font-size: 11px; opacity: .85; }
   .quick-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
   .qa { padding: 14px 12px; border-radius: 8px; text-align: center; font-weight: 700; font-size: 13px; cursor: pointer; transition: background 120ms; }
-  .qa.primary { background: var(--of-orange); color: #fff; }
-  .qa.primary:hover { background: #ea660c; }
+  .qa.primary { background: var(--of-accent); color: #fff; }
+  .qa.primary:hover { background: #cf8d18; }
   .qa.secondary { background: #fff; border: 1px solid var(--of-gray-300); color: var(--of-gray-700); }
   .qa.secondary:hover { background: var(--of-gray-50); }
   .watch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
@@ -35,18 +36,19 @@
   .watch-card.amber { background: var(--of-amber-soft); border: 1px solid #fcd34d; color: #78350f; }
   .watch-card.info { background: var(--of-gray-50); border: 1px solid var(--of-gray-200); color: var(--of-gray-700); }
   .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
-  .kpi { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 14px; border-top: 3px solid var(--of-orange); }
-  .kpi.ar { border-top-color: var(--of-orange); }
-  .kpi.ap { border-top-color: var(--of-amber); }
-  .kpi.reserves { border-top-color: var(--of-green); }
-  .kpi.month { border-top-color: var(--of-charcoal); }
+  .kpi { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 14px; }
   .key-tasks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
   .task-card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 14px; cursor: pointer; transition: border-color 120ms; }
-  .task-card:hover { border-color: var(--of-orange); }
+  .task-card:hover { border-color: var(--of-accent); }
   .insights-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
   .chart-card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 16px; cursor: pointer; }
   .empty, .loading, .error { padding: 24px; text-align: center; color: var(--of-gray-500); }
   .version-stamp { text-align: right; font-size: 10px; color: #b6b09a; padding: 8px 4px 0; }
+  .donut-wrap { height: 200px; position: relative; }
+  .donut-center { position: absolute; top: 42%; left: 0; right: 0; text-align: center; transform: translateY(-50%); pointer-events: none; }
+  .donut-center .big { font-size: 18px; font-weight: 700; }
+  .donut-center .lil { font-size: 10px; color: var(--of-muted); }
+  .combo-wrap { height: 240px; position: relative; }
 
   @media (max-width: 640px) {
     html, body { overflow-x: hidden; }
@@ -66,10 +68,11 @@
 <div class="container" id="root">
   <div class="loading">Loading dashboard...</div>
 </div>
-<div class="version-stamp">v2026-05-20.6</div>
+<div class="version-stamp">v2026-06-16.1</div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function () {
   var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
@@ -252,7 +255,7 @@
           return '<div class="task-card" data-action="' + c.action + '">' +
             '<div style="font-weight:600;font-size:13px">' + escapeHtml(c.name) + '</div>' +
             '<div style="font-size:11px;color:var(--of-muted);margin-top:4px">' + escapeHtml(c.desc) + '</div>' +
-            '<div style="font-size:11px;color:var(--of-orange);margin-top:8px">View &rarr;</div>' +
+            '<div style="font-size:11px;color:var(--of-accent);margin-top:8px">View &rarr;</div>' +
           '</div>';
         }).join('') +
       '</div>';
@@ -284,7 +287,7 @@
     }).join('');
     return '' +
       '<div class="chart-card" data-action="nav-aging">' +
-        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">AR Aging — chargeback line at 75 days</div><div style="font-size:11px;color:var(--of-orange)">View &rarr;</div></div>' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">AR Aging — chargeback line at 75 days</div><div style="font-size:11px;color:var(--of-accent)">View &rarr;</div></div>' +
         '<div style="display:flex;height:24px;border-radius:4px;overflow:hidden;margin-bottom:8px">' + segs + '</div>' +
         '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:11px">' + legend + '</div>' +
       '</div>';
@@ -304,7 +307,7 @@
     }).join('');
     return '' +
       '<div class="chart-card" data-action="nav-aging">' +
-        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">Customer Concentration</div><div style="font-size:11px;color:var(--of-orange)">View &rarr;</div></div>' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">Customer Concentration</div><div style="font-size:11px;color:var(--of-accent)">View &rarr;</div></div>' +
         bars +
       '</div>';
   }
@@ -396,18 +399,18 @@
         { customer: "+ 19 others", amount: 116087, pct: 27.2, count: 121 }
       ],
       monthly: [
-        { month: "2025-06", purchases: 210000, collections: 230000 },
-        { month: "2025-07", purchases: 240000, collections: 250000 },
-        { month: "2025-08", purchases: 305000, collections: 220000 },
-        { month: "2025-09", purchases: 340000, collections: 200000 },
-        { month: "2025-10", purchases: 290000, collections: 235000 },
-        { month: "2025-11", purchases: 265000, collections: 215000 },
-        { month: "2025-12", purchases: 295000, collections: 250000 },
-        { month: "2026-01", purchases: 275000, collections: 225000 },
-        { month: "2026-02", purchases: 310000, collections: 240000 },
-        { month: "2026-03", purchases: 355000, collections: 270000 },
-        { month: "2026-04", purchases: 390000, collections: 255000 },
-        { month: "2026-05", purchases: 244000, collections: 215000 }
+        { month: "2025-06", purchases: 210000, collections: 230000, marginPct: 22.1 },
+        { month: "2025-07", purchases: 240000, collections: 250000, marginPct: 19.4 },
+        { month: "2025-08", purchases: 305000, collections: 220000, marginPct: 17.8 },
+        { month: "2025-09", purchases: 340000, collections: 200000, marginPct: 15.2 },
+        { month: "2025-10", purchases: 290000, collections: 235000, marginPct: 20.6 },
+        { month: "2025-11", purchases: 265000, collections: 215000, marginPct: 23.3 },
+        { month: "2025-12", purchases: 295000, collections: 250000, marginPct: 25.8 },
+        { month: "2026-01", purchases: 275000, collections: 225000, marginPct: 18.9 },
+        { month: "2026-02", purchases: 310000, collections: 240000, marginPct: 21.5 },
+        { month: "2026-03", purchases: 355000, collections: 270000, marginPct: 26.7 },
+        { month: "2026-04", purchases: 390000, collections: 255000, marginPct: 27.4 },
+        { month: "2026-05", purchases: 244000, collections: 215000, marginPct: 24.6 }
       ]
     }
   };

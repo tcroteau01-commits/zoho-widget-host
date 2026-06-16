@@ -39,9 +39,10 @@ function makeFetch(records) {
       body = { drafts: DRAFTS, count: 2, summary: { total: 2, ready: 1, attention: 1 } };
     } else if (u.indexOf('/tms-customers') !== -1) {
       body = { customers: [
-        { customer_id: '1', customer_name: 'DINE SOUTH LLC' },
-        { customer_id: '2', customer_name: 'PEPSICO INC' }
-      ], count: 2 };
+        { customer_id: '1', customer_name: 'DINE SOUTH LLC', credit_decision: 'Approved' },
+        { customer_id: '2', customer_name: 'PEPSICO INC', credit_decision: 'Approved' },
+        { customer_id: '9', customer_name: 'ABC SHIPPING', credit_decision: 'Credit Boost Requested' }
+      ], count: 3 };
     } else if (u.indexOf('/tms-carriers') !== -1) {
       body = { carriers: [
         { vendor_id: 'v1', carrier_name: 'SWIFT HAUL LLC', mc: '982341', dnu: false },
@@ -250,6 +251,21 @@ test('promptPick self-heals an empty customer list (the "nothing happens" fix)',
   // options beyond the placeholder = the lists were fetched on demand
   assert.ok(sel.querySelectorAll('option').length > 1, 'customer options populated');
   assert.ok(window.__state.customers.length > 0, 'customers loaded into state');
+});
+
+test('customer picker offers only credit-approved customers (funding rule)', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.renderQueue(DRAFTS);
+  window.__state.selected = ['900'];
+  window.__state.customers = [];
+  await window.promptPick('customer');
+  // /tms-customers returns DINE SOUTH + PEPSICO (Approved) and ABC SHIPPING (Boost).
+  const names = window.__state.customers.map(c => c.customer_name);
+  assert.ok(names.includes('DINE SOUTH LLC'));
+  assert.ok(!names.includes('ABC SHIPPING'), 'non-approved customer is filtered out');
+  const text = window.document.getElementById('bulk-sel').textContent;
+  assert.ok(text.indexOf('ABC SHIPPING') === -1, 'non-approved not offered in dropdown');
 });
 
 test('promptPick carrier self-heals an empty carrier list', async () => {

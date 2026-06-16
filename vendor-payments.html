@@ -129,6 +129,7 @@
 </div>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
+<script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-av.js?v=1"></script>
 <script>
 (function () {
   'use strict';
@@ -336,11 +337,16 @@
           ['Factoring Company', escapeHtml(row['Factoring Company'] || '-')],
           ['Pmt Acct Number',   escapeHtml(row['Pmt Acct Number'] || '-')],
         ]) +
-        '<div class="dp-section" style="font-size:11px;color:#888;line-height:1.5;padding-top:4px;">' +
-          'Broker-specific payment terms, factoring company, and payee account details will be added in a future enhancement. For now, refer to the Account/Vendor record in CRM.' +
+        '<div class="dp-section">' +
+          '<div class="dp-heading">Carrier Vetting</div>' +
+          '<div id="vp-carrier-av"></div>' +
         '</div>' +
       '</aside>';
     document.body.insertAdjacentHTML('beforeend', html);
+    if (window.OperFiAV) {
+      OperFiAV.carrierBadge(document.getElementById('vp-carrier-av'),
+        { usdot: row['USDOT'], email: state.email, apiBase: BROKER_API_BASE });
+    }
     document.getElementById('detail-close').addEventListener('click', closeDetail);
     document.getElementById('detail-overlay').addEventListener('click', closeDetail);
     document.addEventListener('keydown', escClose);

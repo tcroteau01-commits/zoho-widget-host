@@ -38,19 +38,28 @@
   function carrierBadge(el, opts) {
     if (!el) return;
     opts = opts || {};
-    var vid = opts.vendorId;
-    if (!vid) { el.innerHTML = ''; return; }
-    el._opfVid = String(vid);
+    var vid = opts.vendorId, usdot = opts.usdot;
+    var key, queryParam;
+    if (vid) {
+      key = 'v' + vid;
+      queryParam = '&vendor_id=' + encodeURIComponent(vid);
+    } else if (usdot) {
+      key = 'u' + usdot;
+      queryParam = '&usdot=' + encodeURIComponent(usdot);
+    } else {
+      el.innerHTML = ''; return;
+    }
+    el._opfVid = key;
     injectStyles();
     var email = resolveEmail(opts), base = resolveBase(opts);
     function render(row) {
-      if (el._opfVid !== String(vid)) return;  // selection changed — drop stale response
+      if (el._opfVid !== key) return;  // selection changed — drop stale response
       el.innerHTML = carrierHtml(row);
     }
-    if (_carrierCache[vid]) { render(_carrierCache[vid]); return; }
-    global.fetch(base + '/noa-status?email=' + encodeURIComponent(email) + '&vendor_id=' + encodeURIComponent(vid))
+    if (_carrierCache[key]) { render(_carrierCache[key]); return; }
+    global.fetch(base + '/noa-status?email=' + encodeURIComponent(email) + queryParam)
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { var row = (d && d.carriers && d.carriers[0]) || null; if (row) _carrierCache[vid] = row; render(row); })
+      .then(function (d) { var row = (d && d.carriers && d.carriers[0]) || null; if (row) _carrierCache[key] = row; render(row); })
       .catch(function () { /* leave empty */ });
   }
   function carrierHtml(row) {

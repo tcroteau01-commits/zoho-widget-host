@@ -84,6 +84,37 @@ test('customerCredit: available:false shows quiet fallback', async () => {
   assert.match(w.document.getElementById('c').textContent, /unavailable/i);
 });
 
+test('carrierBadge: usdot mode calls fetch with usdot param (not vendor_id)', async () => {
+  let lastUrl;
+  const w = mk(function (u) { lastUrl = u; return carrierResp({ vendor_id: '1', pay_term: 'Net 30', dnu: false })(u); });
+  w.OperFiAV.carrierBadge(w.document.getElementById('c'), { usdot: '92261', email: 'b@op.com', apiBase: 'http://api' });
+  await new Promise(r => setTimeout(r, 20));
+  assert.ok(lastUrl.includes('usdot=92261'), 'url should include usdot=92261');
+  assert.ok(!lastUrl.includes('vendor_id='), 'url should NOT include vendor_id=');
+  assert.match(w.document.getElementById('c').textContent, /Good to book/);
+  assert.match(w.document.getElementById('c').textContent, /Net 30/);
+});
+
+test('carrierBadge: usdot mode does not pollute vendorId cache', async () => {
+  let callCount = 0;
+  const w = mk(function (u) { callCount++; return carrierResp({ vendor_id: '1', pay_term: 'Quick Pay', dnu: false })(u); });
+  const el = w.document.getElementById('c');
+  w.OperFiAV.carrierBadge(el, { usdot: '92261', email: 'b@op.com', apiBase: 'http://api' });
+  await new Promise(r => setTimeout(r, 20));
+  w.OperFiAV.carrierBadge(el, { vendorId: '1', email: 'b@op.com', apiBase: 'http://api' });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(callCount, 2, 'usdot and vendorId keys should be separate cache entries');
+});
+
+test('carrierBadge: neither vendorId nor usdot clears element', async () => {
+  const w = mk(carrierResp({ vendor_id: '1', pay_term: 'Net 30', dnu: false }));
+  const el = w.document.getElementById('c');
+  el.innerHTML = '<span>old</span>';
+  w.OperFiAV.carrierBadge(el, { email: 'b@op.com', apiBase: 'http://api' });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(el.innerHTML, '', 'element should be cleared when neither vendorId nor usdot provided');
+});
+
 test('carrierBadge: stale response does not overwrite a newer selection', async () => {
   let calls = 0;
   const w = mk(function (url) {

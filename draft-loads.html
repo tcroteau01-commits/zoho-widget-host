@@ -526,13 +526,7 @@ function openInlineEdit(tr, d, kind){
       .then(function(){ return loadQueue(); })
       .then(function(){ showToast('Updated'); })
       .catch(function(){ showToast('Update failed'); });
-    if (kind==='carrier'){
-      if (window.OperFiAV) OperFiAV.carrierBadge(document.getElementById('draft-carrier-av'),
-        { vendorId: val, email: brokerEmail, apiBase: BROKER_API_BASE });
-    } else {
-      if (window.OperFiAV) OperFiAV.customerCredit(document.getElementById('draft-credit-av'),
-        { customerId: val, email: brokerEmail, apiBase: BROKER_API_BASE });
-    }
+    if (kind==='carrier'){ onDraftCarrierChange(val); } else { onDraftCustomerChange(val); }
   });
 }
 
@@ -606,13 +600,7 @@ function promptPickRender(kind, scrim, modal){
   modal.querySelector('#modal-apply').addEventListener('click', function(){
     var val=modal.querySelector('#bulk-sel').value; if(!val){ closeModal(); return; }
     (kind==='customer'?bulkSetCustomer(val):bulkSetCarrier(val)).then(function(){ closeModal(); showToast('Updated'); });
-    if (kind==='carrier'){
-      if (window.OperFiAV) OperFiAV.carrierBadge(document.getElementById('draft-carrier-av'),
-        { vendorId: val, email: brokerEmail, apiBase: BROKER_API_BASE });
-    } else {
-      if (window.OperFiAV) OperFiAV.customerCredit(document.getElementById('draft-credit-av'),
-        { customerId: val, email: brokerEmail, apiBase: BROKER_API_BASE });
-    }
+    if (kind==='carrier'){ onDraftCarrierChange(val); } else { onDraftCustomerChange(val); }
   });
 }
 
@@ -762,13 +750,7 @@ function openResolveModal(kind){
       applyGroup(g.raw, val, g.ids, remember, kind).then(function(){
         showToast(g.count+' load'+(g.count===1?'':'s')+' cleared');
       });
-      if (kind==='carrier'){
-        if (window.OperFiAV) OperFiAV.carrierBadge(document.getElementById('draft-carrier-av'),
-          { vendorId: val, email: brokerEmail, apiBase: BROKER_API_BASE });
-      } else {
-        if (window.OperFiAV) OperFiAV.customerCredit(document.getElementById('draft-credit-av'),
-          { customerId: val, email: brokerEmail, apiBase: BROKER_API_BASE });
-      }
+      if (kind==='carrier'){ onDraftCarrierChange(val); } else { onDraftCustomerChange(val); }
     });
   });
   scrim.classList.remove('hidden');

@@ -645,6 +645,7 @@ function bindGlobalUI() {
   });
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && document.getElementById('modal-scrim').classList.contains('show')) closeModal();
+    if (e.key === 'Escape' && document.getElementById('view-scrim').classList.contains('show')) closeViewModal();
   });
 
   // Permission card behavior

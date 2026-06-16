@@ -825,7 +825,7 @@ function lookupUSDOT(dot) {
   if (typeof fetch !== 'function') return Promise.resolve(DEMO_DOT[dot] || null);
   return fetch(url).then(function (r) { if (!r.ok) throw new Error('lookup ' + r.status); return r.json(); }).then(function (j) {
     if (!j || (!j.authorityType && !j.authority_type && !j.legal_name && !j.name)) throw new Error('empty');
-    return { authorityType: j.authorityType || j.authority_type || 'Carrier', name: j.name || j.legal_name || '', mc: j.mc || j.mc_number || '', ein: j.ein || '', trucks: j.trucks || j.power_units || 0, drivers: j.drivers || 0, phone: j.phone || '', email: j.email || '', loc: j.loc || j.location || '' };
+    return { authorityType: j.authorityType || j.authority_type || 'Carrier', name: j.name || j.legal_name || '', dba: j.dba || j.dba_name || '', mc: j.mc || j.mc_number || '', ein: j.ein || '', trucks: j.trucks || j.power_units || 0, drivers: j.drivers || 0, phone: j.phone || '', email: j.email || '', loc: j.loc || j.location || '' };
   }).catch(function () { return DEMO_DOT[dot] || null; });
 }
 
@@ -1048,7 +1048,7 @@ function initDom() {
       $('fbAuth').textContent = flow === 'broker' ? 'Broker' : (flow === 'carrier' ? 'Carrier' : d.authorityType);
       $('foundBanner').classList.add('show');
       $('next0').disabled = (flow === 'ambiguous');
-      $('opName').value = d.name || ''; $('opEIN').value = d.ein || ''; $('opUsdot').value = dot; $('opMC').value = d.mc || '';
+      $('opName').value = d.name || ''; $('opDBA').value = d.dba || ''; $('opEIN').value = d.ein || ''; $('opUsdot').value = dot; $('opMC').value = d.mc || '';
       $('opPhone').value = d.phone || ''; $('opEmail').value = d.email || '';
       if (flow === 'carrier') { $('opTrucks').value = d.trucks || 1; if (d.drivers != null && d.drivers !== '') $('opDrivers').value = d.drivers; }
       $('termsPanel').classList.remove('hidden');

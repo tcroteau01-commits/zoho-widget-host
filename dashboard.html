@@ -77,6 +77,8 @@
 (function () {
   var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
   var state = { email: null, data: null };
+  var PALETTE = ['#e8a020', '#1976d2', '#388e3c', '#7b1fa2', '#0097a7', '#cfc9b8'];
+  var AGING_COLORS = { '0-30': '#388e3c', '31-60': '#a3c293', '61-74': '#e8a020', '75+': '#c62828' };
 
   function isLocalTest() { return location.protocol === 'file:' || /[?&]mock=1/.test(location.search); }
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]); }); }
@@ -138,6 +140,8 @@
       renderSnapshot(d.snapshot) +
       renderKeyTasks() +
       renderInsights(d.insights);
+
+    mountCharts(d);
 
     document.getElementById('root').addEventListener('click', function (e) {
       var target = e.target.closest('[data-action]');
@@ -272,44 +276,58 @@
   }
 
   function renderAgingChart(buckets) {
-    var total = (buckets || []).reduce(function (s, b) { return s + b.amount; }, 0) || 1;
-    var colors = { '0-30': '#059669', '31-60': '#65A30D', '61-74': '#D97706', '75+': '#DC2626' };
-    var segs = (buckets || []).map(function (b) {
-      var pct = b.amount / total * 100;
-      return '<div style="background:' + colors[b.label] + ';width:' + pct.toFixed(2) + '%" title="' + b.label + ' days"></div>';
-    }).join('');
-    var legend = (buckets || []).map(function (b) {
-      var emphasis = b.label === '75+' ? ' style="color:#7f1d1d"' : '';
-      return '<div' + emphasis + '>' +
-        '<span style="display:inline-block;width:8px;height:8px;background:' + colors[b.label] + ';border-radius:2px;margin-right:4px"></span>' +
-        (b.label === '75+' ? '<strong>75+ &#9888;</strong>' : b.label) + '<br><strong>' + fmtMoneyK(b.amount) + '</strong>' +
-      '</div>';
-    }).join('');
+    var b75 = (buckets || []).find(function (x) { return x.label === '75+'; }) || { amount: 0 };
     return '' +
       '<div class="chart-card" data-action="nav-aging">' +
-        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">AR Aging — chargeback line at 75 days</div><div style="font-size:11px;color:var(--of-accent)">View &rarr;</div></div>' +
-        '<div style="display:flex;height:24px;border-radius:4px;overflow:hidden;margin-bottom:8px">' + segs + '</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:11px">' + legend + '</div>' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">AR Aging</div><div style="font-size:11px;color:var(--of-accent)">View &rarr;</div></div>' +
+        '<div class="donut-wrap"><canvas id="chart-aging"></canvas>' +
+          '<div class="donut-center"><div class="big" style="color:#2e7d32">$' + fmtMoney(b75.amount) + '</div><div class="lil">75+ days ' + (b75.amount > 0 ? '&#9888;' : '') + '</div></div>' +
+        '</div>' +
       '</div>';
   }
 
   function renderConcentrationChart(rows) {
     if (!rows || !rows.length) return '<div class="chart-card">No customer data.</div>';
-    var max = Math.max.apply(null, rows.map(function (r) { return r.pct; }));
-    var palette = ['#F97316', '#D97706', '#059669', '#65A30D', '#94A3B8'];
-    var bars = rows.map(function (r, idx) {
-      var color = palette[idx] || palette[palette.length - 1];
-      var w = (r.pct / max) * 100;
-      return '<div style="display:flex;align-items:center;margin-bottom:6px">' +
-        '<div style="width:' + w.toFixed(1) + '%;height:10px;background:' + color + ';border-radius:2px;margin-right:8px;min-width:4px"></div>' +
-        '<span style="font-size:12px">' + escapeHtml(r.customer) + ' · ' + r.pct.toFixed(1) + '% · ' + fmtMoneyK(r.amount) + '</span>' +
-      '</div>';
-    }).join('');
+    var total = rows.reduce(function (s, r) { return s + (r.amount || 0); }, 0);
     return '' +
       '<div class="chart-card" data-action="nav-aging">' +
         '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-weight:600;font-size:13px">Customer Concentration</div><div style="font-size:11px;color:var(--of-accent)">View &rarr;</div></div>' +
-        bars +
+        '<div class="donut-wrap"><canvas id="chart-concentration"></canvas>' +
+          '<div class="donut-center"><div class="big">' + fmtMoneyK(total) + '</div><div class="lil">total AR</div></div>' +
+        '</div>' +
       '</div>';
+  }
+
+  function mountComboChart() {}
+
+  function mountCharts(d) {
+    if (typeof Chart === 'undefined') return;
+    var i = d.insights || {};
+    var ab = i.agingBuckets || [];
+    if (document.getElementById('chart-aging')) {
+      new Chart(document.getElementById('chart-aging'), {
+        type: 'doughnut',
+        data: { labels: ab.map(function (b) { return b.label; }),
+          datasets: [{ data: ab.map(function (b) { return b.amount; }),
+            backgroundColor: ab.map(function (b) { return AGING_COLORS[b.label] || '#cfc9b8'; }),
+            borderWidth: 2, borderColor: '#fff' }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '66%',
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 9, padding: 8 } } } }
+      });
+    }
+    var conc = i.concentration || [];
+    if (document.getElementById('chart-concentration')) {
+      new Chart(document.getElementById('chart-concentration'), {
+        type: 'doughnut',
+        data: { labels: conc.map(function (c) { return c.customer; }),
+          datasets: [{ data: conc.map(function (c) { return c.amount; }),
+            backgroundColor: conc.map(function (_, idx) { return PALETTE[idx] || '#cfc9b8'; }),
+            borderWidth: 2, borderColor: '#fff' }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '66%',
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, boxWidth: 9, padding: 6 } } } }
+      });
+    }
+    mountComboChart(i.monthly);
   }
 
   function renderMonthlyChart(months) {

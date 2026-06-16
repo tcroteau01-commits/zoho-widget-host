@@ -17,10 +17,11 @@ function mount() {
   return { w: dom.window, charts: () => chartCount };
 }
 
-test('mounts aging + concentration donut charts', async () => {
+test('mounts aging + concentration donut charts and combo chart', async () => {
   const { w, charts } = mount();
   await new Promise(r => setTimeout(r, 50));           // let load + render run
   assert.ok(w.document.getElementById('chart-aging'), 'aging canvas');
   assert.ok(w.document.getElementById('chart-concentration'), 'concentration canvas');
-  assert.equal(charts(), 2, 'two Chart instances created (combo comes in a later task)');
+  assert.ok(w.document.getElementById('chart-combo'), 'combo canvas');
+  assert.equal(charts(), 3, 'three Chart instances created');
 });

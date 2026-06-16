@@ -68,7 +68,7 @@
 <div class="container" id="root">
   <div class="loading">Loading dashboard...</div>
 </div>
-<div class="version-stamp">v2026-06-16.1</div>
+<div class="version-stamp">v2026-06-16.2</div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
@@ -298,7 +298,28 @@
       '</div>';
   }
 
-  function mountComboChart() {}
+  function mountComboChart(months) {
+    if (typeof Chart === 'undefined' || !months || !months.length) return;
+    var el = document.getElementById('chart-combo');
+    if (!el) return;
+    var names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var labels = months.map(function (x) { return names[parseInt(x.month.split('-')[1], 10)]; });
+    new Chart(el, {
+      data: { labels: labels, datasets: [
+        { type: 'bar', label: 'Purchases', data: months.map(function (x) { return x.purchases; }),
+          backgroundColor: '#cbd5e1', yAxisID: 'y', order: 2, borderRadius: 3, maxBarThickness: 38 },
+        { type: 'line', label: 'Margin %', data: months.map(function (x) { return x.marginPct || 0; }),
+          borderColor: '#e8a020', backgroundColor: '#e8a020', yAxisID: 'y1', tension: 0.3, pointRadius: 2, borderWidth: 2, order: 1 }
+      ] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { position: 'left', grid: { color: '#f3f1ea' }, ticks: { font: { size: 9 }, color: '#888', callback: function (v) { return '$' + (v / 1000) + 'k'; } } },
+          y1: { position: 'right', grid: { drawOnChartArea: false }, min: 0, suggestedMax: 35, ticks: { font: { size: 9 }, color: '#e8a020', callback: function (v) { return v + '%'; } } },
+          x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#888' } }
+        } }
+    });
+  }
 
   function mountCharts(d) {
     if (typeof Chart === 'undefined') return;
@@ -332,28 +353,13 @@
 
   function renderMonthlyChart(months) {
     if (!months || !months.length) return '';
-    var max = months.reduce(function (m, x) { return Math.max(m, x.purchases, x.collections); }, 1);
-    var bars = months.map(function (x) {
-      var ph = (x.purchases / max) * 100;
-      var ch = (x.collections / max) * 100;
-      return '<div style="flex:1;display:flex;gap:2px;align-items:flex-end;height:100%">' +
-        '<div style="background:#F97316;width:50%;height:' + ph.toFixed(0) + '%" title="' + x.month + ' purchases $' + fmtMoney(x.purchases) + '"></div>' +
-        '<div style="background:#059669;width:50%;height:' + ch.toFixed(0) + '%" title="' + x.month + ' collections $' + fmtMoney(x.collections) + '"></div>' +
-      '</div>';
-    }).join('');
-    var labels = months.map(function (x) {
-      var mo = x.month.split('-')[1];
-      var names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return '<div style="flex:1">' + names[parseInt(mo, 10)] + '</div>';
-    }).join('');
     return '' +
       '<div class="chart-card" data-action="nav-loads-margins">' +
         '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
-          '<div style="font-weight:600;font-size:13px">Monthly Purchases &amp; Collections &mdash; last 12 months</div>' +
-          '<div style="font-size:11px"><span style="margin-right:10px"><span style="display:inline-block;width:8px;height:8px;background:#F97316;border-radius:2px;margin-right:4px"></span>Purchases</span><span><span style="display:inline-block;width:8px;height:8px;background:#059669;border-radius:2px;margin-right:4px"></span>Collections</span></div>' +
+          '<div style="font-weight:600;font-size:13px">Volume &amp; Margin &mdash; last 12 months</div>' +
+          '<div style="font-size:11px"><span style="margin-right:10px"><span style="display:inline-block;width:8px;height:8px;background:#cbd5e1;border-radius:2px;margin-right:4px"></span>Purchases</span><span><span style="display:inline-block;width:8px;height:8px;background:#e8a020;border-radius:2px;margin-right:4px"></span>Margin %</span></div>' +
         '</div>' +
-        '<div style="display:flex;align-items:flex-end;gap:6px;height:90px;padding:0 8px;border-bottom:1px solid var(--of-border)">' + bars + '</div>' +
-        '<div style="display:flex;gap:6px;padding:6px 8px 0;font-size:9px;color:var(--of-muted);text-align:center">' + labels + '</div>' +
+        '<div class="combo-wrap"><canvas id="chart-combo"></canvas></div>' +
       '</div>';
   }
 

@@ -40,8 +40,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .step-title { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 6px 0 6px; }
 .step-sub { font-size: 14px; color: var(--of-gray-700); line-height: 1.55; margin-bottom: 24px; }
 
-.field { margin-bottom: 18px; }
+.field { margin-bottom: 18px; position: relative; }
 .field label { display: block; font-size: 12px; font-weight: 700; color: var(--of-charcoal-soft); margin-bottom: 6px; }
+.ac-menu { position: absolute; left: 0; right: 0; top: 100%; z-index: 60; margin-top: 4px; background: #fff; border: 1.5px solid var(--of-beige-line); border-radius: 10px; box-shadow: 0 10px 28px rgba(20,30,50,0.14); max-height: 260px; overflow-y: auto; display: none; }
+.ac-menu.open { display: block; }
+.ac-item { padding: 10px 14px; font-size: 13px; color: var(--of-charcoal); cursor: pointer; border-bottom: 1px solid var(--of-beige-line); }
+.ac-item:last-child { border-bottom: none; }
+.ac-item:hover, .ac-item.active { background: var(--of-blue-soft); }
 .field label .req { color: var(--of-red); }
 .field input[type=text], .field input[type=email], .field input[type=tel], .field input[type=number], .field select, .field textarea { width: 100%; padding: 12px 14px; border: 1.5px solid var(--of-beige-line); border-radius: 10px; font-size: 14px; font-family: inherit; background: var(--of-beige-soft); color: var(--of-charcoal); }
 .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--of-orange); background: #fff; }
@@ -532,6 +537,8 @@ body.show-contacts .contacts-only { display: block; }
 var API_BASE = global.OPERFI_UW_API_BASE || 'https://operfi-broker-api.onrender.com';
 var USDOT_LOOKUP_PATH = '/usdot-lookup';   // TODO confirm exact Flask route + response shape
 var CRM_SYNC_PATH     = '/uw-create-crm';  // TODO confirm Flask route that makes the CRM Account+Deal
+var PLACES_AC_PATH    = '/places-autocomplete-public';  // public (un-gated) Google Places proxy
+var PLACE_DETAILS_PATH = '/place-details-public';       // public structured-address lookup
 
 var FORM = {
   application: 'Application', owner: 'Owner', related: 'Related_Business_Entity',
@@ -718,12 +725,21 @@ function validateAll(s) {
   return { ok: errors.length === 0, errors: errors };
 }
 
+// Turn a /place-details-public response into the single-line address the field shows.
+function formatPlace(d) {
+  if (!d) return '';
+  if (d.formatted) return d.formatted;
+  var stateZip = ((d.state || '') + (d.zip ? ' ' + d.zip : '')).trim();
+  return [d.street, d.city, stateZip].filter(Boolean).join(', ').trim();
+}
+
 // ──────────────────────────── EXPOSED API ───────────────────────────────────
 var OF = {
-  config: { API_BASE: API_BASE, USDOT_LOOKUP_PATH: USDOT_LOOKUP_PATH, CRM_SYNC_PATH: CRM_SYNC_PATH, FORM: FORM, APPLICATION_LOOKUP: APPLICATION_LOOKUP },
+  config: { API_BASE: API_BASE, USDOT_LOOKUP_PATH: USDOT_LOOKUP_PATH, CRM_SYNC_PATH: CRM_SYNC_PATH, FORM: FORM, APPLICATION_LOOKUP: APPLICATION_LOOKUP, PLACES_AC_PATH: PLACES_AC_PATH, PLACE_DETAILS_PATH: PLACE_DETAILS_PATH },
   deriveRateClass: deriveRateClass, computeQuote: computeQuote, resolveAuthority: resolveAuthority,
   buildApplicationPayload: buildApplicationPayload, buildOwnerPayloads: buildOwnerPayloads,
-  buildChildPayloads: buildChildPayloads, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail
+  buildChildPayloads: buildChildPayloads, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail,
+  formatPlace: formatPlace
 };
 global.OF = OF;
 OF.validateStep = function (s) { return validateStep(s); }; // exposed for tests (DOM-driven per-step gate)
@@ -732,6 +748,71 @@ OF.validateStep = function (s) { return validateStep(s); }; // exposed for tests
 function $(id) { return document.getElementById(id); }
 function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
 function val(id) { var e = $(id); return e ? (e.value || '').trim() : ''; }
+
+// Google Places address autocomplete on a free-text address input. Debounced query to
+// the PUBLIC proxy (no key in the browser); pick a prediction → fetch details → fill.
+function attachAddressAutocomplete(inputId) {
+  var input = $(inputId);
+  if (!input || typeof fetch !== 'function') return;
+  var field = input.closest ? input.closest('.field') : input.parentNode;
+  if (!field) return;
+  var menu = document.createElement('div');
+  menu.className = 'ac-menu';
+  field.appendChild(menu);
+  var timer = null, active = -1, items = [];
+
+  function close() { menu.classList.remove('open'); menu.innerHTML = ''; items = []; active = -1; }
+
+  function render(preds) {
+    menu.innerHTML = '';
+    items = preds || [];
+    if (!items.length) { close(); return; }
+    items.forEach(function (p, i) {
+      var el = document.createElement('div');
+      el.className = 'ac-item';
+      el.textContent = p.description;
+      el.addEventListener('mousedown', function (e) { e.preventDefault(); choose(i); });
+      menu.appendChild(el);
+    });
+    active = -1;
+    menu.classList.add('open');
+  }
+
+  function choose(i) {
+    var p = items[i];
+    if (!p) return;
+    close();
+    var url = OF.config.API_BASE + OF.config.PLACE_DETAILS_PATH + '?place_id=' + encodeURIComponent(p.place_id);
+    fetch(url).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      var line = OF.formatPlace(d);
+      input.value = line || p.description;   // fall back to the prediction text
+      input.classList.remove('invalid');
+    }).catch(function () { input.value = p.description; });
+  }
+
+  function query() {
+    var q = (input.value || '').trim();
+    if (q.length < 3) { close(); return; }
+    var url = OF.config.API_BASE + OF.config.PLACES_AC_PATH + '?q=' + encodeURIComponent(q);
+    fetch(url).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { render((j && j.predictions) || []); })
+      .catch(function () { close(); });
+  }
+
+  input.setAttribute('autocomplete', 'off');
+  input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(query, 250); });
+  input.addEventListener('keydown', function (e) {
+    if (!menu.classList.contains('open')) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      active = e.key === 'ArrowDown' ? Math.min(active + 1, items.length - 1) : Math.max(active - 1, 0);
+      qsa('.ac-item', menu).forEach(function (el, i) { el.classList.toggle('active', i === active); });
+    } else if (e.key === 'Enter' && active >= 0) {
+      e.preventDefault(); choose(active);
+    } else if (e.key === 'Escape') { close(); }
+  });
+  input.addEventListener('blur', function () { setTimeout(close, 150); });
+}
 
 var DEMO_DOT = {
   '4366362': { authorityType: 'Carrier', name: 'BRENNAN ESLINGER', mc: '1709488', ein: '', trucks: 1, drivers: 1, phone: '(623) 303-1449', email: 'brennantrucking25@gmail.com', loc: 'Glendale, AZ' },
@@ -1001,6 +1082,8 @@ function initDom() {
 
   qsa('#priorChips .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('priorChips', 'data-prior', c.getAttribute('data-prior')); UI.hasPrior = c.getAttribute('data-prior') === 'Yes'; document.body.classList.toggle('show-prior', UI.hasPrior); }); });
   $('sameAddrChip').addEventListener('click', function () { this.classList.toggle('sel'); $('mailingWrap').style.display = this.classList.contains('sel') ? 'none' : 'block'; });
+  attachAddressAutocomplete('opPhysical');
+  attachAddressAutocomplete('opMailing');
 
   // Broker subform toggles
   qsa('#relatedToggle .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('relatedToggle', 'data-rel', c.getAttribute('data-rel')); var on = c.getAttribute('data-rel') === 'Yes'; document.body.classList.toggle('show-related', on); if (on && !$('relatedRows').children.length) addRelatedRow(); }); });

@@ -436,7 +436,21 @@ function recover() {
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
 function boot() {
-  if (param('demo') === '1') { STATE.mode = 'demo'; renderStatus(DEMO_STATUS, true); return; }
+  if (param('demo') === '1') {
+    STATE.mode = 'demo';
+    // Demo-only: ?stage= lets you preview any application stage. Later stages auto-complete
+    // the checklist so the messaging stays coherent; terminal stages keep partial docs.
+    var data = JSON.parse(JSON.stringify(DEMO_STATUS));
+    var stage = param('stage');
+    if (stage) {
+      data.status = stage;
+      if (/^(Underwriting|Approved|Signed)$/.test(stage)) {
+        data.documents = requiredDocs(data).map(function (d) { return { type: d.type, status: 'Verified', uploadedAt: 'Jun 8' }; });
+      }
+    }
+    renderStatus(data, true);
+    return;
+  }
   var token = getToken();
   STATE.token = token;
   if (!token) { renderRecovery(); return; }

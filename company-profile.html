@@ -569,7 +569,7 @@ var currentSearch = '';
 var selectedRoles = [];
 var editingContactId = null;     // null = add mode; a contact ID = edit mode
 var selfContactId = '';          // the acting contact (can't delete yourself)
-var selfIsFull = false;          // only Full Access users see edit/delete
+var canManage = false;           // server-authoritative: Full Access client or impersonating admin
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
@@ -756,12 +756,10 @@ function loadUsers() {
       var data = (res && res.users) ? res.users : [];
       console.log('[CompanyProfile] users:', data.length);
       selfContactId = (res && res.self_contact_id) ? String(res.self_contact_id) : '';
+      canManage = !!(res && res.can_manage);
       allUsers = data.slice().sort(function(a, b) {
         return parseDate(b.Added_Time) - parseDate(a.Added_Time);
       });
-      // Edit/delete are offered only to a Full Access user (acting on their own roster).
-      var self = allUsers.filter(function(u){ return String(u.ID) === selfContactId; })[0];
-      selfIsFull = self ? hasFullAccess(self) : false;
       applyUserFilter();
     }).catch(function(err) {
       console.error('[CompanyProfile] /broker-users failed', err);
@@ -808,13 +806,10 @@ function renderUsers() {
   html += '</div>';
   body.innerHTML = html;
 
-  body.querySelectorAll('.ua-btn[data-action]').forEach(function(btn) {
+  body.querySelectorAll('.ua-btn[data-action="view"]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      var id = btn.getAttribute('data-id');
-      var u = allUsers.filter(function(x){ return String(x.ID) === String(id); })[0];
-      if (!u) return;
-      if (btn.getAttribute('data-action') === 'edit') openEditModal(u);
-      else deleteUser(u);
+      var u = allUsers.filter(function(x){ return String(x.ID) === String(btn.getAttribute('data-id')); })[0];
+      if (u && typeof openViewModal === 'function') openViewModal(u);
     });
   });
 
@@ -855,15 +850,10 @@ function userRowHtml(u) {
   '</div>';
 }
 
-// Edit/Delete actions — only for a Full Access user; never a Delete on your own row.
+// Whole row opens the View Contact modal; Edit/Delete live inside it.
 function userActionsHtml(u) {
-  if (!selfIsFull) return '<div class="user-actions"></div>';
-  var id = esc(String(u.ID || ''));
-  var del = String(u.ID) === selfContactId ? '' :
-    '<button class="ua-btn danger" data-action="delete" data-id="' + id + '">Delete</button>';
-  return '<div class="user-actions">' +
-    '<button class="ua-btn" data-action="edit" data-id="' + id + '">Edit</button>' + del +
-  '</div>';
+  return '<div class="user-actions"><button class="ua-btn" data-action="view" data-id="' +
+    esc(String(u.ID || '')) + '">View</button></div>';
 }
 
 function hasFullAccess(u) {

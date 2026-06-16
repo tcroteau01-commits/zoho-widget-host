@@ -83,3 +83,21 @@ test('customerCredit: available:false shows quiet fallback', async () => {
   await new Promise(r => setTimeout(r, 20));
   assert.match(w.document.getElementById('c').textContent, /unavailable/i);
 });
+
+test('carrierBadge: stale response does not overwrite a newer selection', async () => {
+  let calls = 0;
+  const w = mk(function (url) {
+    calls++;
+    // first call (vendor 1) resolves LATE with pay_term Net 99; second (vendor 2) resolves fast with Net 30
+    const isFirst = url.indexOf('vendor_id=1') !== -1;
+    const row = isFirst ? { vendor_id:'1', pay_term:'Net 99', dnu:false } : { vendor_id:'2', pay_term:'Net 30', dnu:false };
+    const delay = isFirst ? 60 : 5;
+    return new Promise(function (res) { setTimeout(function () { res({ ok:true, json: () => Promise.resolve({ carriers:[row] }) }); }, delay); });
+  });
+  const el = w.document.getElementById('c');
+  w.OperFiAV.carrierBadge(el, { vendorId: '1', email: 'b@op.com', apiBase: 'http://api' });
+  w.OperFiAV.carrierBadge(el, { vendorId: '2', email: 'b@op.com', apiBase: 'http://api' });
+  await new Promise(r => setTimeout(r, 120));
+  assert.match(el.textContent, /Net 30/);
+  assert.doesNotMatch(el.textContent, /Net 99/);
+});

@@ -40,10 +40,11 @@
     opts = opts || {};
     var vid = opts.vendorId;
     if (!vid) { el.innerHTML = ''; return; }
+    el._opfVid = String(vid);
     injectStyles();
     var email = resolveEmail(opts), base = resolveBase(opts);
     function render(row) {
-      if (String(opts.vendorId) !== String(vid)) return;  // selection changed
+      if (el._opfVid !== String(vid)) return;  // selection changed — drop stale response
       el.innerHTML = carrierHtml(row);
     }
     if (_carrierCache[vid]) { render(_carrierCache[vid]); return; }
@@ -73,10 +74,11 @@
     opts = opts || {};
     var cid = opts.customerId;
     if (!cid) { el.innerHTML = ''; return; }
+    el._opfCid = String(cid);
     injectStyles();
     var email = resolveEmail(opts), base = resolveBase(opts);
     function render(d) {
-      if (String(opts.customerId) !== String(cid)) return;
+      if (el._opfCid !== String(cid)) return;  // selection changed — drop stale response
       el.innerHTML = creditHtml(d);
     }
     if (_creditCache[cid]) { render(_creditCache[cid]); return; }
@@ -91,7 +93,7 @@
     var cls = pct >= 100 ? 'red' : (pct >= 80 ? 'amber' : 'ok');
     var lead = pct >= 100 ? '⚠ Over credit limit' : (pct >= 80 ? '⚠ Near credit limit' : 'Credit OK');
     var barColor = pct >= 100 ? '#c0392b' : (pct >= 80 ? '#c8951f' : '#2e7d32');
-    var barW = Math.min(100, pct);
+    var barW = Math.max(0, Math.min(100, pct));
     return '<div class="opf-av-credit ' + cls + '">' +
       '<div class="lead">' + lead + '</div>' +
       '<div class="bar"><i style="width:' + barW + '%;background:' + barColor + '"></i></div>' +

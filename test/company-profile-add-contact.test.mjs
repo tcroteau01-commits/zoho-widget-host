@@ -55,27 +55,6 @@ test('edit mode: openEditModal pre-fills + submitContact POSTs to /broker-edit-c
   assert.strictEqual(sent.first_name, 'Jane');
 });
 
-test('deleteUser POSTs to /broker-delete-contact after confirm (COMP1)', () => {
-  const dom = boot();
-  const w = dom.window;
-  w.confirm = () => true;
-  let captured = null;
-  w.fetch = (url, opts) => { captured = { url, opts }; return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true })) }); };
-  w.deleteUser({ ID: '900', Contact_Name: { first_name: 'Jane', last_name: 'Doe' } });
-  assert.ok(captured.url.indexOf('/broker-delete-contact') !== -1);
-  assert.strictEqual(JSON.parse(captured.opts.body).contact_id, '900');
-});
-
-test('deleteUser does nothing when confirm is cancelled (COMP1)', () => {
-  const dom = boot();
-  const w = dom.window;
-  w.confirm = () => false;
-  let called = false;
-  w.fetch = () => { called = true; return Promise.resolve({ status: 200, text: () => Promise.resolve('{}') }); };
-  w.deleteUser({ ID: '900', Contact_Name: { first_name: 'Jane', last_name: 'Doe' } });
-  assert.strictEqual(called, false, 'no request when cancelled');
-});
-
 test('submitContact surfaces the real error message (no [object Object])', async () => {
   const dom = boot();
   dom.window.fetch = () =>

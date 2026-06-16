@@ -43,3 +43,39 @@ test('self row shows Edit but not Delete', () => {
   assert.ok(foot.querySelector('[data-act="edit"]'), 'Edit present');
   assert.ok(!foot.querySelector('[data-act="delete"]'), 'Delete hidden for self');
 });
+
+test('delete is two-step: first click shows confirm with Full Access caution', () => {
+  const w = boot().window;
+  w.canManage = true;
+  w.openViewModal({ ID: '903', Contact_Name: { first_name: 'Boss', last_name: 'Lady' },
+                    Email: 'boss@acme.com', User_Permissions: ['Full Access'] });
+  w.document.querySelector('#view-foot [data-act="delete"]').click();
+  const foot = w.document.getElementById('view-foot');
+  assert.ok(foot.querySelector('[data-act="confirm-delete"]'), 'confirm button appears');
+  assert.ok(/Full Access/.test(w.document.getElementById('view-confirm-msg').textContent),
+            'caution mentions Full Access');
+});
+
+test('confirm delete POSTs to /broker-delete-contact with the contact id', () => {
+  const w = boot().window;
+  w.canManage = true;
+  let captured = null;
+  w.fetch = (url, opts) => { captured = { url, opts };
+    return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '904' })) }); };
+  w.openViewModal({ ID: '904', Contact_Name: { first_name: 'Reg', last_name: 'User' },
+                   Email: 'reg@acme.com', User_Permissions: ['Vendor Access'] });
+  w.document.querySelector('#view-foot [data-act="delete"]').click();
+  w.document.querySelector('#view-foot [data-act="confirm-delete"]').click();
+  assert.ok(captured && captured.url.indexOf('/broker-delete-contact') !== -1, 'hits delete endpoint');
+  assert.strictEqual(JSON.parse(captured.opts.body).contact_id, '904');
+});
+
+test('Edit from the view modal opens the prefilled edit modal', () => {
+  const w = boot().window;
+  w.canManage = true;
+  w.openViewModal({ ID: '905', Contact_Name: { first_name: 'Ed', last_name: 'Itor' },
+                   Email: 'ed@acme.com', Phone_Number: '(555) 9', User_Permissions: ['Full Access'] });
+  w.document.querySelector('#view-foot [data-act="edit"]').click();
+  assert.strictEqual(w.document.getElementById('m-first').value, 'Ed');
+  assert.ok(w.document.getElementById('modal-scrim').classList.contains('show'), 'edit modal open');
+});

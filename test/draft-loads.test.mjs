@@ -391,6 +391,31 @@ test('per-row submit posts a single id', async () => {
   assert.deepEqual([...body.ids], ['900']);
 });
 
+test('submit selected posts only the checked ids', async () => {
+  const { window, records } = makeWidget();
+  window.__state.selected = ['900', '901'];
+  await window.submitSelected();
+  const sub = records.find(r => r.url.indexOf('/draft-loads/submit') !== -1);
+  assert.ok(sub, 'posted to submit');
+  assert.deepEqual([...JSON.parse(sub.opts.body).ids], ['900', '901']);
+});
+
+test('submit selected with nothing checked is a no-op with a nudge', async () => {
+  const { window, records } = makeWidget();
+  window.__state.selected = [];
+  await window.submitSelected();
+  assert.ok(!records.find(r => r.url.indexOf('/draft-loads/submit') !== -1), 'no submit posted');
+  assert.match(window.document.getElementById('toast').textContent, /select/i);
+});
+
+test('selection bar shows a Submit (N) count', () => {
+  const { window } = makeWidget();
+  window.renderQueue(DRAFTS);
+  const cbs = window.document.querySelectorAll('#queue-body input[type="checkbox"]');
+  cbs[0].checked = true; cbs[0].dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.match(window.document.getElementById('bulk-submit').textContent, /Submit \(1\)/);
+});
+
 test('skipped ids surface their reasons', () => {
   const { window } = makeWidget();
   window.handleSubmitResult({ submitted: ['900'], skipped: [{ id: '901', reasons: ['customer'] }], count: 1 });
@@ -608,6 +633,56 @@ test('successful upload marks the paperwork slot Ready', async () => {
   w.openPaperwork([{ id: '900', ref: 'WMT-90021', invoice: 'INV-7741', customer_name: 'WALMART INC', carrier_name: 'SWIFT' }]);
   await w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
   assert.equal(w.__pw.slots['900'].customer, true);
+});
+
+function pwReady(w) {
+  let merged = 0, uploads = 0;
+  w.mergeFilesToPDF = (files) => { merged = files.length; return Promise.resolve(new w.Blob(['x'])); };
+  w._uploadDoc = () => { uploads++; return Promise.resolve(true); };
+  w.openPaperwork([{ id: '900', ref: 'R1', invoice: 'I1', customer_name: 'C', carrier_name: 'X' }]);
+  return { uploads: () => uploads, merged: () => merged };
+}
+
+test('per-slot: multiple files attach as ONE merged upload', async () => {
+  const w = mk();
+  const m = pwReady(w);
+  await w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf'), fakeFile('b.pdf'), fakeFile('c.pdf')]);
+  assert.equal(m.uploads(), 1, 'one upload for the slot, not one per file');
+  assert.equal(m.merged(), 3, 'all three merged together');
+  assert.equal(w.__pw.slots['900'].customer, true);
+});
+
+test('per-slot: dropping desktop files on a slot attaches to that slot', async () => {
+  const w = mk();
+  const m = pwReady(w);
+  const cell = w.document.querySelector('#paperwork .slot[data-slot-wrap="carrier"][data-load="900"]');
+  assert.ok(cell, 'carrier slot cell exists');
+  const ev = new w.Event('drop', { bubbles: true });
+  ev.dataTransfer = { files: [fakeFile('x.pdf')], getData: () => '' };
+  cell.dispatchEvent(ev);
+  await new Promise(r => setTimeout(r, 0));
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(w.__pw.slots['900'].carrier, true, 'carrier slot filled from desktop drop');
+});
+
+test('per-slot: clicking a slot opens the file picker scoped to it', () => {
+  const w = mk();
+  pwReady(w);
+  const cell = w.document.querySelector('#paperwork .slot[data-slot-wrap="customer"][data-load="900"]');
+  cell.dispatchEvent(new w.Event('click', { bubbles: true }));
+  assert.equal(w.__pw.pickTarget.loadId, '900');
+  assert.equal(w.__pw.pickTarget.slot, 'customer');
+  assert.ok(w.document.getElementById('pw-file-input'), 'hidden file input created');
+});
+
+test('per-slot: removeSlot clears an attached slot', async () => {
+  const w = mk();
+  pwReady(w);
+  await w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf')]);
+  assert.equal(w.__pw.slots['900'].customer, true);
+  w.removeSlot('900', 'customer');
+  assert.equal(w.__pw.slots['900'].customer, false);
+  assert.equal(w.__pw.files['900'].customer.length, 0);
 });
 
 test('createDraftsFromPreview survives a partial create failure and opens paperwork with successes only', async () => {

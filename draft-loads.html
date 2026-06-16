@@ -169,6 +169,9 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
 .empty-slot{border:1.5px dashed #cfc9bb;border-radius:8px;padding:7px 9px;font-size:11.5px;color:var(--muted);text-align:center}
 .empty-slot.req{border-color:#e0a93f;color:var(--amber-dk);font-weight:600;background:#fffdf7}
 .empty-slot.target{border-color:var(--amber);border-style:solid;background:#fff6e4;color:var(--amber-dk);font-weight:700}
+.slot{cursor:pointer}
+.slot-remove{cursor:pointer;color:#b91c1c;font-weight:700;margin-left:6px;padding:0 4px;border-radius:4px}
+.slot-remove:hover{background:#fde2e2}
 .auto{font-size:9.5px;color:var(--green);font-weight:700;margin-top:3px}
 .rstat{text-align:right}
 .foot{display:flex;align-items:center;gap:12px;margin-top:16px}
@@ -226,6 +229,7 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
     <button class="btn sm" id="bulk-carr">Set carrier ▾</button>
     <button class="btn sm" id="bulk-docs">Attach docs</button>
     <button class="btn sm" id="bulk-del">Delete</button>
+    <button class="btn sm amber" id="bulk-submit">Submit (0)</button>
     <span class="x" id="bulk-clear">✕ clear</span>
   </div>
 
@@ -543,6 +547,7 @@ function renderBulkBar(){
   if (!n){ bar.classList.add('hidden'); return; }
   bar.classList.remove('hidden');
   setText('bulk-count', n+' selected');
+  setText('bulk-submit', 'Submit ('+n+')');
 }
 function bulkSetCustomer(customerId){
   return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { customer_id: customerId }); }))
@@ -763,6 +768,14 @@ function submitAllReady(){
   return submitIds(ids);
 }
 function submitOne(id){ return submitIds([id]); }
+// Submit only the checked rows (selection bar). Non-ready ones come back skipped
+// with reasons, same as Submit all Ready. Separate from the global button so that
+// stray checkboxes never change what "Submit all Ready" means.
+function submitSelected(){
+  var ids=__state.selected.slice();
+  if(!ids.length){ showToast('Select at least one load'); return Promise.resolve(); }
+  return submitIds(ids);
+}
 
 var REASON_TEXT = {
   customer:'missing customer', carrier:'missing carrier',
@@ -865,6 +878,7 @@ window.addEventListener('load', function(){
   bind('bulk-clear', clearSelection);
   bind('bulk-docs', function(){ bulkAttachDocs(); });
   bind('bulk-del', function(){ deleteDrafts(__state.selected.slice()); });
+  bind('bulk-submit', function(){ submitSelected(); });
   var cbAll=document.getElementById('cb-all');
   if (cbAll) cbAll.addEventListener('change', function(){
     var on=cbAll.checked;
@@ -1086,12 +1100,16 @@ function slotHtml(l, slot){
   }
   if (state===true && files.length){
     var nm=files[files.length-1].name;
-    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span> ✓</div>'+
-           '<div class="auto">✓ routed by '+(slot==='customer'?'ref #':'invoice #')+'</div>';
+    var more = files.length>1 ? ' <span class="auto" style="display:inline">+'+(files.length-1)+' more</span>' : '';
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span>'+more+' ✓'+
+           '<span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'">✕</span></div>'+
+           '<div class="auto">✓ attached</div>';
   }
   var label = slot==='customer' ? 'customer packet needed' : 'carrier invoice needed';
   var key = slot==='customer' ? l.ref : l.invoice;
-  var hint = key ? '<div class="auto" style="color:var(--amber-dk)">drop file named '+esc(key)+'</div>' : '';
+  var hint = key
+    ? '<div class="auto" style="color:var(--amber-dk)">drop the file named '+esc(key)+', or click to browse</div>'
+    : '<div class="auto" style="color:var(--muted)">drop a file here, or click to browse</div>';
   return '<div class="empty-slot req" data-slot="'+slot+'" data-load="'+esc(l.id)+'">⬍ '+label+'</div>'+hint;
 }
 
@@ -1127,34 +1145,86 @@ function renderPaperwork(loads){
   renderPaperworkProgress();
 }
 
+// Singleton hidden file input reused for click-to-browse on any slot.
+function _pwFileInput(){
+  var inp=document.getElementById('pw-file-input');
+  if(!inp){
+    inp=document.createElement('input');
+    inp.type='file'; inp.multiple=true; inp.accept='.pdf,image/*'; inp.id='pw-file-input';
+    inp.style.display='none';
+    inp.addEventListener('change', function(){
+      var t=__pw.pickTarget;
+      if(t && inp.files && inp.files.length){ attachFilesToSlot(t.loadId, t.slot, inp.files); }
+      inp.value='';   // allow re-picking the same file
+    });
+    document.body.appendChild(inp);
+  }
+  return inp;
+}
+
 function wirePaperworkSlots(){
   document.querySelectorAll('#paperwork .slot').forEach(function(cell){
+    var loadId=cell.getAttribute('data-load'), slot=cell.getAttribute('data-slot-wrap');
     cell.addEventListener('dragover', function(e){ e.preventDefault(); cell.classList.add('drag'); });
     cell.addEventListener('dragleave', function(){ cell.classList.remove('drag'); });
     cell.addEventListener('drop', function(e){
       e.preventDefault(); cell.classList.remove('drag');
+      // Files dragged straight from the desktop -> attach to THIS slot (multi-file ok).
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+        attachFilesToSlot(loadId, slot, e.dataTransfer.files); return;
+      }
+      // Otherwise a file re-dragged from the unmatched tray (tray index in dataTransfer).
       var idx=e.dataTransfer && e.dataTransfer.getData('text/plain');
       if (idx===''||idx==null) return;
       var f=__pw.tray[Number(idx)];
       if (!f) return;
       __pw.tray.splice(Number(idx),1);
-      attachToSlot(cell.getAttribute('data-load'), cell.getAttribute('data-slot-wrap'), f);
+      attachToSlot(loadId, slot, f);
+    });
+    // Click the slot (but not the remove ✕) opens a file picker scoped to it.
+    cell.addEventListener('click', function(e){
+      if (e.target && e.target.classList && e.target.classList.contains('slot-remove')) return;
+      __pw.pickTarget={loadId:loadId, slot:slot};
+      _pwFileInput().click();
+    });
+  });
+  document.querySelectorAll('#paperwork .slot-remove').forEach(function(x){
+    x.addEventListener('click', function(e){
+      e.stopPropagation();   // don't also open the file picker
+      removeSlot(x.getAttribute('data-load'), x.getAttribute('data-slot'));
     });
   });
 }
 
-function attachToSlot(loadId, slot, file){
+// Attach one or more files to a slot; they merge into one packet via a single upload.
+function attachFilesToSlot(loadId, slot, fileList){
+  var files=Array.prototype.slice.call(fileList||[]).filter(Boolean);
+  if(!files.length) return Promise.resolve(false);
   if(!__pw.files[loadId]) __pw.files[loadId]={customer:[],carrier:[]};
   if(!__pw.slots[loadId]) __pw.slots[loadId]={customer:false,carrier:false};
-  __pw.files[loadId][slot].push(file);
+  var hadFiles=__pw.files[loadId][slot].length;   // already-uploaded files, if any
+  files.forEach(function(f){ __pw.files[loadId][slot].push(f); });
   __pw.slots[loadId][slot]='uploading';   // transient; only ===true counts as Ready
   renderPaperwork(__pw.loads);
   return uploadSlot(loadId, slot).then(function(ok){
     if(ok){ __pw.slots[loadId][slot]=true; }
-    else { __pw.slots[loadId][slot]=false; __pw.files[loadId][slot].pop(); showToast('Upload failed — try again'); }
+    else {
+      for(var i=0;i<files.length;i++){ __pw.files[loadId][slot].pop(); }   // drop just-added
+      __pw.slots[loadId][slot] = hadFiles ? true : false;                  // keep prior packet if any
+      showToast('Upload failed — try again');
+    }
     renderPaperwork(__pw.loads);
     return ok;
   });
+}
+// Single-file attach (tray re-drag) delegates to the multi-file path.
+function attachToSlot(loadId, slot, file){ return attachFilesToSlot(loadId, slot, [file]); }
+
+// Clear a slot client-side so a wrong attach can be redone before submit.
+function removeSlot(loadId, slot){
+  if(__pw.files[loadId]) __pw.files[loadId][slot]=[];
+  if(__pw.slots[loadId]) __pw.slots[loadId][slot]=false;
+  renderPaperwork(__pw.loads);
 }
 
 function uploadSlot(loadId, slot){
@@ -1210,6 +1280,8 @@ window.paperworkStatus=paperworkStatus;
 window.renderPaperwork=renderPaperwork;
 window.openPaperwork=openPaperwork;
 window.attachToSlot=attachToSlot;
+window.attachFilesToSlot=attachFilesToSlot;
+window.removeSlot=removeSlot;
 window.dropAllFiles=dropAllFiles;
 window.mergeFilesToPDF=mergeFilesToPDF;
 window._uploadDoc=_uploadDoc;
@@ -1379,6 +1451,7 @@ window.newDraft=newDraft;
 window.bulkAttachDocs=bulkAttachDocs;
 window.portalPageUrl=portalPageUrl;
 window.submitAllReady=submitAllReady;
+window.submitSelected=submitSelected;
 window.submitOne=submitOne;
 window.handleSubmitResult=handleSubmitResult;
 </script>

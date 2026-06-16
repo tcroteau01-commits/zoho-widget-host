@@ -822,7 +822,14 @@ function loadQueue(){
 function loadPickLists(){
   if (!brokerEmail) return Promise.resolve();
   var c=fetch(BROKER_API_BASE+'/tms-customers?email='+encodeURIComponent(brokerEmail))
-    .then(function(r){return r.json();}).then(function(p){ __state.customers=(p&&p.customers)||[]; }).catch(function(){});
+    .then(function(r){return r.json();}).then(function(p){
+      // Funding submit is Approved-only, so the draft customer pickers (bulk + inline)
+      // offer only credit-approved customers -- mirrors the Load Details form and the
+      // backend matcher. /tms-customers itself returns all (TMS booking allows more).
+      __state.customers=(((p&&p.customers)||[]).filter(function(c){
+        return String(c.credit_decision||'').trim()==='Approved';
+      }));
+    }).catch(function(){});
   var v=fetch(BROKER_API_BASE+'/tms-carriers?email='+encodeURIComponent(brokerEmail))
     .then(function(r){return r.json();}).then(function(p){ __state.carriers=(p&&p.carriers)||[]; }).catch(function(){});
   return Promise.all([c,v]);

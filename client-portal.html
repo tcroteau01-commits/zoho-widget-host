@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OperFi — Your Application</title>
+<!--
+  OperFi Client Document Dashboard / Upload Center (PUBLIC, GitHub Pages hosted).
+  A prospect who finished the onboarding application opens this via a link to:
+    • see the STAGE their application is in, and
+    • upload the Client Setup Checklist documents (and track what's still needed).
+  This is NOT a Creator widget — the client has no Creator login. The page is scoped to ONE
+  Application by a signed token in the URL (?token=...) and talks only to the Flask backend
+  (operfi-broker-api), which reaches Zoho server-side. Mirrors the proven tms-carrier-upload
+  pattern + tms_token signed link. Email auto-send is deferred; a USDOT+email recovery lookup
+  is provided for clients who don't have a link.
+  Pure logic on window.OFCP (unit-tested). Demo preview with ?demo=1.
+  Document checklist + field link-names from OperFi_Client_Onboarding.ds + the OperFi Client
+  Setup Checklist.
+-->
+<style>
+:root {
+  --of-beige: #f0efe9; --of-beige-soft: #fafaf6; --of-beige-line: #e6e3da;
+  --of-charcoal: #272727; --of-charcoal-soft: #444; --of-gray-500: #888; --of-gray-700: #555; --of-gray-100: #f5f5f0;
+  --of-orange: #e8a020; --of-green: #2e7d32; --of-green-text: #1f6321; --of-green-soft: #e3f4e3;
+  --of-amber: #f5a623; --of-amber-text: #b86e00; --of-amber-soft: #fff8e1;
+  --of-red: #c62828; --of-red-text: #a31818; --of-red-soft: #fde4e4;
+  --of-blue-text: #1a5fb4; --of-blue-soft: #e3edfb;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: var(--of-beige); color: var(--of-charcoal); min-height: 100vh; }
+.page { max-width: 720px; margin: 0 auto; padding: 20px 18px 70px; }
+
+.topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 0 16px; }
+.brand .logo { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+.brand .logo span { color: var(--of-orange); }
+.brand .tag { font-size: 11px; color: var(--of-gray-500); font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; }
+
+.banner { display: none; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.5; }
+.banner.show { display: block; }
+.banner.info { background: var(--of-blue-soft); color: var(--of-blue-text); }
+.banner.warn { background: var(--of-amber-soft); color: var(--of-amber-text); }
+.banner.err  { background: var(--of-red-soft); color: var(--of-red-text); }
+.banner.demo { background: var(--of-charcoal); color: rgba(255,255,255,0.92); }
+.banner.demo b { color: var(--of-orange); }
+
+.card { background: #fff; border: 1px solid var(--of-beige-line); border-radius: 12px; padding: 18px 22px; margin-bottom: 14px; }
+.card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 2px solid var(--of-orange); display: flex; justify-content: space-between; align-items: center; }
+.card-title .count { color: var(--of-gray-500); font-weight: 700; }
+.hidden { display: none; }
+
+/* hero */
+.hero { background: var(--of-charcoal); color: #fff; border-radius: 14px; padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; margin-bottom: 14px; }
+.hero-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: rgba(255,255,255,0.5); font-weight: 700; }
+.hero-name { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.15; margin-top: 4px; }
+.hero-meta { font-size: 12.5px; color: rgba(255,255,255,0.7); margin-top: 6px; }
+.decision-state-pill { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 6px 12px; border-radius: 6px; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.15); white-space: nowrap; }
+.decision-state-pill.need { background: rgba(245,166,35,0.18); color: #fbc77f; border-color: rgba(245,166,35,0.3); }
+.decision-state-pill.good { background: rgba(46,125,50,0.2); color: #6dcf6d; border-color: rgba(46,125,50,0.3); }
+.decision-state-pill.bad  { background: rgba(198,40,40,0.2); color: #ff7a7a; border-color: rgba(198,40,40,0.3); }
+
+/* stepper */
+.stepper { display: flex; align-items: flex-start; gap: 0; margin: 4px 0; }
+.step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
+.step .node { width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 2px solid var(--of-beige-line); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--of-gray-500); z-index: 2; }
+.step.done .node { background: var(--of-green); border-color: var(--of-green); color: #fff; }
+.step.current .node { background: var(--of-orange); border-color: var(--of-orange); color: #fff; box-shadow: 0 0 0 4px rgba(232,160,32,0.2); }
+.step .slabel { font-size: 11px; font-weight: 600; margin-top: 7px; text-align: center; color: var(--of-gray-700); }
+.step.current .slabel { color: var(--of-charcoal); font-weight: 700; }
+.step::before { content: ''; position: absolute; top: 14px; left: -50%; width: 100%; height: 2px; background: var(--of-beige-line); z-index: 1; }
+.step:first-child::before { display: none; }
+.step.done::before, .step.current::before { background: var(--of-green); }
+
+/* next-step callout */
+.next { background: var(--of-amber-soft); border: 1px solid #f5e0a8; border-radius: 10px; padding: 12px 15px; font-size: 13px; color: var(--of-amber-text); line-height: 1.5; display: flex; gap: 10px; align-items: flex-start; }
+.next .ic { font-size: 16px; line-height: 1.2; }
+.next.good { background: var(--of-green-soft); border-color: #bfe3bf; color: var(--of-green-text); }
+
+/* doc checklist */
+.doc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px dashed var(--of-beige-line); }
+.doc-row:last-child { border-bottom: none; }
+.doc-main { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.doc-mark { width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff; }
+.doc-mark.ok { background: var(--of-green); } .doc-mark.needed { background: #fff; border: 2px solid var(--of-beige-line); color: var(--of-gray-500); }
+.doc-label { font-weight: 600; font-size: 13.5px; }
+.doc-sub { font-size: 11.5px; color: var(--of-gray-500); margin-top: 2px; }
+.doc-action { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.doc-file { display: none; }
+.pill { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.3px; display: inline-block; }
+.pill.g { background: var(--of-green-soft); color: var(--of-green-text); }
+.pill.a { background: var(--of-amber-soft); color: var(--of-amber-text); }
+.pill.n { background: var(--of-gray-100); color: var(--of-gray-700); }
+.viewlink { font-size: 11.5px; color: var(--of-blue-text); text-decoration: none; font-weight: 600; }
+
+.btn { background: var(--of-charcoal); color: #fff; border: none; border-radius: 7px; padding: 8px 15px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; letter-spacing: 0.3px; }
+.btn.orange { background: var(--of-orange); }
+.btn.ghost { background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal); }
+.btn.sm { padding: 6px 12px; font-size: 11px; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.summ { font-size: 12.5px; color: var(--of-gray-700); margin-bottom: 4px; }
+.rep { font-size: 13px; line-height: 1.6; } .rep b { color: var(--of-charcoal); }
+.rep a { color: var(--of-blue-text); text-decoration: none; }
+.muted { color: var(--of-gray-500); font-size: 12.5px; }
+.toast { font-size: 12px; margin-top: 8px; min-height: 16px; }
+.toast.ok { color: var(--of-green-text); } .toast.err { color: var(--of-red-text); }
+
+/* recovery form */
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 11px; font-weight: 700; color: var(--of-charcoal-soft); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; }
+.field input { width: 100%; border: 1.5px solid var(--of-beige-line); border-radius: 9px; padding: 11px 13px; font-size: 14px; font-family: inherit; background: var(--of-beige-soft); }
+.field input:focus { outline: none; border-color: var(--of-orange); background: #fff; }
+
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+  .page { padding: 14px 12px 56px; }
+  .hero { grid-template-columns: 1fr; }
+  .step .slabel { font-size: 10px; }
+  .doc-row { flex-wrap: wrap; }
+  .btn { min-height: 40px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <div class="brand"><div class="logo">Oper<span>Fi</span></div><div class="tag">Document Center</div></div>
+  </div>
+  <div class="banner" id="banner"></div>
+  <div id="content"><div class="card"><div class="muted">Loading your application…</div></div></div>
+</div>
+
+<script>
+/*
+ * OperFi Client Document Center — testable logic on window.OFCP.
+ * Document checklist from the OperFi Client Setup Checklist; field link-names from
+ * OperFi_Client_Onboarding.ds. No Zoho SDK (public page); all data via the Flask backend.
+ */
+(function (global) {
+'use strict';
+
+// ── Config ───────────────────────────────────────────────────────────────────
+var API_BASE = global.OPERFI_PORTAL_API_BASE || 'https://operfi-broker-api.onrender.com';
+var STATUS_PATH = '/application-status';   // GET ?token= → curated application + documents
+var UPLOAD_PATH = '/application-upload';   // POST ?token= (multipart doc_type + file)
+var LOOKUP_PATH = '/application-lookup';   // POST {usdot,email} → { link } (recovery)
+
+// Client-facing stage labels; each maps to a real Application_Status value.
+var STEPS = ['Submitted', 'In Review', 'Underwriting', 'Approved', 'Signed'];
+var STAGE_INDEX = { 'New': 0, 'In Review': 1, 'Docs Requested': 2, 'Underwriting': 2, 'Approved': 3, 'Signed': 4, 'Declined': 3, 'Abandoned': 0 };
+
+// The OperFi Client Setup Checklist. `type` is the Creator Document_Type used to match uploads.
+// (5 of these types must be added to the Document_Type picklist in Creator — see README.)
+var BASE_DOCS = [
+  { key: 'factoring_agreement', label: 'OperFi Factoring Agreement', type: 'Signed Agreement' },
+  { key: 'noa',                 label: 'OperFi Notice of Assignment', type: 'NOA' },
+  { key: 'operating_authority', label: 'Operating Authority',         type: 'Operating Authority' },
+  { key: 'insurance',           label: 'Insurance Certificate',       type: 'Insurance Certificate' },
+  { key: 'voided_check',        label: 'Voided Check (printed company name)', type: 'Voided Check' },
+  { key: 'drivers_license',     label: "Driver's License (all owners)", type: 'Drivers License' },
+  { key: 'w9',                  label: 'W-9',                          type: 'W-9' }
+];
+
+// ── Pure logic (unit-tested) ───────────────────────────────────────────────────
+
+// Conditional document checklist for an application, per the setup checklist:
+//  • base 7 for everyone
+//  • Corporations / LLCs / Partnerships → Formation Documents
+//  • Sole Proprietors (DBAs)            → Utility Bill + Social Security Card
+//  • Veterans (discount tier)           → Proof of Service
+// (Intake captures Veteran but not "Law Enforcement" separately — that tier isn't auto-detected.)
+function requiredDocs(application) {
+  application = application || {};
+  var ft = String(application.Business_Formation_Type || application.formationType || '').toLowerCase();
+  var vet = String(application.Veteran_Status || application.veteran || '').toLowerCase();
+  var list = BASE_DOCS.slice();
+  if (/sole|proprietor|\bdba\b/.test(ft)) {
+    list.push({ key: 'utility_bill', label: 'Utility Bill (current address)', type: 'Utility Bill' });
+    list.push({ key: 'ssn_card',     label: 'Social Security Card',           type: 'Social Security Card' });
+  } else if (/llc|corp|partnership/.test(ft)) {
+    list.push({ key: 'formation', label: 'Formation Documents', type: 'Articles of Formation' });
+  }
+  if (vet === 'yes' || vet === 'true' || vet === 'veteran') {
+    list.push({ key: 'proof_of_service', label: 'Proof of Service', type: 'Proof of Service' });
+  }
+  return list;
+}
+
+function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
+function isUploadedStatus(s){ return /^(received|verified|approved|complete|on file)$/i.test(String(s || '').trim()); }
+function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'verified') return 3; if (isUploadedStatus(s)) return 2; if (s === 'rejected') return 1; return 0; }
+
+// Join the required checklist to the uploaded Document records → per-line status + any extras.
+function reconcileDocs(required, documents) {
+  required = required || [];
+  documents = documents || [];
+  var byType = {};
+  documents.forEach(function (d) {
+    var t = normType(d.Document_Type || d.type);
+    var st = d.Status || d.status || '';
+    var entry = { status: st, link: d.WorkDrive_Link || d.link || '', uploadedAt: d.Uploaded_At || d.uploadedAt || '' };
+    if (!byType[t] || statusRank(st) > statusRank(byType[t].status)) byType[t] = entry;
+  });
+  var checklist = required.map(function (item) {
+    var u = byType[normType(item.type)];
+    return {
+      key: item.key, label: item.label, type: item.type,
+      status: u ? (u.status || 'Received') : 'Needed',
+      uploaded: !!u && isUploadedStatus(u.status),
+      verified: !!u && /verified/i.test(String(u.status)),
+      rejected: !!u && /rejected/i.test(String(u.status)),
+      link: u ? u.link : '', uploadedAt: u ? u.uploadedAt : ''
+    };
+  });
+  var reqTypes = {};
+  required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
+  var extras = documents.filter(function (d) { return !reqTypes[normType(d.Document_Type || d.type)] && isUploadedStatus(d.Status || d.status); })
+    .map(function (d) { return { label: d.Document_Type || d.type || 'Document', status: d.Status || d.status || 'Received', link: d.WorkDrive_Link || d.link || '' }; });
+  return {
+    checklist: checklist, extras: extras,
+    pendingCount: checklist.filter(function (c) { return !c.uploaded; }).length,
+    uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
+    total: checklist.length
+  };
+}
+
+// Map an Application_Status onto the stepper.
+function deriveStage(application) {
+  var st = (application && (application.Application_Status || application.status)) || 'New';
+  var idx = STAGE_INDEX.hasOwnProperty(st) ? STAGE_INDEX[st] : 0;
+  return { status: st, index: idx, label: STEPS[idx] || st, terminal: st === 'Declined' || st === 'Abandoned' };
+}
+
+// Hero status pill ({cls,label}) for a status.
+function statusPill(status) {
+  switch (status) {
+    case 'Docs Requested': return { cls: 'need', label: 'Action needed' };
+    case 'In Review':      return { cls: 'need', label: 'In review' };
+    case 'Underwriting':   return { cls: 'need', label: 'Underwriting' };
+    case 'Approved':       return { cls: 'good', label: 'Approved' };
+    case 'Signed':         return { cls: 'good', label: 'Active' };
+    case 'Declined':       return { cls: 'bad',  label: 'Not approved' };
+    case 'Abandoned':      return { cls: '',     label: 'Inactive' };
+    default:               return { cls: 'need', label: status || 'Received' };
+  }
+}
+
+// Plain-language "what's next" guidance for the prospect.
+function nextStep(stage, pendingCount) {
+  if (!stage) return '';
+  if (stage.terminal) {
+    return stage.status === 'Declined'
+      ? 'This application was not approved at this time. Your OperFi rep can walk you through your options.'
+      : 'This application is inactive. Contact your OperFi rep if you’d like to pick it back up.';
+  }
+  if (pendingCount > 0) {
+    return 'Upload the ' + pendingCount + ' remaining document' + (pendingCount === 1 ? '' : 's') + ' below so we can keep your setup moving.';
+  }
+  switch (stage.status) {
+    case 'Approved': return 'You’re approved! Watch for your factoring agreement to sign — nothing else needed right now.';
+    case 'Signed':   return 'You’re all set — your account is active. Welcome to OperFi!';
+    case 'Underwriting': return 'We have your documents and are completing underwriting. No action needed right now.';
+    default: return 'Thanks — we have everything we need for now. We’ll reach out if anything else comes up.';
+  }
+}
+
+var OFCP = {
+  requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, deriveStage: deriveStage,
+  statusPill: statusPill, nextStep: nextStep, isUploadedStatus: isUploadedStatus,
+  STEPS: STEPS, BASE_DOCS: BASE_DOCS
+};
+global.OFCP = OFCP;
+
+// ── Demo data (?demo=1) ─────────────────────────────────────────────────────────
+var DEMO_STATUS = {
+  businessName: 'Brennan Eslinger Trucking LLC', status: 'Docs Requested', submittedAt: 'Jun 8, 2026',
+  authorityType: 'Carrier', formationType: 'LLC', veteran: 'No',
+  documents: [
+    { type: 'Signed Agreement', status: 'Verified', uploadedAt: 'Jun 8' },
+    { type: 'NOA', status: 'Received', uploadedAt: 'Jun 8' },
+    { type: 'Voided Check', status: 'Received', uploadedAt: 'Jun 8' },
+    { type: 'Drivers License', status: 'Verified', uploadedAt: 'Jun 8' }
+  ],
+  rep: { name: 'Jordan Park', email: 'jordan@operfi.com', phone: '(602) 555-0142' }
+};
+
+// ── DOM (browser only) ───────────────────────────────────────────────────────────
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function (c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+function param(name){ try { return new URL(global.location.href).searchParams.get(name) || ''; } catch (e) { return ''; } }
+function getToken(){ return param('token'); }
+function setBanner(kind, html){ var b = el('banner'); if (!b) return; if (!kind) { b.className = 'banner'; b.innerHTML = ''; return; } b.className = 'banner show ' + kind; b.innerHTML = html; }
+
+var STATE = { mode: 'live', token: '', data: null };
+
+function loadStatus(token) {
+  if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
+  fetch(API_BASE + STATUS_PATH + '?token=' + encodeURIComponent(token))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (d && !d.error && (d.businessName || d.status)) { STATE.data = d; renderStatus(d, false); }
+      else renderRecovery('This link is invalid or has expired. Find your application below.');
+    })
+    .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
+}
+
+function renderStatus(data, isDemo) {
+  STATE.data = data;
+  var stage = deriveStage(data);
+  var req = requiredDocs(data);
+  var rec = reconcileDocs(req, data.documents);
+  var pill = statusPill(stage.status);
+  var guidance = nextStep(stage, rec.pendingCount);
+
+  if (isDemo) setBanner('demo', '<b>PREVIEW.</b> Sample application — open with a real ?token= link to load a live application.');
+  else setBanner();
+
+  var stepsHtml = STEPS.map(function (label, idx) {
+    var cls = idx < stage.index ? 'done' : (idx === stage.index ? 'current' : '');
+    var node = idx < stage.index ? '✓' : (idx + 1);
+    return '<div class="step ' + cls + '"><div class="node">' + node + '</div><div class="slabel">' + esc(label) + '</div></div>';
+  }).join('');
+
+  var rows = rec.checklist.map(function (c) {
+    var left = '<div class="doc-main"><span class="doc-mark ' + (c.uploaded ? 'ok' : 'needed') + '">' + (c.uploaded ? '✓' : '○') + '</span>' +
+      '<div><div class="doc-label">' + esc(c.label) + '</div><div class="doc-sub">' +
+      (c.uploaded ? (esc(c.verified ? 'Verified' : 'Received') + (c.uploadedAt ? ' · ' + esc(c.uploadedAt) : ''))
+                  : (c.rejected ? 'Rejected — please re-upload' : 'Needed')) + '</div></div></div>';
+    var right;
+    if (c.uploaded) {
+      right = '<div class="doc-action">' + (c.verified ? '<span class="pill g">Verified</span>' : '<span class="pill a">Received</span>') +
+        (c.link ? ' <a class="viewlink" href="' + esc(c.link) + '" target="_blank" rel="noopener">View</a>' : '') + '</div>';
+    } else {
+      right = '<div class="doc-action"><input type="file" class="doc-file" id="f-' + esc(c.key) + '" accept="application/pdf,image/*">' +
+        '<button class="btn orange sm js-up" data-key="' + esc(c.key) + '" data-type="' + esc(c.type) + '">Upload</button></div>';
+    }
+    return '<div class="doc-row">' + left + right + '</div>';
+  }).join('');
+
+  var extrasHtml = rec.extras.length
+    ? '<div class="doc-row" style="border-top:1px dashed var(--of-beige-line)"></div>' + rec.extras.map(function (e) {
+        return '<div class="doc-row"><div class="doc-main"><span class="doc-mark ok">✓</span><div><div class="doc-label">' + esc(e.label) +
+          '</div><div class="doc-sub">' + esc(e.status) + ' · additional</div></div></div>' +
+          '<div class="doc-action">' + (e.link ? '<a class="viewlink" href="' + esc(e.link) + '" target="_blank" rel="noopener">View</a>' : '') + '</div></div>';
+      }).join('')
+    : '';
+
+  var rep = data.rep || {};
+  var repHtml = (rep.name || rep.email || rep.phone)
+    ? '<div class="rep">Your OperFi contact: <b>' + esc(rep.name || 'OperFi') + '</b><br>' +
+      (rep.phone ? esc(rep.phone) + '<br>' : '') +
+      (rep.email ? '<a href="mailto:' + esc(rep.email) + '">' + esc(rep.email) + '</a>' : '') + '</div>'
+    : '<div class="muted">Questions? Reply to your OperFi onboarding email and we’ll help.</div>';
+
+  el('content').innerHTML =
+    '<div class="hero"><div><div class="hero-eyebrow">' + esc(data.authorityType || 'Your application') + '</div>' +
+      '<div class="hero-name">' + esc(data.businessName || 'Your Application') + '</div>' +
+      '<div class="hero-meta">' + (data.submittedAt ? 'Submitted ' + esc(data.submittedAt) : 'Application received') + '</div></div>' +
+      '<div><span class="decision-state-pill ' + pill.cls + '">' + esc(pill.label) + '</span></div></div>' +
+
+    '<div class="card"><div class="card-title">Where it stands</div><div class="stepper">' + stepsHtml + '</div></div>' +
+
+    (guidance ? '<div class="card" style="padding:0;border:none;background:none;margin-bottom:14px">' +
+      '<div class="next ' + (rec.pendingCount === 0 && !stage.terminal ? 'good' : '') + '"><span class="ic">' +
+      (rec.pendingCount > 0 ? '📋' : (stage.terminal ? 'ℹ️' : '✓')) + '</span><div>' + esc(guidance) + '</div></div></div>' : '') +
+
+    '<div class="card"><div class="card-title">Your documents <span class="count" id="docCount">' + rec.uploadedCount + ' of ' + rec.total + ' received</span></div>' +
+      '<div class="summ">Upload each document below. PDF or photo is fine. You can come back to this page anytime to add the rest.</div>' +
+      '<div id="docList">' + rows + extrasHtml + '</div>' +
+      '<div class="toast" id="upToast"></div></div>' +
+
+    '<div class="card"><div class="card-title">Need a hand?</div>' + repHtml + '</div>';
+
+  Array.prototype.forEach.call(el('docList').querySelectorAll('.js-up'), function (b) {
+    b.addEventListener('click', function () {
+      var input = el('f-' + b.getAttribute('data-key'));
+      if (!input || !input.files || !input.files.length) { input && input.click(); return; }
+      uploadDoc(b.getAttribute('data-type'), input.files[0], b);
+    });
+  });
+}
+
+function upToast(kind, msg){ var t = el('upToast'); if (t) { t.className = 'toast ' + kind; t.textContent = msg; } }
+
+function uploadDoc(docType, file, btn) {
+  if (!file) { upToast('err', 'Choose a file first.'); return Promise.resolve(); }
+  if (STATE.mode === 'demo' || typeof fetch !== 'function') {
+    upToast('ok', 'Uploaded ' + docType + ' (preview).');
+    STATE.data.documents = (STATE.data.documents || []).concat([{ type: docType, status: 'Received', uploadedAt: 'just now' }]);
+    renderStatus(STATE.data, true); return Promise.resolve();
+  }
+  if (btn) btn.disabled = true;
+  upToast('', 'Uploading ' + docType + '…');
+  var fd = new FormData();
+  fd.append('doc_type', docType);
+  fd.append('file', file);
+  return fetch(API_BASE + UPLOAD_PATH + '?token=' + encodeURIComponent(STATE.token), { method: 'POST', body: fd })
+    .then(function (r) { return r.json().catch(function () { return {}; }); })
+    .then(function (p) {
+      if (p && p.ok) { upToast('ok', '✓ ' + docType + ' uploaded.'); loadStatus(STATE.token); }
+      else { if (btn) btn.disabled = false; upToast('err', (p && p.error) || 'Upload failed — please try again.'); }
+    })
+    .catch(function () { if (btn) btn.disabled = false; upToast('err', 'Network error — please try again.'); });
+}
+
+function renderRecovery(msg) {
+  if (msg) setBanner('warn', esc(msg));
+  el('content').innerHTML =
+    '<div class="card"><div class="card-title">Find your application</div>' +
+    '<div class="summ">Enter your USDOT number and the email you applied with to open your document center.</div>' +
+    '<div class="field"><label>USDOT</label><input id="recUsdot" inputmode="numeric" placeholder="e.g. 4366362"></div>' +
+    '<div class="field"><label>Email</label><input id="recEmail" type="email" placeholder="The email you applied with"></div>' +
+    '<button class="btn orange" id="recBtn">Find my application</button>' +
+    '<div class="toast" id="recToast"></div></div>';
+  var btn = el('recBtn');
+  if (btn) btn.addEventListener('click', recover);
+}
+
+function recover() {
+  var usdot = (el('recUsdot') && el('recUsdot').value || '').replace(/\D/g, '');
+  var email = (el('recEmail') && el('recEmail').value || '').trim();
+  var t = el('recToast');
+  function rt(kind, m){ if (t) { t.className = 'toast ' + kind; t.textContent = m; } }
+  if (!usdot || !email) { rt('err', 'Enter both your USDOT and email.'); return; }
+  if (typeof fetch !== 'function') { rt('err', 'Unavailable in this browser.'); return; }
+  var btn = el('recBtn'); if (btn) btn.disabled = true;
+  rt('', 'Looking up your application…');
+  fetch(API_BASE + LOOKUP_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usdot: usdot, email: email }) })
+    .then(function (r) { return r.json().catch(function () { return {}; }); })
+    .then(function (p) {
+      if (p && p.link) { rt('ok', 'Found it — opening your document center…'); global.location.href = p.link; }
+      else { if (btn) btn.disabled = false; rt('err', (p && p.error) || 'We couldn’t match that USDOT and email. Double-check both, or contact your OperFi rep.'); }
+    })
+    .catch(function () { if (btn) btn.disabled = false; rt('err', 'Lookup failed — please try again shortly.'); });
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
+function boot() {
+  if (param('demo') === '1') { STATE.mode = 'demo'; renderStatus(DEMO_STATUS, true); return; }
+  var token = getToken();
+  STATE.token = token;
+  if (!token) { renderRecovery(); return; }
+  loadStatus(token);
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  if (document.readyState === 'loading') window.addEventListener('load', boot); else boot();
+}
+
+// expose for tests
+global.OFCP = OFCP;
+global._OFCP_dom = { getToken: getToken, renderStatus: renderStatus, renderRecovery: renderRecovery, boot: boot, DEMO_STATUS: DEMO_STATUS };
+
+})(typeof window !== 'undefined' ? window : this);
+</script>
+</body>
+</html>

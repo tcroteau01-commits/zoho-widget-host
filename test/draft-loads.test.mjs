@@ -106,6 +106,13 @@ test('renderQueue: one row per draft + chip classes', () => {
   assert.ok(window.document.querySelector('.stat.attn'));
 });
 
+test('reasonText: customer_not_approved maps to a readable label', () => {
+  const { window } = makeWidget();
+  assert.equal(window.reasonText('customer_not_approved'), 'customer not credit-approved');
+  // unknown codes still fall back to spaced words
+  assert.equal(window.reasonText('some_new_code'), 'some new code');
+});
+
 test('renderQueue: margin = customer_rate - carrier_rate', () => {
   const { window } = makeWidget();
   window.renderQueue(DRAFTS);

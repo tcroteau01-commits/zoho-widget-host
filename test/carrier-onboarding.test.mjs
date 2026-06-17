@@ -168,3 +168,105 @@ test('history table has an Actions column header', async () => {
   const heads = Array.from(w2.document.querySelectorAll('.history-table thead th')).map(th => th.textContent.trim());
   assert.ok(heads.includes('Actions'), 'Actions column present');
 });
+
+// ── OB3.1: search-first send flow ─────────────────────────────────────────────
+function makeLookupWidget(carrier) {
+  // carrier: object returned as lookupResult.carrier (null = not found)
+  const posts = [];
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously',
+    pretendToBeVisual: true,
+    url: 'https://tcroteau01-commits.github.io/carrier-onboarding.html',
+    beforeParse(window) {
+      window.ZOHO = { CREATOR: {
+        UTIL: { getInitParams: () => Promise.resolve({ loginUser: 'broker@test.com' }) },
+        init: () => Promise.resolve() } };
+      window.fetch = (url, init) => {
+        const u = String(url);
+        if (u.includes('/carrier-lookup')) {
+          return Promise.resolve({ ok: true,
+            text: () => Promise.resolve(''),
+            json: () => Promise.resolve({ carrier: carrier, existing_vendor: null }) });
+        }
+        if (u.includes('/broker-users')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ self_contact_id: 'c1' }) });
+        }
+        if (u.includes('/broker-send-onboarding-link')) {
+          posts.push({ url: u, body: JSON.parse((init && init.body) || '{}') });
+          return Promise.resolve({ ok: true, status: 200,
+            text: () => Promise.resolve(JSON.stringify({ ok: true, id: 'n1' })),
+            json: () => Promise.resolve({ ok: true, id: 'n1' }) });
+        }
+        if (u.includes('/broker-report')) {
+          return Promise.resolve({ ok: true, text: () => Promise.resolve(''),
+            json: () => Promise.resolve({ records: [] }) });
+        }
+        return Promise.resolve({ ok: true, text: () => Promise.resolve('{}'),
+          json: () => Promise.resolve({}) });
+      };
+      window._posts = posts;
+    }
+  });
+  return dom;
+}
+
+async function runLookup(w) {
+  w.document.getElementById('lookup-input').value = '92261';
+  w.document.getElementById('lookup-btn').click();
+  // Wait for the final result (not the transient loading state which also has .result-info)
+  await waitFor(w, '#lookup-result .result-name', 500);
+  // Let any remaining microtasks (fetch .then chains) settle
+  await new Promise(r => setTimeout(r, 20));
+}
+
+test('clicking a send card before any lookup does NOT open the modal', async () => {
+  const dom = makeLookupWidget({ dot_number: '92261', carrier_name: 'A&M', email_address: 'fmcsa@carrier.com' });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  w.document.querySelector('[data-open-modal="full"]').click();
+  assert.ok(!w.document.getElementById('modal-scrim').classList.contains('show'),
+    'modal must not open without a prior lookup');
+});
+
+test('after lookup with FMCSA email, Send To is prefilled + locked and DOT is shown', async () => {
+  const dom = makeLookupWidget({ dot_number: '92261', carrier_name: 'A&M', email_address: 'fmcsa@carrier.com' });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="full"]').click();
+  assert.ok(w.document.getElementById('modal-scrim').classList.contains('show'), 'modal opens after lookup');
+  const sendTo = w.document.getElementById('m-send-to');
+  assert.strictEqual(sendTo.value, 'fmcsa@carrier.com');
+  assert.strictEqual(sendTo.readOnly, true, 'FMCSA email locked');
+  assert.ok(sendTo.classList.contains('locked'));
+  assert.strictEqual(w.document.getElementById('m-carrier-dot').value, '92261');
+});
+
+test('after lookup with NO FMCSA email, Send To is editable but DOT still shown', async () => {
+  const dom = makeLookupWidget({ dot_number: '92261', carrier_name: 'A&M', email_address: '' });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="full"]').click();
+  const sendTo = w.document.getElementById('m-send-to');
+  assert.strictEqual(sendTo.readOnly, false, 'Send To editable when no FMCSA email');
+  assert.strictEqual(w.document.getElementById('m-carrier-dot').value, '92261');
+});
+
+test('send posts the locked FMCSA email and DOT', async () => {
+  const dom = makeLookupWidget({ dot_number: '92261', carrier_name: 'A&M', email_address: 'fmcsa@carrier.com' });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="full"]').click();
+  w.document.getElementById('modal-submit').click();
+  await new Promise(r => setTimeout(r, 30));
+  const posts = w._posts.filter(p => p.url.includes('/broker-send-onboarding-link'));
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].body.send_to, 'fmcsa@carrier.com');
+  assert.equal(String(posts[0].body.carrier_dot), '92261');
+});

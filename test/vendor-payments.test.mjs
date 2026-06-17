@@ -255,3 +255,68 @@ test('detail pane renders broker term and factoring company from row data', asyn
   assert.match(text, /Quick Pay/, 'detail panel must show the broker pmt term "Quick Pay"');
   assert.match(text, /RTS Financial/, 'detail panel must show the factoring company "RTS Financial"');
 });
+
+test('Open AP table has a Factor column header', () => {
+  assert.match(HTML, /<th>Factor<\/th>/);
+});
+
+test('factorLabel renders Direct/dash logic', () => {
+  assert.match(HTML, /function factorLabel/);
+  assert.match(HTML, /_av_resolved/);
+});
+
+test('search widened to load/invoice/PO (not just vendor/USDOT)', () => {
+  assert.match(HTML, /\['Load #'\]|\["Load #"\]/);
+  assert.match(HTML, /\['PO #'\]|\["PO #"\]/);
+});
+
+test('factor dropdown elements exist', () => {
+  assert.match(HTML, /id="open-factor"/);
+  assert.match(HTML, /id="hist-factor"/);
+});
+
+// ── Task 6: see-all Client column + client filter + history presets ────────────
+
+test('history presets are This Week / This Month / Last Month / Specific Date', () => {
+  assert.match(HTML, /value="week"/);
+  assert.match(HTML, />This Week</);
+  assert.match(HTML, />Specific Date</);
+  assert.doesNotMatch(HTML, /Last 90 Days/);
+});
+
+test('see-all helpers and Client cell exist', () => {
+  assert.match(HTML, /function clientSelect/);
+  assert.match(HTML, /function matchesClient/);
+  assert.match(HTML, /state\.seeAll/);
+  assert.match(HTML, /data-label="Client"/);
+});
+
+test('open fetch stores seeAll from response', () => {
+  assert.match(HTML, /state\.seeAll = !!\s*data\.seeAll|state\.seeAll = data\.seeAll/);
+});
+
+test('history dropdown defaults to This Month to match the loaded range', () => {
+  assert.match(HTML, /getElementById\('hist-preset'\)\.value = 'this'/);
+});
+
+test('renders Client column when response is seeAll', async () => {
+  const dom = makeWidget({});
+  const win = dom.window;
+  win.fetch = (url) => {
+    if (String(url).indexOf('/vendor-payments/open') !== -1) {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+        seeAll: true, accountName: 'All clients',
+        totals: { openLoads: 1, totalOwed: 1000, carrierCount: 1 },
+        rows: [{ _id: 'x', 'Load #': '10949', 'Client': 'Good Manners', 'Vendor Name': 'EFFECTUAL',
+                 'USDOT': '4200178', 'Vendor Amount': 1000, 'Factoring Company': 'RTS Financial',
+                 'Payment Status': 'Pending', 'Broker Pmt Terms': 'Factoring', '_av_resolved': true }] }) });
+    }
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+  };
+  win.dispatchEvent(new win.Event('load'));
+  await waitFor(() => win.document.querySelector('#open-table-wrap tbody tr[data-id]'));
+  const html = win.document.getElementById('panel-open').innerHTML;
+  assert.match(html, /<th>Client<\/th>/);
+  assert.match(html, /Good Manners/);
+  assert.match(html, /RTS Financial/);
+});

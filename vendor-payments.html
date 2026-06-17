@@ -216,6 +216,7 @@
         return r.json();
       })
       .then(function (data) {
+        state.seeAll = !!data.seeAll;
         state.accountName = data.accountName || '';
         if (state.accountName) {
           document.getElementById('acctName').textContent = state.accountName;
@@ -234,7 +235,9 @@
     state.openTotals = totals;
     var html = '' +
       '<div class="toolbar">' +
-        '<input class="search" id="open-search" placeholder="Search vendor..." />' +
+        '<input class="search" id="open-search" placeholder="Search vendor, load, USDOT…" />' +
+        (state.seeAll ? clientSelect('open-client', rows) : '') +
+        factorSelect('open-factor', rows) +
         '<button class="btn-pdf" id="open-pdf">Export PDF</button>' +
       '</div>' +
       '<div class="kpis">' +
@@ -245,17 +248,18 @@
       '<div id="open-table-wrap"></div>';
     document.getElementById('panel-open').innerHTML = html;
     document.getElementById('open-search').addEventListener('input', renderOpenTable);
+    document.getElementById("open-factor").addEventListener('change', renderOpenTable);
+    if (state.seeAll) document.getElementById('open-client').addEventListener('change', renderOpenTable);
     document.getElementById('open-pdf').addEventListener('click', function () { exportPdf('open'); });
     renderOpenTable();
   }
 
   function renderOpenTable() {
     var q = (document.getElementById('open-search').value || '').toLowerCase();
+    var fsel = (document.getElementById('open-factor') || {}).value || '__all';
+    var csel = (document.getElementById('open-client') || {}).value || '__all';
     var filtered = (state.openRows || []).filter(function (r) {
-      if (!q) return true;
-      var name = (r['Vendor Name'] || '').toLowerCase();
-      var usdot = (r['USDOT'] || '').toLowerCase();
-      return name.indexOf(q) !== -1 || usdot.indexOf(q) !== -1;
+      return matchesSearch(r, q) && matchesFactor(r, fsel) && matchesClient(r, csel);
     });
     var today = new Date();
     var rowsHtml = filtered.map(function (r) {
@@ -263,15 +267,15 @@
         '<span class="pending-vendor">' + escapeHtml(r['USDOT'] || '') + ' <em>(pending)</em></span>';
       var buy = r['Date of Buy Date'] || r['Purchase Date'] || '';
       var age = '';
-      if (buy) {
-        try { age = Math.floor((today - new Date(buy)) / (1000*60*60*24)); } catch (e) {}
-      }
+      if (buy) { try { age = Math.floor((today - new Date(buy)) / (1000*60*60*24)); } catch (e) {} }
       var statusClass = (r['Payment Status'] === 'Paid') ? 'paid' : 'pending';
       return '' +
         '<tr data-id="' + escapeHtml(r['_id'] || '') + '">' +
+        (state.seeAll ? '<td data-label="Client">' + escapeHtml(r['Client'] || '') + '</td>' : '') +
         '<td data-label="Load #">' + escapeHtml(r['Load #'] || '') + '</td>' +
         '<td data-label="Debtor">' + escapeHtml(r['Debtor'] || '') + '</td>' +
         '<td data-label="Vendor">' + vendor + '</td>' +
+        '<td data-label="Factor">' + factorLabel(r) + '</td>' +
         '<td class="num" data-label="Amount">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
         '<td data-label="Due">' + escapeHtml(r['Vendor Due'] || '') + '</td>' +
         '<td class="num" data-label="AP Age">' + age + '</td>' +
@@ -279,10 +283,12 @@
         '<td data-label="Status"><span class="pill ' + statusClass + '">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
         '</tr>';
     }).join('');
+    var clientTh = state.seeAll ? '<th>Client</th>' : '';
+    var colCount = state.seeAll ? 10 : 9;
     var table = '' +
       '<table class="vp-table">' +
-        '<thead><tr><th>Load #</th><th>Debtor</th><th>Vendor</th><th class="num">Amount</th><th>Due</th><th class="num">AP Age</th><th>Terms</th><th>Status</th></tr></thead>' +
-        '<tbody>' + (rowsHtml || '<tr><td colspan="8" class="empty-row">No open vendor payments.</td></tr>') + '</tbody>' +
+        '<thead><tr>' + clientTh + '<th>Load #</th><th>Debtor</th><th>Vendor</th><th>Factor</th><th class="num">Amount</th><th>Due</th><th class="num">AP Age</th><th>Terms</th><th>Status</th></tr></thead>' +
+        '<tbody>' + (rowsHtml || '<tr><td colspan="' + colCount + '" class="empty-row">No open vendor payments.</td></tr>') + '</tbody>' +
       '</table>';
     document.getElementById('open-table-wrap').innerHTML = table;
     document.querySelectorAll('#open-table-wrap tbody tr[data-id]').forEach(function (tr) {
@@ -292,6 +298,56 @@
 
   function kpiCard(label, value) {
     return '<div class="kpi-card"><div class="kpi-label">' + label + '</div><div class="kpi-value">' + escapeHtml(String(value)) + '</div></div>';
+  }
+  function factorLabel(r) {
+    var f = r['Factoring Company'] || '';
+    if (f) return escapeHtml(f);
+    return r['_av_resolved'] ? 'Direct' : '—';
+  }
+  function distinctFactors(rows) {
+    var set = {};
+    (rows || []).forEach(function (r) {
+      var f = r['Factoring Company'] || (r['_av_resolved'] ? 'Direct' : '');
+      if (f) set[f] = true;
+    });
+    return Object.keys(set).sort();
+  }
+  function matchesSearch(r, q) {
+    if (!q) return true;
+    var hay = [r['Vendor Name'], r['USDOT'], r['Load #'], r['Invoice #'],
+               r['Vendor Invoice #'], r['PO #']].map(function (x) {
+      return String(x || '').toLowerCase();
+    });
+    return hay.some(function (s) { return s.indexOf(q) !== -1; });
+  }
+  function matchesFactor(r, sel) {
+    if (!sel || sel === '__all') return true;
+    var f = r['Factoring Company'] || (r['_av_resolved'] ? 'Direct' : '');
+    return f === sel;
+  }
+  function distinctClients(rows) {
+    var set = {};
+    (rows || []).forEach(function (r) { if (r['Client']) set[r['Client']] = true; });
+    return Object.keys(set).sort();
+  }
+  function clientSelect(id, rows) {
+    var opts = ['<option value="__all">All clients</option>'].concat(
+      distinctClients(rows).map(function (c) {
+        return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
+      })).join('');
+    return '<select class="search" id="' + id + '">' + opts + '</select>';
+  }
+  function matchesClient(r, sel) {
+    if (!sel || sel === '__all') return true;
+    return (r['Client'] || '') === sel;
+  }
+  // id="open-factor" and id="hist-factor" are injected by factorSelect below
+  function factorSelect(id, rows) {
+    var opts = ['<option value="__all">All factors</option>'].concat(
+      distinctFactors(rows).map(function (f) {
+        return '<option value="' + escapeHtml(f) + '">' + escapeHtml(f) + '</option>';
+      })).join('');
+    return '<select class="search" id="' + id + '">' + opts + '</select>';
   }
   function fmtMoney(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
@@ -415,24 +471,29 @@
     var html = '' +
       '<div class="toolbar">' +
         '<select id="hist-preset">' +
+          '<option value="week">This Week</option>' +
           '<option value="this">This Month</option>' +
           '<option value="last">Last Month</option>' +
-          '<option value="90">Last 90 Days</option>' +
-          '<option value="custom">Custom</option>' +
+          '<option value="custom">Specific Date</option>' +
         '</select>' +
         '<input type="date" id="hist-from" value="' + d.from + '" />' +
         '<input type="date" id="hist-to" value="' + d.to + '" />' +
-        '<input class="search" id="hist-search" placeholder="Search vendor..." />' +
+        '<input class="search" id="hist-search" placeholder="Search vendor, load, USDOT…" />' +
+        (state.seeAll ? clientSelect('hist-client', state.historyRows) : '') +
+        factorSelect('hist-factor', state.historyRows) +
         '<button class="btn-pdf" id="hist-pdf">Export PDF</button>' +
       '</div>' +
       '<div class="kpis" id="hist-kpis"></div>' +
       '<div id="hist-table-wrap"><div class="loading">Loading...</div></div>';
     document.getElementById('panel-history').innerHTML = html;
+    document.getElementById('hist-preset').value = 'this';
 
     document.getElementById('hist-preset').addEventListener('change', onHistPreset);
     document.getElementById('hist-from').addEventListener('change', onHistDateChange);
     document.getElementById('hist-to').addEventListener('change', onHistDateChange);
     document.getElementById('hist-search').addEventListener('input', renderHistoryTable);
+    document.getElementById('hist-factor').addEventListener('change', renderHistoryTable);
+    if (state.seeAll) document.getElementById('hist-client').addEventListener('change', renderHistoryTable);
     document.getElementById('hist-pdf').addEventListener('click', function () { exportPdf('history'); });
   }
 
@@ -440,13 +501,16 @@
     var v = document.getElementById('hist-preset').value;
     var now = new Date(), y = now.getFullYear(), mo = now.getMonth();
     function iso(d) { return d.toISOString().slice(0,10); }
-    if (v === 'this') state.historyDates = defaultThisMonth();
-    else if (v === 'last') {
+    if (v === 'week') {
+      var day = now.getDay();                 // 0=Sun
+      var monday = new Date(now); monday.setDate(now.getDate() - ((day + 6) % 7));
+      var sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      state.historyDates = { from: iso(monday), to: iso(sunday) };
+    } else if (v === 'this') {
+      state.historyDates = defaultThisMonth();
+    } else if (v === 'last') {
       var first = new Date(y, mo - 1, 1), last = new Date(y, mo, 0);
       state.historyDates = { from: iso(first), to: iso(last) };
-    } else if (v === '90') {
-      var to = new Date(), from = new Date(); from.setDate(from.getDate() - 90);
-      state.historyDates = { from: iso(from), to: iso(to) };
     }
     if (v !== 'custom') {
       document.getElementById('hist-from').value = state.historyDates.from;
@@ -480,6 +544,7 @@
     fetch(url)
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (data) {
+        state.seeAll = !!data.seeAll;
         state.historyRows = data.rows || [];
         renderHistoryKpis(data.totals || {});
         renderHistoryTable();
@@ -499,30 +564,33 @@
 
   function renderHistoryTable() {
     var q = (document.getElementById('hist-search').value || '').toLowerCase();
+    var fsel = (document.getElementById('hist-factor') || {}).value || '__all';
+    var csel = (document.getElementById('hist-client') || {}).value || '__all';
     var filtered = (state.historyRows || []).filter(function (r) {
-      if (!q) return true;
-      var name = (r['Vendor Name'] || '').toLowerCase();
-      var usdot = (r['USDOT'] || '').toLowerCase();
-      return name.indexOf(q) !== -1 || usdot.indexOf(q) !== -1;
+      return matchesSearch(r, q) && matchesFactor(r, fsel) && matchesClient(r, csel);
     });
     var rowsHtml = filtered.map(function (r) {
       var vendor = r['Vendor Name'] ? escapeHtml(r['Vendor Name']) :
         '<span class="pending-vendor">' + escapeHtml(r['USDOT'] || '') + ' <em>(pending)</em></span>';
       return '' +
         '<tr data-id="' + escapeHtml(r['_id'] || '') + '">' +
+        (state.seeAll ? '<td data-label="Client">' + escapeHtml(r['Client'] || '') + '</td>' : '') +
         '<td data-label="Load #">' + escapeHtml(r['Load #'] || '') + '</td>' +
         '<td data-label="Debtor">' + escapeHtml(r['Debtor'] || '') + '</td>' +
         '<td data-label="Vendor">' + vendor + '</td>' +
+        '<td data-label="Factor">' + factorLabel(r) + '</td>' +
         '<td class="num" data-label="Amount">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
         '<td data-label="Paid Date">' + escapeHtml(r['Paid Date'] || '') + '</td>' +
         '<td data-label="Terms">' + escapeHtml(r['Broker Pmt Terms'] || r['Vendor Pmt Terms'] || '-') + '</td>' +
         '<td data-label="Status"><span class="pill paid">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
         '</tr>';
     }).join('');
+    var clientTh = state.seeAll ? '<th>Client</th>' : '';
+    var colCount = state.seeAll ? 9 : 8;
     var table = '' +
       '<table class="vp-table">' +
-        '<thead><tr><th>Load #</th><th>Debtor</th><th>Vendor</th><th class="num">Amount</th><th>Paid Date</th><th>Terms</th><th>Status</th></tr></thead>' +
-        '<tbody>' + (rowsHtml || '<tr><td colspan="7" class="empty-row">No payments in this period.</td></tr>') + '</tbody>' +
+        '<thead><tr>' + clientTh + '<th>Load #</th><th>Debtor</th><th>Vendor</th><th>Factor</th><th class="num">Amount</th><th>Paid Date</th><th>Terms</th><th>Status</th></tr></thead>' +
+        '<tbody>' + (rowsHtml || '<tr><td colspan="' + colCount + '" class="empty-row">No payments in this period.</td></tr>') + '</tbody>' +
       '</table>';
     document.getElementById('hist-table-wrap').innerHTML = table;
     document.querySelectorAll('#hist-table-wrap tbody tr[data-id]').forEach(function (tr) {

@@ -209,3 +209,49 @@ test('open table falls back to the vendor term when broker term is empty', async
   const cell = w.document.querySelector('#open-table-wrap td[data-label="Terms"]');
   assert.strictEqual(cell.textContent.trim(), 'Standard Net 30');
 });
+
+// ── Task 5: detail pane broker term + factoring company ───────────────────────
+
+test('detail pane disclaimer "will be added in a future enhancement" is absent', () => {
+  // Regression guard — the detail pane Terms & Routing section already renders
+  // real values; the old placeholder text must never return.
+  assert.doesNotMatch(HTML, /will be added in a future enhancement/i);
+});
+
+test('detail pane renders broker term and factoring company from row data', async () => {
+  const row = Object.assign({}, MOCK_ROW, {
+    'Broker Pmt Terms': 'Quick Pay',
+    'Factoring Company': 'RTS Financial'
+  });
+  const dom = makeWidget();
+  const w = dom.window;
+  // Serve the row with populated broker term + factoring company.
+  w.fetch = (url) => {
+    if (String(url).includes('/vendor-payments/open')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          accountName: 'Test Co',
+          rows: [row],
+          totals: { openLoads: 1, totalOwed: 850, carrierCount: 1 }
+        })
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+
+  // Wait for the table to render with at least one clickable row.
+  await waitFor(() => w.document.querySelector('#open-table-wrap tbody tr[data-id]'));
+
+  // Click the row — this calls openDetail() inside the IIFE, which appends
+  // #detail-panel to document.body.
+  w.document.querySelector('#open-table-wrap tbody tr[data-id]').click();
+
+  const panel = w.document.getElementById('detail-panel');
+  assert.ok(panel, '#detail-panel must exist after clicking a row');
+
+  const text = panel.textContent;
+  assert.match(text, /Quick Pay/, 'detail panel must show the broker pmt term "Quick Pay"');
+  assert.match(text, /RTS Financial/, 'detail panel must show the factoring company "RTS Financial"');
+});

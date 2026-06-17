@@ -64,6 +64,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 }
 .input::placeholder { color: #b8b8b8; }
 .input.invalid { border-color: #c62828; }
+.input.locked { background: #f1f0ea; color: #555; cursor: not-allowed; }
 
 .btn {
   padding: 10px 18px; border-radius: 8px;
@@ -435,7 +436,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Certificate of Insurance verification</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Vendor payment setup (Quick Pay / Factoring)</li>
       </ul>
-      <button class="btn primary" data-open-modal="full">Send Onboarding Link</button>
+      <button class="btn primary" data-open-modal="full" disabled>Send Onboarding Link</button>
     </div>
 
     <div class="send-card">
@@ -458,7 +459,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Remittance details</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>NOA verification (if factored)</li>
       </ul>
-      <button class="btn ghost" data-open-modal="pay">Send Pay Link</button>
+      <button class="btn ghost" data-open-modal="pay" disabled>Send Pay Link</button>
     </div>
 
   </div>
@@ -518,6 +519,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <label class="label">Carrier Name <span class="req">*</span></label>
         <input class="input" id="m-carrier-name" type="text" placeholder="ABC Trucking LLC" />
         <div class="field-err" data-err-for="m-carrier-name">Carrier name is required.</div>
+      </div>
+
+      <div class="field">
+        <label class="label">Carrier DOT</label>
+        <input class="input locked" id="m-carrier-dot" type="text" readonly placeholder="—" />
       </div>
 
       <div class="field">
@@ -720,6 +726,7 @@ function runLookup() {
   }).then(function(payload) {
     btn.disabled = false;
     lookupResult = payload;
+    document.querySelectorAll('.send-card [data-open-modal]').forEach(function(b) { b.disabled = false; });
     renderLookupResult(payload, label);
   }).catch(function(err) {
     btn.disabled = false;
@@ -1036,6 +1043,11 @@ function contactDisplay(c) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 function openModal(type) {
+  if (!lookupResult) {
+    showLookupError('Search a carrier first',
+      'Look up the carrier by DOT or MC above before sending a link.');
+    return;
+  }
   currentModalType = type;
   resetModal();
 
@@ -1048,11 +1060,22 @@ function openModal(type) {
   }
 
   // Pre-fill from lookup if available
+  var dotEl = document.getElementById('m-carrier-dot');
+  var sendToEl = document.getElementById('m-send-to');
   if (lookupResult && lookupResult.carrier) {
     var c = lookupResult.carrier;
     document.getElementById('m-carrier-name').value = c.carrier_name || c.dba_name || '';
-    document.getElementById('m-send-to').value = c.email_address || '';
-
+    dotEl.value = c.dot_number || '';
+    if (c.email_address) {
+      // FMCSA email on file -> mandatory recipient, cannot be changed (fraud guard).
+      sendToEl.value = c.email_address;
+      sendToEl.readOnly = true;
+      sendToEl.classList.add('locked');
+    } else {
+      sendToEl.value = '';
+      sendToEl.readOnly = false;
+      sendToEl.classList.remove('locked');
+    }
     var summary = document.getElementById('modal-carrier-summary');
     summary.style.display = 'block';
     summary.className = 'carrier-summary';
@@ -1063,6 +1086,7 @@ function openModal(type) {
         (c.physical_city || c.physical_state ? ' · ' + esc([c.physical_city, c.physical_state].filter(Boolean).join(', ')) : '') +
       '</div>';
   } else {
+    dotEl.value = '';
     document.getElementById('modal-carrier-summary').style.display = 'none';
   }
 
@@ -1080,11 +1104,14 @@ function closeModal() {
 }
 
 function resetModal() {
-  ['m-carrier-name','m-send-to','m-additional'].forEach(function(id) {
+  ['m-carrier-name','m-send-to','m-additional','m-carrier-dot'].forEach(function(id) {
     var el = document.getElementById(id);
     el.value = '';
     el.classList.remove('invalid');
   });
+  var sendToEl = document.getElementById('m-send-to');
+  sendToEl.readOnly = false;
+  sendToEl.classList.remove('locked');
   document.querySelectorAll('.field-err.show').forEach(function(e) { e.classList.remove('show'); });
   hideModalMsg();
   var submit = document.getElementById('modal-submit');

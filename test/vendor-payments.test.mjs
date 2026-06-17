@@ -320,3 +320,8 @@ test('renders Client column when response is seeAll', async () => {
   assert.match(html, /Good Manners/);
   assert.match(html, /RTS Financial/);
 });
+
+test('admin see-all table gets vp-seeall class + column-width rules', () => {
+  assert.match(HTML, /vp-table' \+ \(state\.seeAll \? ' vp-seeall' : ''\)/);
+  assert.match(HTML, /\.vp-table\.vp-seeall th:nth-child\(2\)/);
+});

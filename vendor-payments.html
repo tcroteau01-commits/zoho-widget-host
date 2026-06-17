@@ -486,6 +486,7 @@
       '<div class="kpis" id="hist-kpis"></div>' +
       '<div id="hist-table-wrap"><div class="loading">Loading...</div></div>';
     document.getElementById('panel-history').innerHTML = html;
+    document.getElementById('hist-preset').value = 'this';
 
     document.getElementById('hist-preset').addEventListener('change', onHistPreset);
     document.getElementById('hist-from').addEventListener('change', onHistDateChange);

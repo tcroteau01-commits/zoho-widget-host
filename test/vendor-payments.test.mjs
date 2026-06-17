@@ -295,6 +295,10 @@ test('open fetch stores seeAll from response', () => {
   assert.match(HTML, /state\.seeAll = !!\s*data\.seeAll|state\.seeAll = data\.seeAll/);
 });
 
+test('history dropdown defaults to This Month to match the loaded range', () => {
+  assert.match(HTML, /getElementById\('hist-preset'\)\.value = 'this'/);
+});
+
 test('renders Client column when response is seeAll', async () => {
   const dom = makeWidget({});
   const win = dom.window;

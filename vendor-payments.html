@@ -144,7 +144,7 @@
   </div>
   <div class="tab-panel active" id="panel-open"><div class="loading">Loading open vendor payments...</div></div>
   <div class="tab-panel" id="panel-history"><div class="loading">Click to load Payment History</div></div>
-  <div class="version-stamp">v2026-06-17.3</div>
+  <div class="version-stamp">v2026-06-17.4</div>
 </div>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>
@@ -211,7 +211,7 @@
     }
   }
 
-  function fetchOpenAP() {
+  function fetchOpenAP(force) {
     var panel = document.getElementById('panel-open');
     if (isLocalTest()) {
       renderOpenAP(MOCK_OPEN_ROWS, mockTotals(MOCK_OPEN_ROWS, 'open'), 'Marek LLC (mock)');
@@ -221,7 +221,7 @@
       return;
     }
     panel.innerHTML = '<div class="loading">Loading open vendor payments...</div>';
-    fetch(BROKER_API_BASE + '/vendor-payments/open?email=' + encodeURIComponent(state.email))
+    fetch(BROKER_API_BASE + '/vendor-payments/open?email=' + encodeURIComponent(state.email) + (force ? '&refresh=1' : ''))
       .then(function (r) {
         if (r.status === 404) {
           return r.json().then(function () {
@@ -257,6 +257,7 @@
         '<input class="search" id="open-search" placeholder="Search vendor, load, USDOT…" />' +
         (state.seeAll ? clientSelect('open-client', rows) : '') +
         factorSelect('open-factor', rows) +
+        '<button class="btn-pdf" id="open-refresh" title="Pull fresh terms/factor data (use after the daily payment run)">↻ Refresh</button>' +
         '<button class="btn-pdf" id="open-pdf">Export PDF</button>' +
       '</div>' +
       '<div class="kpis">' +
@@ -269,6 +270,7 @@
     document.getElementById('open-search').addEventListener('input', renderOpenTable);
     document.getElementById("open-factor").addEventListener('change', renderOpenTable);
     if (state.seeAll) document.getElementById('open-client').addEventListener('change', renderOpenTable);
+    document.getElementById('open-refresh').addEventListener('click', function () { fetchOpenAP(true); });
     document.getElementById('open-pdf').addEventListener('click', function () { exportPdf('open'); });
     renderOpenTable();
   }
@@ -500,6 +502,7 @@
         '<input class="search" id="hist-search" placeholder="Search vendor, load, USDOT…" />' +
         (state.seeAll ? clientSelect('hist-client', state.historyRows) : '') +
         factorSelect('hist-factor', state.historyRows) +
+        '<button class="btn-pdf" id="hist-refresh" title="Pull fresh terms/factor data (use after the daily payment run)">↻ Refresh</button>' +
         '<button class="btn-pdf" id="hist-pdf">Export PDF</button>' +
       '</div>' +
       '<div class="kpis" id="hist-kpis"></div>' +
@@ -513,6 +516,7 @@
     document.getElementById('hist-search').addEventListener('input', renderHistoryTable);
     document.getElementById('hist-factor').addEventListener('change', renderHistoryTable);
     if (state.seeAll) document.getElementById('hist-client').addEventListener('change', renderHistoryTable);
+    document.getElementById('hist-refresh').addEventListener('click', function () { doHistoryFetch(true); });
     document.getElementById('hist-pdf').addEventListener('click', function () { exportPdf('history'); });
   }
 
@@ -549,7 +553,7 @@
     }
   }
 
-  function doHistoryFetch() {
+  function doHistoryFetch(force) {
     var d = state.historyDates;
     if (isLocalTest()) {
       state.historyRows = MOCK_HISTORY_ROWS;
@@ -559,7 +563,7 @@
     }
     document.getElementById('hist-table-wrap').innerHTML = '<div class="loading">Loading...</div>';
     var url = BROKER_API_BASE + '/vendor-payments/history?email=' + encodeURIComponent(state.email) +
-      '&from=' + d.from + '&to=' + d.to;
+      '&from=' + d.from + '&to=' + d.to + (force ? '&refresh=1' : '');
     fetch(url)
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (data) {

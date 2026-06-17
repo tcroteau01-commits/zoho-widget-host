@@ -334,3 +334,14 @@ test('admin see-all table uses fixed layout for deterministic column widths', ()
 test('broker (client) view date column does not wrap (col 6, nowrap)', () => {
   assert.match(HTML, /\.vp-table:not\(\.vp-seeall\)[^}]*nth-child\(6\)[^}]*white-space: nowrap/);
 });
+
+test('refresh buttons exist on both tabs', () => {
+  assert.match(HTML, /id="open-refresh"/);
+  assert.match(HTML, /id="hist-refresh"/);
+});
+
+test('refresh forces &refresh=1 on the fetch URLs', () => {
+  assert.match(HTML, /force \? '&refresh=1' : ''/);
+  assert.match(HTML, /fetchOpenAP\(true\)/);
+  assert.match(HTML, /doHistoryFetch\(true\)/);
+});

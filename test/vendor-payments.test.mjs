@@ -161,3 +161,51 @@ test('carrierBadge is NOT called when OperFiAV is absent (no throw)', async () =
   // Container is still in the DOM even without the badge.
   assert.ok(w.document.getElementById('vp-carrier-av'), '#vp-carrier-av must still be in DOM');
 });
+
+// ── Broker term preference in list Terms cell ─────────────────────────────────
+
+test('both list Terms cells prefer Broker Pmt Terms with a vendor-term fallback', () => {
+  // Source-level guard so both tables stay in sync.
+  const matches = HTML.match(/r\['Broker Pmt Terms'\]\s*\|\|\s*r\['Vendor Pmt Terms'\]/g) || [];
+  assert.ok(matches.length >= 2, 'expected broker-term fallback in open + history tables');
+});
+
+test('open table renders the broker term when present', async () => {
+  const row = Object.assign({}, MOCK_ROW, { 'Broker Pmt Terms': 'Quick Pay', 'Vendor Pmt Terms': 'Standard Net 30' });
+  const dom = makeWidget();
+  const w = dom.window;
+  // Override fetch to serve our custom row.
+  w.fetch = (url) => {
+    if (String(url).includes('/vendor-payments/open')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ accountName: 'Test Co', rows: [row], totals: { openLoads: 1, totalOwed: 850, carrierCount: 1 } })
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(() => w.document.querySelector('#open-table-wrap td[data-label="Terms"]'));
+  const cell = w.document.querySelector('#open-table-wrap td[data-label="Terms"]');
+  assert.ok(cell, 'Terms cell rendered');
+  assert.strictEqual(cell.textContent.trim(), 'Quick Pay');
+});
+
+test('open table falls back to the vendor term when broker term is empty', async () => {
+  const row = Object.assign({}, MOCK_ROW, { 'Broker Pmt Terms': '', 'Vendor Pmt Terms': 'Standard Net 30' });
+  const dom = makeWidget();
+  const w = dom.window;
+  w.fetch = (url) => {
+    if (String(url).includes('/vendor-payments/open')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ accountName: 'Test Co', rows: [row], totals: { openLoads: 1, totalOwed: 850, carrierCount: 1 } })
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(() => w.document.querySelector('#open-table-wrap td[data-label="Terms"]'));
+  const cell = w.document.querySelector('#open-table-wrap td[data-label="Terms"]');
+  assert.strictEqual(cell.textContent.trim(), 'Standard Net 30');
+});

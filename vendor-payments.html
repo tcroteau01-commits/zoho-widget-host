@@ -275,7 +275,7 @@
         '<td class="num" data-label="Amount">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
         '<td data-label="Due">' + escapeHtml(r['Vendor Due'] || '') + '</td>' +
         '<td class="num" data-label="AP Age">' + age + '</td>' +
-        '<td data-label="Terms">' + escapeHtml(r['Vendor Pmt Terms'] || '-') + '</td>' +
+        '<td data-label="Terms">' + escapeHtml(r['Broker Pmt Terms'] || r['Vendor Pmt Terms'] || '-') + '</td>' +
         '<td data-label="Status"><span class="pill ' + statusClass + '">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
         '</tr>';
     }).join('');
@@ -515,7 +515,7 @@
         '<td data-label="Vendor">' + vendor + '</td>' +
         '<td class="num" data-label="Amount">$' + fmtMoney(r['Vendor Amount'] || 0) + '</td>' +
         '<td data-label="Paid Date">' + escapeHtml(r['Paid Date'] || '') + '</td>' +
-        '<td data-label="Terms">' + escapeHtml(r['Vendor Pmt Terms'] || '-') + '</td>' +
+        '<td data-label="Terms">' + escapeHtml(r['Broker Pmt Terms'] || r['Vendor Pmt Terms'] || '-') + '</td>' +
         '<td data-label="Status"><span class="pill paid">' + escapeHtml(r['Payment Status'] || '') + '</span></td>' +
         '</tr>';
     }).join('');

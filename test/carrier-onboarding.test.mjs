@@ -17,15 +17,17 @@ function makeWidget(rowsByReport, opts) {
     pretendToBeVisual: true,
     url: 'https://tcroteau01-commits.github.io/carrier-onboarding.html',
     beforeParse(window) {
+      const loginUser = opts.loginUser === undefined ? 'broker@test.com' : opts.loginUser;
       window.ZOHO = {
         CREATOR: {
-          UTIL: { getInitParams: () => Promise.resolve({ loginUser: 'broker@test.com' }) },
+          UTIL: { getInitParams: () => Promise.resolve(loginUser ? { loginUser } : {}) },
           init: () => Promise.resolve()
         }
       };
       window.fetch = (url, init) => {
         const u = String(url);
         if (u.includes('/broker-report')) {
+          if (opts.historyFails) return Promise.reject(new Error('network down'));
           const report = /report=([^&]+)/.exec(u)[1];
           return Promise.resolve({ ok: true, text: () => Promise.resolve(''),
             json: () => Promise.resolve({ records: rowsByReport[report] || [] }) });
@@ -269,4 +271,36 @@ test('send posts the locked FMCSA email and DOT', async () => {
   assert.equal(posts.length, 1);
   assert.equal(posts[0].body.send_to, 'fmcsa@carrier.com');
   assert.equal(String(posts[0].body.carrier_dot), '92261');
+});
+
+// ── Client-facing error copy (no DevTools/F12 hints) ──────────────────────────
+async function waitForText(w, sel, re, timeout = 500) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const el = w.document.querySelector(sel);
+    if (el && re.test(el.textContent)) return el.textContent;
+    await new Promise(r => setTimeout(r, 10));
+  }
+  const el = w.document.querySelector(sel);
+  return el ? el.textContent : '';
+}
+
+test('history load failure shows a client-facing message, not a DevTools hint', async () => {
+  // A broker whose history fetch rejects (e.g. the onboarding report 502s) must
+  // see a client-appropriate message, not "Open DevTools console (F12)".
+  const dom = makeWidget({}, { historyFails: true });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  const txt = await waitForText(w, '#history-body', /couldn't load your recently sent links/i);
+  assert.doesNotMatch(txt, /DevTools|F12/i);
+  assert.match(txt, /couldn't load your recently sent links/i);
+});
+
+test('unidentified broker shows a client-facing message, not a DevTools hint', async () => {
+  const dom = makeWidget({}, { loginUser: '' });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  const txt = await waitForText(w, '#lookup-result', /identify/i);
+  assert.match(txt, /Could not identify broker/i);
+  assert.doesNotMatch(txt, /DevTools|F12/i);
 });

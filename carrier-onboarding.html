@@ -588,7 +588,7 @@ function bootApp() {
     console.log('[CarrierOnboarding] init params:', params);
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) {
-      showLookupError('Could not identify broker', 'Open DevTools console (F12) for details.');
+      showLookupError('Could not identify broker', 'Please refresh the page, or contact OperFi if this keeps happening.');
       return;
     }
     console.log('[CarrierOnboarding] Booted as', brokerEmail);
@@ -854,7 +854,7 @@ function loadHistory(refresh) {
   }).catch(function(err) {
     console.error('[CarrierOnboarding] history fetch failed', err);
     document.getElementById('history-body').innerHTML =
-      '<div class="state"><div>Could not load recent sends. Open DevTools console (F12).</div></div>';
+      '<div class="state"><div>We couldn\'t load your recently sent links. Please refresh the page, or contact OperFi if this keeps happening.</div></div>';
   });
 }
 

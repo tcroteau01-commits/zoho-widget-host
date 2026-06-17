@@ -536,6 +536,7 @@ body.show-contacts .contacts-only { display: block; }
 // ───────────────────────── CONFIG (confirm with Tom) ─────────────────────────
 var API_BASE = global.OPERFI_UW_API_BASE || 'https://operfi-broker-api.onrender.com';
 var USDOT_LOOKUP_PATH = '/usdot-lookup';   // TODO confirm exact Flask route + response shape
+var SUBMIT_PATH       = '/application-submit';  // backend creates Application + children (replaces dead Creator SDK)
 var CRM_SYNC_PATH     = '/uw-create-crm';  // TODO confirm Flask route that makes the CRM Account+Deal
 var PLACES_AC_PATH    = '/places-autocomplete-public';  // public (un-gated) Google Places proxy
 var PLACE_DETAILS_PATH = '/place-details-public';       // public structured-address lookup
@@ -735,10 +736,10 @@ function formatPlace(d) {
 
 // ──────────────────────────── EXPOSED API ───────────────────────────────────
 var OF = {
-  config: { API_BASE: API_BASE, USDOT_LOOKUP_PATH: USDOT_LOOKUP_PATH, CRM_SYNC_PATH: CRM_SYNC_PATH, FORM: FORM, APPLICATION_LOOKUP: APPLICATION_LOOKUP, PLACES_AC_PATH: PLACES_AC_PATH, PLACE_DETAILS_PATH: PLACE_DETAILS_PATH },
+  config: { API_BASE: API_BASE, USDOT_LOOKUP_PATH: USDOT_LOOKUP_PATH, SUBMIT_PATH: SUBMIT_PATH, CRM_SYNC_PATH: CRM_SYNC_PATH, FORM: FORM, APPLICATION_LOOKUP: APPLICATION_LOOKUP, PLACES_AC_PATH: PLACES_AC_PATH, PLACE_DETAILS_PATH: PLACE_DETAILS_PATH },
   deriveRateClass: deriveRateClass, computeQuote: computeQuote, resolveAuthority: resolveAuthority,
   buildApplicationPayload: buildApplicationPayload, buildOwnerPayloads: buildOwnerPayloads,
-  buildChildPayloads: buildChildPayloads, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail,
+  buildChildPayloads: buildChildPayloads, buildSubmitBody: buildSubmitBody, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail,
   formatPlace: formatPlace
 };
 global.OF = OF;
@@ -1159,55 +1160,56 @@ function submitApplication() {
     btn.disabled = false; btn.textContent = '✓ Validated (demo)';
   }
 
-  // Attempt a REAL submit whenever the Creator SDK is present. init() below is wrapped in a
-  // timeout so it can never hang (standalone, init never resolves → falls back to demo).
-  var hasSDK = (typeof ZOHO !== 'undefined') && ZOHO.CREATOR && typeof ZOHO.CREATOR.init === 'function';
-  if (!hasSDK) { doDemo('Creator SDK not detected — this page is not running as a Creator widget.'); return; }
+  // Submit through the backend. The Creator SDK won't initialize inside the widget iframe,
+  // so instead of ZOHO.CREATOR.DATA.addRecords we POST the payloads (same real .ds link-names)
+  // to /application-submit, which creates the Application + children server-side and returns
+  // the prospect's document-center link.
+  if (typeof fetch !== 'function') { doDemo('Standalone preview — submitting requires the backend.'); return; }
 
-  function withTimeout(p, ms) {
-    return new Promise(function (resolve, reject) {
-      var to = setTimeout(function () { reject(new Error('sdk-timeout')); }, ms);
-      Promise.resolve(p).then(function (v) { clearTimeout(to); resolve(v); }, function (e) { clearTimeout(to); reject(e); });
+  var body = buildSubmitBody(s);
+  fetch(OF.config.API_BASE + OF.config.SUBMIT_PATH, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      if (!r.ok || !j || !j.application_id) throw new Error((j && j.error) || ('submit failed (HTTP ' + r.status + ')'));
+      return j;
     });
-  }
-
-  withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
-    return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM.application, payload: { data: buildApplicationPayload(s) } });
-  }).then(function (res) {
-    if (!res || res.code !== 3000) throw new Error('Application add failed (code ' + (res && res.code) + ')');
-    var appId = res.data && (res.data.ID || res.data);
-    return addChildren(s, appId).then(function () { return crmSync(s, appId); });
-  }).then(function () {
-    showStatus('✓ Application submitted. Check your email for a link to track status and upload documents.', 'success');
+  }).then(function (j) {
+    renderSubmitted(j.link);
     btn.textContent = '✓ Submitted';
   }).catch(function (e) {
-    if (e && e.message === 'sdk-timeout') { doDemo('Creator SDK did not respond — add this page to Creator as a Widget (with SDK access), not an inline HTML snippet.'); return; }
     console.error('submit failed', e);
     showStatus('Submission failed: ' + (e && e.message ? e.message : e) + '. Please try again or contact your OperFi rep.', 'error');
     btn.disabled = false; btn.textContent = '✓ Submit Application';
   });
 }
 
-function addChildren(s, appId) {
-  var jobs = [];
-  buildOwnerPayloads(s, appId).forEach(function (rec) { jobs.push([FORM.owner, rec]); });
-  var kids = buildChildPayloads(s, appId);
-  if (s.authority === 'broker') {
-    kids.related.forEach(function (r) { jobs.push([FORM.related, r]); });
-    kids.customers.forEach(function (r) { jobs.push([FORM.customer, r]); });
-  }
-  kids.contacts.forEach(function (r) { jobs.push([FORM.contact, r]); });
-  return jobs.reduce(function (chain, job) {
-    return chain.then(function () { return ZOHO.CREATOR.DATA.addRecords({ form_name: job[0], payload: { data: job[1] } }); });
-  }, Promise.resolve());
+// Assemble the submit payload. Children are sent WITHOUT the Application lookup — the backend
+// sets it after creating the Application. Broker-only subforms only go up in the broker flow.
+function buildSubmitBody(s) {
+  var kids = buildChildPayloads(s, null);
+  return {
+    application: buildApplicationPayload(s),
+    owners: buildOwnerPayloads(s, null),
+    related: s.authority === 'broker' ? kids.related : [],
+    customers: s.authority === 'broker' ? kids.customers : [],
+    contacts: kids.contacts
+  };
 }
 
-function crmSync(s, appId) {
-  if (typeof fetch !== 'function') return Promise.resolve();
-  return fetch(OF.config.API_BASE + OF.config.CRM_SYNC_PATH, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ application_id: appId, business_name: s.businessName, authority: s.authority, usdot: s.usdot, email: s.adminEmail, submitted_at: s.submittedAt })
-  }).then(function (r) { return r.json().catch(function () { return {}; }); }).catch(function (e) { console.warn('CRM sync deferred', e); return {}; });
+// Success state: surface the document-center link (replaces the deferred email for now).
+function renderSubmitted(link) {
+  if (!link) { showStatus('✓ Application submitted! Your OperFi rep will follow up shortly.', 'success'); return; }
+  showStatus('✓ Application submitted! Save the link below to upload your setup documents and track your status.', 'success');
+  var holder = document.getElementById('submitLink');
+  if (!holder) {
+    holder = document.createElement('div');
+    holder.id = 'submitLink';
+    holder.style.cssText = 'margin-top:14px;padding:14px;border:1.5px solid var(--of-beige-line);border-radius:10px;background:var(--of-beige-soft);font-size:13px;word-break:break-all';
+    var btnEl = document.getElementById('submitBtn');
+    if (btnEl && btnEl.parentNode) btnEl.parentNode.appendChild(holder);
+  }
+  holder.innerHTML = '<b>Your document upload link:</b><br><a href="' + link + '" target="_blank" rel="noopener">' + link + '</a>';
 }
 
 })(typeof window !== 'undefined' ? window : this);

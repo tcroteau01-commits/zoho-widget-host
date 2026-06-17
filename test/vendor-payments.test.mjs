@@ -327,6 +327,10 @@ test('admin see-all table gets vp-seeall class + column-width rules', () => {
 });
 
 test('admin see-all table uses fixed layout for deterministic column widths', () => {
-  assert.match(HTML, /\.vp-table\.vp-seeall\s*\{\s*table-layout:\s*fixed/);
+  assert.match(HTML, /\.vp-table\s*\{\s*table-layout:\s*fixed/);
   assert.match(HTML, /\.vp-table\.vp-seeall th:nth-child\(3\)[^}]*width: 19%/);
+});
+
+test('broker (client) view date column does not wrap (col 6, nowrap)', () => {
+  assert.match(HTML, /\.vp-table:not\(\.vp-seeall\)[^}]*nth-child\(6\)[^}]*white-space: nowrap/);
 });

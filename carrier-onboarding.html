@@ -890,6 +890,10 @@ function historyDateBounds() {
   return { from: from, to: to };
 }
 
+function cleanDot(v) {
+  return String(v == null ? '' : v).replace(/\D/g, '');
+}
+
 function renderHistory() {
   var bounds = historyDateBounds();
   var filtered = historyRecords.filter(function(r) {
@@ -913,6 +917,23 @@ function renderHistory() {
       return hay.indexOf(historySearch) !== -1;
     });
   }
+
+  // Resend creates a new record each time, so a carrier can have multiple rows.
+  // Collapse sends to the same carrier+link-type by DOT, keeping the most-recent
+  // (historyRecords is pre-sorted newest-first) and counting the rest. Rows with
+  // no DOT are never grouped.
+  var seenGroups = {};
+  var deduped = [];
+  filtered.forEach(function(r) {
+    var dot = cleanDot(r.Carrier_DOT);
+    if (!dot) { r._sentCount = 1; deduped.push(r); return; }
+    var key = r._type + '|' + dot;
+    if (seenGroups[key]) { seenGroups[key]._sentCount += 1; return; }
+    r._sentCount = 1;
+    seenGroups[key] = r;
+    deduped.push(r);
+  });
+  filtered = deduped;
 
   if (!filtered.length) {
     var msg = historyRecords.length === 0
@@ -940,6 +961,7 @@ function renderHistory() {
         '<th>Sent By</th>' +
         '<th>Sent</th>' +
         '<th>Status</th>' +
+        '<th>Actions</th>' +
       '</tr></thead>' +
       '<tbody>';
   pageRecords.forEach(function(r) {
@@ -947,11 +969,17 @@ function renderHistory() {
     var typeClass = r._type === 'full' ? 'full' : 'pay';
     var when = parseDate(r.Added_Time);
     var sentBy = contactDisplay(r.Contact_Name);
-    var status = (r.Link_Status || '').toLowerCase();
     var statusLabel, statusClass;
-    if (status === 'completed') { statusLabel = 'Completed'; statusClass = 'completed'; }
-    else if (status === 'pending') { statusLabel = 'Pending'; statusClass = 'pending'; }
-    else { statusLabel = 'Sent'; statusClass = ''; }
+    if (r.setup === true) {
+      statusLabel = 'Completed'; statusClass = 'completed';
+    } else if (cleanDot(r.Carrier_DOT)) {
+      // Has a DOT but no matching vendor yet -> awaiting setup.
+      statusLabel = 'Sent'; statusClass = 'pending';
+    } else {
+      // No DOT to cross-reference -> fall back to the stored Link_Status.
+      statusLabel = ((r.Link_Status || '').toLowerCase() === 'completed') ? 'Completed' : 'Sent';
+      statusClass = statusLabel === 'Completed' ? 'completed' : 'pending';
+    }
 
     var carrierMain = r.Carrier_Name || r.Send_To || '—';
     var carrierSub = r.Carrier_DOT ? 'DOT ' + r.Carrier_DOT : '';
@@ -968,8 +996,10 @@ function renderHistory() {
           (r.Additional_Email ? '<div class="cell-sub">CC: ' + esc(r.Additional_Email) + '</div>' : '') +
         '</td>' +
         '<td>' + esc(sentBy || '—') + '</td>' +
-        '<td>' + (when ? esc(fmtDateTime(when)) + '<div class="cell-sub">' + esc(fmtRelative(when)) + '</div>' : '—') + '</td>' +
+        '<td>' + (when ? esc(fmtDateTime(when)) + '<div class="cell-sub">' + esc(fmtRelative(when)) +
+          (r._sentCount > 1 ? ' · sent ' + r._sentCount + 'x' : '') + '</div>' : '—') + '</td>' +
         '<td><span class="status-pill ' + statusClass + '">' + esc(statusLabel) + '</span></td>' +
+        '<td><button class="btn ghost btn-resend" data-resend-idx="' + pageRecords.indexOf(r) + '">Resend</button></td>' +
       '</tr>';
   });
   html += '</tbody></table>';
@@ -987,6 +1017,13 @@ function renderHistory() {
   var next = document.getElementById('history-next');
   if (prev) prev.addEventListener('click', function() { historyPage -= 1; renderHistory(); });
   if (next) next.addEventListener('click', function() { historyPage += 1; renderHistory(); });
+  Array.prototype.forEach.call(document.querySelectorAll('.btn-resend'), function(btn) {
+    btn.addEventListener('click', function() {
+      var idx = parseInt(btn.getAttribute('data-resend-idx'), 10);
+      var rec = pageRecords[idx];
+      if (rec) resendLink(rec, btn);
+    });
+  });
 }
 
 function contactDisplay(c) {
@@ -1168,6 +1205,44 @@ function submitModal() {
     submit.disabled = false;
     cancel.disabled = false;
     submit.textContent = 'Send Link';
+  });
+}
+
+// Resend an existing link by re-creating the send record via the same backend
+// create-path the modal uses (the on-add workflow re-emails the link). New record
+// each time; the history view dedups by DOT, so it stays one row with a count.
+function resendLink(r, btn) {
+  if (!brokerEmail) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  var body = { email: brokerEmail, type: r._type, send_to: r.Send_To || '' };
+  if (r.Additional_Email) body.additional_email = r.Additional_Email;
+  if (r.Carrier_Name)     body.carrier_name = r.Carrier_Name;
+  if (r.Carrier_DOT)      body.carrier_dot = String(r.Carrier_DOT);
+  if (r.Carrier_MC)       body.carrier_mc = String(r.Carrier_MC);
+
+  fetch(BROKER_API_BASE + '/broker-send-onboarding-link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(res) {
+    return res.text().then(function(t) {
+      var data = {};
+      try { data = t ? JSON.parse(t) : {}; } catch (e) { data = {}; }
+      return { status: res.status, data: data };
+    });
+  }).then(function(res) {
+    if (res.status === 200 && res.data.ok) {
+      if (btn) btn.textContent = '✓ Sent';
+      loadHistory(true);                 // refresh past the scoped cache
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = 'Resend'; }
+      var detail = res.data && (res.data.message || res.data.error);
+      alert('Could not resend link' + (detail ? ': ' + detail : '') + '.');
+    }
+  }).catch(function(err) {
+    console.error('[CarrierOnboarding] resend failed', err);
+    if (btn) { btn.disabled = false; btn.textContent = 'Resend'; }
+    alert('Could not resend link. Please try again.');
   });
 }
 

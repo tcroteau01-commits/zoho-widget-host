@@ -47,6 +47,10 @@
   .vp-table tbody tr { cursor: pointer; }
   .vp-table tbody tr:hover { background: var(--of-gray-50); }
   .vp-table td.num, .vp-table th.num { text-align: right; }
+  /* Admin see-all: keep Load # tight (shrink to content), give Debtor room, keep the date column on one line */
+  .vp-table.vp-seeall th:nth-child(2), .vp-table.vp-seeall td:nth-child(2) { white-space: nowrap; width: 1%; }
+  .vp-table.vp-seeall th:nth-child(3), .vp-table.vp-seeall td:nth-child(3) { min-width: 210px; }
+  .vp-table.vp-seeall th:nth-child(7), .vp-table.vp-seeall td:nth-child(7) { white-space: nowrap; }
   .vp-table .empty-row { text-align: center; color: var(--of-gray-500); padding: 30px; }
   .pending-vendor { color: var(--of-gray-500); font-family: ui-monospace, monospace; font-size: 12px; }
   .pending-vendor em { font-style: normal; opacity: 0.7; }
@@ -286,7 +290,7 @@
     var clientTh = state.seeAll ? '<th>Client</th>' : '';
     var colCount = state.seeAll ? 10 : 9;
     var table = '' +
-      '<table class="vp-table">' +
+      '<table class="vp-table' + (state.seeAll ? ' vp-seeall' : '') + '">' +
         '<thead><tr>' + clientTh + '<th>Load #</th><th>Debtor</th><th>Vendor</th><th>Factor</th><th class="num">Amount</th><th>Due</th><th class="num">AP Age</th><th>Terms</th><th>Status</th></tr></thead>' +
         '<tbody>' + (rowsHtml || '<tr><td colspan="' + colCount + '" class="empty-row">No open vendor payments.</td></tr>') + '</tbody>' +
       '</table>';
@@ -588,7 +592,7 @@
     var clientTh = state.seeAll ? '<th>Client</th>' : '';
     var colCount = state.seeAll ? 9 : 8;
     var table = '' +
-      '<table class="vp-table">' +
+      '<table class="vp-table' + (state.seeAll ? ' vp-seeall' : '') + '">' +
         '<thead><tr>' + clientTh + '<th>Load #</th><th>Debtor</th><th>Vendor</th><th>Factor</th><th class="num">Amount</th><th>Paid Date</th><th>Terms</th><th>Status</th></tr></thead>' +
         '<tbody>' + (rowsHtml || '<tr><td colspan="' + colCount + '" class="empty-row">No payments in this period.</td></tr>') + '</tbody>' +
       '</table>';

@@ -836,3 +836,60 @@ test('inline customer cell change fires customerCredit with the selected custome
   assert.ok(calls.length >= 1, 'customerCredit called after customer inline-edit change');
   assert.equal(calls[0].opts.customerId, 'cust-1');
 });
+
+// ---- Task 1: matching engine ----
+test('normToken strips separators and lowercases', () => {
+  const { window } = makeWidget();
+  assert.equal(window.normToken('INV-1234'), 'inv1234');
+  assert.equal(window.normToken('INV 1234'), 'inv1234');
+  assert.equal(window.normToken('INV_1234.pdf'), 'inv1234pdf');
+});
+
+test('boundedMatch rejects digit-run over/under-extension', () => {
+  const { window } = makeWidget();
+  assert.equal(window.boundedMatch('1234', '1234'), true);
+  assert.equal(window.boundedMatch('12345', '1234'), false); // trailing digit
+  assert.equal(window.boundedMatch('51234', '1234'), false); // leading digit
+  assert.equal(window.boundedMatch('inv1234rc', '1234'), true); // letters ok
+  assert.equal(window.boundedMatch('123', '1234'), false);
+});
+
+test('matchFileToLoads: bare number auto-routes to the single matching slot', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: 'INV-1234', invoice: 'XJ-9981' }];
+  const r = window.matchFileToLoads('1234.pdf', loads);
+  assert.equal(r.auto.loadId, 'A'); assert.equal(r.auto.slot, 'customer'); assert.equal(r.auto.confidence, 'medium');
+  assert.equal(r.candidates.length, 1);
+});
+
+test('matchFileToLoads: full alphanumeric key is high confidence', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: 'INV-1234', invoice: 'XJ-9981' }];
+  const r = window.matchFileToLoads('INV 1234 ratecon.pdf', loads);
+  assert.equal(r.auto.slot, 'customer');
+  assert.equal(r.auto.confidence, 'high');
+});
+
+test('matchFileToLoads: strict numbers do not cross-match', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: '1234', invoice: '' }];
+  assert.equal(window.matchFileToLoads('12345.pdf', loads).candidates.length, 0);
+  assert.equal(window.matchFileToLoads('1233.pdf', loads).candidates.length, 0);
+});
+
+test('matchFileToLoads: ref==invoice is ambiguous (no auto, two candidates)', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: '1234', invoice: '1234' }];
+  const r = window.matchFileToLoads('1234.pdf', loads);
+  assert.equal(r.auto, null);
+  assert.equal(r.candidates.length, 2);
+});
+
+test('matchFileToLoads: same number on two loads is ambiguous', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: 'INV-1234', invoice: '' },
+                 { id: 'B', ref: '', invoice: 'PO-1234' }];
+  const r = window.matchFileToLoads('1234.pdf', loads);
+  assert.equal(r.auto, null);
+  assert.equal(r.candidates.length, 2);
+});

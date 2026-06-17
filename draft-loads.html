@@ -1055,26 +1055,59 @@ function createDraftsFromPreview(){
 
 var __pw = { loads: [], slots: {}, files: {}, tray: [] };
 
-function tokenMatch(filename, key){
-  key=String(key==null?'':key).toLowerCase();
-  if(!key) return false;
-  // True only when key appears bounded by start/end or a non-alphanumeric char,
-  // so 'WMT-9002' does NOT match 'WMT-90021.pdf'.
-  var esc=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  var re=new RegExp('(^|[^a-z0-9])'+esc+'([^a-z0-9]|$)');
-  return re.test(String(filename||'').toLowerCase());
+function normToken(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,''); }
+
+function longestDigitRun(s){
+  var runs=String(s==null?'':s).match(/\d+/g)||[];
+  return runs.reduce(function(a,b){ return b.length>a.length?b:a; }, '');
 }
 
+// True if needle occurs in haystack at a spot not flanked by a digit on
+// either side -- this is what makes numeric matching strict (1234 != 12345).
+function boundedMatch(haystack, needle){
+  haystack=String(haystack||''); needle=String(needle||'');
+  if(!needle) return false;
+  var from=0, i;
+  while((i=haystack.indexOf(needle, from))!==-1){
+    var before=i>0?haystack.charAt(i-1):'';
+    var after=(i+needle.length)<haystack.length?haystack.charAt(i+needle.length):'';
+    if(!/[0-9]/.test(before) && !/[0-9]/.test(after)) return true;
+    from=i+1;
+  }
+  return false;
+}
+
+// Returns auto-route target (only when exactly one distinct load+slot matches)
+// plus the full ranked candidate list (high confidence before medium).
+function matchFileToLoads(filename, loads){
+  var nf=normToken(filename);
+  var cands=[];
+  (loads||[]).forEach(function(l){
+    [['customer', l.ref], ['carrier', l.invoice]].forEach(function(pair){
+      var slot=pair[0], key=pair[1];
+      if(!key) return;
+      var nk=normToken(key);
+      var hasLetter=/[a-z]/.test(nk);
+      if(nk && boundedMatch(nf, nk)){
+        cands.push({loadId:l.id, slot:slot, confidence: hasLetter ? 'high' : 'medium'});
+        return;
+      }
+      var dig=longestDigitRun(key);
+      if(dig && boundedMatch(nf, dig)){
+        cands.push({loadId:l.id, slot:slot, confidence:'medium'});
+      }
+    });
+  });
+  var seen={}, uniq=[];
+  cands.forEach(function(c){ var k=c.loadId+'|'+c.slot; if(!seen[k]){ seen[k]=1; uniq.push(c); } });
+  uniq.sort(function(a,b){ return (a.confidence==='high'?0:1)-(b.confidence==='high'?0:1); });
+  return { auto: uniq.length===1 ? uniq[0] : null, candidates: uniq };
+}
+
+// Back-compat wrapper for any remaining caller (rewritten in Task 5).
 function routeFileToSlot(filename, loads){
-  for (var i=0;i<loads.length;i++){
-    var l=loads[i];
-    if (l.ref && tokenMatch(filename, l.ref)) return { loadId:l.id, slot:'customer' };
-  }
-  for (var j=0;j<loads.length;j++){
-    var c=loads[j];
-    if (c.invoice && tokenMatch(filename, c.invoice)) return { loadId:c.id, slot:'carrier' };
-  }
-  return null;
+  var m=matchFileToLoads(filename, loads);
+  return m.auto ? { loadId:m.auto.loadId, slot:m.auto.slot } : null;
 }
 
 function paperworkStatus(slots){
@@ -1282,6 +1315,10 @@ function finishPaperwork(){ closePaperwork(); loadQueue(); }
 window.openImportModal=openImportModal;
 window.renderPreview=renderPreview;
 window.createDraftsFromPreview=createDraftsFromPreview;
+window.normToken=normToken;
+window.longestDigitRun=longestDigitRun;
+window.boundedMatch=boundedMatch;
+window.matchFileToLoads=matchFileToLoads;
 window.routeFileToSlot=routeFileToSlot;
 window.paperworkStatus=paperworkStatus;
 window.renderPaperwork=renderPaperwork;

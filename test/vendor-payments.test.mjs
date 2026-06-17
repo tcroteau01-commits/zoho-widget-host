@@ -325,3 +325,8 @@ test('admin see-all table gets vp-seeall class + column-width rules', () => {
   assert.match(HTML, /vp-table' \+ \(state\.seeAll \? ' vp-seeall' : ''\)/);
   assert.match(HTML, /\.vp-table\.vp-seeall th:nth-child\(2\)/);
 });
+
+test('admin see-all table uses fixed layout for deterministic column widths', () => {
+  assert.match(HTML, /\.vp-table\.vp-seeall\s*\{\s*table-layout:\s*fixed/);
+  assert.match(HTML, /\.vp-table\.vp-seeall th:nth-child\(3\)[^}]*width: 19%/);
+});

@@ -48,9 +48,17 @@
   .vp-table tbody tr:hover { background: var(--of-gray-50); }
   .vp-table td.num, .vp-table th.num { text-align: right; }
   /* Admin see-all: keep Load # tight (shrink to content), give Debtor room, keep the date column on one line */
-  .vp-table.vp-seeall th:nth-child(2), .vp-table.vp-seeall td:nth-child(2) { white-space: nowrap; width: 1%; }
-  .vp-table.vp-seeall th:nth-child(3), .vp-table.vp-seeall td:nth-child(3) { min-width: 210px; }
-  .vp-table.vp-seeall th:nth-child(7), .vp-table.vp-seeall td:nth-child(7) { white-space: nowrap; }
+  /* Admin see-all: fixed layout so columns get deterministic widths (auto-layout
+     was handing leftover space to Load #). Shared cols 1-7 are identical in both
+     the Open AP and Payment History tables; tail cols (8+) split the rest evenly. */
+  .vp-table.vp-seeall { table-layout: fixed; }
+  .vp-table.vp-seeall th:nth-child(1), .vp-table.vp-seeall td:nth-child(1) { width: 11%; }                          /* Client */
+  .vp-table.vp-seeall th:nth-child(2), .vp-table.vp-seeall td:nth-child(2) { width: 8%; overflow-wrap: anywhere; }  /* Load # */
+  .vp-table.vp-seeall th:nth-child(3), .vp-table.vp-seeall td:nth-child(3) { width: 19%; }                          /* Debtor */
+  .vp-table.vp-seeall th:nth-child(4), .vp-table.vp-seeall td:nth-child(4) { width: 13%; }                          /* Vendor */
+  .vp-table.vp-seeall th:nth-child(5), .vp-table.vp-seeall td:nth-child(5) { width: 11%; }                          /* Factor */
+  .vp-table.vp-seeall th:nth-child(6), .vp-table.vp-seeall td:nth-child(6) { width: 8%; }                           /* Amount */
+  .vp-table.vp-seeall th:nth-child(7), .vp-table.vp-seeall td:nth-child(7) { width: 9%; white-space: nowrap; }      /* Due / Paid Date */
   .vp-table .empty-row { text-align: center; color: var(--of-gray-500); padding: 30px; }
   .pending-vendor { color: var(--of-gray-500); font-family: ui-monospace, monospace; font-size: 12px; }
   .pending-vendor em { font-style: normal; opacity: 0.7; }
@@ -129,7 +137,7 @@
   </div>
   <div class="tab-panel active" id="panel-open"><div class="loading">Loading open vendor payments...</div></div>
   <div class="tab-panel" id="panel-history"><div class="loading">Click to load Payment History</div></div>
-  <div class="version-stamp">v2026-06-17.1</div>
+  <div class="version-stamp">v2026-06-17.2</div>
 </div>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=2"></script>

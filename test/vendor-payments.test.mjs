@@ -255,3 +255,22 @@ test('detail pane renders broker term and factoring company from row data', asyn
   assert.match(text, /Quick Pay/, 'detail panel must show the broker pmt term "Quick Pay"');
   assert.match(text, /RTS Financial/, 'detail panel must show the factoring company "RTS Financial"');
 });
+
+test('Open AP table has a Factor column header', () => {
+  assert.match(HTML, /<th>Factor<\/th>/);
+});
+
+test('factorLabel renders Direct/dash logic', () => {
+  assert.match(HTML, /function factorLabel/);
+  assert.match(HTML, /_av_resolved/);
+});
+
+test('search widened to load/invoice/PO (not just vendor/USDOT)', () => {
+  assert.match(HTML, /\['Load #'\]|\["Load #"\]/);
+  assert.match(HTML, /\['PO #'\]|\["PO #"\]/);
+});
+
+test('factor dropdown elements exist', () => {
+  assert.match(HTML, /id="open-factor"/);
+  assert.match(HTML, /id="hist-factor"/);
+});

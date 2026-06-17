@@ -129,3 +129,42 @@ test('rows with no DOT are not collapsed', async () => {
   const rows = w.document.querySelectorAll('.history-table tbody tr');
   assert.equal(rows.length, 2, 'no-DOT rows stay individual');
 });
+
+test('Resend button posts the row fields to /broker-send-onboarding-link', async () => {
+  const dom = makeWidget({
+    [FULL]: [{ ID: 'L1', _type: 'full', Carrier_Name: 'A&M', Carrier_DOT: '92261',
+               Carrier_MC: '123456', Send_To: 'a@m.com', Additional_Email: 'cc@m.com',
+               Added_Time: '08-May-2026 10:00:00', setup: false }],
+    [PAY]: []
+  });
+  const w = dom.window;
+  boot(w);
+  await waitFor(w, '.history-table tbody tr .btn-resend');
+
+  w.document.querySelector('.history-table tbody tr .btn-resend').click();
+  await waitFor(w, '.btn-resend'); // allow the click handler microtasks to run
+  await new Promise(r => setTimeout(r, 20));
+
+  const posts = w._posts.filter(p => p.url.includes('/broker-send-onboarding-link'));
+  assert.equal(posts.length, 1, 'one resend POST');
+  const b = posts[0].body;
+  assert.equal(b.type, 'full');
+  assert.equal(b.send_to, 'a@m.com');
+  assert.equal(b.additional_email, 'cc@m.com');
+  assert.equal(b.carrier_name, 'A&M');
+  assert.equal(String(b.carrier_dot), '92261');
+  assert.equal(String(b.carrier_mc), '123456');
+});
+
+test('history table has an Actions column header', async () => {
+  const dom2 = makeWidget({
+    [FULL]: [{ ID: 'L1', _type: 'full', Carrier_Name: 'A&M', Carrier_DOT: '92261',
+               Send_To: 'a@m.com', Added_Time: '08-May-2026 10:00:00', setup: false }],
+    [PAY]: []
+  });
+  const w2 = dom2.window;
+  boot(w2);
+  await waitFor(w2, '.history-table thead th');
+  const heads = Array.from(w2.document.querySelectorAll('.history-table thead th')).map(th => th.textContent.trim());
+  assert.ok(heads.includes('Actions'), 'Actions column present');
+});

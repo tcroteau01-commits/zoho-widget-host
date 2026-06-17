@@ -961,6 +961,7 @@ function renderHistory() {
         '<th>Sent By</th>' +
         '<th>Sent</th>' +
         '<th>Status</th>' +
+        '<th>Actions</th>' +
       '</tr></thead>' +
       '<tbody>';
   pageRecords.forEach(function(r) {
@@ -998,6 +999,7 @@ function renderHistory() {
         '<td>' + (when ? esc(fmtDateTime(when)) + '<div class="cell-sub">' + esc(fmtRelative(when)) +
           (r._sentCount > 1 ? ' · sent ' + r._sentCount + 'x' : '') + '</div>' : '—') + '</td>' +
         '<td><span class="status-pill ' + statusClass + '">' + esc(statusLabel) + '</span></td>' +
+        '<td><button class="btn ghost btn-resend" data-resend-idx="' + pageRecords.indexOf(r) + '">Resend</button></td>' +
       '</tr>';
   });
   html += '</tbody></table>';
@@ -1015,6 +1017,13 @@ function renderHistory() {
   var next = document.getElementById('history-next');
   if (prev) prev.addEventListener('click', function() { historyPage -= 1; renderHistory(); });
   if (next) next.addEventListener('click', function() { historyPage += 1; renderHistory(); });
+  Array.prototype.forEach.call(document.querySelectorAll('.btn-resend'), function(btn) {
+    btn.addEventListener('click', function() {
+      var idx = parseInt(btn.getAttribute('data-resend-idx'), 10);
+      var rec = pageRecords[idx];
+      if (rec) resendLink(rec, btn);
+    });
+  });
 }
 
 function contactDisplay(c) {
@@ -1196,6 +1205,44 @@ function submitModal() {
     submit.disabled = false;
     cancel.disabled = false;
     submit.textContent = 'Send Link';
+  });
+}
+
+// Resend an existing link by re-creating the send record via the same backend
+// create-path the modal uses (the on-add workflow re-emails the link). New record
+// each time; the history view dedups by DOT, so it stays one row with a count.
+function resendLink(r, btn) {
+  if (!brokerEmail) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  var body = { email: brokerEmail, type: r._type, send_to: r.Send_To || '' };
+  if (r.Additional_Email) body.additional_email = r.Additional_Email;
+  if (r.Carrier_Name)     body.carrier_name = r.Carrier_Name;
+  if (r.Carrier_DOT)      body.carrier_dot = String(r.Carrier_DOT);
+  if (r.Carrier_MC)       body.carrier_mc = String(r.Carrier_MC);
+
+  fetch(BROKER_API_BASE + '/broker-send-onboarding-link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(res) {
+    return res.text().then(function(t) {
+      var data = {};
+      try { data = t ? JSON.parse(t) : {}; } catch (e) { data = {}; }
+      return { status: res.status, data: data };
+    });
+  }).then(function(res) {
+    if (res.status === 200 && res.data.ok) {
+      if (btn) btn.textContent = '✓ Sent';
+      loadHistory(true);                 // refresh past the scoped cache
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = 'Resend'; }
+      var detail = res.data && (res.data.message || res.data.error);
+      alert('Could not resend link' + (detail ? ': ' + detail : '') + '.');
+    }
+  }).catch(function(err) {
+    console.error('[CarrierOnboarding] resend failed', err);
+    if (btn) { btn.disabled = false; btn.textContent = 'Resend'; }
+    alert('Could not resend link. Please try again.');
   });
 }
 

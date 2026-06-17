@@ -56,6 +56,15 @@ async function waitFor(win, sel, timeout = 400) {
   }
 }
 
+// Boot the widget and drive the date filter to "all" so May-2026 fixtures are
+// always visible regardless of the production 30d default.
+function boot(w) {
+  w.dispatchEvent(new w.Event('load'));
+  const sel = w.document.getElementById('history-date-filter');
+  sel.value = 'all';
+  sel.dispatchEvent(new w.Event('change'));
+}
+
 const FULL = 'Carrier_Onboarding_Report';
 const PAY = 'Vendor_Pay_Setup_Sent_Report';
 
@@ -66,7 +75,7 @@ test('row with setup=true shows a Completed badge', async () => {
     [PAY]: []
   });
   const w = dom.window;
-  w.dispatchEvent(new w.Event('load'));
+  boot(w);
   await waitFor(w, '.history-table tbody tr td .status-pill');
   const pill = w.document.querySelector('.history-table tbody tr .status-pill');
   assert.equal(pill.textContent.trim(), 'Completed');
@@ -80,7 +89,7 @@ test('row with setup=false shows a Sent badge', async () => {
     [PAY]: []
   });
   const w = dom.window;
-  w.dispatchEvent(new w.Event('load'));
+  boot(w);
   await waitFor(w, '.history-table tbody tr .status-pill');
   const pill = w.document.querySelector('.history-table tbody tr .status-pill');
   assert.equal(pill.textContent.trim(), 'Sent');
@@ -97,7 +106,7 @@ test('two sends to the same carrier+type collapse into one row with "sent 2x"', 
     [PAY]: []
   });
   const w = dom.window;
-  w.dispatchEvent(new w.Event('load'));
+  boot(w);
   await waitFor(w, '.history-table tbody tr .status-pill');
   const rows = w.document.querySelectorAll('.history-table tbody tr');
   assert.equal(rows.length, 1, 'duplicate DOT+type collapses to one row');
@@ -115,7 +124,7 @@ test('rows with no DOT are not collapsed', async () => {
     [PAY]: []
   });
   const w = dom.window;
-  w.dispatchEvent(new w.Event('load'));
+  boot(w);
   await waitFor(w, '.history-table tbody tr .status-pill');
   const rows = w.document.querySelectorAll('.history-table tbody tr');
   assert.equal(rows.length, 2, 'no-DOT rows stay individual');

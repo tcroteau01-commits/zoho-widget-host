@@ -472,9 +472,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       </div>
       <div class="history-search">
         <select class="input" id="history-date-filter">
-          <option value="all" selected>All time</option>
+          <option value="all">All time</option>
           <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
+          <option value="30d" selected>Last 30 days</option>
           <option value="90d">Last 90 days</option>
           <option value="custom">Custom range</option>
         </select>
@@ -560,7 +560,7 @@ var brokerContactId = null;        // Current broker's own Contact ID (used for 
 var lookupResult  = null;          // { carrier, existing_vendor } from last successful lookup
 var historyRecords = [];           // Combined records from both reports
 var historySearch = '';
-var historyDateFilter = 'all';     // '7d' | '30d' | '90d' | 'all' | 'custom'
+var historyDateFilter = '30d';     // '7d' | '30d' | '90d' | 'all' | 'custom'
 var historyDateFrom = '';          // YYYY-MM-DD when filter is 'custom'
 var historyDateTo = '';            // YYYY-MM-DD when filter is 'custom'
 var historyPage = 1;

@@ -472,9 +472,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       </div>
       <div class="history-search">
         <select class="input" id="history-date-filter">
-          <option value="all">All time</option>
+          <option value="all" selected>All time</option>
           <option value="7d">Last 7 days</option>
-          <option value="30d" selected>Last 30 days</option>
+          <option value="30d">Last 30 days</option>
           <option value="90d">Last 90 days</option>
           <option value="custom">Custom range</option>
         </select>
@@ -560,7 +560,7 @@ var brokerContactId = null;        // Current broker's own Contact ID (used for 
 var lookupResult  = null;          // { carrier, existing_vendor } from last successful lookup
 var historyRecords = [];           // Combined records from both reports
 var historySearch = '';
-var historyDateFilter = '30d';     // '7d' | '30d' | '90d' | 'all' | 'custom'
+var historyDateFilter = 'all';     // '7d' | '30d' | '90d' | 'all' | 'custom'
 var historyDateFrom = '';          // YYYY-MM-DD when filter is 'custom'
 var historyDateTo = '';            // YYYY-MM-DD when filter is 'custom'
 var historyPage = 1;
@@ -890,6 +890,10 @@ function historyDateBounds() {
   return { from: from, to: to };
 }
 
+function cleanDot(v) {
+  return String(v == null ? '' : v).replace(/\D/g, '');
+}
+
 function renderHistory() {
   var bounds = historyDateBounds();
   var filtered = historyRecords.filter(function(r) {
@@ -913,6 +917,23 @@ function renderHistory() {
       return hay.indexOf(historySearch) !== -1;
     });
   }
+
+  // Resend creates a new record each time, so a carrier can have multiple rows.
+  // Collapse sends to the same carrier+link-type by DOT, keeping the most-recent
+  // (historyRecords is pre-sorted newest-first) and counting the rest. Rows with
+  // no DOT are never grouped.
+  var seenGroups = {};
+  var deduped = [];
+  filtered.forEach(function(r) {
+    var dot = cleanDot(r.Carrier_DOT);
+    if (!dot) { r._sentCount = 1; deduped.push(r); return; }
+    var key = r._type + '|' + dot;
+    if (seenGroups[key]) { seenGroups[key]._sentCount += 1; return; }
+    r._sentCount = 1;
+    seenGroups[key] = r;
+    deduped.push(r);
+  });
+  filtered = deduped;
 
   if (!filtered.length) {
     var msg = historyRecords.length === 0
@@ -947,11 +968,17 @@ function renderHistory() {
     var typeClass = r._type === 'full' ? 'full' : 'pay';
     var when = parseDate(r.Added_Time);
     var sentBy = contactDisplay(r.Contact_Name);
-    var status = (r.Link_Status || '').toLowerCase();
     var statusLabel, statusClass;
-    if (status === 'completed') { statusLabel = 'Completed'; statusClass = 'completed'; }
-    else if (status === 'pending') { statusLabel = 'Pending'; statusClass = 'pending'; }
-    else { statusLabel = 'Sent'; statusClass = ''; }
+    if (r.setup === true) {
+      statusLabel = 'Completed'; statusClass = 'completed';
+    } else if (cleanDot(r.Carrier_DOT)) {
+      // Has a DOT but no matching vendor yet -> awaiting setup.
+      statusLabel = 'Sent'; statusClass = 'pending';
+    } else {
+      // No DOT to cross-reference -> fall back to the stored Link_Status.
+      statusLabel = ((r.Link_Status || '').toLowerCase() === 'completed') ? 'Completed' : 'Sent';
+      statusClass = statusLabel === 'Completed' ? 'completed' : 'pending';
+    }
 
     var carrierMain = r.Carrier_Name || r.Send_To || '—';
     var carrierSub = r.Carrier_DOT ? 'DOT ' + r.Carrier_DOT : '';
@@ -968,7 +995,8 @@ function renderHistory() {
           (r.Additional_Email ? '<div class="cell-sub">CC: ' + esc(r.Additional_Email) + '</div>' : '') +
         '</td>' +
         '<td>' + esc(sentBy || '—') + '</td>' +
-        '<td>' + (when ? esc(fmtDateTime(when)) + '<div class="cell-sub">' + esc(fmtRelative(when)) + '</div>' : '—') + '</td>' +
+        '<td>' + (when ? esc(fmtDateTime(when)) + '<div class="cell-sub">' + esc(fmtRelative(when)) +
+          (r._sentCount > 1 ? ' · sent ' + r._sentCount + 'x' : '') + '</div>' : '—') + '</td>' +
         '<td><span class="status-pill ' + statusClass + '">' + esc(statusLabel) + '</span></td>' +
       '</tr>';
   });

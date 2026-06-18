@@ -999,3 +999,37 @@ test('previewFile shows an img for an image', () => {
   window.previewFile(new window.File(['x'], 'a.png', { type: 'image/png' }));
   assert.ok(window.document.querySelector('#pw-preview img'));
 });
+
+// ---- Task 7: commit ----
+test('commitPaperwork merges+uploads once per pending slot and marks uploaded', async () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
+  window.attachFilesToSlot('A', 'carrier', [new window.File(['x'], 'v.pdf')]);
+  let merges = 0, uploads = 0;
+  window.mergeFilesToPDF = () => { merges++; return Promise.resolve(new window.Blob(['p'])); };
+  window._uploadDoc = () => { uploads++; return Promise.resolve(true); };
+  await window.commitPaperwork();
+  assert.equal(merges, 2);
+  assert.equal(uploads, 2);
+  assert.equal(window.__pw.slots['A'].customer, 'uploaded');
+  assert.equal(window.__pw.slots['A'].carrier, 'uploaded');
+});
+
+test('commitPaperwork keeps a slot pending when its upload fails', async () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
+  window.mergeFilesToPDF = () => Promise.resolve(new window.Blob(['p']));
+  window._uploadDoc = () => Promise.resolve(false);
+  await window.commitPaperwork();
+  assert.equal(window.__pw.slots['A'].customer, 'pending');
+});
+
+test('hasPendingUploads reflects pending slots', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  assert.equal(window.hasPendingUploads(), false);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
+  assert.equal(window.hasPendingUploads(), true);
+});

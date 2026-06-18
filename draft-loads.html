@@ -1335,7 +1335,7 @@ function commitPaperwork(){
   return Promise.all(jobs).then(function(results){
     var failed=results.filter(function(r){ return !r.ok; }).length;
     renderPaperwork(__pw.loads);
-    if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed — retry') : 'All packets attached'); }
+    if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed, retry') : 'All packets attached'); }
     return results;
   });
 }

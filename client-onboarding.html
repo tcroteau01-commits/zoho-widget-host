@@ -1148,6 +1148,39 @@ function initDom() {
   // Clear a field's red highlight as soon as the prospect starts fixing it.
   document.addEventListener('input', function (e) { if (e.target && e.target.classList && e.target.classList.contains('invalid')) e.target.classList.remove('invalid'); });
   $('submitBtn').addEventListener('click', submitApplication);
+  if (getQueryParam('prefill') === '1') prefillTestData();
+}
+
+// Dev/test convenience: open with ?prefill=1 to fill the form with valid carrier test data and
+// jump to Review & Submit — so verifying changes doesn't require re-typing everything. Gated by
+// the URL param, so real prospects never trigger it. Uses PIN 1234.
+function prefillTestData() {
+  try {
+    setAuthorityUI('carrier');
+    UI.authority = 'carrier'; UI.authorityType = 'Carrier'; UI.usdot = '4366362'; UI.mc = '1709488'; UI.businessName = 'Test Carrier LLC';
+    var set = function (id, v) { var e = $(id); if (e) e.value = v; };
+    set('opUsdot', '4366362'); set('opMC', '1709488'); set('opName', 'Test Carrier LLC');
+    var fmt = $('opFormation'); if (fmt) fmt.value = 'LLC';
+    set('opEIN', '12-3456789');
+    set('opPhone', '6235551212'); set('opEmail', 'test@example.com'); set('opSmsPhone', '6235551212');
+    set('opPhysical', '123 Main St, Glendale, AZ 85301');
+    set('opMonthly', '$22,000'); set('opTrucks', '2'); set('opDrivers', '2');
+    set('opPin', '1234'); set('opPinConfirm', '1234');
+    var eq = document.querySelector('#equipChips .chip[data-equip="Dry Van"]');
+    if (eq && !eq.classList.contains('sel')) eq.click();
+    var blk = document.querySelector('#ownerList .owner-block');
+    if (blk) {
+      var f = function (n, v) { var e = blk.querySelector('[data-of="' + n + '"]'); if (e) e.value = v; };
+      f('first', 'Test'); f('last', 'Owner'); f('title', 'Owner'); f('pct', '100');
+      f('dob', '01/01/1990'); f('ssn', '111-11-1111'); f('phone', '6235551212');
+      f('email', 'test@example.com'); f('address', '123 Main St, Glendale, AZ');
+    }
+    var tc = $('termsChip'); if (tc && !tc.classList.contains('sel')) tc.click();
+    var af = $('appFeeChip'); if (af && !af.classList.contains('sel')) af.click();
+    recalc();
+    if (document.querySelector('.step[data-step="5"]')) go(5);  // jump to Review & Submit
+    showStatus('✓ Test data prefilled (?prefill=1) — review and submit to verify. Portal PIN is 1234.', 'success');
+  } catch (e) { console.error('prefill error', e); }
 }
 
 function pad(n) { return n < 10 ? '0' + n : '' + n; }

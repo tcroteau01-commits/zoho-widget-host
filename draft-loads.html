@@ -470,7 +470,8 @@ function bulkAttachDocs(){
   var loads=__state.drafts.filter(function(d){ return sel.indexOf(d.id)!==-1; }).map(function(d){
     return { id:d.id, ref:d.customer_reference_number, invoice:d.carrier_factoring_invoice,
       customer_name:d.customer_name||d.customer_raw||'', carrier_name:d.carrier_name||'',
-      carrier_mc:d.carrier_mc||'', carrier_dot:d.carrier_dot||'' };
+      carrier_mc:d.carrier_mc||'', carrier_dot:d.carrier_dot||'',
+      has_customer_docs:!!d.has_customer_docs, has_carrier_docs:!!d.has_carrier_docs };
   });
   if(!loads.length){ showToast('Select at least one draft'); return; }
   clearSelection();
@@ -1156,7 +1157,8 @@ function routeFileToSlot(filename, loads){
 
 function paperworkStatus(slots){
   slots=slots||{};
-  return (slots.customer==='uploaded' && slots.carrier==='uploaded') ? 'ready' : 'attention';
+  function satisfied(v){ return v==='pending' || v==='uploaded' || v==='server'; }
+  return (satisfied(slots.customer) && satisfied(slots.carrier)) ? 'ready' : 'attention';
 }
 
 function openPaperwork(loads){
@@ -1164,7 +1166,11 @@ function openPaperwork(loads){
   __pw.slots = {};
   __pw.files = {};
   __pw.tray = [];
-  __pw.loads.forEach(function(l){ __pw.slots[l.id]={customer:false,carrier:false}; __pw.files[l.id]={customer:[],carrier:[]}; });
+  __pw.loads.forEach(function(l){
+    __pw.slots[l.id]={ customer: l.has_customer_docs ? 'server' : false,
+                       carrier: l.has_carrier_docs ? 'server' : false };
+    __pw.files[l.id]={customer:[],carrier:[]};
+  });
   document.querySelectorAll('.wrap').forEach(function(w){ if (w.id!=='paperwork-wrap') w.classList.add('pw-hidden'); });
   var pw=document.getElementById('paperwork-wrap'); if (pw) pw.classList.remove('pw-hidden');
   renderPaperwork(__pw.loads);
@@ -1177,6 +1183,12 @@ function closePaperwork(){
 function slotHtml(l, slot){
   var state=__pw.slots[l.id] && __pw.slots[l.id][slot];
   var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
+  if (state==='server' && !files.length){
+    var who = slot==='customer' ? 'customer' : 'carrier';
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+who+' packet on file</span> ✓'+
+           ' <span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'"></span></div>'+
+           '<div class="auto" style="color:var(--green)">✓ already attached</div>';
+  }
   if ((state==='pending' || state==='uploaded') && files.length){
     var nm=files[files.length-1].name;
     var more = files.length>1 ? ' <span class="auto" style="display:inline">+'+(files.length-1)+' more</span>' : '';
@@ -1197,15 +1209,20 @@ function slotHtml(l, slot){
 
 function renderPaperwork(loads){
   if (loads) __pw.loads = loads;
-  __pw.loads.forEach(function(l){ if(!__pw.slots[l.id]){ __pw.slots[l.id]={customer:false,carrier:false}; __pw.files[l.id]={customer:[],carrier:[]}; } });
+  __pw.loads.forEach(function(l){ if(!__pw.slots[l.id]){
+    __pw.slots[l.id]={ customer: l.has_customer_docs ? 'server' : false,
+                       carrier: l.has_carrier_docs ? 'server' : false };
+    __pw.files[l.id]={customer:[],carrier:[]};
+  } });
   var host=document.getElementById('paperwork');
   if(!host) return;
   host.innerHTML='';
   __pw.loads.forEach(function(l){
     var st=paperworkStatus(__pw.slots[l.id]);
+    function _has(s){ var v=__pw.slots[l.id][s]; return v==='pending'||v==='uploaded'||v==='server'; }
     var statHtml = st==='ready'
       ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
-      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer==='uploaded'?'Carrier doc':(__pw.slots[l.id].carrier==='uploaded'?'Customer doc':'Both needed')) +'</span>';
+      : '<span class="stat attn"><span class="dot"></span>'+ (_has('customer')?'Carrier doc':(_has('carrier')?'Customer doc':'Both needed')) +'</span>';
     var carrId = l.carrier_mc ? ('MC '+esc(l.carrier_mc)) : (l.carrier_dot ? ('DOT '+esc(l.carrier_dot)) : '');
     var idBits=[];
     if (l.ref) idBits.push('Cust ref '+esc(l.ref));

@@ -1132,3 +1132,32 @@ test('commitPaperwork double-call fires merge+upload only once per slot', async 
   assert.equal(merges, 2,  'mergeFilesToPDF must be called exactly once per slot (2 slots)');
   assert.equal(uploads, 2, '_uploadDoc must be called exactly once per slot (2 slots)');
 });
+
+// ---- Task 2 (slot state): seed from server + count placed-or-attached ----
+test('paperworkStatus counts placed or server-attached slots as ready', () => {
+  const { window } = makeWidget();
+  const w = window;
+  assert.equal(w.paperworkStatus({ customer: 'pending', carrier: 'server' }), 'ready');
+  assert.equal(w.paperworkStatus({ customer: 'server', carrier: 'uploaded' }), 'ready');
+  assert.equal(w.paperworkStatus({ customer: 'server', carrier: false }), 'attention');
+});
+
+test('openPaperwork seeds slots from has_*_docs', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'R', invoice: 'I',
+    has_customer_docs: true, has_carrier_docs: false }]);
+  assert.equal(window.__pw.slots['A'].customer, 'server');
+  assert.equal(window.__pw.slots['A'].carrier, false);
+  assert.equal(window.paperworkStatus(window.__pw.slots['A']), 'attention');
+});
+
+test('a server-seeded slot renders an already-attached badge, not an empty slot', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'R', invoice: 'I',
+    has_customer_docs: true, has_carrier_docs: false }]);
+  const row = window.document.querySelector('[data-row="A"]');
+  const custCell = row.querySelector('[data-slot-wrap="customer"]');
+  assert.match(custCell.textContent, /already attached/i);
+  // and exposes a remove control for the server doc
+  assert.ok(custCell.querySelector('.slot-remove'));
+});

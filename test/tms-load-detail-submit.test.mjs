@@ -28,7 +28,7 @@ test('submit panel enables submit when gates pass and invoice entered', () => {
   const dom = boot();
   const { renderSubmitPanel } = dom.window;
   renderSubmitPanel(
-    { id: '1', status: 'POD Received', vetting: { authority_active: true } },
+    { id: '1', status: 'POD Received', carrier_id: 'v1', vetting: { authority_active: true } },
     [{ document_type: 'POD' }, { document_type: 'Rate Con' }]
   );
   const inv = dom.window.document.getElementById('f-factoring-invoice');
@@ -59,4 +59,17 @@ test('already-submitted load shows funding link and locks', () => {
   const panel = dom.window.document.getElementById('submit-panel');
   assert.ok(/Submitted/.test(panel.textContent));
   assert.ok(panel.querySelector('a[href="http://x/9"]'));
+});
+
+test('submit gate fails when no carrier is assigned', () => {
+  const dom = boot();
+  const { renderSubmitPanel } = dom.window;
+  renderSubmitPanel(
+    { id: '1', status: 'POD Received', carrier_id: '', vetting: { authority_active: true } },
+    [{ document_type: 'POD' }, { document_type: 'Rate Con' }]
+  );
+  dom.window.document.getElementById('f-factoring-invoice').value = 'FCT-1';
+  dom.window.document.getElementById('f-factoring-invoice')
+     .dispatchEvent(new dom.window.Event('input'));
+  assert.strictEqual(dom.window.document.getElementById('btn-submit-factoring').disabled, true);
 });

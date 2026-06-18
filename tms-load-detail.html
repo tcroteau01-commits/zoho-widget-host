@@ -124,10 +124,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="field"><label>Carrier</label><select id="f-carrier_id"><option value="">— Select —</option></select></div>
       <div class="field"><label>Carrier MC</label><input id="f-carrier_mc" readonly title="Auto-filled from the selected carrier"></div>
       <div class="field"><label>Carrier Pay</label><input id="f-carrier_pay" type="number" step="0.01"></div>
+      <div class="field" style="grid-column:1/-1"><span class="muted">Leave blank to save as a draft and assign a carrier later.</span></div>
       <div class="field"><label>Status</label>
         <select id="f-status">
-          <option>Booked</option><option>Covered</option><option>Dispatched</option>
-          <option>In Transit</option><option>Delivered</option><option>POD Received</option>
+          <option>Draft</option><option>Booked</option><option>Covered</option>
+          <option>Dispatched</option><option>In Transit</option>
+          <option>Delivered</option><option>POD Received</option>
         </select>
       </div>
     </div>
@@ -207,7 +209,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <span class="errline" id="form-error"></span>
     <span class="okline" id="form-ok"></span>
     <button class="btn" id="save-template-btn">Save as Template</button>
-    <button class="btn primary" id="save-btn">Save Load</button>
+    <button class="btn" id="save-draft-btn">Save as Draft</button>
+    <button class="btn primary" id="book-load-btn">Book Load</button>
   </div>
 
   </div><!-- /#edit-mode -->
@@ -422,17 +425,18 @@ function _vettingFromCarrier() {
 function showError(msg){ var e = document.getElementById('form-error'); if (e) e.textContent = msg || ''; var o = document.getElementById('form-ok'); if (o) o.textContent = ''; }
 function showOk(msg){ var o = document.getElementById('form-ok'); if (o) o.textContent = msg || ''; var e = document.getElementById('form-error'); if (e) e.textContent = ''; }
 
-function saveLoad() {
+function saveLoad(statusOverride) {
   showError('');
   var body = collectForm();
-  if (!body.customer_id) { showError('Select a customer before saving.'); return Promise.resolve(); }
-  var btn = document.getElementById('save-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (statusOverride) body.status = statusOverride;
+  if (!body.customer_id) { showError('Select an approved customer before saving.'); return Promise.resolve(); }
+  var btns = ['save-draft-btn', 'book-load-btn'].map(function(id){ return document.getElementById(id); });
+  btns.forEach(function(b){ if (b) b.disabled = true; });
   return fetch(BROKER_API_BASE + '/tms-load', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(function(r){ return r.json(); })
     .then(function(p){
-      if (btn) { btn.disabled = false; btn.textContent = 'Save Load'; }
+      btns.forEach(function(b){ if (b) b.disabled = false; });
       if (p && p.ok) {
         loadId = (p && p.id) || loadId;
         showOk('Saved.'); refreshDocCard();
@@ -440,8 +444,15 @@ function saveLoad() {
       }
       else showError((p && p.error) || 'Save failed.');
     })
-    .catch(function(){ if (btn) { btn.disabled = false; btn.textContent = 'Save Load'; } showError('Network error saving load.'); });
+    .catch(function(){ btns.forEach(function(b){ if (b) b.disabled = false; }); showError('Network error saving load.'); });
 }
+
+function bookLoad() {
+  var s = val('f-status');
+  if (!s || s === 'Draft') s = 'Booked';
+  return saveLoad(s);
+}
+window.bookLoad = bookLoad;
 
 function saveTemplate() {
   if (!val('f-customer_id')) { showError('Pick a customer first to save a template.'); return; }
@@ -583,7 +594,10 @@ window.addEventListener('load', function(){
   document.getElementById('f-carrier_id').addEventListener('change', onCarrierChange);
   document.getElementById('add-pickup').addEventListener('click', function(){ addStop('Pickup'); });
   document.getElementById('add-delivery').addEventListener('click', function(){ addStop('Delivery'); });
-  document.getElementById('save-btn').addEventListener('click', saveLoad);
+  var sd = document.getElementById('save-draft-btn');
+  if (sd) sd.onclick = function(){ saveLoad('Draft'); };
+  var bl = document.getElementById('book-load-btn');
+  if (bl) bl.onclick = function(){ bookLoad(); };
   document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
   document.getElementById('back-btn').addEventListener('click', function(){
     try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}
@@ -715,6 +729,7 @@ function _gateFailures(load, docs) {
   var f = [];
   if ((load.status || '') !== 'POD Received')
     f.push("Load must be at 'POD Received' (currently '" + (load.status || '-') + "').");
+  if (!load.carrier_id) f.push('Assign a carrier before submitting.');
   var sides = {};
   (docs || []).forEach(function (d) { sides[_docSide(d.document_type)] = true; });
   if (!sides.customer) f.push('At least one customer-side document is required.');

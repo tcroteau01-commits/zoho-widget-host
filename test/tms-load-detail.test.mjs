@@ -173,3 +173,26 @@ test('applyTemplate pre-fills shipper leg', () => {
   assert.equal(window.document.getElementById('f-origin').value, 'Dallas');
   assert.equal(window.document.getElementById('f-invoice_amount').value, '2000');
 });
+
+test('status select includes Draft and defaults to it for a new load', () => {
+  const { window } = makeWidget();
+  const sel = window.document.getElementById('f-status');
+  const opts = [...sel.options].map(o => o.value || o.textContent);
+  assert.ok(opts.includes('Draft'));
+  assert.equal(sel.value, 'Draft');           // new load default
+  assert.ok(!opts.includes('Cancelled'));      // cancel is not a dropdown target
+});
+
+test('Save as Draft forces status Draft; Book Load promotes Draft to Booked', () => {
+  const { window, posts } = makeWidget();
+  window.populateCustomers(CUSTOMERS.customers);
+  window.document.getElementById('f-customer_id').value = 'cu1';
+  window.saveLoad('Draft');
+  return Promise.resolve().then(() => {
+    assert.equal(posts.at(-1).body.status, 'Draft');
+    window.bookLoad();
+    return Promise.resolve().then(() => {
+      assert.equal(posts.at(-1).body.status, 'Booked');   // dropdown still Draft -> promoted
+    });
+  });
+});

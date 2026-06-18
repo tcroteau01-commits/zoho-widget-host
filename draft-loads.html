@@ -124,6 +124,7 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
 
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2a44;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;box-shadow:0 8px 24px rgba(16,24,40,.3)}
 #toast.hidden{display:none}
+#pw-preview.hidden{display:none!important}
 
 /* Import CSV modal */
 .modal.wide{width:860px}
@@ -288,6 +289,15 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
       <span>Load</span><span>Customer Docs <span class="req">· required</span></span><span>Carrier Docs <span class="req">· required</span></span><span style="text-align:right">Status</span>
     </div>
     <div id="paperwork"></div>
+  </div>
+  <div id="pw-preview" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:10px;width:80vw;height:85vh;max-width:900px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)">
+        <b id="pw-preview-name">Preview</b>
+        <span id="pw-preview-close" style="cursor:pointer;font-weight:700;padding:0 6px">✕</span>
+      </div>
+      <div id="pw-preview-body" style="flex:1;overflow:auto;background:#f4f4f2"></div>
+    </div>
   </div>
   <div class="foot">
     <div class="l" id="pw-foot"><b>0 ready</b></div>
@@ -897,6 +907,7 @@ window.addEventListener('load', function(){
     else { __state.selected=[]; }
     renderQueue(); renderBulkBar();
   });
+  var pc=document.getElementById('pw-preview-close'); if(pc) pc.addEventListener('click', closePreview);
   var scrim=document.getElementById('scrim');
   if (scrim) scrim.addEventListener('click', function(e){ if(e.target===scrim) closeModal(); });
   var drop=document.getElementById('pw-drop');
@@ -1222,7 +1233,7 @@ function wirePaperworkSlots(){
     });
     // Click the slot (but not the remove ✕) opens a file picker scoped to it.
     cell.addEventListener('click', function(e){
-      if (e.target && e.target.classList && e.target.classList.contains('slot-remove')) return;
+      if (e.target && e.target.classList && (e.target.classList.contains('slot-remove') || e.target.classList.contains('slot-preview'))) return;
       __pw.pickTarget={loadId:loadId, slot:slot};
       _pwFileInput().click();
     });
@@ -1231,6 +1242,14 @@ function wirePaperworkSlots(){
     x.addEventListener('click', function(e){
       e.stopPropagation();   // don't also open the file picker
       removeSlot(x.getAttribute('data-load'), x.getAttribute('data-slot'));
+    });
+  });
+  document.querySelectorAll('#paperwork .slot-preview').forEach(function(p){
+    p.addEventListener('click', function(e){
+      e.stopPropagation();
+      var lid=p.getAttribute('data-load'), s=p.getAttribute('data-slot');
+      var files=(__pw.files[lid]&&__pw.files[lid][s])||[];
+      if(files.length) previewFile(files[files.length-1]);
     });
   });
 }
@@ -1305,6 +1324,33 @@ function _loadLabel(loadId){
   return (l.customer_name||l.ref||('Load '+loadId));
 }
 
+var _pwPreviewUrl=null;
+function previewFile(file){
+  var modal=document.getElementById('pw-preview'); if(!modal||!file) return;
+  var body=document.getElementById('pw-preview-body');
+  setText('pw-preview-name', file.name||'Preview');
+  if(_pwPreviewUrl){ try{ URL.revokeObjectURL(_pwPreviewUrl); }catch(e){} _pwPreviewUrl=null; }
+  body.innerHTML='';
+  var type=file.type||'';
+  _pwPreviewUrl=URL.createObjectURL(file);
+  if(type.indexOf('image/')===0){
+    var img=document.createElement('img'); img.src=_pwPreviewUrl;
+    img.style.maxWidth='100%'; img.style.display='block'; img.style.margin='0 auto';
+    body.appendChild(img);
+  } else if(type==='application/pdf' || /\.pdf$/i.test(file.name||'')){
+    var ifr=document.createElement('iframe'); ifr.src=_pwPreviewUrl;
+    ifr.style.width='100%'; ifr.style.height='100%'; ifr.style.border='0';
+    body.appendChild(ifr);
+  } else {
+    body.innerHTML='<div class="empty" style="padding:24px">No inline preview for this file type ('+esc(type||'unknown')+').  '+esc(file.name||'')+'</div>';
+  }
+  modal.classList.remove('hidden');
+}
+function closePreview(){
+  var modal=document.getElementById('pw-preview'); if(modal) modal.classList.add('hidden');
+  if(_pwPreviewUrl){ try{ URL.revokeObjectURL(_pwPreviewUrl); }catch(e){} _pwPreviewUrl=null; }
+}
+
 function renderTray(){
   var host=document.getElementById('pw-tray'); if(!host) return;
   setText('pw-tray-ct', __pw.tray.length);
@@ -1346,7 +1392,9 @@ function renderTray(){
       assignTrayFile(Number(b.getAttribute('data-idx')), b.getAttribute('data-load'), b.getAttribute('data-slot'));
     });
   });
-  // .tray-preview wired in Task 6.
+  host.querySelectorAll('.tray-preview').forEach(function(p){
+    p.addEventListener('click', function(){ var e=__pw.tray[Number(p.getAttribute('data-idx'))]; if(e) previewFile(e.file); });
+  });
 }
 
 function renderPaperworkProgress(){
@@ -1565,6 +1613,8 @@ function onDraftCustomerChange(customerId){
 window.onDraftCarrierChange = onDraftCarrierChange;
 window.onDraftCustomerChange = onDraftCustomerChange;
 window.renderTray=renderTray;
+window.previewFile=previewFile;
+window.closePreview=closePreview;
 </script>
 </body>
 </html>

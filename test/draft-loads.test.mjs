@@ -976,3 +976,26 @@ test('renderTray renders a delete control per tray file', () => {
   window.renderTray();
   assert.ok(window.document.querySelector('#pw-tray .tray-del'));
 });
+
+// ---- Task 6: preview ----
+test('previewFile shows an iframe for a PDF and revokes URL on close', () => {
+  const { window } = makeWidget();
+  let created = 0, revoked = 0;
+  window.URL.createObjectURL = () => { created++; return 'blob:fake'; };
+  window.URL.revokeObjectURL = () => { revoked++; };
+  window.previewFile(new window.File(['x'], 'a.pdf', { type: 'application/pdf' }));
+  const modal = window.document.getElementById('pw-preview');
+  assert.ok(!modal.classList.contains('hidden'));
+  assert.ok(modal.querySelector('iframe'));
+  assert.equal(created, 1);
+  window.closePreview();
+  assert.ok(modal.classList.contains('hidden'));
+  assert.equal(revoked, 1);
+});
+
+test('previewFile shows an img for an image', () => {
+  const { window } = makeWidget();
+  window.URL.createObjectURL = () => 'blob:fake';
+  window.previewFile(new window.File(['x'], 'a.png', { type: 'image/png' }));
+  assert.ok(window.document.querySelector('#pw-preview img'));
+});

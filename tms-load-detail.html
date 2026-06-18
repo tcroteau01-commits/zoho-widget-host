@@ -346,11 +346,11 @@ function vettingExtraHtml(row) {
   var out = '';
   if (row.pay_term) out += ' <span class="badge terms">Pay terms: ' + esc(row.pay_term) + '</span>';
   if (row.factoring_company) out += ' <span class="badge terms">Factor: ' + esc(row.factoring_company) + '</span>';
-  var needsNoa = /factor|lor/i.test(row.pay_term || '');
+  // Positive signal only. A missing NOA/LOR is NOT inferred from doc-absence here --
+  // the vendor record's hold reason (surfaced by the shared operfi-av vetting badge)
+  // is the source of truth, so a clean/Approved carrier never gets a false warning.
   if (row.doc_on_file) {
     out += ' <span class="badge ok">' + esc((row.doc_on_file.type || 'NOA/LOR')) + ' on file</span>';
-  } else if (needsNoa) {
-    out += ' <span class="badge warn">⚠ No NOA/LOR on file — verify before booking</span>';
   }
   return out;
 }

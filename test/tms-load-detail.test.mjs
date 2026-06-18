@@ -90,13 +90,16 @@ test('onCarrierChange fetches /noa-status and shows pay terms, factor, and NOA o
   assert.match(badge, /NOA on file/);
 });
 
-test('vettingExtraHtml warns when a factoring/LOR carrier has no NOA on file', () => {
+test('vettingExtraHtml shows the on-file badge but never warns on doc-absence', () => {
   const { window } = makeWidget();
-  const html = window.vettingExtraHtml({ pay_term: 'Factoring Company', factoring_company: 'RTS', doc_on_file: null });
-  assert.match(html, /No NOA\/LOR on file/);
-  // a direct-pay carrier with no doc should NOT warn
-  const ok = window.vettingExtraHtml({ pay_term: 'Standard Net 30', doc_on_file: null });
-  assert.doesNotMatch(ok, /No NOA\/LOR on file/);
+  // A factoring carrier with no NOA/LOR row logged must NOT warn — the vendor
+  // record (its hold reason) is the source of truth for a missing-NOA flag, not
+  // doc presence. This is the only place that used the old doc-absence heuristic.
+  const noDoc = window.vettingExtraHtml({ pay_term: 'Factoring Company', factoring_company: 'RTS', doc_on_file: null });
+  assert.doesNotMatch(noDoc, /No NOA\/LOR on file/);
+  // A doc on file still surfaces the positive badge.
+  const withDoc = window.vettingExtraHtml({ pay_term: 'Factoring Company', doc_on_file: { type: 'NOA Update' } });
+  assert.match(withDoc, /NOA Update on file/);
 });
 
 test('populateCustomers lists bookable customers (Approved + Boost Requested), hides others', () => {

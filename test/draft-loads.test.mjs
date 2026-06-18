@@ -576,6 +576,32 @@ test('createDraftsFromPreview keeps auto-assign for an exact/high-confidence mat
   assert.equal(JSON.parse(posts[0].opts.body).customer_id, '1');
 });
 
+// ---- Preview honesty for sub-threshold matches ----
+test('renderPreview shows "pick after import" for a sub-threshold match', () => {
+  const { window } = makeWidget();
+  window.openImportModal();
+  window.renderPreview([
+    { raw: {}, mapped: { customer_name_raw: 'ABC Shipping', customer_reference_number: 'REF-1',
+        customer_rate: '1000', carrier_mc: '', carrier_dot: '', carrier_rate: '900',
+        carrier_factoring_invoice: 'INV-1', load_rate_confirmation_number: 'RC-1', load_comments: '' },
+      customer_match: { exact: false, best: { customer_id: '99', name: 'Cumberland Diversified', score: 0.0 }, candidates: [] },
+      carrier_match: { vendor_id: '', matched_on: '', conflict: false },
+      errors: [], duplicate: false }
+  ]);
+  const cell = window.document.querySelector('.prevrow td');
+  assert.match(cell.textContent, /pick after import/i);
+  assert.match(cell.textContent, /ABC Shipping/); // shows the raw name the broker sent
+});
+
+test('renderPreview shows the customer name for an exact/high-confidence match', () => {
+  const { window } = makeWidget();
+  window.openImportModal();
+  window.renderPreview([PREVIEW.rows[0]]); // WALMART INC, score 0.97
+  const cell = window.document.querySelector('.prevrow td');
+  assert.match(cell.textContent, /WALMART INC/);
+  assert.ok(!/pick after import/i.test(cell.textContent), 'confident match does not say pick after import');
+});
+
 // ---- Task 20: paperwork assembly + auto-route ----
 function mk() {
   const w = makeWidget().window;

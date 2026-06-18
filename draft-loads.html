@@ -987,9 +987,18 @@ function renderPreview(rows){
       var bad=isBadRow(row);
       var cls='prevrow'+((row.errors&&row.errors.length)?' bad':(row.duplicate?' dup':''));
       var custCell;
-      if (cm.exact && cm.best){ custCell=esc(cm.best.name); }
-      else if (cm.best){ custCell=esc(cm.best.name)+' <span class="pct">'+Math.round((cm.best.score||0)*100)+'%</span>'; }
-      else { custCell='<span style="color:var(--amber-dk)">'+esc(m.customer_name_raw||'—')+'</span>'; }
+      if (autoAssignCustomerId(cm)){
+        custCell=esc(cm.best.name);
+      } else if (cm.best && cm.best.customer_id){
+        // A best exists but is below the auto-assign threshold: show the raw name
+        // plus the closest suggestion, and make clear it will need a manual pick.
+        custCell='<span style="color:var(--amber-dk)">'+esc(m.customer_name_raw||'—')+
+          '</span> <span class="auto">→ closest: '+esc(cm.best.name)+
+          ' <span class="pct">'+Math.round((cm.best.score||0)*100)+'%</span> · pick after import</span>';
+      } else {
+        custCell='<span style="color:var(--amber-dk)">'+esc(m.customer_name_raw||'—')+
+          ' · pick after import</span>';
+      }
       if (m.customer_reference_number) custCell+='<div class="small mono">Ref '+esc(m.customer_reference_number)+'</div>';
       var carrId = m.carrier_mc ? 'MC '+esc(m.carrier_mc) : (m.carrier_dot ? 'DOT '+esc(m.carrier_dot) : '<span style="color:var(--amber-dk)">no MC/DOT</span>');
       var carrCell=carrId+(vm.vendor_id?' ✓':'')+(vm.conflict?'<div class="conflict">⚠ MC/DOT conflict</div>':'');

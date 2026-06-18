@@ -992,10 +992,15 @@ test('attachFilesToSlot stages files as pending and uploads nothing', () => {
   assert.ok(!records.some(r => r.url.indexOf('/upload-doc') !== -1));
 });
 
-test('paperworkStatus is ready only when both slots uploaded', () => {
+test('paperworkStatus is ready when both slots are placed, attached, or uploaded', () => {
   const { window } = makeWidget();
-  assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'uploaded' }), 'attention');
+  // both slots satisfied (placed counts as satisfied)
+  assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'uploaded' }), 'ready');
   assert.equal(window.paperworkStatus({ customer: 'uploaded', carrier: 'uploaded' }), 'ready');
+  assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'pending' }), 'ready');
+  // only one slot satisfied → attention
+  assert.equal(window.paperworkStatus({ customer: 'uploaded', carrier: false }), 'attention');
+  assert.equal(window.paperworkStatus({ customer: false, carrier: 'uploaded' }), 'attention');
 });
 
 // ---- Task 4: assign + move ----

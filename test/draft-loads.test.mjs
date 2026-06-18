@@ -918,3 +918,27 @@ test('paperworkStatus is ready only when both slots uploaded', () => {
   assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'uploaded' }), 'attention');
   assert.equal(window.paperworkStatus({ customer: 'uploaded', carrier: 'uploaded' }), 'ready');
 });
+
+// ---- Task 4: assign + move ----
+test('assignTrayFile stages the file and removes it from the tray', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.__pw.tray = [{ file: new window.File(['x'], '1.pdf'),
+    candidates: [{ loadId: 'A', slot: 'customer', confidence: 'high' }] }];
+  window.assignTrayFile(0, 'A', 'customer');
+  assert.equal(window.__pw.tray.length, 0);
+  assert.equal(window.__pw.slots['A'].customer, 'pending');
+  assert.equal(window.__pw.files['A'].customer.length, 1);
+});
+
+test('moveSlotFile relocates files between slots', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' },
+                        { id: 'B', ref: 'INV-3', invoice: 'INV-4' }]);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], '1.pdf')]);
+  window.moveSlotFile('A', 'customer', 'B', 'carrier');
+  assert.equal(window.__pw.files['A'].customer.length, 0);
+  assert.equal(window.__pw.slots['A'].customer, false);
+  assert.equal(window.__pw.files['B'].carrier.length, 1);
+  assert.equal(window.__pw.slots['B'].carrier, 'pending');
+});

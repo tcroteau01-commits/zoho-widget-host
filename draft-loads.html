@@ -1214,10 +1214,7 @@ function wirePaperworkSlots(){
       // Otherwise a file re-dragged from the unmatched tray (tray index in dataTransfer).
       var idx=e.dataTransfer && e.dataTransfer.getData('text/plain');
       if (idx===''||idx==null) return;
-      var entry=__pw.tray[Number(idx)];
-      if (!entry) return;
-      __pw.tray.splice(Number(idx),1);
-      attachToSlot(loadId, slot, entry.file);
+      assignTrayFile(Number(idx), loadId, slot);
     });
     // Click the slot (but not the remove ✕) opens a file picker scoped to it.
     cell.addEventListener('click', function(e){
@@ -1246,6 +1243,22 @@ function attachFilesToSlot(loadId, slot, fileList){
 }
 // Single-file attach (tray re-drag) delegates to the multi-file path.
 function attachToSlot(loadId, slot, file){ return attachFilesToSlot(loadId, slot, [file]); }
+
+// Remove tray entry at idx and stage its file into (loadId, slot).
+function assignTrayFile(idx, loadId, slot){
+  if(idx<0 || idx>=__pw.tray.length) return;
+  var entry=__pw.tray.splice(idx,1)[0];
+  attachFilesToSlot(loadId, slot, [entry.file]);
+}
+
+// Move all files from one slot to another (re-stages as pending; uploads are deferred).
+function moveSlotFile(fromLoad, fromSlot, toLoad, toSlot){
+  var files=((__pw.files[fromLoad]&&__pw.files[fromLoad][fromSlot])||[]).slice();
+  if(!files.length) return;
+  if(__pw.files[fromLoad]) __pw.files[fromLoad][fromSlot]=[];
+  if(__pw.slots[fromLoad]) __pw.slots[fromLoad][fromSlot]=false;
+  attachFilesToSlot(toLoad, toSlot, files);
+}
 
 // Clear a slot but RETURN its files to the tray so nothing is lost.
 function removeSlot(loadId, slot){
@@ -1320,6 +1333,8 @@ window.renderPaperwork=renderPaperwork;
 window.openPaperwork=openPaperwork;
 window.attachToSlot=attachToSlot;
 window.attachFilesToSlot=attachFilesToSlot;
+window.assignTrayFile=assignTrayFile;
+window.moveSlotFile=moveSlotFile;
 window.removeSlot=removeSlot;
 window.deleteTrayFile=deleteTrayFile;
 window.dropAllFiles=dropAllFiles;

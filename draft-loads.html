@@ -302,7 +302,6 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
   <div class="foot">
     <div class="l" id="pw-foot"><b>0 ready</b></div>
     <button class="btn" id="pw-back">Back to drafts</button>
-    <button class="btn" id="pw-commit">Attach all packets</button>
     <button class="btn amber" id="pw-done">Done — return to queue</button>
   </div>
 </div>
@@ -889,8 +888,8 @@ window.addEventListener('load', function(){
   var s=document.getElementById('search');
   if (s) s.addEventListener('input', function(){ __state.search=s.value; renderQueue(); });
   bind('import-csv', function(){ openImportModal(); });
-  bind('pw-back', function(){ closePaperwork(); loadQueue(); });
-  bind('pw-back-link', function(e){ if(e&&e.preventDefault) e.preventDefault(); closePaperwork(); loadQueue(); });
+  bind('pw-back', function(){ exitPaperwork(function(){ closePaperwork(); loadQueue(); }); });
+  bind('pw-back-link', function(e){ if(e&&e.preventDefault) e.preventDefault(); exitPaperwork(function(){ closePaperwork(); loadQueue(); }); });
   bind('pw-done', function(){ finishPaperwork(); });
   bind('new-draft', function(){ newDraft(); });
   bind('submit-all', function(){ submitAllReady(); });
@@ -918,7 +917,6 @@ window.addEventListener('load', function(){
     drop.addEventListener('dragleave', function(){ drop.classList.remove('drag'); });
     drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag'); if(e.dataTransfer&&e.dataTransfer.files.length) dropAllFiles(e.dataTransfer.files); });
   }
-  var cmt=document.getElementById('pw-commit'); if(cmt) cmt.addEventListener('click', function(){ commitPaperwork(); });
   window.addEventListener('beforeunload', function(e){
     if(hasPendingUploads()){ e.preventDefault(); e.returnValue=''; return ''; }
   });
@@ -1192,7 +1190,7 @@ function slotHtml(l, slot){
     var nm=files[files.length-1].name;
     var more = files.length>1 ? ' <span class="auto" style="display:inline">+'+(files.length-1)+' more</span>' : '';
     var badge = state==='uploaded' ? ' ✓' : '';
-    var note = state==='uploaded' ? '<div class="auto">✓ attached</div>' : '<div class="auto">staged — not yet sent</div>';
+    var note = state==='uploaded' ? '<div class="auto">✓ attached</div>' : '<div class="auto" style="color:var(--green)">Ready — attaches when you leave</div>';
     return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span>'+more+badge+
            ' <span class="slot-preview" title="Preview" data-load="'+esc(l.id)+'" data-slot="'+slot+'">👁</span>'+
            '<span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'">✕</span></div>'+
@@ -1328,8 +1326,31 @@ function moveSlotFile(fromLoad, fromSlot, toLoad, toSlot){
   attachFilesToSlot(toLoad, toSlot, files);
 }
 
-// Clear a slot but RETURN its files to the tray so nothing is lost.
+// Delete an already-attached server doc for this draft, then clear the slot.
+function removeServerDoc(loadId, slot){
+  return fetch(BROKER_API_BASE+'/draft-loads/'+encodeURIComponent(loadId)+'/remove-doc', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ email:brokerEmail, slot:slot })
+  }).then(function(r){ return r.json(); }).then(function(res){
+    if(res && res.ok){
+      if(__pw.slots[loadId]) __pw.slots[loadId][slot]=false;
+      renderPaperwork(__pw.loads);
+      showToast('Attached '+slot+' doc removed');
+      return true;
+    }
+    showToast('Could not remove doc'); return false;
+  }).catch(function(){ showToast('Could not remove doc'); return false; });
+}
+
+// Clear a slot. Server docs are deleted on the draft (with confirm); locally-placed
+// files are returned to the unmatched tray so nothing is lost.
 function removeSlot(loadId, slot){
+  var state=__pw.slots[loadId] && __pw.slots[loadId][slot];
+  if(state==='server'){
+    if(typeof window.confirm==='function' && !window.confirm('Remove the attached '+slot+' doc from this load?')) return;
+    removeServerDoc(loadId, slot);
+    return;
+  }
   var files=(__pw.files[loadId]&&__pw.files[loadId][slot])||[];
   files.forEach(function(f){
     __pw.tray.push({ file:f, candidates: matchFileToLoads(f.name, __pw.loads).candidates });
@@ -1489,7 +1510,15 @@ function renderPaperworkProgress(){
   var foot=document.getElementById('pw-foot'); if(foot) foot.innerHTML='<b>'+ready+' ready</b> · '+(total-ready)+' still missing a packet';
 }
 
-function finishPaperwork(){ closePaperwork(); loadQueue(); }
+// Commit placed files, then (only on full success) run the navigation callback.
+function exitPaperwork(after){
+  return commitPaperwork().then(function(results){
+    var failed=(results||[]).filter(function(r){ return !r.ok; }).length;
+    if(failed){ showToast(failed+' upload'+(failed===1?'':'s')+' failed — still here, retry'); return; }
+    if(typeof after==='function') after();
+  });
+}
+function finishPaperwork(){ exitPaperwork(function(){ closePaperwork(); loadQueue(); }); }
 
 /* expose import + paperwork */
 window.openImportModal=openImportModal;
@@ -1509,6 +1538,8 @@ window.attachFilesToSlot=attachFilesToSlot;
 window.assignTrayFile=assignTrayFile;
 window.moveSlotFile=moveSlotFile;
 window.removeSlot=removeSlot;
+window.removeServerDoc=removeServerDoc;
+window.exitPaperwork=exitPaperwork;
 window.deleteTrayFile=deleteTrayFile;
 window.dropAllFiles=dropAllFiles;
 window.commitPaperwork=commitPaperwork;

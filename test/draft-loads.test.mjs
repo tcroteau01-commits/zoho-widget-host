@@ -33,6 +33,9 @@ function makeFetch(records) {
       body = { submitted: ['900'], skipped: [], count: 1 };
     } else if (u.indexOf('/draft-loads/alias') !== -1) {
       body = { ok: true };
+    } else if (u.indexOf('/remove-doc') !== -1) {
+      body = { ok: true, slot: (opts && opts.body ? JSON.parse(opts.body).slot : ''),
+               has_customer_docs: false, has_carrier_docs: true };
     } else if (/\/draft-loads\/\d+/.test(u)) {
       body = { status: 'ready', reasons: [] };
     } else if (u.indexOf('/draft-loads') !== -1) {
@@ -1165,4 +1168,34 @@ test('a server-seeded slot renders an already-attached badge, not an empty slot'
   assert.match(custCell.textContent, /already attached/i);
   // and exposes a remove control for the server doc
   assert.ok(custCell.querySelector('.slot-remove'));
+});
+
+// ---- Task 3: auto-attach on exit, drop manual button, server-doc delete ----
+test('the Attach all packets button is gone', () => {
+  const { window } = makeWidget();
+  assert.equal(window.document.getElementById('pw-commit'), null);
+});
+
+test('removing a server-attached slot calls remove-doc and clears the slot', async () => {
+  const { window, records } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.openPaperwork([{ id: '900', ref: 'R', invoice: 'I',
+    has_customer_docs: true, has_carrier_docs: true }]);
+  await window.removeServerDoc('900', 'customer');
+  const hit = records.find(r => r.url.indexOf('/draft-loads/900/remove-doc') !== -1);
+  assert.ok(hit, 'remove-doc was called');
+  assert.equal(JSON.parse(hit.opts.body).slot, 'customer');
+  assert.equal(window.__pw.slots['900'].customer, false);
+});
+
+test('exitPaperwork uploads placed files then runs the after-callback', async () => {
+  const { window, records } = makeWidget();
+  window.openPaperwork([{ id: '900', ref: 'R', invoice: 'I' }]);
+  window.attachFilesToSlot('900', 'customer', [fakeFile('R.pdf')]);
+  let ran = false;
+  window.mergeFilesToPDF = () => Promise.resolve(new window.Blob(['p']));
+  window._uploadDoc = () => Promise.resolve(true);
+  await window.exitPaperwork(() => { ran = true; });
+  assert.equal(ran, true, 'after-callback ran on success');
+  assert.equal(window.__pw.slots['900'].customer, 'uploaded');
 });

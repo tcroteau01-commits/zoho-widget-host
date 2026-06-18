@@ -47,6 +47,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-to { width: 220px; border: 1px solid #d8d8d8; border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; }
 .doc-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 12px; border-bottom: 1px solid #f3f1ea; }
 .doc-item .src { color: #999; }
+.doc-item.voided > span { text-decoration: line-through; opacity: .55; }
+.void-tag { text-decoration: none; display:inline-block; margin-left:6px; padding:1px 6px;
+  border-radius: 10px; background:#7a1f1f; color:#fff; font-size:11px; opacity:1; }
 
 @media (max-width: 640px) {
   html, body { overflow-x: hidden; }
@@ -631,8 +634,10 @@ function renderDocList(docs) {
   box.innerHTML = '';
   docs.forEach(function(d){
     var el = document.createElement('div');
-    el.className = 'doc-item';
-    el.innerHTML = '<span>' + esc(d.document_type) + '</span><span class="src">' + esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
+    el.className = 'doc-item' + (d.voided ? ' voided' : '');
+    var tag = d.voided ? ' <span class="void-tag">Voided — carrier changed</span>' : '';
+    el.innerHTML = '<span>' + esc(d.document_type) + tag + '</span><span class="src">' +
+      esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
     box.appendChild(el);
   });
 }
@@ -731,7 +736,7 @@ function _gateFailures(load, docs) {
     f.push("Load must be at 'POD Received' (currently '" + (load.status || '-') + "').");
   if (!load.carrier_id) f.push('Assign a carrier before submitting.');
   var sides = {};
-  (docs || []).forEach(function (d) { sides[_docSide(d.document_type)] = true; });
+  (docs || []).forEach(function (d) { if (!d.voided) sides[_docSide(d.document_type)] = true; });
   if (!sides.customer) f.push('At least one customer-side document is required.');
   if (!sides.carrier) f.push('At least one carrier-side document is required.');
   var inv = document.getElementById('f-factoring-invoice');
@@ -829,7 +834,7 @@ window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; wind
 window.vettingExtraHtml = vettingExtraHtml;
 window.applyTemplate = applyTemplate; window.hydrate = hydrate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
-window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf;
+window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink;
 </script>
 </body>

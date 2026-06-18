@@ -66,3 +66,19 @@ test('renderDocList shows existing documents', () => {
   assert.equal(rows.length, 1);
   assert.match(rows[0].textContent, /Rate Con/);
 });
+
+test('voided rate con renders struck and does not satisfy the carrier-doc gate', () => {
+  const { window } = makeWidget();
+  const { renderDocList, _gateFailures } = window;
+  const docs = [
+    { document_type: 'Rate Con', source: 'system-generated', voided: true },
+    { document_type: 'Customer Invoice', source: 'system-generated', voided: false },
+  ];
+  renderDocList(docs);
+  const voidedRow = window.document.querySelector('.doc-item.voided');
+  assert.ok(voidedRow, 'voided row has the voided class');
+  assert.match(voidedRow.textContent, /Voided/);
+  // carrier-side doc (Rate Con) is voided -> gate still requires a carrier doc
+  const fails = _gateFailures({ status: 'POD Received', carrier_id: 'v1' }, docs);
+  assert.ok(fails.some(f => /carrier-side document/.test(f)));
+});

@@ -360,6 +360,26 @@ function changeStatus(load, status) {
   }).catch(function(){ showToast('Status update failed'); });
 }
 
+function canCancel(status) {
+  return ['Delivered', 'POD Received', 'Submitted', 'Cancelled'].indexOf(status || '') === -1;
+}
+
+function cancelLoad(load) {
+  var lid = (load && load.id) || (window._slideoutLoad && window._slideoutLoad.id) || '';
+  if (!lid || !brokerEmail) return Promise.resolve();
+  if (typeof confirm === 'function' && !confirm('Cancel load ' + (load.load_number || lid) + '? It will be removed from the active board (reversible).')) {
+    return Promise.resolve();
+  }
+  return fetch(BROKER_API_BASE + '/tms-status-bulk', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_ids: [String(lid)], status: 'Cancelled' })
+  }).then(function(r){ return r.json(); }).then(function(p){
+    var skipped = (p && p.skipped && p.skipped.length);
+    showToast(skipped ? 'Could not cancel (ineligible)' : 'Load cancelled');
+    if (!skipped) { if (typeof closeSlideout === 'function') closeSlideout(); loadBoard(); }
+  }).catch(function(){ showToast('Cancel failed'); });
+}
+
 function renderViewActions(load) {
   var el = document.getElementById('v-actions');
   if (!el) return;
@@ -370,8 +390,14 @@ function renderViewActions(load) {
       : '<span class="muted" style="color:#aeb8cc">Submitted</span>';
     return;
   }
-  el.innerHTML = '<button class="vbtn light" id="v-edit">✎ Edit load</button>';
+  var actionsHtml = '<button class="vbtn light" id="v-edit">✎ Edit load</button>';
+  if (canCancel(load.status)) {
+    actionsHtml += '<button class="vbtn" id="v-cancel-load" style="color:#7a1f1f">Cancel Load</button>';
+  }
+  el.innerHTML = actionsHtml;
   document.getElementById('v-edit').addEventListener('click', function(){ selectForEdit(load.id); });
+  var cl = document.getElementById('v-cancel-load');
+  if (cl) cl.onclick = function(){ cancelLoad(load); };
 }
 
 function selectForEdit(loadId) {
@@ -474,6 +500,7 @@ window.renderStepper = renderStepper;
 window.changeStatus = changeStatus;
 window.onRowCheck = onRowCheck; window.toggleBulkBar = toggleBulkBar;
 window.bulkApply = bulkApply; window.bulkCancel = bulkCancel;
+window.canCancel = canCancel; window.cancelLoad = cancelLoad;
 </script>
 </body>
 </html>

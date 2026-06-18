@@ -35,3 +35,26 @@ test('status stepper container exists in the header and f-status is hidden', () 
   assert.ok(fs);
   assert.equal(fs.type, 'hidden');
 });
+
+test('renderStepper marks current, makes auto steps locked, settable steps clickable', () => {
+  const w = makeWidget();
+  w.renderStepper('Covered');
+  const stepper = w.document.getElementById('status-stepper');
+  const cur = stepper.querySelector('.step.current');
+  assert.equal(cur.dataset.status, 'Covered');
+  // Ready to Submit + Submitted are locked (no data-set handler / .locked class)
+  const ready = [...stepper.querySelectorAll('.step')].find(s => s.dataset.status === 'Ready to Submit');
+  assert.ok(ready.classList.contains('locked'));
+  // Draft is settable (clickable)
+  const draft = [...stepper.querySelectorAll('.step')].find(s => s.dataset.status === 'Draft');
+  assert.ok(draft.classList.contains('settable'));
+});
+
+test('clicking a settable step updates f-status', () => {
+  const w = makeWidget();
+  w.renderStepper('Draft');
+  const stepper = w.document.getElementById('status-stepper');
+  const dispatched = [...stepper.querySelectorAll('.step.settable')].find(s => s.dataset.status === 'Dispatched');
+  dispatched.click();
+  assert.equal(w.document.getElementById('f-status').value, 'Dispatched');
+});

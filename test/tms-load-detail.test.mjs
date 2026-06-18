@@ -186,7 +186,9 @@ test('status select includes Draft and defaults to it for a new load', () => {
 test('Save as Draft forces status Draft; Book Load promotes Draft to Booked', () => {
   const { window, posts } = makeWidget();
   window.populateCustomers(CUSTOMERS.customers);
+  window.populateCarriers(CARRIERS.carriers);
   window.document.getElementById('f-customer_id').value = 'cu1';
+  window.document.getElementById('f-carrier_id').value = 'v1';   // ROADWAY — carrier required to book
   window.saveLoad('Draft');
   return Promise.resolve().then(() => {
     assert.equal(posts.at(-1).body.status, 'Draft');
@@ -195,4 +197,15 @@ test('Save as Draft forces status Draft; Book Load promotes Draft to Booked', ()
       assert.equal(posts.at(-1).body.status, 'Booked');   // dropdown still Draft -> promoted
     });
   });
+});
+
+test('Book Load with no carrier saves as Draft and shows carrier error', async () => {
+  const { window, posts } = makeWidget();
+  window.populateCustomers(CUSTOMERS.customers);
+  window.populateCarriers(CARRIERS.carriers);
+  window.document.getElementById('f-customer_id').value = 'cu1';
+  // deliberately leave f-carrier_id empty (no carrier selected)
+  await window.bookLoad();
+  assert.equal(posts.at(-1).body.status, 'Draft');   // must save as Draft, not Booked
+  assert.match(window.document.getElementById('form-error').textContent, /carrier/i);
 });

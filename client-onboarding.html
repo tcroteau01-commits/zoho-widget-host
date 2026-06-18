@@ -1151,9 +1151,9 @@ function initDom() {
   if (getQueryParam('prefill') === '1') prefillTestData();
 }
 
-// Dev/test convenience: open with ?prefill=1 to fill the form with valid carrier test data and
-// jump to Review & Submit — so verifying changes doesn't require re-typing everything. Gated by
-// the URL param, so real prospects never trigger it. Uses PIN 1234.
+// Dev/test convenience: open with ?prefill=1 to fill the form with valid carrier test data while
+// STAYING on step 1 — so you can step through each screen to verify functionality without
+// re-typing. Gated by the URL param, so real prospects never trigger it. Uses PIN 1234.
 function prefillTestData() {
   try {
     setAuthorityUI('carrier');
@@ -1177,9 +1177,10 @@ function prefillTestData() {
     }
     var tc = $('termsChip'); if (tc && !tc.classList.contains('sel')) tc.click();
     var af = $('appFeeChip'); if (af && !af.classList.contains('sel')) af.click();
+    var n0 = $('next0'); if (n0) n0.disabled = false;   // enable step-0 Continue (we bypassed USDOT search)
     recalc();
-    if (document.querySelector('.step[data-step="5"]')) go(5);  // jump to Review & Submit
-    showStatus('✓ Test data prefilled (?prefill=1) — review and submit to verify. Portal PIN is 1234.', 'success');
+    // Stay on the first step so you can click Continue through each screen to verify it.
+    showStatus('✓ Test data prefilled (?prefill=1) — step through each screen with Continue. Portal PIN is 1234.', 'success');
   } catch (e) { console.error('prefill error', e); }
 }
 

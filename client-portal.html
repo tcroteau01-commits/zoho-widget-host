@@ -314,7 +314,7 @@ function loadStatus(token) {
         renderPinPrompt('Too many attempts. Try again in about ' + Math.ceil((j.retryAfter || 900) / 60) + ' minutes, or reset your PIN below.', true);
         return;
       }
-      renderRecovery('This link is invalid or has expired. Find your application below.');
+      renderPinReset();   // invalid/expired link → re-verify identity + set a PIN to get a fresh gated link
     })
     .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
 }
@@ -529,7 +529,7 @@ function boot() {
   }
   var token = getToken();
   STATE.token = token;
-  if (!token) { renderRecovery(); return; }
+  if (!token) { renderPinReset(); return; }   // no link → verify identity + set a PIN to get one
   loadStatus(token);
 }
 

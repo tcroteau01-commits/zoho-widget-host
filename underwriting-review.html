@@ -462,7 +462,11 @@ function fetchChecks(app) {
     usdot: usdot,
     phone: (app && (app.Business_Phone || app.SMS_Admin_Phone)) || '',
     email: (app && app.Business_Admin_Email) || '',
-    mc: (app && app.MC_Number) || ''
+    mc: (app && app.MC_Number) || '',
+    // KYB (Middesk) inputs — the business to verify
+    businessName: (app && app.Business_Name) || '',
+    ein: (app && app.EIN) || '',
+    address: (app && app.Physical_Address) || ''
   };
   return fetch(API_BASE + CHECKS_PATH, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)

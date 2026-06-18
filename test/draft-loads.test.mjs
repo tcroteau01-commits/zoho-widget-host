@@ -523,6 +523,85 @@ test('createDraftsFromPreview never posts pay terms (derived server-side from ca
   posts.forEach(p => assert.ok(!('payment_terms' in JSON.parse(p.opts.body)), 'no payment_terms sent'));
 });
 
+// ---- Customer auto-assign confidence gate ----
+test('autoAssignCustomerId: exact match assigns regardless of score', () => {
+  const { window } = makeWidget();
+  assert.equal(window.autoAssignCustomerId(
+    { exact: true, best: { customer_id: '7', name: 'ABC SHIPPING', score: 1.0 } }), '7');
+});
+
+test('autoAssignCustomerId: high score (>=0.90) assigns; 0.90 is inclusive', () => {
+  const { window } = makeWidget();
+  assert.equal(window.autoAssignCustomerId(
+    { exact: false, best: { customer_id: '3', name: 'X', score: 0.97 } }), '3');
+  assert.equal(window.autoAssignCustomerId(
+    { exact: false, best: { customer_id: '4', name: 'Y', score: 0.90 } }), '4');
+});
+
+test('autoAssignCustomerId: low/zero/null matches do NOT assign', () => {
+  const { window } = makeWidget();
+  assert.equal(window.autoAssignCustomerId(
+    { exact: false, best: { customer_id: '5', name: 'Z', score: 0.89 } }), '');
+  assert.equal(window.autoAssignCustomerId(
+    { exact: false, best: { customer_id: '6', name: 'Wrong Co', score: 0.0 } }), '');
+  assert.equal(window.autoAssignCustomerId({ exact: false, best: null }), '');
+  assert.equal(window.autoAssignCustomerId(undefined), '');
+});
+
+test('createDraftsFromPreview omits customer_id for a zero-score match (forces a pick)', async () => {
+  const { window, records } = makeWidget();
+  window.openImportModal();
+  window.renderPreview([
+    { raw: {}, mapped: { customer_name_raw: 'ABC Shipping', customer_reference_number: 'REF-1',
+        customer_rate: '1000', carrier_mc: '', carrier_dot: '', carrier_rate: '900',
+        carrier_factoring_invoice: 'INV-1', load_rate_confirmation_number: 'RC-1', load_comments: '' },
+      customer_match: { exact: false, best: { customer_id: '99', name: 'Cumberland Diversified', score: 0.0 }, candidates: [] },
+      carrier_match: { vendor_id: '', matched_on: '', conflict: false },
+      errors: [], duplicate: false }
+  ]);
+  await window.createDraftsFromPreview();
+  const posts = records.filter(r => /\/draft-loads$/.test(r.url.split('?')[0]) && r.opts.method === 'POST');
+  assert.equal(posts.length, 1);
+  const body = JSON.parse(posts[0].opts.body);
+  assert.ok(!('customer_id' in body) || !body.customer_id,
+    'zero-score match must NOT auto-assign a customer');
+});
+
+test('createDraftsFromPreview keeps auto-assign for an exact/high-confidence match', async () => {
+  const { window, records } = makeWidget();
+  window.openImportModal();
+  window.renderPreview([PREVIEW.rows[0]]); // best.score 0.97 -> still auto-assigns
+  await window.createDraftsFromPreview();
+  const posts = records.filter(r => /\/draft-loads$/.test(r.url.split('?')[0]) && r.opts.method === 'POST');
+  assert.equal(JSON.parse(posts[0].opts.body).customer_id, '1');
+});
+
+// ---- Preview honesty for sub-threshold matches ----
+test('renderPreview shows "pick after import" for a sub-threshold match', () => {
+  const { window } = makeWidget();
+  window.openImportModal();
+  window.renderPreview([
+    { raw: {}, mapped: { customer_name_raw: 'ABC Shipping', customer_reference_number: 'REF-1',
+        customer_rate: '1000', carrier_mc: '', carrier_dot: '', carrier_rate: '900',
+        carrier_factoring_invoice: 'INV-1', load_rate_confirmation_number: 'RC-1', load_comments: '' },
+      customer_match: { exact: false, best: { customer_id: '99', name: 'Cumberland Diversified', score: 0.0 }, candidates: [] },
+      carrier_match: { vendor_id: '', matched_on: '', conflict: false },
+      errors: [], duplicate: false }
+  ]);
+  const cell = window.document.querySelector('.prevrow td');
+  assert.match(cell.textContent, /pick after import/i);
+  assert.match(cell.textContent, /ABC Shipping/); // shows the raw name the broker sent
+});
+
+test('renderPreview shows the customer name for an exact/high-confidence match', () => {
+  const { window } = makeWidget();
+  window.openImportModal();
+  window.renderPreview([PREVIEW.rows[0]]); // WALMART INC, score 0.97
+  const cell = window.document.querySelector('.prevrow td');
+  assert.match(cell.textContent, /WALMART INC/);
+  assert.ok(!/pick after import/i.test(cell.textContent), 'confident match does not say pick after import');
+});
+
 // ---- Task 20: paperwork assembly + auto-route ----
 function mk() {
   const w = makeWidget().window;

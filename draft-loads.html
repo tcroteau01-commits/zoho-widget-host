@@ -987,9 +987,18 @@ function renderPreview(rows){
       var bad=isBadRow(row);
       var cls='prevrow'+((row.errors&&row.errors.length)?' bad':(row.duplicate?' dup':''));
       var custCell;
-      if (cm.exact && cm.best){ custCell=esc(cm.best.name); }
-      else if (cm.best){ custCell=esc(cm.best.name)+' <span class="pct">'+Math.round((cm.best.score||0)*100)+'%</span>'; }
-      else { custCell='<span style="color:var(--amber-dk)">'+esc(m.customer_name_raw||'—')+'</span>'; }
+      if (autoAssignCustomerId(cm)){
+        custCell=esc(cm.best.name);
+      } else if (cm.best && cm.best.customer_id){
+        // A best exists but is below the auto-assign threshold: show the raw name
+        // plus the closest suggestion, and make clear it will need a manual pick.
+        custCell='<span style="color:var(--amber-dk)">'+esc(m.customer_name_raw||'—')+
+          '</span> <span class="auto">→ closest: '+esc(cm.best.name)+
+          ' <span class="pct">'+Math.round((cm.best.score||0)*100)+'%</span> · pick after import</span>';
+      } else {
+        custCell='<span style="color:var(--amber-dk)">'+esc(m.customer_name_raw||'—')+
+          ' · pick after import</span>';
+      }
       if (m.customer_reference_number) custCell+='<div class="small mono">Ref '+esc(m.customer_reference_number)+'</div>';
       var carrId = m.carrier_mc ? 'MC '+esc(m.carrier_mc) : (m.carrier_dot ? 'DOT '+esc(m.carrier_dot) : '<span style="color:var(--amber-dk)">no MC/DOT</span>');
       var carrCell=carrId+(vm.vendor_id?' ✓':'')+(vm.conflict?'<div class="conflict">⚠ MC/DOT conflict</div>':'');
@@ -1022,6 +1031,20 @@ function carrierDisplayName(vendorId){
   return (c && c.carrier_name) || '';
 }
 
+// A CSV match auto-assigns a customer only when we are confident: an exact
+// (suffix-normalized) name match, or a token score >= 0.90. Anything weaker —
+// including the score-0 "best" the matcher returns when nothing really matches —
+// leaves the draft's customer blank so the board forces a manual pick. This is
+// what prevents an unrelated name (e.g. "ABC Shipping") from silently landing on
+// the wrong customer (e.g. "Cumberland Diversified").
+var CUSTOMER_AUTO_ASSIGN_MIN = 0.90;
+function autoAssignCustomerId(cm){
+  if(!cm || !cm.best || !cm.best.customer_id) return '';
+  if(cm.exact === true) return cm.best.customer_id;
+  if(typeof cm.best.score === 'number' && cm.best.score >= CUSTOMER_AUTO_ASSIGN_MIN) return cm.best.customer_id;
+  return '';
+}
+
 function createDraftsFromPreview(){
   var clean=creatableRows();
   if(!clean.length){ showToast('No rows to create'); return Promise.resolve(); }
@@ -1038,7 +1061,8 @@ function createDraftsFromPreview(){
       load_rate_confirmation_number: m.load_rate_confirmation_number,
       source_payload: m
     };
-    if (cm.best && cm.best.customer_id) body.customer_id=cm.best.customer_id;
+    var autoCid = autoAssignCustomerId(cm);
+    if (autoCid) body.customer_id=autoCid;
     if (vm.vendor_id) body.carrier_id=vm.vendor_id;
     // payment_terms is derived server-side from the carrier's Account_Vendor record.
     if (m.load_comments) body.load_comments=m.load_comments;
@@ -1050,7 +1074,7 @@ function createDraftsFromPreview(){
     }).then(function(res){
       if(!res || !res.record_id) return null;
       return { id:res.record_id, ref:m.customer_reference_number, invoice:m.carrier_factoring_invoice,
-               customer_name:(cm.best&&cm.best.name)||m.customer_name_raw||'',
+               customer_name:(autoCid&&cm.best&&cm.best.name)||m.customer_name_raw||'',
                carrier_name:carrierDisplayName(vm.vendor_id),
                carrier_mc:m.carrier_mc||'', carrier_dot:m.carrier_dot||'' };
     }).catch(function(){ return null; });
@@ -1455,6 +1479,7 @@ function finishPaperwork(){ closePaperwork(); loadQueue(); }
 window.openImportModal=openImportModal;
 window.renderPreview=renderPreview;
 window.createDraftsFromPreview=createDraftsFromPreview;
+window.autoAssignCustomerId=autoAssignCustomerId;
 window.normToken=normToken;
 window.longestDigitRun=longestDigitRun;
 window.boundedMatch=boundedMatch;

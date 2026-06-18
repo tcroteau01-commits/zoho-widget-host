@@ -1184,8 +1184,7 @@ function slotHtml(l, slot){
   var state=__pw.slots[l.id] && __pw.slots[l.id][slot];
   var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
   if (state==='server' && !files.length){
-    var who = slot==='customer' ? 'customer' : 'carrier';
-    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+who+' packet on file</span> ✓'+
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+slot+' packet on file</span> ✓'+
            ' <span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'"></span></div>'+
            '<div class="auto" style="color:var(--green)">✓ already attached</div>';
   }
@@ -1219,7 +1218,7 @@ function renderPaperwork(loads){
   host.innerHTML='';
   __pw.loads.forEach(function(l){
     var st=paperworkStatus(__pw.slots[l.id]);
-    function _has(s){ var v=__pw.slots[l.id][s]; return v==='pending'||v==='uploaded'||v==='server'; }
+    var _has = function(s){ var v=__pw.slots[l.id][s]; return v==='pending'||v==='uploaded'||v==='server'; };
     var statHtml = st==='ready'
       ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
       : '<span class="stat attn"><span class="dot"></span>'+ (_has('customer')?'Carrier doc':(_has('carrier')?'Customer doc':'Both needed')) +'</span>';

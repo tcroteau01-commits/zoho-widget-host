@@ -62,17 +62,21 @@
       .then(function (d) { var row = (d && d.carriers && d.carriers[0]) || null; if (row) _carrierCache[key] = row; render(row); })
       .catch(function () { /* leave empty */ });
   }
+  // Exception-only: render only the backend's vetting_flags (Denied, Do Not Use,
+  // Payment Change, Missing NOA, Missing Bank Document, Bank Info). A clean carrier
+  // shows no status badge — just pay terms + factor as plain info. We do NOT show
+  // "approved/pending/good-to-book" reassurance, and the old pay-term NOA heuristic
+  // is gone — the authoritative signals come from the Vendor record server-side.
   function carrierHtml(row) {
     if (!row) return '';
     var out = '<div class="opf-av-badges">';
-    out += row.dnu
-      ? '<span class="opf-av-badge opf-av-dnu">⚠ Do Not Use — flagged by OperFi</span>'
-      : '<span class="opf-av-badge opf-av-ok">✓ Good to book</span>';
+    var flags = row.vetting_flags || [];
+    for (var i = 0; i < flags.length; i++) {
+      var cls = flags[i].level === 'danger' ? 'opf-av-dnu' : 'opf-av-warn';
+      out += '<span class="opf-av-badge ' + cls + '">⚠ ' + esc(flags[i].label || '') + '</span>';
+    }
     if (row.pay_term) out += '<span class="opf-av-badge opf-av-terms">Pay terms: ' + esc(row.pay_term) + '</span>';
     if (row.factoring_company) out += '<span class="opf-av-badge opf-av-terms">Factor: ' + esc(row.factoring_company) + '</span>';
-    var needsNoa = /factor|lor/i.test(row.pay_term || '');
-    if (row.doc_on_file) out += '<span class="opf-av-badge opf-av-ok">' + esc((row.doc_on_file.type || 'NOA/LOR')) + ' on file</span>';
-    else if (needsNoa) out += '<span class="opf-av-badge opf-av-warn">⚠ No NOA/LOR on file — verify before booking</span>';
     out += '</div>';
     return out;
   }

@@ -145,6 +145,7 @@ var STATUS_PATH = '/application-status';   // GET ?token=&pin= → curated appli
 var UPLOAD_PATH = '/application-upload';   // POST ?token= (multipart doc_type + file + pin)
 var LOOKUP_PATH = '/application-lookup';   // POST {usdot,email} → { link } (recovery)
 var RESET_PIN_PATH = '/portal-reset-pin'; // POST {usdot,email,new_pin} → set a new PIN (forgot-PIN)
+var LOGIN_PATH = '/portal-login';          // POST {usdot,email,pin} → curated status + token (general link, no ?token)
 
 // Client-facing stage labels; each maps to a real Application_Status value.
 var STEPS = ['Submitted', 'In Review', 'Underwriting', 'Approved', 'Signed'];
@@ -322,6 +323,35 @@ function loadStatus(token) {
     .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
 }
 
+// General-link login (no ?token): resolve USDOT + email + PIN to an application + a signed token.
+function portalLogin() {
+  if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
+  fetch(API_BASE + LOGIN_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usdot: STATE.usdot, email: STATE.email, pin: STATE.pin }) })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
+    .then(function (res) {
+      var j = res.j || {};
+      if (res.status === 200 && (j.businessName || j.status)) {
+        if (j.token) STATE.token = j.token;   // reuse the token-gated path for uploads/refresh
+        STATE.data = j; renderStatus(j, false); return;
+      }
+      if (j.error === 'pin_not_set') { renderPinReset(); return; }   // identity ok but no PIN yet → set one
+      if (j.error === 'verify_invalid') {
+        STATE.pin = '';
+        var n = j.attemptsLeft;
+        renderPinPrompt('That didn’t match — check your USDOT, email, and PIN. ' + (n != null ? n + ' attempt' + (n === 1 ? '' : 's') + ' left.' : ''));
+        return;
+      }
+      if (j.error === 'pin_locked') {
+        STATE.pin = '';
+        renderPinPrompt('Too many attempts. Try again in about ' + Math.ceil((j.retryAfter || 900) / 60) + ' minutes, or reset your PIN below.', true);
+        return;
+      }
+      renderPinPrompt('Enter your USDOT, email, and a 4-digit PIN.');
+    })
+    .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
+}
+
 // Retrieval gate — requires USDOT + applied email + the 4-digit PIN (verified server-side).
 function renderPinPrompt(msg, locked) {
   setBanner();
@@ -341,7 +371,9 @@ function renderPinPrompt(msg, locked) {
     var em = (el('pinEmail') && el('pinEmail').value || '').trim();
     var p = (pinEl && pinEl.value || '').replace(/\D/g, '');
     if (!u || !em || p.length !== 4) { renderPinPrompt('Enter your USDOT, email, and a 4-digit PIN.'); return; }
-    STATE.usdot = u; STATE.email = em; STATE.pin = p; loadStatus(STATE.token);
+    STATE.usdot = u; STATE.email = em; STATE.pin = p;
+    // With a signed link, verify against the token; on the general link (no token), look up by identity.
+    if (STATE.token) loadStatus(STATE.token); else portalLogin();
   }
   if (btn) btn.addEventListener('click', submit);
   if (pinEl) pinEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
@@ -540,7 +572,9 @@ function boot() {
   }
   var token = getToken();
   STATE.token = token;
-  if (!token) { renderPinReset(); return; }   // no link → verify identity + set a PIN to get one
+  // No ?token → this is the general link: ask for USDOT + email + PIN and log in by identity.
+  // (Never set a PIN? The login returns pin_not_set and routes to the set-PIN form.)
+  if (!token) { renderPinPrompt(''); return; }
   loadStatus(token);
 }
 
@@ -550,7 +584,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
 // expose for tests
 global.OFCP = OFCP;
-global._OFCP_dom = { getToken: getToken, renderStatus: renderStatus, renderRecovery: renderRecovery, renderPinPrompt: renderPinPrompt, renderPinReset: renderPinReset, boot: boot, DEMO_STATUS: DEMO_STATUS };
+global._OFCP_dom = { getToken: getToken, renderStatus: renderStatus, renderRecovery: renderRecovery, renderPinPrompt: renderPinPrompt, renderPinReset: renderPinReset, portalLogin: portalLogin, boot: boot, DEMO_STATUS: DEMO_STATUS };
 
 })(typeof window !== 'undefined' ? window : this);
 </script>

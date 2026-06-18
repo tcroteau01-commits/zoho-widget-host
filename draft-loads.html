@@ -156,6 +156,10 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
 .prog .bar{height:100%;width:0;background:var(--green);border-radius:6px;transition:width .2s}
 .tray{flex:1.1;background:#fff;border:1px solid #ecd49a;border-radius:11px;padding:11px 14px}
 .tray .th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--amber-dk);font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between}
+.tray-grp-hdr{font-size:11px;font-weight:700;color:var(--amber-dk);margin:8px 0 4px}
+.tray-accept{font-size:11px;border:1px solid var(--amber);background:#fff6e4;color:var(--amber-dk);border-radius:6px;padding:1px 6px;cursor:pointer;margin-left:4px}
+.tray-del,.tray-preview{cursor:pointer;margin-left:6px}
+.tray-del{color:#b91c1c;font-weight:700}
 .files{display:flex;gap:7px;flex-wrap:wrap}
 .file{background:var(--amber-soft);border:1px solid #e7cf94;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:600;color:#5d460f;display:flex;align-items:center;gap:6px;cursor:grab}
 .file .pdf{background:var(--red);color:#fff;border-radius:3px;font-size:8px;padding:1px 3px;font-weight:800}
@@ -1288,24 +1292,61 @@ function uploadSlot(loadId, slot){
 function dropAllFiles(fileList){
   var files=Array.prototype.slice.call(fileList||[]);
   files.forEach(function(f){
-    var route=routeFileToSlot(f.name, __pw.loads);
-    if (route){ attachToSlot(route.loadId, route.slot, f); }
-    else { __pw.tray.push({ file:f, candidates: matchFileToLoads(f.name, __pw.loads).candidates }); }
+    var m=matchFileToLoads(f.name, __pw.loads);
+    if (m.auto){ attachFilesToSlot(m.auto.loadId, m.auto.slot, [f]); }
+    else { __pw.tray.push({ file:f, candidates:m.candidates }); }
   });
   renderPaperwork(__pw.loads);
+}
+
+function _loadLabel(loadId){
+  var l=null; for(var i=0;i<__pw.loads.length;i++){ if(String(__pw.loads[i].id)===String(loadId)){ l=__pw.loads[i]; break; } }
+  if(!l) return 'Load '+loadId;
+  return (l.customer_name||l.ref||('Load '+loadId));
 }
 
 function renderTray(){
   var host=document.getElementById('pw-tray'); if(!host) return;
   setText('pw-tray-ct', __pw.tray.length);
   host.innerHTML='';
+  // Bucket tray indexes by the load their first candidate points at ('' = no match).
+  var buckets={}, order=[];
   __pw.tray.forEach(function(entry, i){
-    var el=document.createElement('span');
-    el.className='file'; el.setAttribute('draggable','true');
-    el.innerHTML='<span class="pdf">PDF</span> '+esc(entry.file.name);
-    el.addEventListener('dragstart', function(e){ if(e.dataTransfer) e.dataTransfer.setData('text/plain', String(i)); });
-    host.appendChild(el);
+    var key=(entry.candidates && entry.candidates.length) ? String(entry.candidates[0].loadId) : '';
+    if(!buckets[key]){ buckets[key]=[]; order.push(key); }
+    buckets[key].push(i);
   });
+  order.forEach(function(key){
+    var idxs=buckets[key];
+    if(key!==''){
+      var hdr=document.createElement('div'); hdr.className='tray-grp-hdr';
+      hdr.textContent=_loadLabel(key)+(idxs.length>1 ? ' — '+idxs.length+' files match this load, assign each' : '');
+      host.appendChild(hdr);
+    }
+    idxs.forEach(function(i){
+      var entry=__pw.tray[i];
+      var el=document.createElement('span'); el.className='file'; el.setAttribute('draggable','true');
+      var sugg='';
+      (entry.candidates||[]).forEach(function(c){
+        sugg+=' <button class="tray-accept" data-idx="'+i+'" data-load="'+esc(c.loadId)+'" data-slot="'+c.slot+'">→ '+(c.slot==='customer'?'Customer':'Carrier')+'?</button>';
+      });
+      el.innerHTML='<span class="pdf">PDF</span> '+esc(entry.file.name)+
+        ' <span class="tray-preview" data-idx="'+i+'" title="Preview">👁</span>'+
+        ' <span class="tray-del" data-idx="'+i+'" title="Delete">✕</span>'+sugg;
+      el.addEventListener('dragstart', function(e){ if(e.dataTransfer) e.dataTransfer.setData('text/plain', String(i)); });
+      host.appendChild(el);
+    });
+  });
+  // Wire controls.
+  host.querySelectorAll('.tray-del').forEach(function(x){
+    x.addEventListener('click', function(){ deleteTrayFile(Number(x.getAttribute('data-idx'))); });
+  });
+  host.querySelectorAll('.tray-accept').forEach(function(b){
+    b.addEventListener('click', function(){
+      assignTrayFile(Number(b.getAttribute('data-idx')), b.getAttribute('data-load'), b.getAttribute('data-slot'));
+    });
+  });
+  // .tray-preview wired in Task 6.
 }
 
 function renderPaperworkProgress(){
@@ -1523,6 +1564,7 @@ function onDraftCustomerChange(customerId){
 }
 window.onDraftCarrierChange = onDraftCarrierChange;
 window.onDraftCustomerChange = onDraftCustomerChange;
+window.renderTray=renderTray;
 </script>
 </body>
 </html>

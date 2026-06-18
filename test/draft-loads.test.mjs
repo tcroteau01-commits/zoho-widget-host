@@ -942,3 +942,37 @@ test('moveSlotFile relocates files between slots', () => {
   assert.equal(window.__pw.files['B'].carrier.length, 1);
   assert.equal(window.__pw.slots['B'].carrier, 'pending');
 });
+
+// ---- Task 5: smart drop + tray UI ----
+test('dropAllFiles auto-routes an unambiguous file and trays an ambiguous one', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1234', invoice: 'XJ-9981' },
+                        { id: 'B', ref: '1234', invoice: '1234' }]);
+  // 'xj9981' matches only load A carrier -> auto
+  window.dropAllFiles([new window.File(['x'], 'XJ-9981.pdf')]);
+  assert.equal(window.__pw.slots['A'].carrier, 'pending');
+  // '1234' matches A.customer, B.customer, B.carrier -> ambiguous -> tray
+  window.dropAllFiles([new window.File(['x'], '1234.pdf')]);
+  assert.equal(window.__pw.tray.length, 1);
+  assert.ok(window.__pw.tray[0].candidates.length >= 2);
+});
+
+test('renderTray groups same-load files and warns when more than one', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: '1234', invoice: '1234' }]);
+  window.__pw.tray = [
+    { file: new window.File(['x'], 'cust.pdf'), candidates: [{ loadId: 'A', slot: 'customer', confidence: 'medium' }] },
+    { file: new window.File(['x'], 'inv.pdf'),  candidates: [{ loadId: 'A', slot: 'carrier',  confidence: 'medium' }] }
+  ];
+  window.renderTray();
+  const trayText = window.document.getElementById('pw-tray').textContent;
+  assert.match(trayText, /2 files match/i);
+});
+
+test('renderTray renders a delete control per tray file', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.__pw.tray = [{ file: new window.File(['x'], 'junk.pdf'), candidates: [] }];
+  window.renderTray();
+  assert.ok(window.document.querySelector('#pw-tray .tray-del'));
+});

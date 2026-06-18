@@ -18,38 +18,67 @@ const creditResp = (obj) => (url) => url.indexOf('/funding-credit') !== -1
   ? Promise.resolve({ ok: true, json: () => Promise.resolve(obj) })
   : Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
 
-test('carrierBadge: clean carrier shows good-to-book + pay terms', async () => {
-  const w = mk(carrierResp({ vendor_id: '1', carrier_name: 'ABC', mc: '123', pay_term: 'Net 30', dnu: false }));
+// Exception-only badge: clean carriers show NO status badge (no "Good to book",
+// no "approved/pending" reassurance). Only vetting_flags from the backend render.
+test('carrierBadge: clean carrier shows only pay terms, no status badge', async () => {
+  const w = mk(carrierResp({ vendor_id: '1', carrier_name: 'ABC', mc: '123', pay_term: 'Net 30', vetting_flags: [], dnu: false }));
   w.OperFiAV.carrierBadge(w.document.getElementById('c'), { vendorId: '1', email: 'b@op.com', apiBase: 'http://api' });
   await new Promise(r => setTimeout(r, 20));
   const t = w.document.getElementById('c').textContent;
-  assert.match(t, /Good to book/);
   assert.match(t, /Net 30/);
+  assert.doesNotMatch(t, /Good to book/);
+  assert.doesNotMatch(t, /NOA/);
 });
 
-test('carrierBadge: factored carrier with no doc warns', async () => {
-  const w = mk(carrierResp({ vendor_id: '2', pay_term: 'Factored', factoring_company: 'RTS', doc_on_file: null, dnu: false }));
+test('carrierBadge: factored carrier with no flags shows no NOA warning (heuristic gone)', async () => {
+  const w = mk(carrierResp({ vendor_id: '2', pay_term: 'Factoring Company', factoring_company: 'RTS', vetting_flags: [], dnu: false }));
   w.OperFiAV.carrierBadge(w.document.getElementById('c'), { vendorId: '2', email: 'b@op.com', apiBase: 'http://api' });
   await new Promise(r => setTimeout(r, 20));
   const t = w.document.getElementById('c').textContent;
   assert.match(t, /RTS/);
-  assert.match(t, /No NOA\/LOR on file/);
-});
-
-test('carrierBadge: doc on file shows on-file (no warn)', async () => {
-  const w = mk(carrierResp({ vendor_id: '3', pay_term: 'Factored', doc_on_file: { type: 'NOA' }, dnu: false }));
-  w.OperFiAV.carrierBadge(w.document.getElementById('c'), { vendorId: '3', email: 'b@op.com', apiBase: 'http://api' });
-  await new Promise(r => setTimeout(r, 20));
-  const t = w.document.getElementById('c').textContent;
-  assert.match(t, /NOA on file/);
   assert.doesNotMatch(t, /No NOA/);
+  assert.doesNotMatch(t, /Good to book/);
 });
 
-test('carrierBadge: DNU shows red warn', async () => {
-  const w = mk(carrierResp({ vendor_id: '4', pay_term: 'Factored', dnu: true }));
-  w.OperFiAV.carrierBadge(w.document.getElementById('c'), { vendorId: '4', email: 'b@op.com', apiBase: 'http://api' });
+test('carrierBadge: missing-NOA flag shows amber warn chip', async () => {
+  const w = mk(carrierResp({ vendor_id: '3', pay_term: 'Factoring Company', factoring_company: 'RTS',
+    vetting_flags: [{ key: 'noa_needed', label: 'Missing NOA', level: 'warn' }], dnu: false }));
+  const el = w.document.getElementById('c');
+  w.OperFiAV.carrierBadge(el, { vendorId: '3', email: 'b@op.com', apiBase: 'http://api' });
   await new Promise(r => setTimeout(r, 20));
-  assert.match(w.document.getElementById('c').textContent, /Do Not Use/);
+  assert.match(el.textContent, /Missing NOA/);
+  assert.ok(el.querySelector('.opf-av-warn'), 'warn-level chip uses amber class');
+});
+
+test('carrierBadge: denied flag shows red danger chip', async () => {
+  const w = mk(carrierResp({ vendor_id: '5',
+    vetting_flags: [{ key: 'denied', label: 'Denied', level: 'danger' }], dnu: false }));
+  const el = w.document.getElementById('c');
+  w.OperFiAV.carrierBadge(el, { vendorId: '5', email: 'b@op.com', apiBase: 'http://api' });
+  await new Promise(r => setTimeout(r, 20));
+  assert.match(el.textContent, /Denied/);
+  assert.ok(el.querySelector('.opf-av-dnu'), 'danger-level chip uses red class');
+});
+
+test('carrierBadge: DNU flag shows red Do Not Use chip', async () => {
+  const w = mk(carrierResp({ vendor_id: '4',
+    vetting_flags: [{ key: 'dnu', label: 'Do Not Use — flagged by OperFi', level: 'danger' }] }));
+  const el = w.document.getElementById('c');
+  w.OperFiAV.carrierBadge(el, { vendorId: '4', email: 'b@op.com', apiBase: 'http://api' });
+  await new Promise(r => setTimeout(r, 20));
+  assert.match(el.textContent, /Do Not Use/);
+  assert.ok(el.querySelector('.opf-av-dnu'));
+});
+
+test('carrierBadge: multiple flags all render', async () => {
+  const w = mk(carrierResp({ vendor_id: '6', vetting_flags: [
+    { key: 'denied', label: 'Denied', level: 'danger' },
+    { key: 'noa_needed', label: 'Missing NOA', level: 'warn' }] }));
+  const el = w.document.getElementById('c');
+  w.OperFiAV.carrierBadge(el, { vendorId: '6', email: 'b@op.com', apiBase: 'http://api' });
+  await new Promise(r => setTimeout(r, 20));
+  assert.match(el.textContent, /Denied/);
+  assert.match(el.textContent, /Missing NOA/);
 });
 
 test('customerCredit: <80% green OK', async () => {
@@ -91,7 +120,6 @@ test('carrierBadge: usdot mode calls fetch with usdot param (not vendor_id)', as
   await new Promise(r => setTimeout(r, 20));
   assert.ok(lastUrl.includes('usdot=92261'), 'url should include usdot=92261');
   assert.ok(!lastUrl.includes('vendor_id='), 'url should NOT include vendor_id=');
-  assert.match(w.document.getElementById('c').textContent, /Good to book/);
   assert.match(w.document.getElementById('c').textContent, /Net 30/);
 });
 

@@ -342,14 +342,14 @@ function renderPinPrompt(msg, locked) {
 
 // Forgot-PIN: re-verify by USDOT + applied email, then set a new PIN.
 function renderPinReset() {
-  setBanner('info', 'Verify your identity to set a new PIN.');
+  setBanner('info', 'Verify your details to open your documents.');
   el('content').innerHTML =
-    '<div class="card"><div class="card-title">Reset your PIN</div>' +
-    '<div class="summ">Enter your USDOT and the email you applied with, then choose a new 4-digit PIN.</div>' +
+    '<div class="card"><div class="card-title">Enter your PIN</div>' +
+    '<div class="summ">Enter your USDOT, the email you applied with, and your 4-digit PIN.</div>' +
     '<div class="field"><label>USDOT</label><input id="rpUsdot" inputmode="numeric" placeholder="e.g. 4366362"></div>' +
     '<div class="field"><label>Email</label><input id="rpEmail" type="email" placeholder="The email you applied with"></div>' +
-    '<div class="field"><label>New 4-digit PIN</label><input id="rpPin" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></div>' +
-    '<button class="btn orange" id="rpBtn">Set new PIN</button>' +
+    '<div class="field"><label>4-digit PIN</label><input id="rpPin" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></div>' +
+    '<button class="btn orange" id="rpBtn">Enter PIN</button>' +
     '<div class="toast" id="rpToast"></div></div>';
   var btn = el('rpBtn');
   if (btn) btn.addEventListener('click', resetPin);

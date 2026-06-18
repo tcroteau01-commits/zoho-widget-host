@@ -140,10 +140,21 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <input class="search-input" id="search" placeholder="Search load #, customer, carrier…">
     <div class="filter-pills" id="pills"></div>
   </div>
+  <div id="bulk-bar" class="hidden" style="display:flex;gap:8px;align-items:center;margin:8px 0">
+    <span id="bulk-count" class="muted"></span>
+    <select id="bulk-status">
+      <option value="">Set status…</option>
+      <option>Draft</option><option>Booked</option><option>Covered</option>
+      <option>Dispatched</option><option>In Transit</option>
+      <option>Delivered</option><option>POD Received</option>
+    </select>
+    <button class="btn" id="bulk-apply">Apply</button>
+    <button class="btn" id="bulk-cancel">Cancel selected</button>
+  </div>
   <div class="card">
     <table class="tbl">
-      <thead><tr><th>Load</th><th>Status</th><th>Customer</th><th>Lane</th><th>Carrier</th><th style="text-align:right">Invoice</th><th style="text-align:right">Margin</th></tr></thead>
-      <tbody id="board-body"><tr><td colspan="7" class="empty">Loading loads…</td></tr></tbody>
+      <thead><tr><th style="width:28px"></th><th>Load</th><th>Status</th><th>Customer</th><th>Lane</th><th>Carrier</th><th style="text-align:right">Invoice</th><th style="text-align:right">Margin</th></tr></thead>
+      <tbody id="board-body"><tr><td colspan="8" class="empty">Loading loads…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -193,7 +204,7 @@ function renderRows(rows) {
   var body = document.getElementById('board-body');
   if (!body) return;
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">No loads match.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="empty">No loads match.</td></tr>';
     return;
   }
   body.innerHTML = '';
@@ -202,6 +213,7 @@ function renderRows(rows) {
     tr.onclick = function(){ selectLoad(l.id); };
     var mcls = (Number(l.margin)||0) >= 0 ? 'pos' : 'neg';
     tr.innerHTML =
+      '<td data-label=""><input type="checkbox" class="row-checkbox" data-load-id="' + esc(l.id) + '"></td>' +
       '<td data-label="Load"><div class="ld-num">' + esc(l.load_number) + '</div></td>' +
       '<td data-label="Status"><span class="' + chipClass(l.status) + '">' + esc(l.status) + '</span></td>' +
       '<td data-label="Customer">' + esc(l.customer_name) + '</td>' +
@@ -209,6 +221,9 @@ function renderRows(rows) {
       '<td data-label="Carrier">' + esc(l.carrier_name || '—') + '</td>' +
       '<td style="text-align:right" data-label="Invoice">' + money(l.invoice_amount) + '</td>' +
       '<td style="text-align:right" class="' + mcls + '" data-label="Margin">' + money(l.margin) + '</td>';
+    var cb = tr.querySelector('.row-checkbox');
+    cb.addEventListener('click', function(e){ e.stopPropagation(); });
+    cb.addEventListener('change', function(){ onRowCheck(l.id, cb.checked); });
     body.appendChild(tr);
   });
 }
@@ -365,6 +380,52 @@ function selectForEdit(loadId) {
   navigateToDetail();
 }
 
+var selectedLoadIds = [];
+
+function onRowCheck(id, checked) {
+  id = String(id);
+  var i = selectedLoadIds.indexOf(id);
+  if (checked && i === -1) selectedLoadIds.push(id);
+  if (!checked && i !== -1) selectedLoadIds.splice(i, 1);
+  toggleBulkBar();
+}
+
+function toggleBulkBar() {
+  var bar = document.getElementById('bulk-bar');
+  if (!bar) return;
+  if (selectedLoadIds.length) {
+    bar.classList.remove('hidden');
+    var c = document.getElementById('bulk-count');
+    if (c) c.textContent = selectedLoadIds.length + ' selected';
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+function _bulkPost(status) {
+  if (!selectedLoadIds.length || !brokerEmail) return Promise.resolve();
+  var ids = selectedLoadIds.slice();
+  return fetch(BROKER_API_BASE + '/tms-status-bulk', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_ids: ids, status: status })
+  }).then(function(r){ return r.json(); }).then(function(p){
+    var n = (p && p.updated ? p.updated.length : 0);
+    var m = (p && p.skipped ? p.skipped.length : 0);
+    showToast(n + ' updated' + (m ? ', ' + m + ' skipped' : ''));
+    selectedLoadIds = [];
+    toggleBulkBar();
+    return loadBoard();
+  }).catch(function(){ showToast('Bulk update failed'); });
+}
+
+function bulkApply() {
+  var s = document.getElementById('bulk-status');
+  if (!s || !s.value) { showToast('Pick a status first'); return Promise.resolve(); }
+  return _bulkPost(s.value);
+}
+
+function bulkCancel() { return _bulkPost('Cancelled'); }
+
 function loadBoard() {
   if (!brokerEmail) return;
   return fetch(BROKER_API_BASE + '/tms-loads?email=' + encodeURIComponent(brokerEmail))
@@ -394,6 +455,8 @@ window.addEventListener('load', function(){
   if (nb) nb.addEventListener('click', newLoad);
   var b = document.getElementById('tms-backdrop');
   if (b) b.addEventListener('click', closeSlideout);
+  var ba = document.getElementById('bulk-apply'); if (ba) ba.onclick = bulkApply;
+  var bc = document.getElementById('bulk-cancel'); if (bc) bc.onclick = bulkCancel;
   boot();
 });
 
@@ -409,6 +472,8 @@ window.selectForEdit = selectForEdit;
 window.renderView = renderView;
 window.renderStepper = renderStepper;
 window.changeStatus = changeStatus;
+window.onRowCheck = onRowCheck; window.toggleBulkBar = toggleBulkBar;
+window.bulkApply = bulkApply; window.bulkCancel = bulkCancel;
 </script>
 </body>
 </html>

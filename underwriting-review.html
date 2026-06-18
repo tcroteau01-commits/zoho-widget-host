@@ -673,7 +673,8 @@ function submit(forceDecision) {
   saveReview(payload, MODEL.reviewId).then(function(res){
     if (res && res.demo) { showStatus('✓ Demo: decision "'+payload.Decision2+'" validated and Underwriting_Review payload logged to the console.', 'success'); }
     else {
-      if (res && res.data && res.data.ID) MODEL.reviewId = res.data.ID;
+      // Capture the new/again review id so the next save UPDATES the same record (no duplicates).
+      if (res && res.review_id) MODEL.reviewId = res.review_id;
       showStatus('✓ Saved. Decision "'+payload.Decision2+'" written to Underwriting_Review for USDOT '+MODEL.application.USDOT+'.', 'success');
     }
   }).catch(function(e){ showStatus('Save failed: ' + (e && e.message ? e.message : e), 'error'); });

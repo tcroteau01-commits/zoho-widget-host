@@ -44,6 +44,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .chip.dispatched, .chip.intransit { background: #ede7f6; color: #5e35b1; }
 .chip.delivered, .chip.podreceived { background: #e8f5e9; color: #2e7d32; }
 .chip.submitted { background: #272727; color: #fff; }
+.chip.cancelled { background: #f1f1f1; color: #999; text-decoration: line-through; }
 .empty { text-align: center; color: #999; padding: 40px 0; }
 
 /* slide-out panel */
@@ -188,6 +189,7 @@ function renderPills() {
 }
 
 function applyFilters() {
+  selectedLoadIds = []; toggleBulkBar();
   var rows = allLoads.filter(function(l){
     if (activeStatus === 'all') { if (l.status === 'Cancelled') return false; }
     else if (l.status !== activeStatus) { return false; }
@@ -322,6 +324,10 @@ var TMS_STATUSES = ['Draft', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'D
 function renderStepper(load) {
   var el = document.getElementById('v-stepper');
   if (!el) return;
+  if (load.status === 'Cancelled') {
+    el.innerHTML = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips"><span class="chip cancelled">Cancelled</span></div>';
+    return;
+  }
   var cur = TMS_STATUSES.indexOf(load.status || 'Booked');
   if (cur < 0) cur = 1;
   var html = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips">';

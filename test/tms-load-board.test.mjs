@@ -130,6 +130,25 @@ test('Cancelled pill shows only cancelled loads', () => {
   assert.match(rows[0].textContent, /L-2/);
 });
 
+test('applyFilters clears selection and hides bulk bar', () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'test@op.com';
+  window.allLoads = [
+    { id: '20', load_number: 'L-20', status: 'Booked', customer_name: 'A', lane: '', carrier_name: '' },
+  ];
+  window.activeStatus = 'all';
+  window.applyFilters();
+  // check a row to show the bulk bar
+  const cb = window.document.querySelector('.row-checkbox[data-load-id="20"]');
+  cb.checked = true;
+  cb.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.ok(!window.document.getElementById('bulk-bar').classList.contains('hidden'), 'bar visible after check');
+  // simulate a filter change (pill click or search)
+  window.applyFilters();
+  assert.ok(window.document.getElementById('bulk-bar').classList.contains('hidden'), 'bar hidden after applyFilters');
+  assert.equal(window.selectedLoadIds.length, 0, 'selectedLoadIds cleared');
+});
+
 test('checking a row reveals the bulk bar and bulkApply posts selected ids', () => {
   const { window, posts } = makeWidget();
   window.brokerEmail = 'test@op.com';

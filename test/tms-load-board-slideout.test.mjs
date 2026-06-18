@@ -99,3 +99,11 @@ test('Cancel Load is hidden for a delivered load', () => {
   window.renderView({ id: '31', load_number: 'L-31', status: 'Delivered' });
   assert.equal(window.document.getElementById('v-cancel-load'), null);
 });
+
+test('renderStepper on Cancelled load produces no clickable chip[data-status]', () => {
+  const { window } = makeWidget();
+  const cancelledLoad = { id: '99', load_number: 'L-99', status: 'Cancelled', customer_name: 'X', lane: '', carrier_name: '' };
+  window.renderView(cancelledLoad);
+  const clickable = window.document.querySelectorAll('#tms-slideout-body .chip[data-status]');
+  assert.equal(clickable.length, 0, 'no clickable chips for Cancelled load');
+});

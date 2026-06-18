@@ -44,6 +44,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .chip.dispatched, .chip.intransit { background: #ede7f6; color: #5e35b1; }
 .chip.delivered, .chip.podreceived { background: #e8f5e9; color: #2e7d32; }
 .chip.submitted { background: #272727; color: #fff; }
+.chip.cancelled { background: #f1f1f1; color: #999; text-decoration: line-through; }
 .empty { text-align: center; color: #999; padding: 40px 0; }
 
 /* slide-out panel */
@@ -140,10 +141,21 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <input class="search-input" id="search" placeholder="Search load #, customer, carrier…">
     <div class="filter-pills" id="pills"></div>
   </div>
+  <div id="bulk-bar" class="hidden" style="display:flex;gap:8px;align-items:center;margin:8px 0">
+    <span id="bulk-count" class="muted"></span>
+    <select id="bulk-status">
+      <option value="">Set status…</option>
+      <option>Draft</option><option>Booked</option><option>Covered</option>
+      <option>Dispatched</option><option>In Transit</option>
+      <option>Delivered</option><option>POD Received</option>
+    </select>
+    <button class="btn" id="bulk-apply">Apply</button>
+    <button class="btn" id="bulk-cancel">Cancel selected</button>
+  </div>
   <div class="card">
     <table class="tbl">
-      <thead><tr><th>Load</th><th>Status</th><th>Customer</th><th>Lane</th><th>Carrier</th><th style="text-align:right">Invoice</th><th style="text-align:right">Margin</th></tr></thead>
-      <tbody id="board-body"><tr><td colspan="7" class="empty">Loading loads…</td></tr></tbody>
+      <thead><tr><th style="width:28px"></th><th>Load</th><th>Status</th><th>Customer</th><th>Lane</th><th>Carrier</th><th style="text-align:right">Invoice</th><th style="text-align:right">Margin</th></tr></thead>
+      <tbody id="board-body"><tr><td colspan="8" class="empty">Loading loads…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -157,7 +169,7 @@ var allLoads = [];
 var activeStatus = 'all';
 var searchTerm = '';
 
-var STATUSES = ['all', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Submitted'];
+var STATUSES = ['all', 'Draft', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Submitted', 'Cancelled'];
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function money(n){ var v = Number(n)||0; return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
@@ -177,8 +189,10 @@ function renderPills() {
 }
 
 function applyFilters() {
+  selectedLoadIds = []; toggleBulkBar();
   var rows = allLoads.filter(function(l){
-    if (activeStatus !== 'all' && l.status !== activeStatus) return false;
+    if (activeStatus === 'all') { if (l.status === 'Cancelled') return false; }
+    else if (l.status !== activeStatus) { return false; }
     if (searchTerm) {
       var hay = (l.load_number + ' ' + l.customer_name + ' ' + l.carrier_name + ' ' + l.lane).toLowerCase();
       if (hay.indexOf(searchTerm.toLowerCase()) === -1) return false;
@@ -192,7 +206,7 @@ function renderRows(rows) {
   var body = document.getElementById('board-body');
   if (!body) return;
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">No loads match.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="empty">No loads match.</td></tr>';
     return;
   }
   body.innerHTML = '';
@@ -201,6 +215,7 @@ function renderRows(rows) {
     tr.onclick = function(){ selectLoad(l.id); };
     var mcls = (Number(l.margin)||0) >= 0 ? 'pos' : 'neg';
     tr.innerHTML =
+      '<td data-label=""><input type="checkbox" class="row-checkbox" data-load-id="' + esc(l.id) + '"></td>' +
       '<td data-label="Load"><div class="ld-num">' + esc(l.load_number) + '</div></td>' +
       '<td data-label="Status"><span class="' + chipClass(l.status) + '">' + esc(l.status) + '</span></td>' +
       '<td data-label="Customer">' + esc(l.customer_name) + '</td>' +
@@ -208,13 +223,16 @@ function renderRows(rows) {
       '<td data-label="Carrier">' + esc(l.carrier_name || '—') + '</td>' +
       '<td style="text-align:right" data-label="Invoice">' + money(l.invoice_amount) + '</td>' +
       '<td style="text-align:right" class="' + mcls + '" data-label="Margin">' + money(l.margin) + '</td>';
+    var cb = tr.querySelector('.row-checkbox');
+    cb.addEventListener('click', function(e){ e.stopPropagation(); });
+    cb.addEventListener('change', function(){ onRowCheck(l.id, cb.checked); });
     body.appendChild(tr);
   });
 }
 
 function renderBoard(payload) {
   allLoads = (payload && payload.loads) || [];
-  var active = allLoads.filter(function(l){ return l.status !== 'Submitted' && l.status !== 'Draft'; });
+  var active = allLoads.filter(function(l){ return l.status !== 'Submitted' && l.status !== 'Draft' && l.status !== 'Cancelled'; });
   var toSubmit = allLoads.filter(function(l){ return l.status === 'POD Received'; });
   var rev = allLoads.reduce(function(a,l){ return a + (Number(l.invoice_amount)||0); }, 0);
   var marg = allLoads.reduce(function(a,l){ return a + (Number(l.margin)||0); }, 0);
@@ -306,6 +324,10 @@ var TMS_STATUSES = ['Draft', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'D
 function renderStepper(load) {
   var el = document.getElementById('v-stepper');
   if (!el) return;
+  if (load.status === 'Cancelled') {
+    el.innerHTML = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips"><span class="chip cancelled">Cancelled</span></div>';
+    return;
+  }
   var cur = TMS_STATUSES.indexOf(load.status || 'Booked');
   if (cur < 0) cur = 1;
   var html = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips">';
@@ -344,6 +366,26 @@ function changeStatus(load, status) {
   }).catch(function(){ showToast('Status update failed'); });
 }
 
+function canCancel(status) {
+  return ['Delivered', 'POD Received', 'Submitted', 'Cancelled'].indexOf(status || '') === -1;
+}
+
+function cancelLoad(load) {
+  var lid = (load && load.id) || (window._slideoutLoad && window._slideoutLoad.id) || '';
+  if (!lid || !brokerEmail) return Promise.resolve();
+  if (typeof confirm === 'function' && !confirm('Cancel load ' + (load.load_number || lid) + '? It will be removed from the active board (reversible).')) {
+    return Promise.resolve();
+  }
+  return fetch(BROKER_API_BASE + '/tms-status-bulk', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_ids: [String(lid)], status: 'Cancelled' })
+  }).then(function(r){ return r.json(); }).then(function(p){
+    var skipped = (p && p.skipped && p.skipped.length);
+    showToast(skipped ? 'Could not cancel (ineligible)' : 'Load cancelled');
+    if (!skipped) { if (typeof closeSlideout === 'function') closeSlideout(); loadBoard(); }
+  }).catch(function(){ showToast('Cancel failed'); });
+}
+
 function renderViewActions(load) {
   var el = document.getElementById('v-actions');
   if (!el) return;
@@ -354,8 +396,14 @@ function renderViewActions(load) {
       : '<span class="muted" style="color:#aeb8cc">Submitted</span>';
     return;
   }
-  el.innerHTML = '<button class="vbtn light" id="v-edit">✎ Edit load</button>';
+  var actionsHtml = '<button class="vbtn light" id="v-edit">✎ Edit load</button>';
+  if (canCancel(load.status)) {
+    actionsHtml += '<button class="vbtn" id="v-cancel-load" style="color:#7a1f1f">Cancel Load</button>';
+  }
+  el.innerHTML = actionsHtml;
   document.getElementById('v-edit').addEventListener('click', function(){ selectForEdit(load.id); });
+  var cl = document.getElementById('v-cancel-load');
+  if (cl) cl.onclick = function(){ cancelLoad(load); };
 }
 
 function selectForEdit(loadId) {
@@ -363,6 +411,52 @@ function selectForEdit(loadId) {
   try { sessionStorage.setItem('tmsLoadId', loadId); } catch (e) {}
   navigateToDetail();
 }
+
+var selectedLoadIds = [];
+
+function onRowCheck(id, checked) {
+  id = String(id);
+  var i = selectedLoadIds.indexOf(id);
+  if (checked && i === -1) selectedLoadIds.push(id);
+  if (!checked && i !== -1) selectedLoadIds.splice(i, 1);
+  toggleBulkBar();
+}
+
+function toggleBulkBar() {
+  var bar = document.getElementById('bulk-bar');
+  if (!bar) return;
+  if (selectedLoadIds.length) {
+    bar.classList.remove('hidden');
+    var c = document.getElementById('bulk-count');
+    if (c) c.textContent = selectedLoadIds.length + ' selected';
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+function _bulkPost(status) {
+  if (!selectedLoadIds.length || !brokerEmail) return Promise.resolve();
+  var ids = selectedLoadIds.slice();
+  return fetch(BROKER_API_BASE + '/tms-status-bulk', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_ids: ids, status: status })
+  }).then(function(r){ return r.json(); }).then(function(p){
+    var n = (p && p.updated ? p.updated.length : 0);
+    var m = (p && p.skipped ? p.skipped.length : 0);
+    showToast(n + ' updated' + (m ? ', ' + m + ' skipped' : ''));
+    selectedLoadIds = [];
+    toggleBulkBar();
+    return loadBoard();
+  }).catch(function(){ showToast('Bulk update failed'); });
+}
+
+function bulkApply() {
+  var s = document.getElementById('bulk-status');
+  if (!s || !s.value) { showToast('Pick a status first'); return Promise.resolve(); }
+  return _bulkPost(s.value);
+}
+
+function bulkCancel() { return _bulkPost('Cancelled'); }
 
 function loadBoard() {
   if (!brokerEmail) return;
@@ -393,6 +487,8 @@ window.addEventListener('load', function(){
   if (nb) nb.addEventListener('click', newLoad);
   var b = document.getElementById('tms-backdrop');
   if (b) b.addEventListener('click', closeSlideout);
+  var ba = document.getElementById('bulk-apply'); if (ba) ba.onclick = bulkApply;
+  var bc = document.getElementById('bulk-cancel'); if (bc) bc.onclick = bulkCancel;
   boot();
 });
 
@@ -408,6 +504,9 @@ window.selectForEdit = selectForEdit;
 window.renderView = renderView;
 window.renderStepper = renderStepper;
 window.changeStatus = changeStatus;
+window.onRowCheck = onRowCheck; window.toggleBulkBar = toggleBulkBar;
+window.bulkApply = bulkApply; window.bulkCancel = bulkCancel;
+window.canCancel = canCancel; window.cancelLoad = cancelLoad;
 </script>
 </body>
 </html>

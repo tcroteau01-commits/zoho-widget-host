@@ -16,16 +16,27 @@ const LOADS = { loads: [
 
 function makeWidget() {
   const nav = [];
+  const posts = [];
   const dom = new JSDOM(HTML, {
     runScripts: 'dangerously',
     url: 'https://tcroteau01-commits.github.io/tms-load-board.html',
     beforeParse(window) {
       window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => new Promise(() => {}) } } };
-      window.fetch = () => Promise.resolve({ json: () => Promise.resolve(LOADS) });
+      window.fetch = function(url, init) {
+        if (init && init.method === 'POST') {
+          posts.push({ url: url, body: JSON.parse(init.body) });
+          if (String(url).indexOf('/tms-status-bulk') !== -1) {
+            const ids = JSON.parse(init.body).load_ids || [];
+            return Promise.resolve({ json: () => Promise.resolve({ ok: true, updated: ids, skipped: [] }) });
+          }
+          return Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+        }
+        return Promise.resolve({ json: () => Promise.resolve(LOADS) });
+      };
       Object.defineProperty(window, '_navTarget', { value: nav, writable: true });
     }
   });
-  return { window: dom.window, nav };
+  return { window: dom.window, nav, posts };
 }
 
 test('renderBoard renders a row per load with margin', () => {
@@ -89,4 +100,74 @@ test('newLoad stores a create flag', () => {
   const stored = JSON.parse(window.localStorage.getItem('tmsLoadTarget'));
   assert.equal(stored.load_id, '');
   assert.equal(stored.mode, 'new');
+});
+
+test('default (all) view hides Cancelled loads; Draft is shown', () => {
+  const { window } = makeWidget();
+  window.allLoads = [
+    { id: '1', load_number: 'L-1', status: 'Draft', customer_name: 'A', lane: '', carrier_name: '' },
+    { id: '2', load_number: 'L-2', status: 'Cancelled', customer_name: 'B', lane: '', carrier_name: '' },
+    { id: '3', load_number: 'L-3', status: 'Booked', customer_name: 'C', lane: '', carrier_name: '' },
+  ];
+  window.activeStatus = 'all';
+  window.applyFilters();
+  const text = window.document.getElementById('board-body').textContent;
+  assert.match(text, /L-1/);
+  assert.match(text, /L-3/);
+  assert.ok(!/L-2/.test(text), 'Cancelled hidden by default');
+});
+
+test('Cancelled pill shows only cancelled loads', () => {
+  const { window } = makeWidget();
+  window.allLoads = [
+    { id: '2', load_number: 'L-2', status: 'Cancelled', customer_name: 'B', lane: '', carrier_name: '' },
+    { id: '3', load_number: 'L-3', status: 'Booked', customer_name: 'C', lane: '', carrier_name: '' },
+  ];
+  window.activeStatus = 'Cancelled';
+  window.applyFilters();
+  const rows = window.document.querySelectorAll('#board-body tr');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /L-2/);
+});
+
+test('applyFilters clears selection and hides bulk bar', () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'test@op.com';
+  window.allLoads = [
+    { id: '20', load_number: 'L-20', status: 'Booked', customer_name: 'A', lane: '', carrier_name: '' },
+  ];
+  window.activeStatus = 'all';
+  window.applyFilters();
+  // check a row to show the bulk bar
+  const cb = window.document.querySelector('.row-checkbox[data-load-id="20"]');
+  cb.checked = true;
+  cb.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.ok(!window.document.getElementById('bulk-bar').classList.contains('hidden'), 'bar visible after check');
+  // simulate a filter change (pill click or search)
+  window.applyFilters();
+  assert.ok(window.document.getElementById('bulk-bar').classList.contains('hidden'), 'bar hidden after applyFilters');
+  assert.equal(window.selectedLoadIds.length, 0, 'selectedLoadIds cleared');
+});
+
+test('checking a row reveals the bulk bar and bulkApply posts selected ids', () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 'test@op.com';
+  window.allLoads = [
+    { id: '10', load_number: 'L-10', status: 'Booked', customer_name: 'A', lane: '', carrier_name: '' },
+    { id: '11', load_number: 'L-11', status: 'Booked', customer_name: 'B', lane: '', carrier_name: '' },
+  ];
+  window.activeStatus = 'all';
+  window.applyFilters();
+  const cb = window.document.querySelector('.row-checkbox[data-load-id="10"]');
+  cb.checked = true;
+  cb.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.ok(!window.document.getElementById('bulk-bar').classList.contains('hidden'));
+  window.document.getElementById('bulk-status').value = 'Dispatched';
+  window.bulkApply();
+  return Promise.resolve().then(() => {
+    const last = posts.at(-1);
+    assert.match(last.url, /\/tms-status-bulk/);
+    assert.deepEqual(last.body.load_ids, ['10']);
+    assert.equal(last.body.status, 'Dispatched');
+  });
 });

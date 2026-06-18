@@ -1073,7 +1073,7 @@ function createDraftsFromPreview(){
 
 /* ================= Task 20: paperwork assembly + auto-route ================= */
 
-var __pw = { loads: [], slots: {}, files: {}, tray: [] };
+var __pw = { loads: [], slots: {}, files: {}, tray: [], committing: false };
 
 function normToken(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,''); }
 
@@ -1321,6 +1321,9 @@ function hasPendingUploads(){
 }
 
 function commitPaperwork(){
+  if(__pw.committing){ return Promise.resolve([]); }
+  __pw.committing=true;
+  var btn=document.getElementById('pw-commit'); if(btn){ btn.disabled=true; }
   var jobs=[];
   Object.keys(__pw.slots||{}).forEach(function(lid){
     ['customer','carrier'].forEach(function(s){
@@ -1337,6 +1340,14 @@ function commitPaperwork(){
     renderPaperwork(__pw.loads);
     if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed, retry') : 'All packets attached'); }
     return results;
+  }).then(function(results){
+    __pw.committing=false;
+    if(btn){ btn.disabled=false; }
+    return results;
+  }, function(err){
+    __pw.committing=false;
+    if(btn){ btn.disabled=false; }
+    throw err;
   });
 }
 

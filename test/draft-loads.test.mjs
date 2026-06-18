@@ -1033,3 +1033,23 @@ test('hasPendingUploads reflects pending slots', () => {
   window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
   assert.equal(window.hasPendingUploads(), true);
 });
+
+test('commitPaperwork double-call fires merge+upload only once per slot', async () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
+  window.attachFilesToSlot('A', 'carrier',  [new window.File(['x'], 'v.pdf')]);
+  var merges = 0, uploads = 0;
+  // Upload resolves on a setTimeout-0 tick so second call lands while first is in-flight
+  window.mergeFilesToPDF = function() { merges++; return Promise.resolve(new window.Blob(['p'])); };
+  window._uploadDoc = function() {
+    uploads++;
+    return new Promise(function(resolve) { setTimeout(function() { resolve(true); }, 0); });
+  };
+  // Fire both calls without awaiting the first — second should be a no-op
+  var p1 = window.commitPaperwork();
+  var p2 = window.commitPaperwork();
+  await Promise.all([p1, p2]);
+  assert.equal(merges, 2,  'mergeFilesToPDF must be called exactly once per slot (2 slots)');
+  assert.equal(uploads, 2, '_uploadDoc must be called exactly once per slot (2 slots)');
+});

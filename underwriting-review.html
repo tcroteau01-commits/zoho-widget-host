@@ -421,55 +421,35 @@ function withTimeout(p, ms) {
   });
 }
 
-// Open an application by USDOT. Returns a model object, or null if not found.
+// Open an application by USDOT via the backend (the Creator SDK won't init in the widget).
+// Reads the Application + owners (name/title/percent only) + documents + Underwriting_Review,
+// and the automated checks (IPQS/CarrierOK) from /application-checks. Returns a model or null.
 function loadByUSDOT(usdot) {
   usdot = String(usdot || '').trim();
   if (!usdot) return Promise.resolve(null);
-  if (!LIVE) return Promise.resolve(DEMO_APPS[usdot] || null);
-  return liveLoadByUSDOT(usdot).catch(function (e) {
-    if (e && e.message === 'sdk-timeout') return DEMO_APPS[usdot] || null; // SDK present but not in Creator → demo
-    throw e;
-  });
-}
-
-// Live Creator read. NOTE for Creator setup: report names come from the .ds reports block;
-// the child reads require the Application lookup to exist. Confirm criteria syntax in Creator.
-function liveLoadByUSDOT(usdot) {
-  function getRecords(report, criteria) {
-    return ZOHO.CREATOR.DATA.getRecords({ report_name: report, criteria: criteria, page: 1, pageSize: 50 })
-      .then(function (r) { return (r && r.data) ? r.data : []; })
-      .catch(function () { return []; });
-  }
-  return withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
-    return getRecords(RPT.application, 'USDOT == ' + usdot);
-  }).then(function (apps) {
-    var a = apps[0];
-    if (!a) return null;
-    var appId = a.ID;
-    return Promise.all([
-      getRecords(RPT.owner, APPLICATION_LOOKUP + ' == ' + appId),
-      getRecords(RPT.document, APPLICATION_LOOKUP + ' == ' + appId),
-      getRecords(RPT.review, APPLICATION_LOOKUP + ' == ' + appId),
-      fetchChecks(a)   // automated fraud/authority — backend runs IPQS + CarrierOK and caches by USDOT
-    ]).then(function (res) {
-      var rev = res[2][0] || {};
-      var checks = res[3]; // null if the backend hasn't returned results yet
-      return {
-        appId: appId,
-        reviewId: rev.ID || null,
-        application: a,
-        owners: res[0].map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, sosRole:'—' }; }),
-        documents: res[1].map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested']; }),
-        // Fraud / ownership / UCC come from the backend enrichment (IPQS/FMCSA/Carrier411/UCC tools).
-        checksReady: !!checks,
-        fraud: (checks && checks.fraud) || [],
-        ucc: (checks && checks.ucc) || [],
-        risk: (checks && checks.risk) || 'med',
-        checkedAt: (checks && checks.checkedAt) || '',
-        review: rev
-      };
-    });
-  });
+  if (typeof fetch !== 'function') return Promise.resolve(DEMO_APPS[usdot] || null);
+  return fetch(API_BASE + '/application-by-usdot?usdot=' + encodeURIComponent(usdot))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (!j || !j.application) return DEMO_APPS[usdot] || null;
+      var a = j.application;
+      return fetchChecks(a).then(function (checks) {
+        return {
+          appId: j.applicationId,
+          reviewId: j.reviewId || null,
+          application: a,
+          owners: (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, sosRole:'—' }; }),
+          documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested']; }),
+          checksReady: !!checks,
+          fraud: (checks && checks.fraud) || [],
+          ucc: (checks && checks.ucc) || [],
+          risk: (checks && checks.risk) || 'med',
+          checkedAt: (checks && checks.checkedAt) || '',
+          review: j.review || {}
+        };
+      });
+    })
+    .catch(function () { return DEMO_APPS[usdot] || null; });
 }
 
 // Get the automated checks from the backend. POSTs the applicant fields this widget already
@@ -496,10 +476,15 @@ function fetchChecks(app) {
 }
 
 function saveReview(payload, existingId) {
-  if (!LIVE) { console.log('DEMO save — Underwriting_Review payload:', JSON.stringify(payload, null, 2)); return Promise.resolve({ demo:true }); }
-  return withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
-    if (existingId) return ZOHO.CREATOR.DATA.updateRecord({ report_name: RPT.review, id: existingId, payload: { data: payload } });
-    return ZOHO.CREATOR.DATA.addRecords({ form_name: FORM_REVIEW, payload: { data: payload } });
+  if (typeof fetch !== 'function') { console.log('DEMO save — Underwriting_Review payload:', JSON.stringify(payload, null, 2)); return Promise.resolve({ demo:true }); }
+  var body = { application_id: payload[APPLICATION_LOOKUP] || '', review_id: existingId || '', review: payload };
+  return fetch(API_BASE + '/uw-review-save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      if (!r.ok || !j.ok) throw new Error((j && j.detail) || (j && j.error) || ('save failed (HTTP ' + r.status + ')'));
+      return j;
+    });
   });
 }
 

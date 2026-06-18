@@ -340,37 +340,33 @@ function resolveRep() {
 
 // Load the rep's pipeline. Filters by SALES_ATTR when present; degrades to the whole book.
 function loadPipeline() {
-  if (!LIVE) return Promise.resolve({ mode: 'demo', rep: DEMO_REP, apps: DEMO_PIPELINE.slice() });
-  return withTimeout(ZOHO.CREATOR.init(), 6000).then(function () {
-    return resolveRep();
-  }).then(function (rep) {
-    var criteria = rep ? (SALES_ATTR + ' == "' + String(rep).replace(/"/g, '') + '"') : '';
-    return getRecords(RPT.application, criteria).then(function (apps) {
-      // If the attribution field doesn't exist yet, a filtered read returns nothing — fall back to the whole book.
-      if (rep && (!apps || !apps.length)) return getRecords(RPT.application, '').then(function (all) { return { rep: rep, apps: all, unfiltered: true }; });
-      return { rep: rep, apps: apps || [], unfiltered: !rep };
-    });
-  }).then(function (res) {
-    return { mode: 'live', rep: res.rep, apps: res.apps, unfiltered: res.unfiltered };
-  }).catch(function (e) {
-    if (e && e.message === 'sdk-timeout') return { mode: 'demo', rep: DEMO_REP, apps: DEMO_PIPELINE.slice() };
-    throw e;
-  });
+  // Backend read (the Creator SDK won't init in the widget). Optional rep scoping via
+  // window.OPERFI_SALES_REP; default shows the whole book (no SDK login to resolve a rep).
+  if (typeof fetch !== 'function') return Promise.resolve({ mode: 'demo', rep: DEMO_REP, apps: DEMO_PIPELINE.slice() });
+  var rep = global.OPERFI_SALES_REP || '';
+  var url = API_BASE + '/sales-pipeline' + (rep ? ('?rep=' + encodeURIComponent(rep)) : '');
+  return fetch(url).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    if (!j || !j.applications) return { mode: 'demo', rep: DEMO_REP, apps: DEMO_PIPELINE.slice() };
+    return { mode: 'live', rep: rep, apps: j.applications, unfiltered: !rep };
+  }).catch(function () { return { mode: 'demo', rep: DEMO_REP, apps: DEMO_PIPELINE.slice() }; });
 }
 
 // Load the supporting records for one application (documents + UW note).
 function loadDetail(app) {
-  if (STATE.mode === 'demo') {
+  if (STATE.mode === 'demo' || typeof fetch !== 'function') {
     return Promise.resolve({ documents: app.documents || [], uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', salesNotes: app.Sales_Notes || '' });
   }
-  var appId = app.ID;
-  return Promise.all([
-    getRecords(RPT.document, APPLICATION_LOOKUP + ' == ' + appId),
-    getRecords(RPT.review, APPLICATION_LOOKUP + ' == ' + appId)
-  ]).then(function (res) {
-    var rev = res[1][0] || {};
-    return { documents: res[0] || [], uwNotes: rev.UW_Notes || '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' };
-  });
+  // Reuse /application-by-usdot (returns documents + the latest Underwriting_Review).
+  var usdot = String(app.USDOT || '');
+  return fetch(API_BASE + '/application-by-usdot?usdot=' + encodeURIComponent(usdot))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      j = j || {};
+      var rev = j.review || {};
+      var docs = (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested']; });
+      return { documents: docs, uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', salesNotes: app[SALES_NOTES_FIELD] || '' };
+    })
+    .catch(function () { return { documents: [], uwNotes: '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' }; });
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
@@ -506,26 +502,29 @@ function addNote(app) {
     feed.insertAdjacentHTML('beforeend', '<div class="note"><div class="who">' + esc(STATE.rep || 'You') + ' <span class="role">Sales</span></div><div class="txt">' + esc(text) + '</div><div class="when">' + esc(stamp) + '</div></div>'); }
   app[SALES_NOTES_FIELD] = payload[SALES_NOTES_FIELD];
   if (input) input.value = '';
-  if (STATE.mode === 'demo') { dToast('ok', 'Note added (demo).'); return; }
-  ZOHO.CREATOR.DATA.updateRecord({ report_name: RPT.application, id: app.ID, payload: { data: payload } })
-    .then(function (r) { dToast(r && r.code === 3000 ? 'ok' : 'err', r && r.code === 3000 ? 'Note saved.' : 'Saved locally — could not write Sales_Notes (add the field in Creator).'); })
-    .catch(function () { dToast('err', 'Saved locally — Sales_Notes write failed (confirm the field exists in Creator).'); });
+  if (STATE.mode === 'demo' || typeof fetch !== 'function') { dToast('ok', 'Note added (demo).'); return; }
+  fetch(API_BASE + '/sales-note', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ application_id: app.ID, sales_notes: payload[SALES_NOTES_FIELD] }) })
+    .then(function (r) { return r.json().catch(function () { return {}; }); })
+    .then(function (j) { dToast(j && j.ok ? 'ok' : 'err', j && j.ok ? 'Note saved.' : ('Saved locally — could not write Sales_Notes' + ((j && j.detail) ? ' (' + j.detail + ')' : '') + '.')); })
+    .catch(function () { dToast('err', 'Saved locally — Sales_Notes write failed.'); });
 }
 
 function requestDoc(app) {
   var docType = (typeof prompt === 'function') ? prompt('Document to request from the prospect:') : '';
   if (!docType) return;
-  var payload = buildDocRequestPayload(app.ID, docType);
-  if (STATE.mode === 'demo') {
+  if (STATE.mode === 'demo' || typeof fetch !== 'function') {
     app.documents = (app.documents || []); app.documents.push([docType, 'Staff Request', 'Requested']);
     selectApp(STATE.selected); dToast('ok', 'Requested “' + docType + '” (demo).'); return;
   }
-  ZOHO.CREATOR.DATA.addRecords({ form_name: FORM.document, payload: { data: payload } })
-    .then(function (r) {
-      if (r && r.code === 3000) { dToast('ok', 'Requested “' + docType + '”.'); selectApp(STATE.selected); }
-      else dToast('err', 'Could not create the request (code ' + (r && r.code) + ').');
+  fetch(API_BASE + '/sales-doc-request', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ application_id: app.ID, document_type: docType }) })
+    .then(function (r) { return r.json().catch(function () { return {}; }); })
+    .then(function (j) {
+      if (j && j.ok) { dToast('ok', 'Requested “' + docType + '”.'); selectApp(STATE.selected); }
+      else dToast('err', 'Could not create the request' + ((j && j.detail) ? ': ' + j.detail : '') + '.');
     })
-    .catch(function () { dToast('err', 'Could not create the document request — confirm the Application lookup exists on Document.'); });
+    .catch(function () { dToast('err', 'Could not create the document request.'); });
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────────

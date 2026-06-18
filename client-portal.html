@@ -292,21 +292,24 @@ function param(name){ try { return new URL(global.location.href).searchParams.ge
 function getToken(){ return param('token'); }
 function setBanner(kind, html){ var b = el('banner'); if (!b) return; if (!kind) { b.className = 'banner'; b.innerHTML = ''; return; } b.className = 'banner show ' + kind; b.innerHTML = html; }
 
-var STATE = { mode: 'live', token: '', data: null, pin: '' };
+var STATE = { mode: 'live', token: '', data: null, usdot: '', email: '', pin: '' };
 
 function loadStatus(token) {
   if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
-  var url = API_BASE + STATUS_PATH + '?token=' + encodeURIComponent(token) + (STATE.pin ? '&pin=' + encodeURIComponent(STATE.pin) : '');
+  var url = API_BASE + STATUS_PATH + '?token=' + encodeURIComponent(token) +
+    (STATE.usdot ? '&usdot=' + encodeURIComponent(STATE.usdot) : '') +
+    (STATE.email ? '&email=' + encodeURIComponent(STATE.email) : '') +
+    (STATE.pin ? '&pin=' + encodeURIComponent(STATE.pin) : '');
   fetch(url)
     .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
     .then(function (res) {
       var j = res.j || {};
       if (res.status === 200 && (j.businessName || j.status)) { STATE.data = j; renderStatus(j, false); return; }
-      if (j.error === 'pin_required') { renderPinPrompt(''); return; }
-      if (j.error === 'pin_invalid') {
+      if (j.error === 'verify_required') { renderPinPrompt(''); return; }
+      if (j.error === 'verify_invalid') {
         STATE.pin = '';
         var n = j.attemptsLeft;
-        renderPinPrompt('Incorrect PIN — ' + (n != null ? n + ' attempt' + (n === 1 ? '' : 's') + ' left.' : 'please try again.'));
+        renderPinPrompt('That didn’t match — check your USDOT, email, and PIN. ' + (n != null ? n + ' attempt' + (n === 1 ? '' : 's') + ' left.' : ''));
         return;
       }
       if (j.error === 'pin_locked') {
@@ -319,24 +322,29 @@ function loadStatus(token) {
     .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
 }
 
-// PIN gate — shown when the application requires a PIN (second factor over the link).
+// Retrieval gate — requires USDOT + applied email + the 4-digit PIN (verified server-side).
 function renderPinPrompt(msg, locked) {
   setBanner();
+  var dis = locked ? ' disabled' : '';
   el('content').innerHTML =
-    '<div class="card"><div class="card-title">Enter your PIN</div>' +
-    '<div class="summ">Enter the 4-digit PIN you created when you applied, to open your document center.</div>' +
-    '<div class="field"><label>4-digit PIN</label><input id="pinInput" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••"' + (locked ? ' disabled' : '') + '></div>' +
-    '<button class="btn orange" id="pinBtn"' + (locked ? ' disabled' : '') + '>Unlock</button>' +
+    '<div class="card"><div class="card-title">Access your documents</div>' +
+    '<div class="summ">Enter your USDOT, the email you applied with, and your 4-digit PIN.</div>' +
+    '<div class="field"><label>USDOT</label><input id="pinUsdot" inputmode="numeric" autocomplete="off" placeholder="e.g. 4366362"' + dis + '></div>' +
+    '<div class="field"><label>Email</label><input id="pinEmail" type="email" autocomplete="off" placeholder="The email you applied with"' + dis + '></div>' +
+    '<div class="field"><label>4-digit PIN</label><input id="pinInput" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••"' + dis + '></div>' +
+    '<button class="btn orange" id="pinBtn"' + dis + '>Access my documents</button>' +
     (msg ? '<div class="toast err" style="margin-top:8px">' + esc(msg) + '</div>' : '') +
     '<div style="margin-top:12px"><a href="#" id="forgotPin" class="viewlink">Forgot your PIN?</a></div></div>';
-  var btn = el('pinBtn'), input = el('pinInput'), fp = el('forgotPin');
+  var btn = el('pinBtn'), pinEl = el('pinInput'), fp = el('forgotPin');
   function submit() {
-    var v = (input && input.value || '').replace(/\D/g, '');
-    if (v.length !== 4) { renderPinPrompt('Enter your 4-digit PIN.'); return; }
-    STATE.pin = v; loadStatus(STATE.token);
+    var u = (el('pinUsdot') && el('pinUsdot').value || '').replace(/\D/g, '');
+    var em = (el('pinEmail') && el('pinEmail').value || '').trim();
+    var p = (pinEl && pinEl.value || '').replace(/\D/g, '');
+    if (!u || !em || p.length !== 4) { renderPinPrompt('Enter your USDOT, email, and a 4-digit PIN.'); return; }
+    STATE.usdot = u; STATE.email = em; STATE.pin = p; loadStatus(STATE.token);
   }
   if (btn) btn.addEventListener('click', submit);
-  if (input) input.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  if (pinEl) pinEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
   if (fp) fp.addEventListener('click', function (e) { e.preventDefault(); renderPinReset(); });
 }
 
@@ -370,8 +378,8 @@ function resetPin() {
     .then(function (j) {
       if (j && j.ok) {
         rt('ok', 'PIN updated — opening your portal…');
-        STATE.pin = pin;
-        if (!STATE.token && j.link) { try { STATE.token = new URL(j.link).searchParams.get('token') || ''; } catch (e) {} }
+        STATE.usdot = usdot; STATE.email = email; STATE.pin = pin;
+        if (j.link) { try { STATE.token = new URL(j.link).searchParams.get('token') || STATE.token; } catch (e) {} }
         loadStatus(STATE.token);
       } else { if (btn) btn.disabled = false; rt('err', (j && j.error) || 'We couldn’t match that USDOT and email.'); }
     })
@@ -468,12 +476,15 @@ function uploadDoc(docType, file, btn) {
   var fd = new FormData();
   fd.append('doc_type', docType);
   fd.append('file', file);
-  if (STATE.pin) fd.append('pin', STATE.pin);   // second factor (same PIN used to open the portal)
+  // same factors used to open the portal (verified again server-side)
+  if (STATE.usdot) fd.append('usdot', STATE.usdot);
+  if (STATE.email) fd.append('email', STATE.email);
+  if (STATE.pin) fd.append('pin', STATE.pin);
   return fetch(API_BASE + UPLOAD_PATH + '?token=' + encodeURIComponent(STATE.token), { method: 'POST', body: fd })
     .then(function (r) { return r.json().catch(function () { return {}; }); })
     .then(function (p) {
       if (p && p.ok) { upToast('ok', '✓ ' + docType + ' uploaded.'); loadStatus(STATE.token); }
-      else if (p && (p.error === 'pin_required' || p.error === 'pin_invalid' || p.error === 'pin_locked')) { renderPinPrompt('Please re-enter your PIN to continue.'); }
+      else if (p && (p.error === 'verify_required' || p.error === 'verify_invalid' || p.error === 'pin_locked')) { renderPinPrompt('Please re-enter your USDOT, email, and PIN to continue.'); }
       else { if (btn) btn.disabled = false; upToast('err', (p && p.error) || 'Upload failed — please try again.'); }
     })
     .catch(function () { if (btn) btn.disabled = false; upToast('err', 'Network error — please try again.'); });

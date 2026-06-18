@@ -721,6 +721,27 @@ test('toolbar Template link is a working download link to /draft-loads/template'
   assert.ok(/\/draft-loads\/template$/.test(a.getAttribute('href') || ''), 'href ends with /draft-loads/template');
 });
 
+// ---- Task 3: remove returns to tray + tray delete ----
+test('removeSlot returns the slot files to the tray, not the void', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  const f = new window.File(['x'], 'INV-2.pdf', { type: 'application/pdf' });
+  window.attachFilesToSlot('A', 'carrier', [f]);
+  window.removeSlot('A', 'carrier');
+  assert.equal(window.__pw.slots['A'].carrier, false);
+  assert.equal(window.__pw.files['A'].carrier.length, 0);
+  assert.equal(window.__pw.tray.length, 1);
+  assert.equal(window.__pw.tray[0].file.name, 'INV-2.pdf');
+});
+
+test('deleteTrayFile removes a tray entry outright', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.__pw.tray = [{ file: new window.File(['x'], 'junk.pdf'), candidates: [] }];
+  window.deleteTrayFile(0);
+  assert.equal(window.__pw.tray.length, 0);
+});
+
 // ---- Task 4 (AV1): OperFiAV carrier badge + customer credit wiring ----
 
 test('AV containers #draft-carrier-av and #draft-credit-av exist in DOM', () => {

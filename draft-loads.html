@@ -1214,10 +1214,10 @@ function wirePaperworkSlots(){
       // Otherwise a file re-dragged from the unmatched tray (tray index in dataTransfer).
       var idx=e.dataTransfer && e.dataTransfer.getData('text/plain');
       if (idx===''||idx==null) return;
-      var f=__pw.tray[Number(idx)];
-      if (!f) return;
+      var entry=__pw.tray[Number(idx)];
+      if (!entry) return;
       __pw.tray.splice(Number(idx),1);
-      attachToSlot(loadId, slot, f);
+      attachToSlot(loadId, slot, entry.file);
     });
     // Click the slot (but not the remove ✕) opens a file picker scoped to it.
     cell.addEventListener('click', function(e){
@@ -1247,11 +1247,19 @@ function attachFilesToSlot(loadId, slot, fileList){
 // Single-file attach (tray re-drag) delegates to the multi-file path.
 function attachToSlot(loadId, slot, file){ return attachFilesToSlot(loadId, slot, [file]); }
 
-// Clear a slot client-side so a wrong attach can be redone before submit.
+// Clear a slot but RETURN its files to the tray so nothing is lost.
 function removeSlot(loadId, slot){
+  var files=(__pw.files[loadId]&&__pw.files[loadId][slot])||[];
+  files.forEach(function(f){
+    __pw.tray.push({ file:f, candidates: matchFileToLoads(f.name, __pw.loads).candidates });
+  });
   if(__pw.files[loadId]) __pw.files[loadId][slot]=[];
   if(__pw.slots[loadId]) __pw.slots[loadId][slot]=false;
   renderPaperwork(__pw.loads);
+}
+
+function deleteTrayFile(idx){
+  if(idx>=0 && idx<__pw.tray.length){ __pw.tray.splice(idx,1); renderPaperwork(__pw.loads); }
 }
 
 function uploadSlot(loadId, slot){
@@ -1269,7 +1277,7 @@ function dropAllFiles(fileList){
   files.forEach(function(f){
     var route=routeFileToSlot(f.name, __pw.loads);
     if (route){ attachToSlot(route.loadId, route.slot, f); }
-    else { __pw.tray.push(f); }
+    else { __pw.tray.push({ file:f, candidates: matchFileToLoads(f.name, __pw.loads).candidates }); }
   });
   renderPaperwork(__pw.loads);
 }
@@ -1278,10 +1286,10 @@ function renderTray(){
   var host=document.getElementById('pw-tray'); if(!host) return;
   setText('pw-tray-ct', __pw.tray.length);
   host.innerHTML='';
-  __pw.tray.forEach(function(f, i){
+  __pw.tray.forEach(function(entry, i){
     var el=document.createElement('span');
     el.className='file'; el.setAttribute('draggable','true');
-    el.innerHTML='<span class="pdf">PDF</span> '+esc(f.name);
+    el.innerHTML='<span class="pdf">PDF</span> '+esc(entry.file.name);
     el.addEventListener('dragstart', function(e){ if(e.dataTransfer) e.dataTransfer.setData('text/plain', String(i)); });
     host.appendChild(el);
   });
@@ -1313,6 +1321,7 @@ window.openPaperwork=openPaperwork;
 window.attachToSlot=attachToSlot;
 window.attachFilesToSlot=attachFilesToSlot;
 window.removeSlot=removeSlot;
+window.deleteTrayFile=deleteTrayFile;
 window.dropAllFiles=dropAllFiles;
 window.mergeFilesToPDF=mergeFilesToPDF;
 window._uploadDoc=_uploadDoc;

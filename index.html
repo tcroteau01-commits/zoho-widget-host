@@ -1202,6 +1202,10 @@ function prefillFromDraft(draft) {
   // Flag (don't silently blank) when the draft's customer isn't selectable because
   // it's not in the approved list (e.g. Boost pending).
   _flagDraftCustomer(pick('customer_id'), draft.customer_name || draft.customer_raw || pick('customer_id'));
+
+  // Seed the doc-on-file indicator from the draft's has_*_docs flags.
+  _setDocOnFile('customer', !!draft.has_customer_docs);
+  _setDocOnFile('carrier', !!draft.has_carrier_docs);
 }
 
 // Show a clear warning when a reopened draft references a customer that isn't in
@@ -1220,6 +1224,44 @@ function _flagDraftCustomer(customerId, label) {
   }
 }
 window._flagDraftCustomer = _flagDraftCustomer;
+
+// Slot ('customer'|'carrier') -> the label span + uploader area ids in the form.
+var _DOC_SLOT_DOM = {
+  customer: { label: 'cust_docs_label', area: 'cust_docs_area' },
+  carrier:  { label: 'carrier_docs_label', area: 'carrier_docs_area' }
+};
+
+// Show/hide a green "packet on file" indicator with a Remove link inside a slot's label.
+function _setDocOnFile(slot, present) {
+  var map = _DOC_SLOT_DOM[slot]; if (!map) return;
+  var label = document.getElementById(map.label); if (!label) return;
+  if (present) {
+    label.innerHTML = '<span style="color:#2e7d32;font-weight:600">' + slot + ' packet on file ✓</span>' +
+      ' · <a href="#" data-remove-doc="' + slot + '" style="color:#c62828">Remove</a>' +
+      '<br><span style="color:#999">drop a new file to replace it</span>';
+    var rm = label.querySelector('[data-remove-doc="' + slot + '"]');
+    if (rm) rm.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (window.confirm('Remove the attached ' + slot + ' doc from this load?')) removeDraftDoc(slot);
+    });
+  } else {
+    label.textContent = 'Click or drag files here';
+  }
+}
+
+// Delete an attached doc on the current draft, then clear the indicator.
+function removeDraftDoc(slot) {
+  if (!currentDraftId) return Promise.resolve(false);
+  return fetch(BROKER_API_BASE + '/draft-loads/' + encodeURIComponent(currentDraftId) + '/remove-doc', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, slot: slot })
+  }).then(function (r) { return r.json(); }).then(function (res) {
+    if (res && res.ok) { _setDocOnFile(slot, false); return true; }
+    return false;
+  }).catch(function () { return false; });
+}
+window._setDocOnFile = _setDocOnFile;
+window.removeDraftDoc = removeDraftDoc;
 
 // Resolve a draft id from init params or the URL query string.
 function _resolveDraftId(params) {

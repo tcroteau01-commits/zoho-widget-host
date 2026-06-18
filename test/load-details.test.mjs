@@ -522,3 +522,34 @@ test('prefillFromDraft sets currentDraftId so a later saveDraft PATCHes that dra
   assert.strictEqual(call.opts.method, 'PATCH');
   assert.match(call.url, /\/draft-loads\/321/);
 });
+
+// ── Task 4: on-file indicator + remove control ────────────────────────────────
+
+test('prefillFromDraft shows an on-file indicator for existing docs', () => {
+  const w = makeStorageDom().window;
+  w.prefillFromDraft({ id: '900', customer_id: '', carrier_id: '',
+    has_customer_docs: true, has_carrier_docs: false });
+  const cust = w.document.getElementById('cust_docs_label');
+  const carr = w.document.getElementById('carrier_docs_label');
+  assert.match(cust.textContent, /on file/i);
+  assert.doesNotMatch(carr.textContent, /on file/i);
+  // a remove control is present for the customer slot
+  assert.ok(w.document.querySelector('[data-remove-doc="customer"]'));
+});
+
+test('removeDraftDoc calls remove-doc and clears the indicator', async () => {
+  const seen = [];
+  const dom = makeB2Dom((url, opts) => { seen.push({ url: String(url), opts: opts || {} });
+    if (String(url).includes('/remove-doc'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, slot: 'customer', has_customer_docs: false, has_carrier_docs: false }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w.brokerEmail = 'b@x.com';
+  w.currentDraftId = '900';
+  w.prefillFromDraft({ id: '900', has_customer_docs: true, has_carrier_docs: false });
+  await w.removeDraftDoc('customer');
+  const hit = seen.find(r => r.url.indexOf('/draft-loads/900/remove-doc') !== -1);
+  assert.ok(hit, '/draft-loads/900/remove-doc was called');
+  assert.doesNotMatch(w.document.getElementById('cust_docs_label').textContent, /on file/i);
+});

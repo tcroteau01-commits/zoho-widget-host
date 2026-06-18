@@ -542,9 +542,9 @@ test('routeFileToSlot: ref# -> customer, invoice# -> carrier', () => {const w=mk
   assert.deepEqual(w.routeFileToSlot('INV-7741.pdf',loads),{loadId:'900',slot:'carrier'});
   assert.equal(w.routeFileToSlot('random.pdf',loads),null);});
 
-test('paperwork: load ready only when both slots filled', ()=>{const w=mk();
-  assert.equal(w.paperworkStatus({customer:true,carrier:false}),'attention');
-  assert.equal(w.paperworkStatus({customer:true,carrier:true}),'ready');});
+test('paperwork: load ready only when both slots uploaded', ()=>{const w=mk();
+  assert.equal(w.paperworkStatus({customer:'uploaded',carrier:false}),'attention');
+  assert.equal(w.paperworkStatus({customer:'uploaded',carrier:'uploaded'}),'ready');});
 
 test('renderPaperwork renders one row per load with two required slots', () => {
   const w = mk();
@@ -604,35 +604,21 @@ function fakeFile(name) {
   return { name, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
 }
 
-test('failed upload does not leave a paperwork slot marked Ready', async () => {
+test('attaching a file stages it as pending (deferred model — no upload yet)', () => {
   const w = mk();
-  w.mergeFilesToPDF = () => Promise.resolve(new w.Blob(['x']));
-  w.fetch = function (url) {
-    if (String(url).indexOf('/upload-doc') !== -1) {
-      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  };
   w.openPaperwork([{ id: '900', ref: 'WMT-90021', invoice: 'INV-7741', customer_name: 'WALMART INC', carrier_name: 'SWIFT' }]);
-  await w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
-  assert.notEqual(w.__pw.slots['900'].customer, true);
+  w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
+  assert.equal(w.__pw.slots['900'].customer, 'pending');
   assert.equal(w.paperworkStatus(w.__pw.slots['900']), 'attention');
   assert.match(w.document.getElementById('pw-prog-lbl').textContent, /0 of 1/);
-  assert.match(w.document.getElementById('toast').textContent, /failed/i);
 });
 
-test('successful upload marks the paperwork slot Ready', async () => {
+test('attaching a file does not upload immediately (slot stays pending not uploaded)', () => {
   const w = mk();
-  w.mergeFilesToPDF = () => Promise.resolve(new w.Blob(['x']));
-  w.fetch = function (url) {
-    if (String(url).indexOf('/upload-doc') !== -1) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  };
   w.openPaperwork([{ id: '900', ref: 'WMT-90021', invoice: 'INV-7741', customer_name: 'WALMART INC', carrier_name: 'SWIFT' }]);
-  await w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
-  assert.equal(w.__pw.slots['900'].customer, true);
+  w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
+  assert.equal(w.__pw.slots['900'].customer, 'pending', 'slot is pending, not uploaded');
+  assert.equal(w.__pw.files['900'].customer.length, 1, 'file is staged');
 });
 
 function pwReady(w) {
@@ -643,13 +629,14 @@ function pwReady(w) {
   return { uploads: () => uploads, merged: () => merged };
 }
 
-test('per-slot: multiple files attach as ONE merged upload', async () => {
+test('per-slot: multiple files all stage into the slot (deferred — no upload, no merge yet)', () => {
   const w = mk();
   const m = pwReady(w);
-  await w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf'), fakeFile('b.pdf'), fakeFile('c.pdf')]);
-  assert.equal(m.uploads(), 1, 'one upload for the slot, not one per file');
-  assert.equal(m.merged(), 3, 'all three merged together');
-  assert.equal(w.__pw.slots['900'].customer, true);
+  w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf'), fakeFile('b.pdf'), fakeFile('c.pdf')]);
+  assert.equal(m.uploads(), 0, 'no upload fired yet');
+  assert.equal(m.merged(), 0, 'no merge fired yet');
+  assert.equal(w.__pw.slots['900'].customer, 'pending');
+  assert.equal(w.__pw.files['900'].customer.length, 3, 'all three files staged');
 });
 
 test('per-slot: dropping desktop files on a slot attaches to that slot', async () => {
@@ -662,7 +649,7 @@ test('per-slot: dropping desktop files on a slot attaches to that slot', async (
   cell.dispatchEvent(ev);
   await new Promise(r => setTimeout(r, 0));
   await new Promise(r => setTimeout(r, 0));
-  assert.equal(w.__pw.slots['900'].carrier, true, 'carrier slot filled from desktop drop');
+  assert.equal(w.__pw.slots['900'].carrier, 'pending', 'carrier slot staged from desktop drop');
 });
 
 test('per-slot: clicking a slot opens the file picker scoped to it', () => {
@@ -675,11 +662,11 @@ test('per-slot: clicking a slot opens the file picker scoped to it', () => {
   assert.ok(w.document.getElementById('pw-file-input'), 'hidden file input created');
 });
 
-test('per-slot: removeSlot clears an attached slot', async () => {
+test('per-slot: removeSlot clears an attached slot', () => {
   const w = mk();
   pwReady(w);
-  await w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf')]);
-  assert.equal(w.__pw.slots['900'].customer, true);
+  w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf')]);
+  assert.equal(w.__pw.slots['900'].customer, 'pending');
   w.removeSlot('900', 'customer');
   assert.equal(w.__pw.slots['900'].customer, false);
   assert.equal(w.__pw.files['900'].customer.length, 0);
@@ -732,6 +719,27 @@ test('toolbar Template link is a working download link to /draft-loads/template'
   assert.ok(a, '#tmpl exists');
   assert.ok(a.hasAttribute('download'), 'has download attribute');
   assert.ok(/\/draft-loads\/template$/.test(a.getAttribute('href') || ''), 'href ends with /draft-loads/template');
+});
+
+// ---- Task 3: remove returns to tray + tray delete ----
+test('removeSlot returns the slot files to the tray, not the void', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  const f = new window.File(['x'], 'INV-2.pdf', { type: 'application/pdf' });
+  window.attachFilesToSlot('A', 'carrier', [f]);
+  window.removeSlot('A', 'carrier');
+  assert.equal(window.__pw.slots['A'].carrier, false);
+  assert.equal(window.__pw.files['A'].carrier.length, 0);
+  assert.equal(window.__pw.tray.length, 1);
+  assert.equal(window.__pw.tray[0].file.name, 'INV-2.pdf');
+});
+
+test('deleteTrayFile removes a tray entry outright', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.__pw.tray = [{ file: new window.File(['x'], 'junk.pdf'), candidates: [] }];
+  window.deleteTrayFile(0);
+  assert.equal(window.__pw.tray.length, 0);
 });
 
 // ---- Task 4 (AV1): OperFiAV carrier badge + customer credit wiring ----
@@ -835,4 +843,213 @@ test('inline customer cell change fires customerCredit with the selected custome
   sel.dispatchEvent(new window.Event('change', { bubbles: true }));
   assert.ok(calls.length >= 1, 'customerCredit called after customer inline-edit change');
   assert.equal(calls[0].opts.customerId, 'cust-1');
+});
+
+// ---- Task 1: matching engine ----
+test('normToken strips separators and lowercases', () => {
+  const { window } = makeWidget();
+  assert.equal(window.normToken('INV-1234'), 'inv1234');
+  assert.equal(window.normToken('INV 1234'), 'inv1234');
+  assert.equal(window.normToken('INV_1234.pdf'), 'inv1234pdf');
+});
+
+test('boundedMatch rejects digit-run over/under-extension', () => {
+  const { window } = makeWidget();
+  assert.equal(window.boundedMatch('1234', '1234'), true);
+  assert.equal(window.boundedMatch('12345', '1234'), false); // trailing digit
+  assert.equal(window.boundedMatch('51234', '1234'), false); // leading digit
+  assert.equal(window.boundedMatch('inv1234rc', '1234'), true); // letters ok
+  assert.equal(window.boundedMatch('123', '1234'), false);
+});
+
+test('matchFileToLoads: bare number auto-routes to the single matching slot', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: 'INV-1234', invoice: 'XJ-9981' }];
+  const r = window.matchFileToLoads('1234.pdf', loads);
+  assert.equal(r.auto.loadId, 'A'); assert.equal(r.auto.slot, 'customer'); assert.equal(r.auto.confidence, 'medium');
+  assert.equal(r.candidates.length, 1);
+});
+
+test('matchFileToLoads: full alphanumeric key is high confidence', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: 'INV-1234', invoice: 'XJ-9981' }];
+  const r = window.matchFileToLoads('INV 1234 ratecon.pdf', loads);
+  assert.equal(r.auto.slot, 'customer');
+  assert.equal(r.auto.confidence, 'high');
+});
+
+test('matchFileToLoads: strict numbers do not cross-match', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: '1234', invoice: '' }];
+  assert.equal(window.matchFileToLoads('12345.pdf', loads).candidates.length, 0);
+  assert.equal(window.matchFileToLoads('1233.pdf', loads).candidates.length, 0);
+});
+
+test('matchFileToLoads: ref==invoice is ambiguous (no auto, two candidates)', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: '1234', invoice: '1234' }];
+  const r = window.matchFileToLoads('1234.pdf', loads);
+  assert.equal(r.auto, null);
+  assert.equal(r.candidates.length, 2);
+});
+
+test('matchFileToLoads: same number on two loads is ambiguous', () => {
+  const { window } = makeWidget();
+  const loads = [{ id: 'A', ref: 'INV-1234', invoice: '' },
+                 { id: 'B', ref: '', invoice: 'PO-1234' }];
+  const r = window.matchFileToLoads('1234.pdf', loads);
+  assert.equal(r.auto, null);
+  assert.equal(r.candidates.length, 2);
+});
+
+// ---- Task 2: deferred upload ----
+test('attachFilesToSlot stages files as pending and uploads nothing', () => {
+  const { window, records } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  const f = new window.File(['x'], 'a.pdf', { type: 'application/pdf' });
+  window.attachFilesToSlot('A', 'customer', [f]);
+  assert.equal(window.__pw.slots['A'].customer, 'pending');
+  assert.equal(window.__pw.files['A'].customer.length, 1);
+  assert.ok(!records.some(r => r.url.indexOf('/upload-doc') !== -1));
+});
+
+test('paperworkStatus is ready only when both slots uploaded', () => {
+  const { window } = makeWidget();
+  assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'uploaded' }), 'attention');
+  assert.equal(window.paperworkStatus({ customer: 'uploaded', carrier: 'uploaded' }), 'ready');
+});
+
+// ---- Task 4: assign + move ----
+test('assignTrayFile stages the file and removes it from the tray', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.__pw.tray = [{ file: new window.File(['x'], '1.pdf'),
+    candidates: [{ loadId: 'A', slot: 'customer', confidence: 'high' }] }];
+  window.assignTrayFile(0, 'A', 'customer');
+  assert.equal(window.__pw.tray.length, 0);
+  assert.equal(window.__pw.slots['A'].customer, 'pending');
+  assert.equal(window.__pw.files['A'].customer.length, 1);
+});
+
+test('moveSlotFile relocates files between slots', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' },
+                        { id: 'B', ref: 'INV-3', invoice: 'INV-4' }]);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], '1.pdf')]);
+  window.moveSlotFile('A', 'customer', 'B', 'carrier');
+  assert.equal(window.__pw.files['A'].customer.length, 0);
+  assert.equal(window.__pw.slots['A'].customer, false);
+  assert.equal(window.__pw.files['B'].carrier.length, 1);
+  assert.equal(window.__pw.slots['B'].carrier, 'pending');
+});
+
+// ---- Task 5: smart drop + tray UI ----
+test('dropAllFiles auto-routes an unambiguous file and trays an ambiguous one', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1234', invoice: 'XJ-9981' },
+                        { id: 'B', ref: '1234', invoice: '1234' }]);
+  // 'xj9981' matches only load A carrier -> auto
+  window.dropAllFiles([new window.File(['x'], 'XJ-9981.pdf')]);
+  assert.equal(window.__pw.slots['A'].carrier, 'pending');
+  // '1234' matches A.customer, B.customer, B.carrier -> ambiguous -> tray
+  window.dropAllFiles([new window.File(['x'], '1234.pdf')]);
+  assert.equal(window.__pw.tray.length, 1);
+  assert.ok(window.__pw.tray[0].candidates.length >= 2);
+});
+
+test('renderTray groups same-load files and warns when more than one', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: '1234', invoice: '1234' }]);
+  window.__pw.tray = [
+    { file: new window.File(['x'], 'cust.pdf'), candidates: [{ loadId: 'A', slot: 'customer', confidence: 'medium' }] },
+    { file: new window.File(['x'], 'inv.pdf'),  candidates: [{ loadId: 'A', slot: 'carrier',  confidence: 'medium' }] }
+  ];
+  window.renderTray();
+  const trayText = window.document.getElementById('pw-tray').textContent;
+  assert.match(trayText, /2 files match/i);
+});
+
+test('renderTray renders a delete control per tray file', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.__pw.tray = [{ file: new window.File(['x'], 'junk.pdf'), candidates: [] }];
+  window.renderTray();
+  assert.ok(window.document.querySelector('#pw-tray .tray-del'));
+});
+
+// ---- Task 6: preview ----
+test('previewFile shows an iframe for a PDF and revokes URL on close', () => {
+  const { window } = makeWidget();
+  let created = 0, revoked = 0;
+  window.URL.createObjectURL = () => { created++; return 'blob:fake'; };
+  window.URL.revokeObjectURL = () => { revoked++; };
+  window.previewFile(new window.File(['x'], 'a.pdf', { type: 'application/pdf' }));
+  const modal = window.document.getElementById('pw-preview');
+  assert.ok(!modal.classList.contains('hidden'));
+  assert.ok(modal.querySelector('iframe'));
+  assert.equal(created, 1);
+  window.closePreview();
+  assert.ok(modal.classList.contains('hidden'));
+  assert.equal(revoked, 1);
+});
+
+test('previewFile shows an img for an image', () => {
+  const { window } = makeWidget();
+  window.URL.createObjectURL = () => 'blob:fake';
+  window.previewFile(new window.File(['x'], 'a.png', { type: 'image/png' }));
+  assert.ok(window.document.querySelector('#pw-preview img'));
+});
+
+// ---- Task 7: commit ----
+test('commitPaperwork merges+uploads once per pending slot and marks uploaded', async () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
+  window.attachFilesToSlot('A', 'carrier', [new window.File(['x'], 'v.pdf')]);
+  let merges = 0, uploads = 0;
+  window.mergeFilesToPDF = () => { merges++; return Promise.resolve(new window.Blob(['p'])); };
+  window._uploadDoc = () => { uploads++; return Promise.resolve(true); };
+  await window.commitPaperwork();
+  assert.equal(merges, 2);
+  assert.equal(uploads, 2);
+  assert.equal(window.__pw.slots['A'].customer, 'uploaded');
+  assert.equal(window.__pw.slots['A'].carrier, 'uploaded');
+});
+
+test('commitPaperwork keeps a slot pending when its upload fails', async () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
+  window.mergeFilesToPDF = () => Promise.resolve(new window.Blob(['p']));
+  window._uploadDoc = () => Promise.resolve(false);
+  await window.commitPaperwork();
+  assert.equal(window.__pw.slots['A'].customer, 'pending');
+});
+
+test('hasPendingUploads reflects pending slots', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  assert.equal(window.hasPendingUploads(), false);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
+  assert.equal(window.hasPendingUploads(), true);
+});
+
+test('commitPaperwork double-call fires merge+upload only once per slot', async () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  window.attachFilesToSlot('A', 'customer', [new window.File(['x'], 'c.pdf')]);
+  window.attachFilesToSlot('A', 'carrier',  [new window.File(['x'], 'v.pdf')]);
+  var merges = 0, uploads = 0;
+  // Upload resolves on a setTimeout-0 tick so second call lands while first is in-flight
+  window.mergeFilesToPDF = function() { merges++; return Promise.resolve(new window.Blob(['p'])); };
+  window._uploadDoc = function() {
+    uploads++;
+    return new Promise(function(resolve) { setTimeout(function() { resolve(true); }, 0); });
+  };
+  // Fire both calls without awaiting the first — second should be a no-op
+  var p1 = window.commitPaperwork();
+  var p2 = window.commitPaperwork();
+  await Promise.all([p1, p2]);
+  assert.equal(merges, 2,  'mergeFilesToPDF must be called exactly once per slot (2 slots)');
+  assert.equal(uploads, 2, '_uploadDoc must be called exactly once per slot (2 slots)');
 });

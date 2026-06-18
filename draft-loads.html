@@ -124,6 +124,7 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
 
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2a44;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;box-shadow:0 8px 24px rgba(16,24,40,.3)}
 #toast.hidden{display:none}
+#pw-preview.hidden{display:none!important}
 
 /* Import CSV modal */
 .modal.wide{width:860px}
@@ -156,6 +157,10 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
 .prog .bar{height:100%;width:0;background:var(--green);border-radius:6px;transition:width .2s}
 .tray{flex:1.1;background:#fff;border:1px solid #ecd49a;border-radius:11px;padding:11px 14px}
 .tray .th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--amber-dk);font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between}
+.tray-grp-hdr{font-size:11px;font-weight:700;color:var(--amber-dk);margin:8px 0 4px}
+.tray-accept{font-size:11px;border:1px solid var(--amber);background:#fff6e4;color:var(--amber-dk);border-radius:6px;padding:1px 6px;cursor:pointer;margin-left:4px}
+.tray-del,.tray-preview{cursor:pointer;margin-left:6px}
+.tray-del{color:#b91c1c;font-weight:700}
 .files{display:flex;gap:7px;flex-wrap:wrap}
 .file{background:var(--amber-soft);border:1px solid #e7cf94;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:600;color:#5d460f;display:flex;align-items:center;gap:6px;cursor:grab}
 .file .pdf{background:var(--red);color:#fff;border-radius:3px;font-size:8px;padding:1px 3px;font-weight:800}
@@ -285,9 +290,19 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
     </div>
     <div id="paperwork"></div>
   </div>
+  <div id="pw-preview" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:10px;width:80vw;height:85vh;max-width:900px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)">
+        <b id="pw-preview-name">Preview</b>
+        <span id="pw-preview-close" style="cursor:pointer;font-weight:700;padding:0 6px">✕</span>
+      </div>
+      <div id="pw-preview-body" style="flex:1;overflow:auto;background:#f4f4f2"></div>
+    </div>
+  </div>
   <div class="foot">
     <div class="l" id="pw-foot"><b>0 ready</b></div>
     <button class="btn" id="pw-back">Back to drafts</button>
+    <button class="btn" id="pw-commit">Attach all packets</button>
     <button class="btn amber" id="pw-done">Done — return to queue</button>
   </div>
 </div>
@@ -893,6 +908,7 @@ window.addEventListener('load', function(){
     else { __state.selected=[]; }
     renderQueue(); renderBulkBar();
   });
+  var pc=document.getElementById('pw-preview-close'); if(pc) pc.addEventListener('click', closePreview);
   var scrim=document.getElementById('scrim');
   if (scrim) scrim.addEventListener('click', function(e){ if(e.target===scrim) closeModal(); });
   var drop=document.getElementById('pw-drop');
@@ -901,6 +917,10 @@ window.addEventListener('load', function(){
     drop.addEventListener('dragleave', function(){ drop.classList.remove('drag'); });
     drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag'); if(e.dataTransfer&&e.dataTransfer.files.length) dropAllFiles(e.dataTransfer.files); });
   }
+  var cmt=document.getElementById('pw-commit'); if(cmt) cmt.addEventListener('click', function(){ commitPaperwork(); });
+  window.addEventListener('beforeunload', function(e){
+    if(hasPendingUploads()){ e.preventDefault(); e.returnValue=''; return ''; }
+  });
   boot();
 });
 function bind(id, fn){ var el=document.getElementById(id); if(el) el.addEventListener('click', fn); }
@@ -1053,33 +1073,66 @@ function createDraftsFromPreview(){
 
 /* ================= Task 20: paperwork assembly + auto-route ================= */
 
-var __pw = { loads: [], slots: {}, files: {}, tray: [] };
+var __pw = { loads: [], slots: {}, files: {}, tray: [], committing: false };
 
-function tokenMatch(filename, key){
-  key=String(key==null?'':key).toLowerCase();
-  if(!key) return false;
-  // True only when key appears bounded by start/end or a non-alphanumeric char,
-  // so 'WMT-9002' does NOT match 'WMT-90021.pdf'.
-  var esc=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  var re=new RegExp('(^|[^a-z0-9])'+esc+'([^a-z0-9]|$)');
-  return re.test(String(filename||'').toLowerCase());
+function normToken(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,''); }
+
+function longestDigitRun(s){
+  var runs=String(s==null?'':s).match(/\d+/g)||[];
+  return runs.reduce(function(a,b){ return b.length>a.length?b:a; }, '');
 }
 
+// True if needle occurs in haystack at a spot not flanked by a digit on
+// either side -- this is what makes numeric matching strict (1234 != 12345).
+function boundedMatch(haystack, needle){
+  haystack=String(haystack||''); needle=String(needle||'');
+  if(!needle) return false;
+  var from=0, i;
+  while((i=haystack.indexOf(needle, from))!==-1){
+    var before=i>0?haystack.charAt(i-1):'';
+    var after=(i+needle.length)<haystack.length?haystack.charAt(i+needle.length):'';
+    if(!/[0-9]/.test(before) && !/[0-9]/.test(after)) return true;
+    from=i+1;
+  }
+  return false;
+}
+
+// Returns auto-route target (only when exactly one distinct load+slot matches)
+// plus the full ranked candidate list (high confidence before medium).
+function matchFileToLoads(filename, loads){
+  var nf=normToken(filename);
+  var cands=[];
+  (loads||[]).forEach(function(l){
+    [['customer', l.ref], ['carrier', l.invoice]].forEach(function(pair){
+      var slot=pair[0], key=pair[1];
+      if(!key) return;
+      var nk=normToken(key);
+      var hasLetter=/[a-z]/.test(nk);
+      if(nk && boundedMatch(nf, nk)){
+        cands.push({loadId:l.id, slot:slot, confidence: hasLetter ? 'high' : 'medium'});
+        return;
+      }
+      var dig=longestDigitRun(key);
+      if(dig && boundedMatch(nf, dig)){
+        cands.push({loadId:l.id, slot:slot, confidence:'medium'});
+      }
+    });
+  });
+  var seen={}, uniq=[];
+  cands.forEach(function(c){ var k=c.loadId+'|'+c.slot; if(!seen[k]){ seen[k]=1; uniq.push(c); } });
+  uniq.sort(function(a,b){ return (a.confidence==='high'?0:1)-(b.confidence==='high'?0:1); });
+  return { auto: uniq.length===1 ? uniq[0] : null, candidates: uniq };
+}
+
+// Back-compat wrapper for any remaining caller (rewritten in Task 5).
 function routeFileToSlot(filename, loads){
-  for (var i=0;i<loads.length;i++){
-    var l=loads[i];
-    if (l.ref && tokenMatch(filename, l.ref)) return { loadId:l.id, slot:'customer' };
-  }
-  for (var j=0;j<loads.length;j++){
-    var c=loads[j];
-    if (c.invoice && tokenMatch(filename, c.invoice)) return { loadId:c.id, slot:'carrier' };
-  }
-  return null;
+  var m=matchFileToLoads(filename, loads);
+  return m.auto ? { loadId:m.auto.loadId, slot:m.auto.slot } : null;
 }
 
 function paperworkStatus(slots){
   slots=slots||{};
-  return (slots.customer===true && slots.carrier===true) ? 'ready' : 'attention';
+  return (slots.customer==='uploaded' && slots.carrier==='uploaded') ? 'ready' : 'attention';
 }
 
 function openPaperwork(loads){
@@ -1100,17 +1153,15 @@ function closePaperwork(){
 function slotHtml(l, slot){
   var state=__pw.slots[l.id] && __pw.slots[l.id][slot];
   var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
-  if (state==='uploading' && files.length){
-    var upn=files[files.length-1].name;
-    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(upn)+'</span></div>'+
-           '<div class="auto">uploading…</div>';
-  }
-  if (state===true && files.length){
+  if ((state==='pending' || state==='uploaded') && files.length){
     var nm=files[files.length-1].name;
     var more = files.length>1 ? ' <span class="auto" style="display:inline">+'+(files.length-1)+' more</span>' : '';
-    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span>'+more+' ✓'+
+    var badge = state==='uploaded' ? ' ✓' : '';
+    var note = state==='uploaded' ? '<div class="auto">✓ attached</div>' : '<div class="auto">staged — not yet sent</div>';
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span>'+more+badge+
+           ' <span class="slot-preview" title="Preview" data-load="'+esc(l.id)+'" data-slot="'+slot+'">👁</span>'+
            '<span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'">✕</span></div>'+
-           '<div class="auto">✓ attached</div>';
+           note;
   }
   var label = slot==='customer' ? 'customer packet needed' : 'carrier invoice needed';
   var key = slot==='customer' ? l.ref : l.invoice;
@@ -1130,7 +1181,7 @@ function renderPaperwork(loads){
     var st=paperworkStatus(__pw.slots[l.id]);
     var statHtml = st==='ready'
       ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
-      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer===true?'Carrier doc':(__pw.slots[l.id].carrier===true?'Customer doc':'Both needed')) +'</span>';
+      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer==='uploaded'?'Carrier doc':(__pw.slots[l.id].carrier==='uploaded'?'Customer doc':'Both needed')) +'</span>';
     var carrId = l.carrier_mc ? ('MC '+esc(l.carrier_mc)) : (l.carrier_dot ? ('DOT '+esc(l.carrier_dot)) : '');
     var idBits=[];
     if (l.ref) idBits.push('Cust ref '+esc(l.ref));
@@ -1183,14 +1234,11 @@ function wirePaperworkSlots(){
       // Otherwise a file re-dragged from the unmatched tray (tray index in dataTransfer).
       var idx=e.dataTransfer && e.dataTransfer.getData('text/plain');
       if (idx===''||idx==null) return;
-      var f=__pw.tray[Number(idx)];
-      if (!f) return;
-      __pw.tray.splice(Number(idx),1);
-      attachToSlot(loadId, slot, f);
+      assignTrayFile(Number(idx), loadId, slot);
     });
     // Click the slot (but not the remove ✕) opens a file picker scoped to it.
     cell.addEventListener('click', function(e){
-      if (e.target && e.target.classList && e.target.classList.contains('slot-remove')) return;
+      if (e.target && e.target.classList && (e.target.classList.contains('slot-remove') || e.target.classList.contains('slot-preview'))) return;
       __pw.pickTarget={loadId:loadId, slot:slot};
       _pwFileInput().click();
     });
@@ -1201,37 +1249,58 @@ function wirePaperworkSlots(){
       removeSlot(x.getAttribute('data-load'), x.getAttribute('data-slot'));
     });
   });
+  document.querySelectorAll('#paperwork .slot-preview').forEach(function(p){
+    p.addEventListener('click', function(e){
+      e.stopPropagation();
+      var lid=p.getAttribute('data-load'), s=p.getAttribute('data-slot');
+      var files=(__pw.files[lid]&&__pw.files[lid][s])||[];
+      if(files.length) previewFile(files[files.length-1]);
+    });
+  });
 }
 
-// Attach one or more files to a slot; they merge into one packet via a single upload.
+// Stage files into a slot WITHOUT uploading. Upload happens later at commit.
 function attachFilesToSlot(loadId, slot, fileList){
   var files=Array.prototype.slice.call(fileList||[]).filter(Boolean);
-  if(!files.length) return Promise.resolve(false);
+  if(!files.length) return;
   if(!__pw.files[loadId]) __pw.files[loadId]={customer:[],carrier:[]};
   if(!__pw.slots[loadId]) __pw.slots[loadId]={customer:false,carrier:false};
-  var hadFiles=__pw.files[loadId][slot].length;   // already-uploaded files, if any
   files.forEach(function(f){ __pw.files[loadId][slot].push(f); });
-  __pw.slots[loadId][slot]='uploading';   // transient; only ===true counts as Ready
+  if(__pw.slots[loadId][slot]!=='uploaded') __pw.slots[loadId][slot]='pending';
   renderPaperwork(__pw.loads);
-  return uploadSlot(loadId, slot).then(function(ok){
-    if(ok){ __pw.slots[loadId][slot]=true; }
-    else {
-      for(var i=0;i<files.length;i++){ __pw.files[loadId][slot].pop(); }   // drop just-added
-      __pw.slots[loadId][slot] = hadFiles ? true : false;                  // keep prior packet if any
-      showToast('Upload failed — try again');
-    }
-    renderPaperwork(__pw.loads);
-    return ok;
-  });
 }
 // Single-file attach (tray re-drag) delegates to the multi-file path.
 function attachToSlot(loadId, slot, file){ return attachFilesToSlot(loadId, slot, [file]); }
 
-// Clear a slot client-side so a wrong attach can be redone before submit.
+// Remove tray entry at idx and stage its file into (loadId, slot).
+function assignTrayFile(idx, loadId, slot){
+  if(idx<0 || idx>=__pw.tray.length) return;
+  var entry=__pw.tray.splice(idx,1)[0];
+  attachFilesToSlot(loadId, slot, [entry.file]);
+}
+
+// Move all files from one slot to another (re-stages as pending; uploads are deferred).
+function moveSlotFile(fromLoad, fromSlot, toLoad, toSlot){
+  var files=((__pw.files[fromLoad]&&__pw.files[fromLoad][fromSlot])||[]).slice();
+  if(!files.length) return;
+  if(__pw.files[fromLoad]) __pw.files[fromLoad][fromSlot]=[];
+  if(__pw.slots[fromLoad]) __pw.slots[fromLoad][fromSlot]=false;
+  attachFilesToSlot(toLoad, toSlot, files);
+}
+
+// Clear a slot but RETURN its files to the tray so nothing is lost.
 function removeSlot(loadId, slot){
+  var files=(__pw.files[loadId]&&__pw.files[loadId][slot])||[];
+  files.forEach(function(f){
+    __pw.tray.push({ file:f, candidates: matchFileToLoads(f.name, __pw.loads).candidates });
+  });
   if(__pw.files[loadId]) __pw.files[loadId][slot]=[];
   if(__pw.slots[loadId]) __pw.slots[loadId][slot]=false;
   renderPaperwork(__pw.loads);
+}
+
+function deleteTrayFile(idx){
+  if(idx>=0 && idx<__pw.tray.length){ __pw.tray.splice(idx,1); renderPaperwork(__pw.loads); }
 }
 
 function uploadSlot(loadId, slot){
@@ -1240,30 +1309,134 @@ function uploadSlot(loadId, slot){
   var field = slot==='customer' ? 'Customer_Documents' : 'Carrier_Documents';
   return window.mergeFilesToPDF(files).then(function(blob){
     return window._uploadDoc(loadId, field, blob, (slot==='customer'?'customer':'carrier')+'-'+loadId+'.pdf');
-  }).then(function(ok){ return !!ok; })
-    .catch(function(){ return false; });
+  }).then(function(ok){ return !!ok; }).catch(function(){ return false; });
+}
+
+function hasPendingUploads(){
+  var any=false;
+  Object.keys(__pw.slots||{}).forEach(function(lid){
+    ['customer','carrier'].forEach(function(s){ if(__pw.slots[lid][s]==='pending') any=true; });
+  });
+  return any;
+}
+
+function commitPaperwork(){
+  if(__pw.committing){ return Promise.resolve([]); }
+  __pw.committing=true;
+  var btn=document.getElementById('pw-commit'); if(btn){ btn.disabled=true; }
+  var jobs=[];
+  Object.keys(__pw.slots||{}).forEach(function(lid){
+    ['customer','carrier'].forEach(function(s){
+      if(__pw.slots[lid][s]==='pending' && (__pw.files[lid]&&__pw.files[lid][s]&&__pw.files[lid][s].length)){
+        jobs.push(uploadSlot(lid, s).then(function(ok){
+          if(ok){ __pw.slots[lid][s]='uploaded'; }
+          return { lid:lid, slot:s, ok:ok };
+        }));
+      }
+    });
+  });
+  return Promise.all(jobs).then(function(results){
+    var failed=results.filter(function(r){ return !r.ok; }).length;
+    renderPaperwork(__pw.loads);
+    if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed, retry') : 'All packets attached'); }
+    return results;
+  }).then(function(results){
+    __pw.committing=false;
+    if(btn){ btn.disabled=false; }
+    return results;
+  }, function(err){
+    __pw.committing=false;
+    if(btn){ btn.disabled=false; }
+    throw err;
+  });
 }
 
 function dropAllFiles(fileList){
   var files=Array.prototype.slice.call(fileList||[]);
   files.forEach(function(f){
-    var route=routeFileToSlot(f.name, __pw.loads);
-    if (route){ attachToSlot(route.loadId, route.slot, f); }
-    else { __pw.tray.push(f); }
+    var m=matchFileToLoads(f.name, __pw.loads);
+    if (m.auto){ attachFilesToSlot(m.auto.loadId, m.auto.slot, [f]); }
+    else { __pw.tray.push({ file:f, candidates:m.candidates }); }
   });
   renderPaperwork(__pw.loads);
+}
+
+function _loadLabel(loadId){
+  var l=null; for(var i=0;i<__pw.loads.length;i++){ if(String(__pw.loads[i].id)===String(loadId)){ l=__pw.loads[i]; break; } }
+  if(!l) return 'Load '+loadId;
+  return (l.customer_name||l.ref||('Load '+loadId));
+}
+
+var _pwPreviewUrl=null;
+function previewFile(file){
+  var modal=document.getElementById('pw-preview'); if(!modal||!file) return;
+  var body=document.getElementById('pw-preview-body');
+  setText('pw-preview-name', file.name||'Preview');
+  if(_pwPreviewUrl){ try{ URL.revokeObjectURL(_pwPreviewUrl); }catch(e){} _pwPreviewUrl=null; }
+  body.innerHTML='';
+  var type=file.type||'';
+  _pwPreviewUrl=URL.createObjectURL(file);
+  if(type.indexOf('image/')===0){
+    var img=document.createElement('img'); img.src=_pwPreviewUrl;
+    img.style.maxWidth='100%'; img.style.display='block'; img.style.margin='0 auto';
+    body.appendChild(img);
+  } else if(type==='application/pdf' || /\.pdf$/i.test(file.name||'')){
+    var ifr=document.createElement('iframe'); ifr.src=_pwPreviewUrl;
+    ifr.style.width='100%'; ifr.style.height='100%'; ifr.style.border='0';
+    body.appendChild(ifr);
+  } else {
+    body.innerHTML='<div class="empty" style="padding:24px">No inline preview for this file type ('+esc(type||'unknown')+').  '+esc(file.name||'')+'</div>';
+  }
+  modal.classList.remove('hidden');
+}
+function closePreview(){
+  var modal=document.getElementById('pw-preview'); if(modal) modal.classList.add('hidden');
+  if(_pwPreviewUrl){ try{ URL.revokeObjectURL(_pwPreviewUrl); }catch(e){} _pwPreviewUrl=null; }
 }
 
 function renderTray(){
   var host=document.getElementById('pw-tray'); if(!host) return;
   setText('pw-tray-ct', __pw.tray.length);
   host.innerHTML='';
-  __pw.tray.forEach(function(f, i){
-    var el=document.createElement('span');
-    el.className='file'; el.setAttribute('draggable','true');
-    el.innerHTML='<span class="pdf">PDF</span> '+esc(f.name);
-    el.addEventListener('dragstart', function(e){ if(e.dataTransfer) e.dataTransfer.setData('text/plain', String(i)); });
-    host.appendChild(el);
+  // Bucket tray indexes by the load their first candidate points at ('' = no match).
+  var buckets={}, order=[];
+  __pw.tray.forEach(function(entry, i){
+    var key=(entry.candidates && entry.candidates.length) ? String(entry.candidates[0].loadId) : '';
+    if(!buckets[key]){ buckets[key]=[]; order.push(key); }
+    buckets[key].push(i);
+  });
+  order.forEach(function(key){
+    var idxs=buckets[key];
+    if(key!==''){
+      var hdr=document.createElement('div'); hdr.className='tray-grp-hdr';
+      hdr.textContent=_loadLabel(key)+(idxs.length>1 ? ' — '+idxs.length+' files match this load, assign each' : '');
+      host.appendChild(hdr);
+    }
+    idxs.forEach(function(i){
+      var entry=__pw.tray[i];
+      var el=document.createElement('span'); el.className='file'; el.setAttribute('draggable','true');
+      var sugg='';
+      (entry.candidates||[]).forEach(function(c){
+        sugg+=' <button class="tray-accept" data-idx="'+i+'" data-load="'+esc(c.loadId)+'" data-slot="'+c.slot+'">→ '+(c.slot==='customer'?'Customer':'Carrier')+'?</button>';
+      });
+      el.innerHTML='<span class="pdf">PDF</span> '+esc(entry.file.name)+
+        ' <span class="tray-preview" data-idx="'+i+'" title="Preview">👁</span>'+
+        ' <span class="tray-del" data-idx="'+i+'" title="Delete">✕</span>'+sugg;
+      el.addEventListener('dragstart', function(e){ if(e.dataTransfer) e.dataTransfer.setData('text/plain', String(i)); });
+      host.appendChild(el);
+    });
+  });
+  // Wire controls.
+  host.querySelectorAll('.tray-del').forEach(function(x){
+    x.addEventListener('click', function(){ deleteTrayFile(Number(x.getAttribute('data-idx'))); });
+  });
+  host.querySelectorAll('.tray-accept').forEach(function(b){
+    b.addEventListener('click', function(){
+      assignTrayFile(Number(b.getAttribute('data-idx')), b.getAttribute('data-load'), b.getAttribute('data-slot'));
+    });
+  });
+  host.querySelectorAll('.tray-preview').forEach(function(p){
+    p.addEventListener('click', function(){ var e=__pw.tray[Number(p.getAttribute('data-idx'))]; if(e) previewFile(e.file); });
   });
 }
 
@@ -1282,14 +1455,23 @@ function finishPaperwork(){ closePaperwork(); loadQueue(); }
 window.openImportModal=openImportModal;
 window.renderPreview=renderPreview;
 window.createDraftsFromPreview=createDraftsFromPreview;
+window.normToken=normToken;
+window.longestDigitRun=longestDigitRun;
+window.boundedMatch=boundedMatch;
+window.matchFileToLoads=matchFileToLoads;
 window.routeFileToSlot=routeFileToSlot;
 window.paperworkStatus=paperworkStatus;
 window.renderPaperwork=renderPaperwork;
 window.openPaperwork=openPaperwork;
 window.attachToSlot=attachToSlot;
 window.attachFilesToSlot=attachFilesToSlot;
+window.assignTrayFile=assignTrayFile;
+window.moveSlotFile=moveSlotFile;
 window.removeSlot=removeSlot;
+window.deleteTrayFile=deleteTrayFile;
 window.dropAllFiles=dropAllFiles;
+window.commitPaperwork=commitPaperwork;
+window.hasPendingUploads=hasPendingUploads;
 window.mergeFilesToPDF=mergeFilesToPDF;
 window._uploadDoc=_uploadDoc;
 window.__pw=__pw;
@@ -1475,6 +1657,9 @@ function onDraftCustomerChange(customerId){
 }
 window.onDraftCarrierChange = onDraftCarrierChange;
 window.onDraftCustomerChange = onDraftCustomerChange;
+window.renderTray=renderTray;
+window.previewFile=previewFile;
+window.closePreview=closePreview;
 </script>
 </body>
 </html>

@@ -90,3 +90,31 @@ test('newLoad stores a create flag', () => {
   assert.equal(stored.load_id, '');
   assert.equal(stored.mode, 'new');
 });
+
+test('default (all) view hides Cancelled loads; Draft is shown', () => {
+  const { window } = makeWidget();
+  window.allLoads = [
+    { id: '1', load_number: 'L-1', status: 'Draft', customer_name: 'A', lane: '', carrier_name: '' },
+    { id: '2', load_number: 'L-2', status: 'Cancelled', customer_name: 'B', lane: '', carrier_name: '' },
+    { id: '3', load_number: 'L-3', status: 'Booked', customer_name: 'C', lane: '', carrier_name: '' },
+  ];
+  window.activeStatus = 'all';
+  window.applyFilters();
+  const text = window.document.getElementById('board-body').textContent;
+  assert.match(text, /L-1/);
+  assert.match(text, /L-3/);
+  assert.ok(!/L-2/.test(text), 'Cancelled hidden by default');
+});
+
+test('Cancelled pill shows only cancelled loads', () => {
+  const { window } = makeWidget();
+  window.allLoads = [
+    { id: '2', load_number: 'L-2', status: 'Cancelled', customer_name: 'B', lane: '', carrier_name: '' },
+    { id: '3', load_number: 'L-3', status: 'Booked', customer_name: 'C', lane: '', carrier_name: '' },
+  ];
+  window.activeStatus = 'Cancelled';
+  window.applyFilters();
+  const rows = window.document.querySelectorAll('#board-body tr');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /L-2/);
+});

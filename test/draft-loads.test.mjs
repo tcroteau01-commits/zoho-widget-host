@@ -542,9 +542,9 @@ test('routeFileToSlot: ref# -> customer, invoice# -> carrier', () => {const w=mk
   assert.deepEqual(w.routeFileToSlot('INV-7741.pdf',loads),{loadId:'900',slot:'carrier'});
   assert.equal(w.routeFileToSlot('random.pdf',loads),null);});
 
-test('paperwork: load ready only when both slots filled', ()=>{const w=mk();
-  assert.equal(w.paperworkStatus({customer:true,carrier:false}),'attention');
-  assert.equal(w.paperworkStatus({customer:true,carrier:true}),'ready');});
+test('paperwork: load ready only when both slots uploaded', ()=>{const w=mk();
+  assert.equal(w.paperworkStatus({customer:'uploaded',carrier:false}),'attention');
+  assert.equal(w.paperworkStatus({customer:'uploaded',carrier:'uploaded'}),'ready');});
 
 test('renderPaperwork renders one row per load with two required slots', () => {
   const w = mk();
@@ -604,35 +604,21 @@ function fakeFile(name) {
   return { name, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
 }
 
-test('failed upload does not leave a paperwork slot marked Ready', async () => {
+test('attaching a file stages it as pending (deferred model — no upload yet)', () => {
   const w = mk();
-  w.mergeFilesToPDF = () => Promise.resolve(new w.Blob(['x']));
-  w.fetch = function (url) {
-    if (String(url).indexOf('/upload-doc') !== -1) {
-      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  };
   w.openPaperwork([{ id: '900', ref: 'WMT-90021', invoice: 'INV-7741', customer_name: 'WALMART INC', carrier_name: 'SWIFT' }]);
-  await w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
-  assert.notEqual(w.__pw.slots['900'].customer, true);
+  w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
+  assert.equal(w.__pw.slots['900'].customer, 'pending');
   assert.equal(w.paperworkStatus(w.__pw.slots['900']), 'attention');
   assert.match(w.document.getElementById('pw-prog-lbl').textContent, /0 of 1/);
-  assert.match(w.document.getElementById('toast').textContent, /failed/i);
 });
 
-test('successful upload marks the paperwork slot Ready', async () => {
+test('attaching a file does not upload immediately (slot stays pending not uploaded)', () => {
   const w = mk();
-  w.mergeFilesToPDF = () => Promise.resolve(new w.Blob(['x']));
-  w.fetch = function (url) {
-    if (String(url).indexOf('/upload-doc') !== -1) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  };
   w.openPaperwork([{ id: '900', ref: 'WMT-90021', invoice: 'INV-7741', customer_name: 'WALMART INC', carrier_name: 'SWIFT' }]);
-  await w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
-  assert.equal(w.__pw.slots['900'].customer, true);
+  w.attachToSlot('900', 'customer', fakeFile('WMT-90021.pdf'));
+  assert.equal(w.__pw.slots['900'].customer, 'pending', 'slot is pending, not uploaded');
+  assert.equal(w.__pw.files['900'].customer.length, 1, 'file is staged');
 });
 
 function pwReady(w) {
@@ -643,13 +629,14 @@ function pwReady(w) {
   return { uploads: () => uploads, merged: () => merged };
 }
 
-test('per-slot: multiple files attach as ONE merged upload', async () => {
+test('per-slot: multiple files all stage into the slot (deferred — no upload, no merge yet)', () => {
   const w = mk();
   const m = pwReady(w);
-  await w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf'), fakeFile('b.pdf'), fakeFile('c.pdf')]);
-  assert.equal(m.uploads(), 1, 'one upload for the slot, not one per file');
-  assert.equal(m.merged(), 3, 'all three merged together');
-  assert.equal(w.__pw.slots['900'].customer, true);
+  w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf'), fakeFile('b.pdf'), fakeFile('c.pdf')]);
+  assert.equal(m.uploads(), 0, 'no upload fired yet');
+  assert.equal(m.merged(), 0, 'no merge fired yet');
+  assert.equal(w.__pw.slots['900'].customer, 'pending');
+  assert.equal(w.__pw.files['900'].customer.length, 3, 'all three files staged');
 });
 
 test('per-slot: dropping desktop files on a slot attaches to that slot', async () => {
@@ -662,7 +649,7 @@ test('per-slot: dropping desktop files on a slot attaches to that slot', async (
   cell.dispatchEvent(ev);
   await new Promise(r => setTimeout(r, 0));
   await new Promise(r => setTimeout(r, 0));
-  assert.equal(w.__pw.slots['900'].carrier, true, 'carrier slot filled from desktop drop');
+  assert.equal(w.__pw.slots['900'].carrier, 'pending', 'carrier slot staged from desktop drop');
 });
 
 test('per-slot: clicking a slot opens the file picker scoped to it', () => {
@@ -675,11 +662,11 @@ test('per-slot: clicking a slot opens the file picker scoped to it', () => {
   assert.ok(w.document.getElementById('pw-file-input'), 'hidden file input created');
 });
 
-test('per-slot: removeSlot clears an attached slot', async () => {
+test('per-slot: removeSlot clears an attached slot', () => {
   const w = mk();
   pwReady(w);
-  await w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf')]);
-  assert.equal(w.__pw.slots['900'].customer, true);
+  w.attachFilesToSlot('900', 'customer', [fakeFile('a.pdf')]);
+  assert.equal(w.__pw.slots['900'].customer, 'pending');
   w.removeSlot('900', 'customer');
   assert.equal(w.__pw.slots['900'].customer, false);
   assert.equal(w.__pw.files['900'].customer.length, 0);
@@ -892,4 +879,21 @@ test('matchFileToLoads: same number on two loads is ambiguous', () => {
   const r = window.matchFileToLoads('1234.pdf', loads);
   assert.equal(r.auto, null);
   assert.equal(r.candidates.length, 2);
+});
+
+// ---- Task 2: deferred upload ----
+test('attachFilesToSlot stages files as pending and uploads nothing', () => {
+  const { window, records } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'INV-1', invoice: 'INV-2' }]);
+  const f = new window.File(['x'], 'a.pdf', { type: 'application/pdf' });
+  window.attachFilesToSlot('A', 'customer', [f]);
+  assert.equal(window.__pw.slots['A'].customer, 'pending');
+  assert.equal(window.__pw.files['A'].customer.length, 1);
+  assert.ok(!records.some(r => r.url.indexOf('/upload-doc') !== -1));
+});
+
+test('paperworkStatus is ready only when both slots uploaded', () => {
+  const { window } = makeWidget();
+  assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'uploaded' }), 'attention');
+  assert.equal(window.paperworkStatus({ customer: 'uploaded', carrier: 'uploaded' }), 'ready');
 });

@@ -1112,7 +1112,7 @@ function routeFileToSlot(filename, loads){
 
 function paperworkStatus(slots){
   slots=slots||{};
-  return (slots.customer===true && slots.carrier===true) ? 'ready' : 'attention';
+  return (slots.customer==='uploaded' && slots.carrier==='uploaded') ? 'ready' : 'attention';
 }
 
 function openPaperwork(loads){
@@ -1133,17 +1133,15 @@ function closePaperwork(){
 function slotHtml(l, slot){
   var state=__pw.slots[l.id] && __pw.slots[l.id][slot];
   var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
-  if (state==='uploading' && files.length){
-    var upn=files[files.length-1].name;
-    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(upn)+'</span></div>'+
-           '<div class="auto">uploading…</div>';
-  }
-  if (state===true && files.length){
+  if ((state==='pending' || state==='uploaded') && files.length){
     var nm=files[files.length-1].name;
     var more = files.length>1 ? ' <span class="auto" style="display:inline">+'+(files.length-1)+' more</span>' : '';
-    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span>'+more+' ✓'+
+    var badge = state==='uploaded' ? ' ✓' : '';
+    var note = state==='uploaded' ? '<div class="auto">✓ attached</div>' : '<div class="auto">staged — not yet sent</div>';
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span>'+more+badge+
+           ' <span class="slot-preview" title="Preview" data-load="'+esc(l.id)+'" data-slot="'+slot+'">👁</span>'+
            '<span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'">✕</span></div>'+
-           '<div class="auto">✓ attached</div>';
+           note;
   }
   var label = slot==='customer' ? 'customer packet needed' : 'carrier invoice needed';
   var key = slot==='customer' ? l.ref : l.invoice;
@@ -1163,7 +1161,7 @@ function renderPaperwork(loads){
     var st=paperworkStatus(__pw.slots[l.id]);
     var statHtml = st==='ready'
       ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
-      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer===true?'Carrier doc':(__pw.slots[l.id].carrier===true?'Customer doc':'Both needed')) +'</span>';
+      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer==='uploaded'?'Carrier doc':(__pw.slots[l.id].carrier==='uploaded'?'Customer doc':'Both needed')) +'</span>';
     var carrId = l.carrier_mc ? ('MC '+esc(l.carrier_mc)) : (l.carrier_dot ? ('DOT '+esc(l.carrier_dot)) : '');
     var idBits=[];
     if (l.ref) idBits.push('Cust ref '+esc(l.ref));
@@ -1236,26 +1234,15 @@ function wirePaperworkSlots(){
   });
 }
 
-// Attach one or more files to a slot; they merge into one packet via a single upload.
+// Stage files into a slot WITHOUT uploading. Upload happens later at commit.
 function attachFilesToSlot(loadId, slot, fileList){
   var files=Array.prototype.slice.call(fileList||[]).filter(Boolean);
-  if(!files.length) return Promise.resolve(false);
+  if(!files.length) return;
   if(!__pw.files[loadId]) __pw.files[loadId]={customer:[],carrier:[]};
   if(!__pw.slots[loadId]) __pw.slots[loadId]={customer:false,carrier:false};
-  var hadFiles=__pw.files[loadId][slot].length;   // already-uploaded files, if any
   files.forEach(function(f){ __pw.files[loadId][slot].push(f); });
-  __pw.slots[loadId][slot]='uploading';   // transient; only ===true counts as Ready
+  if(__pw.slots[loadId][slot]!=='uploaded') __pw.slots[loadId][slot]='pending';
   renderPaperwork(__pw.loads);
-  return uploadSlot(loadId, slot).then(function(ok){
-    if(ok){ __pw.slots[loadId][slot]=true; }
-    else {
-      for(var i=0;i<files.length;i++){ __pw.files[loadId][slot].pop(); }   // drop just-added
-      __pw.slots[loadId][slot] = hadFiles ? true : false;                  // keep prior packet if any
-      showToast('Upload failed — try again');
-    }
-    renderPaperwork(__pw.loads);
-    return ok;
-  });
 }
 // Single-file attach (tray re-drag) delegates to the multi-file path.
 function attachToSlot(loadId, slot, file){ return attachFilesToSlot(loadId, slot, [file]); }

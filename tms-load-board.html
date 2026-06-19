@@ -145,9 +145,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <span id="bulk-count" class="muted"></span>
     <select id="bulk-status">
       <option value="">Set status…</option>
-      <option>Draft</option><option>Booked</option><option>Covered</option>
-      <option>Dispatched</option><option>In Transit</option>
-      <option>Delivered</option><option>POD Received</option>
+      <option>Draft</option><option>Available</option><option>Covered</option>
+      <option>Dispatched</option><option>In Transit</option><option>Delivered</option>
     </select>
     <button class="btn" id="bulk-apply">Apply</button>
     <button class="btn" id="bulk-cancel">Cancel selected</button>
@@ -169,7 +168,7 @@ var allLoads = [];
 var activeStatus = 'all';
 var searchTerm = '';
 
-var STATUSES = ['all', 'Draft', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Submitted', 'Cancelled'];
+var STATUSES = ['all', 'Draft', 'Available', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Ready to Submit', 'Submitted', 'Cancelled'];
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function money(n){ var v = Number(n)||0; return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
@@ -319,7 +318,7 @@ function renderView(load) {
   if (close) close.addEventListener('click', closeSlideout);
 }
 
-var TMS_STATUSES = ['Draft', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Submitted'];
+var TMS_STATUSES = ['Draft', 'Available', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Ready to Submit', 'Submitted'];
 
 function renderStepper(load) {
   var el = document.getElementById('v-stepper');
@@ -328,7 +327,7 @@ function renderStepper(load) {
     el.innerHTML = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips"><span class="chip cancelled">Cancelled</span></div>';
     return;
   }
-  var cur = TMS_STATUSES.indexOf(load.status || 'Booked');
+  var cur = TMS_STATUSES.indexOf(load.status || 'Draft');
   if (cur < 0) cur = 1;
   var html = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips">';
   TMS_STATUSES.forEach(function(s, i){
@@ -507,6 +506,7 @@ window.changeStatus = changeStatus;
 window.onRowCheck = onRowCheck; window.toggleBulkBar = toggleBulkBar;
 window.bulkApply = bulkApply; window.bulkCancel = bulkCancel;
 window.canCancel = canCancel; window.cancelLoad = cancelLoad;
+window.STATUSES = STATUSES; window.TMS_STATUSES = TMS_STATUSES;
 </script>
 </body>
 </html>

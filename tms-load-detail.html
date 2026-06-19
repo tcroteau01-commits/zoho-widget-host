@@ -135,6 +135,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <option value="Quick Pay"></option>
         </datalist>
       </div>
+      <div class="field" style="grid-column:1/-1"><div id="credit-callout"></div></div>
+      <input type="hidden" id="f-credit-over-limit" value="">
     </div>
   </div>
 
@@ -253,6 +255,47 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 function val(id){ var el = document.getElementById(id); return el ? el.value : ''; }
 function setVal(id, v){ var el = document.getElementById(id); if (el) el.value = (v==null?'':v); }
 function money(n){ var v = Number(n)||0; return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
+
+function renderCreditCallout(credit, invoiceAmount) {
+  var box = document.getElementById('credit-callout');
+  if (!box || !credit) { if (box) box.innerHTML = ''; return; }
+  var limit = Number(credit.limit) || 0;
+  var used = Number(credit.used) || 0;
+  var addl = Number(invoiceAmount) || 0;
+  var projected = used + addl;
+  var avail = limit - used;
+  var pct = limit > 0 ? Math.round(projected / limit * 100) : 0;
+  var over = limit > 0 && projected > limit;
+  setVal('f-credit-over-limit', over ? '1' : '');
+  var color = over ? '#c62828' : (pct >= 80 ? '#b8860b' : '#2e7d32');
+  var bg = over ? '#fdecea' : (pct >= 80 ? '#fff8e8' : '#eef7ee');
+  box.innerHTML =
+    '<div style="background:' + bg + ';border:1px solid ' + color + '33;border-radius:8px;padding:9px 11px;font-size:12px">' +
+    '<b>Credit:</b> ' + money(avail) + ' available of ' + money(limit) +
+    ' · <span style="color:' + color + ';font-weight:700">' + pct + '% used' + (over ? ' — OVER LIMIT' : '') + '</span>' +
+    (over ? '<div style="color:#c62828;margin-top:4px">This load puts the customer over their approved limit. You can still book it; OperFi will review.</div>' : '') +
+    '</div>';
+}
+window.renderCreditCallout = renderCreditCallout;
+
+// /funding-credit returns {Buy_Limit, Sum_Amount_GL_3002, Remaining_Credit, Percent_Used, available}
+// Parse the formatted-string server keys into plain numbers for renderCreditCallout.
+function _parseCreditResponse(c) {
+  function stripFmt(s) { return parseFloat(String(s || '').replace(/[,$%]/g, '')) || 0; }
+  return {
+    limit: stripFmt(c.Buy_Limit),
+    used: stripFmt(c.Sum_Amount_GL_3002),
+    available: stripFmt(c.Remaining_Credit)
+  };
+}
+
+function fetchCredit() {
+  var cid = val('f-customer_id');
+  if (!cid || !brokerEmail) { renderCreditCallout(null); return; }
+  fetch(BROKER_API_BASE + '/funding-credit?email=' + encodeURIComponent(brokerEmail) + '&customer_id=' + encodeURIComponent(cid))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(c){ if (c && c.available !== false) renderCreditCallout(_parseCreditResponse(c), val('f-invoice_amount')); else renderCreditCallout(null); });
+}
 
 function recomputeMargin() {
   var inv = Number(val('f-invoice_amount'))||0;
@@ -473,6 +516,8 @@ function collectForm() {
     commodity: val('f-commodity'), weight: val('f-weight'), piece_count: val('f-piece_count'),
     temperature: val('f-temperature'), bol_number: val('f-bol_number'), pro_number: val('f-pro_number'),
     special_instructions: val('f-special_instructions'), accessorials: val('f-accessorials'),
+    credit_over_limit: val('f-credit-over-limit') ? true : false,
+    exception_reason: val('f-exception-reason'),
     vetting: _vettingFromCarrier(),
     stops: collectStops()
   };
@@ -658,7 +703,9 @@ window.addEventListener('load', function(){
   loadId = t.load_id;
   if (loadId) { document.getElementById('page-title').textContent = 'Edit Load'; showLoading(true); }
   document.getElementById('f-invoice_amount').addEventListener('input', recomputeMargin);
+  document.getElementById('f-invoice_amount').addEventListener('input', fetchCredit);
   document.getElementById('f-carrier_pay').addEventListener('input', recomputeMargin);
+  document.getElementById('f-customer_id').addEventListener('change', fetchCredit);
   document.getElementById('f-carrier_id').addEventListener('change', onCarrierChange);
   document.getElementById('add-pickup').addEventListener('click', function(){ addStop('Pickup'); });
   document.getElementById('add-delivery').addEventListener('click', function(){ addStop('Delivery'); });

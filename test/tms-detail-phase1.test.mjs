@@ -82,3 +82,19 @@ test('margin shows dollars and percent', () => {
   assert.match(txt, /\$250/);
   assert.match(txt, /25(\.0)?%/);
 });
+
+test('credit callout warns and flags when over limit', () => {
+  const w = makeWidget();
+  w.renderCreditCallout({ limit: 50000, used: 49000, available: 1000 }, 2450);
+  const box = w.document.getElementById('credit-callout');
+  assert.match(box.textContent, /over/i);
+  assert.equal(w.document.getElementById('f-credit-over-limit').value, '1');
+});
+
+test('credit callout shows availability and does not flag when within limit', () => {
+  const w = makeWidget();
+  w.renderCreditCallout({ limit: 50000, used: 12000, available: 38000 }, 2450);
+  const box = w.document.getElementById('credit-callout');
+  assert.match(box.textContent, /38,000/);
+  assert.equal(w.document.getElementById('f-credit-over-limit').value, '');
+});

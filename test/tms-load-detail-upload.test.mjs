@@ -55,3 +55,24 @@ test('fetchCarrierLink shows the tokenized URL', async () => {
   const box = window.document.getElementById('carrier-link-box');
   assert.match(box.textContent, /token=1001\.abc/);
 });
+
+test('dropping a file stages it and shows a confirmation', () => {
+  const { window } = makeWidget();
+  const f = new window.File([new Uint8Array([1,2,3])], 'pod.pdf', { type: 'application/pdf' });
+  window.setStagedFile(f);
+  assert.equal(window._stagedFile.name, 'pod.pdf');
+  const dz = window.document.getElementById('upload-dropzone');
+  assert.match(dz.textContent, /pod\.pdf/);
+  assert.match(dz.textContent, /attached/i);
+});
+
+test('upload button uploads the staged file', async () => {
+  const { window, calls } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.loadId = '1001';
+  const f = new window.File([new Uint8Array([1,2,3])], 'pod.pdf', { type: 'application/pdf' });
+  window.setStagedFile(f);
+  window.document.getElementById('upload-doc-type').value = 'POD';
+  await window.uploadBrokerDoc('POD', window._stagedFile);
+  assert.ok(calls.some(c => /\/tms-doc\/upload$/.test(c.url)));
+});

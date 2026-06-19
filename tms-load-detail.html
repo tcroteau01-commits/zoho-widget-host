@@ -50,6 +50,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-item.voided > span { text-decoration: line-through; opacity: .55; }
 .doc-status.busy { color: #b45309; font-weight: 700; }
 .doc-status.busy::before { content: '⏳ '; }
+.dropzone { border: 2px dashed #d8cfa8; border-radius: 8px; padding: 14px; text-align: center;
+            color: #888; cursor: pointer; font-size: 13px; }
+.dropzone.staged { border-color: #2e7d32; color: #2e7d32; font-weight: 600; }
+.dropzone.dragover { border-color: #b45309; background: #fef6e7; }
 .void-tag { text-decoration: none; display:inline-block; margin-left:6px; padding:1px 6px;
   border-radius: 10px; background:#7a1f1f; color:#fff; font-size:11px; opacity:1; }
 #status-stepper { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:11px; font-weight:700; }
@@ -227,7 +231,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <option>POD</option><option>BOL</option><option>Lumper Receipt</option>
           <option>Carrier Invoice</option><option>Signed Rate Con</option><option>Other</option>
         </select>
-        <input type="file" id="upload-file" accept="application/pdf,image/*">
+        <div class="dropzone" id="upload-dropzone">Drop a file here or click to browse</div>
+        <input type="file" id="upload-file" accept="application/pdf,image/*" style="display:none">
         <button class="btn small primary" id="upload-btn">Upload</button>
       </div>
       <div class="doc-gen-row" style="border:none;">
@@ -752,6 +757,7 @@ window.addEventListener('load', function(){
   });
   wireDocButtons();
   wireUploadControls();
+  wireDropzone();
   refreshDocCard();
   renderStepper(val('f-status'));
   var exTog = document.getElementById('f-exception-toggle');
@@ -869,12 +875,33 @@ function fetchCarrierLink() {
     });
 }
 
+var _stagedFileRef = null;
+function setStagedFile(file) {
+  _stagedFileRef = file || null;
+  var dz = document.getElementById('upload-dropzone');
+  if (!dz) return;
+  if (_stagedFileRef) { dz.className = 'dropzone staged'; dz.textContent = '✓ ' + _stagedFileRef.name + ' attached'; }
+  else { dz.className = 'dropzone'; dz.textContent = 'Drop a file here or click to browse'; }
+}
+function wireDropzone() {
+  var dz = document.getElementById('upload-dropzone');
+  var fi = document.getElementById('upload-file');
+  if (!dz || !fi) return;
+  dz.addEventListener('click', function(){ fi.click(); });
+  fi.addEventListener('change', function(){ setStagedFile(fi.files && fi.files[0]); });
+  dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', function(){ dz.classList.remove('dragover'); });
+  dz.addEventListener('drop', function(e){
+    e.preventDefault(); dz.classList.remove('dragover');
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) setStagedFile(e.dataTransfer.files[0]);
+  });
+}
+
 function wireUploadControls() {
   var ub = document.getElementById('upload-btn');
   if (ub) ub.addEventListener('click', function(){
     var sel = document.getElementById('upload-doc-type');
-    var fi = document.getElementById('upload-file');
-    uploadBrokerDoc(sel ? sel.value : 'Other', fi && fi.files ? fi.files[0] : null);
+    uploadBrokerDoc(sel ? sel.value : 'Other', _stagedFileRef).then(function(){ setStagedFile(null); });
   });
   var cb = document.getElementById('carrier-link-btn');
   if (cb) cb.addEventListener('click', fetchCarrierLink);
@@ -991,6 +1018,8 @@ window.applyTemplate = applyTemplate; window.hydrate = hydrate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink;
+window.setStagedFile = setStagedFile;
+Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
 </script>
 </body>
 </html>

@@ -20,7 +20,7 @@ test('submit panel shows gate failures and disables submit', () => {
     [{ document_type: 'POD' }]
   );
   const panel = dom.window.document.getElementById('submit-panel');
-  assert.ok(/POD Received/.test(panel.textContent));
+  assert.ok(/Ready to Submit/.test(panel.textContent));
   assert.strictEqual(dom.window.document.getElementById('btn-submit-factoring').disabled, true);
 });
 
@@ -28,7 +28,7 @@ test('submit panel enables submit when gates pass and invoice entered', () => {
   const dom = boot();
   const { renderSubmitPanel } = dom.window;
   renderSubmitPanel(
-    { id: '1', status: 'POD Received', carrier_id: 'v1', vetting: { authority_active: true } },
+    { id: '1', status: 'Ready to Submit', carrier_id: 'v1', vetting: { authority_active: true } },
     [{ document_type: 'POD' }, { document_type: 'Rate Con' }]
   );
   const inv = dom.window.document.getElementById('f-factoring-invoice');
@@ -88,6 +88,33 @@ test('submit panel renders two document zones sorted by side', () => {
   assert.match(carr.textContent, /Carrier Invoice/);
   // POD must not appear in the carrier zone
   assert.doesNotMatch(carr.textContent, /POD/);
+});
+
+test('submit enables (amber) only at Ready to Submit with invoice + carrier', () => {
+  const dom = boot();
+  const w = dom.window;
+  w.renderSubmitPanel(
+    { id: '1', status: 'Ready to Submit', carrier_id: 'v1', vetting: {} },
+    [{ document_type: 'POD' }, { document_type: 'Carrier Invoice' }]
+  );
+  const inv = w.document.getElementById('f-factoring-invoice');
+  inv.value = 'FCT-1'; inv.dispatchEvent(new w.Event('input'));
+  const btn = w.document.getElementById('btn-submit-factoring');
+  assert.equal(btn.disabled, false);
+  assert.ok(btn.classList.contains('ready'));
+});
+
+test('submit stays disabled when status is only POD Received', () => {
+  const dom = boot();
+  const w = dom.window;
+  w.renderSubmitPanel(
+    { id: '1', status: 'POD Received', carrier_id: 'v1', vetting: {} },
+    [{ document_type: 'POD' }]
+  );
+  const inv = w.document.getElementById('f-factoring-invoice');
+  inv.value = 'FCT-1'; inv.dispatchEvent(new w.Event('input'));
+  const btn = w.document.getElementById('btn-submit-factoring');
+  assert.equal(btn.disabled, true);
 });
 
 test('carrier zone upload posts the carrier doc-type via uploadBrokerDoc', async () => {

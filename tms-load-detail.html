@@ -89,6 +89,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   #submit-panel input[type="text"], #submit-panel button { width: 100%; box-sizing: border-box; }
   #btn-submit-factoring { min-height: 44px; }
 }
+#btn-submit-factoring.ready { background:#e8a020; color:#fff; }
+.gate-ok { color:#2e7d32; } .gate-bad { color:#c62828; }
 </style>
 </head>
 <body>
@@ -938,15 +940,11 @@ function _docSide(t) {
 
 function _gateFailures(load, docs) {
   var f = [];
-  if ((load.status || '') !== 'POD Received')
-    f.push("Load must be at 'POD Received' (currently '" + (load.status || '-') + "').");
+  if ((load.status || '') !== 'Ready to Submit')
+    f.push("Load must be 'Ready to Submit' (currently '" + (load.status || '-') + "'). Upload the POD and the carrier invoice.");
   if (!load.carrier_id) f.push('Assign a carrier before submitting.');
-  var sides = {};
-  (docs || []).forEach(function (d) { if (!d.voided) sides[_docSide(d.document_type)] = true; });
-  if (!sides.customer) f.push('At least one customer-side document is required.');
-  if (!sides.carrier) f.push('At least one carrier-side document is required.');
   var inv = document.getElementById('f-factoring-invoice');
-  if (!inv || !inv.value.trim()) f.push('Carrier/Factoring Invoice # is required.');
+  if (!inv || !inv.value.trim()) f.push('Carrier / Factoring Invoice # is required.');
   return f;
 }
 
@@ -1056,12 +1054,22 @@ function _refreshGates(load, docs, warnings) {
   var failures = _gateFailures(load, docs);
   var ul = document.getElementById('gate-list');
   if (ul) {
-    var lines = failures.map(function (x) { return '<li>✗ ' + x + '</li>'; })
-      .concat((warnings || []).map(function (x) { return '<li>⚠ ' + x + '</li>'; }));
-    ul.innerHTML = lines.length ? lines.join('') : '<li>✓ Ready to submit</li>';
+    var checks = [
+      { ok: !!load.carrier_id, label: 'Carrier assigned' },
+      { ok: (load.status || '') === 'Ready to Submit', label: 'Ready to Submit (POD + carrier invoice uploaded)' },
+      { ok: !!(document.getElementById('f-factoring-invoice') || {}).value &&
+            !!document.getElementById('f-factoring-invoice').value.trim(), label: 'Carrier / Factoring Invoice # entered' },
+    ];
+    var lines = checks.map(function (c) {
+      return '<li class="' + (c.ok ? 'gate-ok' : 'gate-bad') + '">' + (c.ok ? '✓ ' : '✗ ') + c.label + '</li>';
+    }).concat((warnings || []).map(function (x) { return '<li>⚠ ' + x + '</li>'; }));
+    ul.innerHTML = lines.join('');
   }
   var btn = document.getElementById('btn-submit-factoring');
-  if (btn) btn.disabled = failures.length > 0;
+  if (btn) {
+    btn.disabled = failures.length > 0;
+    if (failures.length > 0) btn.classList.remove('ready'); else btn.classList.add('ready');
+  }
 }
 
 function submitForFactoring(load) {

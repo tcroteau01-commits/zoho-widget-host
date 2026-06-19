@@ -266,6 +266,7 @@ function requiredDocs(application) {
 }
 function docType(d){ return Array.isArray(d) ? d[0] : (d && (d.Document_Type || d.type)); }
 function docStatus(d){ return Array.isArray(d) ? d[2] : (d && (d.Status || d.status)); }
+function docUrl(d){ return (Array.isArray(d) ? d[3] : (d && (d.fileUrl || d.link || d.url))) || ''; }
 function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
 function isUploadedStatus(s){ return !isPendingDoc(s); }
 function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'verified') return 3; if (isUploadedStatus(s)) return 2; if (s === 'rejected') return 1; return 0; }
@@ -273,22 +274,23 @@ function reconcileDocs(required, documents) {
   required = required || []; documents = documents || [];
   var byType = {};
   documents.forEach(function (d) {
-    var t = normType(docType(d)), st = docStatus(d) || '';
-    if (!byType[t] || statusRank(st) > statusRank(byType[t])) byType[t] = st;
+    var t = normType(docType(d)), st = docStatus(d) || '', cur = byType[t];
+    if (!cur || statusRank(st) > statusRank(cur.status)) byType[t] = { status: st, link: docUrl(d) };
   });
   var checklist = required.map(function (item) {
-    var st = byType[normType(item.type)];
+    var u = byType[normType(item.type)];
     return {
       key:item.key, label:item.label, type:item.type,
-      status: st || 'Needed',
-      uploaded: !!st && isUploadedStatus(st),
-      verified: !!st && /verified/i.test(String(st)),
-      rejected: !!st && /rejected/i.test(String(st))
+      status: u ? u.status : 'Needed',
+      uploaded: !!u && isUploadedStatus(u.status),
+      verified: !!u && /verified/i.test(String(u.status)),
+      rejected: !!u && /rejected/i.test(String(u.status)),
+      link: u ? (u.link || '') : ''
     };
   });
   var reqTypes = {}; required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
   var extras = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && isUploadedStatus(docStatus(d)); })
-    .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received' }; });
+    .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received', link: docUrl(d) }; });
   return {
     checklist: checklist, extras: extras,
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
@@ -422,7 +424,7 @@ function loadDetail(app) {
     .then(function (j) {
       j = j || {};
       var rev = j.review || {};
-      var docs = (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested']; });
+      var docs = (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; });
       return { documents: docs, uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', salesNotes: app[SALES_NOTES_FIELD] || '' };
     })
     .catch(function () { return { documents: [], uwNotes: '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' }; });
@@ -496,15 +498,16 @@ function renderDetail(app, d) {
   // Full document checklist (same rules as the doc portal + underwriting tool): every required
   // doc with its status; uploaded ones show Received/Verified, still-needed ones keep a Nudge.
   var docRec = reconcileDocs(requiredDocs(app), d.documents);
+  var docView = function(url){ return url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="btn ghost sm">View</a>' : ''; };
   var docsHtml = docRec.checklist.map(function (c) {
     var det = c.verified ? 'Verified' : (c.uploaded ? 'Received' : (c.rejected ? 'Rejected — re-upload' : 'Needed'));
+    var action = c.uploaded ? docView(c.link) : '<button class="btn ghost sm js-nudge" data-doc="' + esc(c.type) + '">Nudge client</button>';
     return '<div class="chk"><span class="mark ' + (c.uploaded ? 'ok' : 'bad') + '">' + (c.uploaded ? '✓' : '○') + '</span>' +
-      '<div class="chk-body"><div class="lbl">' + esc(c.label) + '</div><div class="det">' + det + '</div></div>' +
-      (c.uploaded ? '' : '<button class="btn ghost sm js-nudge" data-doc="' + esc(c.type) + '">Nudge client</button>') + '</div>';
+      '<div class="chk-body"><div class="lbl">' + esc(c.label) + '</div><div class="det">' + det + '</div></div>' + action + '</div>';
   }).join('') +
   docRec.extras.map(function (e) {
     return '<div class="chk"><span class="mark ok">✓</span><div class="chk-body"><div class="lbl">' + esc(e.label) +
-      '</div><div class="det">' + esc(e.status) + ' · additional</div></div></div>';
+      '</div><div class="det">' + esc(e.status) + ' · additional</div></div>' + docView(e.link) + '</div>';
   }).join('');
 
   var uwNote = d.uwNotes

@@ -308,31 +308,33 @@ function requiredDocs(application) {
 }
 function docType(d){ return Array.isArray(d) ? d[0] : (d && (d.Document_Type || d.type)); }
 function docStatus(d){ return Array.isArray(d) ? d[2] : (d && (d.Status || d.status)); }
+function docUrl(d){ return (Array.isArray(d) ? d[3] : (d && (d.fileUrl || d.link || d.url))) || ''; }
 function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
 function isUploadedStatus(s){ return /^(received|verified|approved|complete|on file)$/i.test(String(s || '').trim()); }
 function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'verified') return 3; if (isUploadedStatus(s)) return 2; if (s === 'rejected') return 1; return 0; }
-// Join the required checklist to the application's Document records → per-line status + extras.
-// `documents` accepts [type,source,status] tuples (live/demo) OR {Document_Type,Status} objects.
+// Join the required checklist to the application's Document records → per-line status + view link + extras.
+// `documents` accepts [type,source,status,fileUrl] tuples (live/demo) OR {Document_Type,Status,fileUrl} objects.
 function reconcileDocs(required, documents) {
   required = required || []; documents = documents || [];
   var byType = {};
   documents.forEach(function (d) {
-    var t = normType(docType(d)), st = docStatus(d) || '';
-    if (!byType[t] || statusRank(st) > statusRank(byType[t])) byType[t] = st;
+    var t = normType(docType(d)), st = docStatus(d) || '', cur = byType[t];
+    if (!cur || statusRank(st) > statusRank(cur.status)) byType[t] = { status: st, link: docUrl(d) };
   });
   var checklist = required.map(function (item) {
-    var st = byType[normType(item.type)];
+    var u = byType[normType(item.type)];
     return {
       key:item.key, label:item.label, type:item.type,
-      status: st || 'Needed',
-      uploaded: !!st && isUploadedStatus(st),
-      verified: !!st && /verified/i.test(String(st)),
-      rejected: !!st && /rejected/i.test(String(st))
+      status: u ? u.status : 'Needed',
+      uploaded: !!u && isUploadedStatus(u.status),
+      verified: !!u && /verified/i.test(String(u.status)),
+      rejected: !!u && /rejected/i.test(String(u.status)),
+      link: u ? (u.link || '') : ''
     };
   });
   var reqTypes = {}; required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
   var extras = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && isUploadedStatus(docStatus(d)); })
-    .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received' }; });
+    .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received', link: docUrl(d) }; });
   return {
     checklist: checklist, extras: extras,
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
@@ -501,7 +503,7 @@ function loadByUSDOT(usdot) {
           reviewId: j.reviewId || null,
           application: a,
           owners: (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, sosRole:'—' }; }),
-          documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested']; }),
+          documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; }),
           checksReady: !!checks,
           fraud: (checks && checks.fraud) || [],
           ucc: (checks && checks.ucc) || [],
@@ -660,16 +662,17 @@ function renderModel(m) {
   // client's uploaded Document records matched in by type. Needed items stay visible.
   var docReq = requiredDocs(a);
   var docRec = reconcileDocs(docReq, m.documents);
+  var viewLink = function(url){ return url ? ' <a href="'+url+'" target="_blank" rel="noopener" style="color:var(--of-blue-text,#1a5fb4);text-decoration:none;font-weight:600;margin-left:8px">View</a>' : ''; };
   var dt = '<tr><th>Document</th><th>Status</th></tr>';
   docRec.checklist.forEach(function(c){
     var pill = c.verified ? '<span class="pill g">Verified</span>'
              : c.uploaded ? '<span class="pill b">Received</span>'
              : c.rejected ? '<span class="pill r">Rejected</span>'
              : '<span class="pill r">Needed</span>';
-    dt += '<tr><td>'+c.label+'</td><td>'+pill+'</td></tr>';
+    dt += '<tr><td>'+c.label+'</td><td>'+pill+(c.uploaded?viewLink(c.link):'')+'</td></tr>';
   });
   docRec.extras.forEach(function(e){
-    dt += '<tr><td>'+e.label+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span></td></tr>';
+    dt += '<tr><td>'+e.label+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span>'+viewLink(e.link)+'</td></tr>';
   });
   $('docTable').innerHTML = dt;
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';

@@ -73,3 +73,19 @@ test('submit gate fails when no carrier is assigned', () => {
      .dispatchEvent(new dom.window.Event('input'));
   assert.strictEqual(dom.window.document.getElementById('btn-submit-factoring').disabled, true);
 });
+
+test('submit panel renders two document zones sorted by side', () => {
+  const dom = boot();
+  const w = dom.window;
+  w.renderSubmitPanel(
+    { id: '1', status: 'Delivered', carrier_id: 'v1', vetting: {} },
+    [{ document_type: 'POD' }, { document_type: 'Carrier Invoice' }]
+  );
+  const cust = w.document.getElementById('zone-customer');
+  const carr = w.document.getElementById('zone-carrier');
+  assert.ok(cust && carr, 'both zones render');
+  assert.match(cust.textContent, /POD/);
+  assert.match(carr.textContent, /Carrier Invoice/);
+  // POD must not appear in the carrier zone
+  assert.doesNotMatch(carr.textContent, /POD/);
+});

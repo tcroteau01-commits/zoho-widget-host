@@ -62,6 +62,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .step.current { background:#e8a020; color:#fff; border-color:#e8a020; }
 .step.locked { background:#f5f5f5; color:#aaa; border-color:#eee; }
 .step-sep { color:#ccc; }
+.fz-banner { background:#fef6e7; border:1px solid #f0d9a8; border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:13px; color:#7a5a12; }
+.fz-zones { display:flex; gap:12px; flex-wrap:wrap; }
+.fz-zone { flex:1; min-width:240px; border:1px solid #e6e3da; border-radius:10px; padding:12px; }
+.fz-zone h4 { font-size:12px; text-transform:uppercase; letter-spacing:0.4px; color:#888; margin:0 0 8px; }
+.fz-doc { font-size:12px; color:#444; padding:4px 0; border-bottom:1px solid #f3f1ea; }
+.fz-doc.voided { text-decoration:line-through; color:#999; }
+.fz-empty { font-size:12px; color:#aaa; padding:4px 0; }
 
 @media (max-width: 640px) {
   html, body { overflow-x: hidden; }
@@ -960,10 +967,30 @@ function renderSubmitPanel(load, docs) {
         : '<p>This load has been submitted for factoring.</p>') + '</div>';
     return;
   }
+  docs = docs || [];
+  function zoneDocs(side) {
+    return docs.filter(function (d) { return _docSide(d.document_type) === side; });
+  }
+  function docRows(side) {
+    var rows = zoneDocs(side).map(function (d) {
+      return '<div class="fz-doc' + (d.voided ? ' voided' : '') + '">' + esc(d.document_type) +
+        (d.voided ? ' (voided)' : '') + '</div>';
+    });
+    return rows.length ? rows.join('') : '<div class="fz-empty">None yet.</div>';
+  }
   var warnings = _vettingWarnings(load);
   panel.innerHTML =
     '<div class="card"><h3>Submit for Factoring</h3>' +
-    '<ul id="gate-list" class="muted" style="margin:6px 0;padding-left:18px"></ul>' +
+    '<div class="fz-banner">Turn this delivered load into a carrier invoice plus POD, then submit it for factoring.</div>' +
+    '<div class="fz-zones">' +
+      '<div class="fz-zone" id="zone-customer"><h4>Customer Documents</h4>' +
+        '<div id="zone-customer-docs">' + docRows('customer') + '</div>' +
+        '<div id="zone-customer-actions"></div></div>' +
+      '<div class="fz-zone" id="zone-carrier"><h4>Carrier Documents</h4>' +
+        '<div id="zone-carrier-docs">' + docRows('carrier') + '</div>' +
+        '<div id="zone-carrier-actions"></div></div>' +
+    '</div>' +
+    '<ul id="gate-list" class="muted" style="margin:10px 0;padding-left:18px"></ul>' +
     (warnings.length
       ? '<div id="override-wrap" style="margin:6px 0"><label><input type="checkbox" id="chk-override"> ' +
         'Override carrier vetting warning and submit anyway</label></div>'

@@ -278,6 +278,68 @@ var CHECKS_PATH = '/application-checks'; // GET ?usdot= → { fraud, ownership, 
 // ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
 
+// Document checklist — SAME rules as the client document portal (client-portal.html), so the
+// underwriting tool shows the full expected checklist (Received / Verified / Needed) with the
+// client's uploaded Document records matched in by type.
+var BASE_DOCS = [
+  { key:'factoring_agreement', label:'OperFi Factoring Agreement',  type:'Signed Agreement' },
+  { key:'noa',                 label:'OperFi Notice of Assignment', type:'NOA' },
+  { key:'operating_authority', label:'Operating Authority',         type:'Operating Authority' },
+  { key:'insurance',           label:'Insurance Certificate',       type:'Insurance Certificate' },
+  { key:'voided_check',        label:'Voided Check (printed company name)', type:'Voided Check' },
+  { key:'drivers_license',     label:"Driver's License (all owners)", type:'Drivers License' },
+  { key:'w9',                  label:'W-9',                          type:'W-9' }
+];
+function requiredDocs(application) {
+  application = application || {};
+  var ft = String(application.Business_Formation_Type || application.formationType || '').toLowerCase();
+  var vet = String(application.Veteran || application.Veteran_Status || application.veteran || '').toLowerCase();
+  var list = BASE_DOCS.slice();
+  if (/sole|proprietor|\bdba\b/.test(ft)) {
+    list.push({ key:'utility_bill', label:'Utility Bill (current address)', type:'Utility Bill' });
+    list.push({ key:'ssn_card',     label:'Social Security Card',           type:'Social Security Card' });
+  } else if (/llc|corp|partnership/.test(ft)) {
+    list.push({ key:'formation', label:'Formation Documents', type:'Articles of Formation' });
+  }
+  if (vet === 'yes' || vet === 'true' || vet === 'veteran') {
+    list.push({ key:'proof_of_service', label:'Proof of Service', type:'Proof of Service' });
+  }
+  return list;
+}
+function docType(d){ return Array.isArray(d) ? d[0] : (d && (d.Document_Type || d.type)); }
+function docStatus(d){ return Array.isArray(d) ? d[2] : (d && (d.Status || d.status)); }
+function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
+function isUploadedStatus(s){ return /^(received|verified|approved|complete|on file)$/i.test(String(s || '').trim()); }
+function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'verified') return 3; if (isUploadedStatus(s)) return 2; if (s === 'rejected') return 1; return 0; }
+// Join the required checklist to the application's Document records → per-line status + extras.
+// `documents` accepts [type,source,status] tuples (live/demo) OR {Document_Type,Status} objects.
+function reconcileDocs(required, documents) {
+  required = required || []; documents = documents || [];
+  var byType = {};
+  documents.forEach(function (d) {
+    var t = normType(docType(d)), st = docStatus(d) || '';
+    if (!byType[t] || statusRank(st) > statusRank(byType[t])) byType[t] = st;
+  });
+  var checklist = required.map(function (item) {
+    var st = byType[normType(item.type)];
+    return {
+      key:item.key, label:item.label, type:item.type,
+      status: st || 'Needed',
+      uploaded: !!st && isUploadedStatus(st),
+      verified: !!st && /verified/i.test(String(st)),
+      rejected: !!st && /rejected/i.test(String(st))
+    };
+  });
+  var reqTypes = {}; required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
+  var extras = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && isUploadedStatus(docStatus(d)); })
+    .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received' }; });
+  return {
+    checklist: checklist, extras: extras,
+    uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
+    total: checklist.length
+  };
+}
+
 function computeGate(s, ctx) {
   ctx = ctx || {};
   var gates = {
@@ -349,7 +411,7 @@ function computeRecommendation(checks) {
   return { risk: risk, verdict: verdict, reasons: reasons };
 }
 
-var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, APPLICATION_LOOKUP: APPLICATION_LOOKUP };
+var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP };
 global.OFUW = OFUW;
 
 // ── Demo data, keyed by USDOT (used when not embedded in Creator) ─────────────
@@ -520,8 +582,9 @@ function readState() {
 
 function ctx() {
   if (!MODEL) return { docsReceived:0, docsRequired:0, fraudBad:0 };
-  var received = MODEL.documents.filter(function(d){ return d[2]==='Verified'||d[2]==='Received'; }).length;
-  return { docsReceived: received, docsRequired: MODEL.documents.length, fraudBad: MODEL.fraud.filter(function(f){return f[2]==='bad';}).length };
+  var rec = reconcileDocs(requiredDocs(MODEL.application), MODEL.documents);
+  var fraudBad = (MODEL.fraud||[]).filter(function(f){ return (Array.isArray(f)?f[2]:f.status)==='bad'; }).length;
+  return { docsReceived: rec.uploadedCount, docsRequired: rec.total, fraudBad: fraudBad };
 }
 
 function renderGate() {
@@ -593,13 +656,24 @@ function renderModel(m) {
   (m.owners||[]).forEach(function(o){ ot += '<tr><td>'+(o.First_Name1||'')+' '+(o.Last_Name1||'')+'</td><td>'+(o.Title||'')+'</td><td>'+(o.Ownership_Percent||'')+'%</td><td><span class="pill g">'+(o.sosRole||'—')+'</span></td></tr>'; });
   $('ownTable').innerHTML = ot;
 
-  var pillFor = function(s){ return s==='Verified'?'g':(s==='Received'?'b':(s==='Rejected'?'r':'r')); };
-  var dt = '<tr><th>Document</th><th>Source</th><th>Status</th></tr>';
-  (m.documents||[]).forEach(function(d){ dt += '<tr><td>'+d[0]+'</td><td>'+d[1]+'</td><td><span class="pill '+pillFor(d[2])+'">'+d[2]+'</span></td></tr>'; });
+  // Documents = the full required checklist (same rules as the client portal), with the
+  // client's uploaded Document records matched in by type. Needed items stay visible.
+  var docReq = requiredDocs(a);
+  var docRec = reconcileDocs(docReq, m.documents);
+  var dt = '<tr><th>Document</th><th>Status</th></tr>';
+  docRec.checklist.forEach(function(c){
+    var pill = c.verified ? '<span class="pill g">Verified</span>'
+             : c.uploaded ? '<span class="pill b">Received</span>'
+             : c.rejected ? '<span class="pill r">Rejected</span>'
+             : '<span class="pill r">Needed</span>';
+    dt += '<tr><td>'+c.label+'</td><td>'+pill+'</td></tr>';
+  });
+  docRec.extras.forEach(function(e){
+    dt += '<tr><td>'+e.label+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span></td></tr>';
+  });
   $('docTable').innerHTML = dt;
-  var recv = (m.documents||[]).filter(function(d){return d[2]==='Verified'||d[2]==='Received';}).length;
-  $('docCount').textContent = recv + ' / ' + (m.documents||[]).length;
-  $('kDocs').textContent = recv + ' / ' + (m.documents||[]).length;
+  $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';
+  $('kDocs').textContent = docRec.uploadedCount + ' / ' + docRec.total;
   $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
   $('kUcc').textContent = (m.ucc||[]).length;
   // UCC research table

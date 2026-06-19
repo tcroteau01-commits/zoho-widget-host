@@ -201,6 +201,23 @@ test('saveLoad with explicit Draft status posts status Draft', async () => {
   assert.equal(posts.at(-1).body.status, 'Draft');
 });
 
+test('applyTemplate pre-fills full load including stops', () => {
+  const { window } = makeWidget();
+  window.populateCustomers(CUSTOMERS.customers);
+  window.applyTemplate({
+    customer_id: 'cu1', origin: 'Dallas', destination: 'Atlanta', equipment: 'Reefer',
+    commodity: 'Produce', weight: '42000', temperature: '34F', piece_count: '24',
+    accessorials: 'Detention', special_instructions: 'Tarp', default_invoice_amount: '2000',
+    default_customer_payment_terms: 'Net 30',
+    stops: [{ stop_type: 'Pickup', sequence: 1, company_name: 'Ship Co', address: '9 B St' },
+            { stop_type: 'Delivery', sequence: 2, company_name: 'Acme', address: '1 A St' }],
+  });
+  assert.equal(window.document.getElementById('f-weight').value, '42000');
+  assert.equal(window.document.getElementById('f-special_instructions').value, 'Tarp');
+  const stopRows = window.document.querySelectorAll('.stop-row');
+  assert.equal(stopRows.length, 2);
+});
+
 test('saveTemplate posts the full load shape including stops', async () => {
   const { window, posts } = makeWidget();
   window.brokerEmail = 'b@op.com';

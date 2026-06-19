@@ -629,6 +629,23 @@ function saveTemplate() {
     .then(function(p){ if (p && p.ok) showOk('Template saved.'); else showError('Could not save template.'); });
 }
 
+function applyTemplateStops(stops) {
+  var box = document.getElementById('stops');
+  if (!box) return;
+  // Clear existing stop rows
+  var existing = box.querySelectorAll('.stop-row');
+  for (var i = 0; i < existing.length; i++) existing[i].parentNode.removeChild(existing[i]);
+  // Rebuild from template stops
+  (stops || []).forEach(function(s) {
+    addStop(s.stop_type || 'Pickup');
+    var rows = box.querySelectorAll('.stop-row');
+    var r = rows[rows.length - 1];
+    ['company_name', 'address', 'appointment', 'reference_no'].forEach(function(k) {
+      var e = r.querySelector('[data-k="' + k + '"]'); if (e) e.value = s[k] || '';
+    });
+  });
+}
+
 function applyTemplate(t) {
   if (!t) return;
   ensureCustomerOption(t.customer_id);
@@ -637,8 +654,14 @@ function applyTemplate(t) {
   setVal('f-destination', t.destination || '');
   setVal('f-equipment', t.equipment || '');
   setVal('f-commodity', t.commodity || '');
+  setVal('f-weight', t.weight || '');
+  setVal('f-temperature', t.temperature || '');
+  setVal('f-piece_count', t.piece_count || '');
+  setVal('f-accessorials', t.accessorials || '');
+  setVal('f-special_instructions', t.special_instructions || '');
   setVal('f-invoice_amount', t.default_invoice_amount || '');
   setVal('f-customer_payment_terms', t.default_customer_payment_terms || '');
+  applyTemplateStops(t.stops || []);
   recomputeMargin();
 }
 
@@ -1142,7 +1165,7 @@ window.addStop = addStop; window.removeStop = removeStop; window.recomputeMargin
 window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers; window.ensureCustomerOption = ensureCustomerOption;
 window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; window.saveLoad = saveLoad;
 window.vettingExtraHtml = vettingExtraHtml;
-window.applyTemplate = applyTemplate; window.hydrate = hydrate; window.saveTemplate = saveTemplate;
+window.applyTemplate = applyTemplate; window.applyTemplateStops = applyTemplateStops; window.hydrate = hydrate; window.saveTemplate = saveTemplate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;

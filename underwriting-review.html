@@ -164,6 +164,10 @@ tr:last-child td { border-bottom:none; }
       <div class="rec-label">System Recommendation <span id="recWhen"></span></div>
       <div class="rec-verdict"><span class="rec-icon">◆</span> <span id="recVerdict">—</span></div>
       <ul class="rec-reasons" id="recReasons"></ul>
+      <div class="rec-actions" style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="btn orange sm" id="btnRunReview">▶ Run automated review</button>
+        <span id="runReviewStatus" style="font-size:11px;color:var(--of-gray-500)"></span>
+      </div>
     </div>
 
     <div class="kpi-row">
@@ -185,7 +189,7 @@ tr:last-child td { border-bottom:none; }
           <div class="flag-grid" id="fraudGrid"></div>
         </div>
         <div class="card">
-          <div class="card-title">Ownership &amp; Entity</div>
+          <div class="card-title">Ownership &amp; Entity <span class="count">FMCSA · Middesk KYB</span></div>
           <table id="ownTable"></table>
         </div>
         <div class="card">
@@ -426,6 +430,12 @@ var DEMO_APPS = {
       Current_Previous_Factor:'TBS Factoring', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'Recourse',
       Credit_Issues:['None'], loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes' },
     owners: [{ First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'Managing Member', Ownership_Percent:100, sosRole:'Managing Member' }],
+    entity: [
+      { label:'Legal entity (FMCSA)', detail:'Brennan Eslinger Trucking LLC · Active', status:'clear' },
+      { label:'SOS registration', detail:'active', status:'clear' },
+      { label:'EIN / TIN', detail:'verified', status:'clear' }
+    ],
+    officers: ['Brennan Eslinger'],
     fraud: [
       ['IP Address','Glendale, AZ · no proxy','clear'],['Phone (IPQS)','VOIP detected · score 78','bad'],
       ['Email','Business domain match','clear'],['Insurance / COI','Producer phone mismatch','warn'],
@@ -487,7 +497,8 @@ function withTimeout(p, ms) {
 
 // Open an application by USDOT via the backend (the Creator SDK won't init in the widget).
 // Reads the Application + owners (name/title/percent only) + documents + Underwriting_Review,
-// and the automated checks (IPQS/CarrierOK) from /application-checks. Returns a model or null.
+// plus any PREVIOUSLY-run automated checks (read-only cache GET — opening never triggers a
+// run; the "Run automated review" button does). Returns a model or null.
 function loadByUSDOT(usdot) {
   usdot = String(usdot || '').trim();
   if (!usdot) return Promise.resolve(null);
@@ -497,7 +508,7 @@ function loadByUSDOT(usdot) {
     .then(function (j) {
       if (!j || !j.application) return DEMO_APPS[usdot] || null;
       var a = j.application;
-      return fetchChecks(a).then(function (checks) {
+      return readChecks(a.USDOT).then(function (checks) {
         return {
           appId: j.applicationId,
           reviewId: j.reviewId || null,
@@ -507,6 +518,8 @@ function loadByUSDOT(usdot) {
           checksReady: !!checks,
           fraud: (checks && checks.fraud) || [],
           ucc: (checks && checks.ucc) || [],
+          entity: (checks && checks.entity) || [],
+          officers: (checks && checks.officers) || [],
           risk: (checks && checks.risk) || 'med',
           checkedAt: (checks && checks.checkedAt) || '',
           review: j.review || {}
@@ -516,10 +529,22 @@ function loadByUSDOT(usdot) {
     .catch(function () { return DEMO_APPS[usdot] || null; });
 }
 
-// Get the automated checks from the backend. POSTs the applicant fields this widget already
-// loaded (usdot/phone/email/mc) so the endpoint can run IPQS + CarrierOK and cache by USDOT;
-// falls back to a GET cache-read. Returns null if nothing's ready (widget shows "pending").
-function fetchChecks(app) {
+// READ previously-run checks from the backend cache (GET only — never triggers a run). Opening
+// an application is therefore free: no IPQS/CarrierOK/Middesk-KYB calls. Returns the cached
+// payload, or null (204 / nothing cached) so the widget shows "pending" + the Run button.
+function readChecks(usdot) {
+  if (typeof fetch !== 'function') return Promise.resolve(null);
+  usdot = String(usdot || '');
+  if (!usdot) return Promise.resolve(null);
+  return fetch(API_BASE + CHECKS_PATH + '?usdot=' + encodeURIComponent(usdot))
+    .then(function (r) { return (r.ok && r.status !== 204) ? r.json() : null; })
+    .catch(function () { return null; });
+}
+
+// RUN the automated review on demand (POST) — IPQS + CarrierOK + Middesk KYB. Fired ONLY by the
+// "Run automated review" button, never on open. POSTs the fields the widget already loaded and
+// caches by USDOT (re-opens read the cache). Returns the result payload or null.
+function runChecks(app) {
   if (typeof fetch !== 'function') return Promise.resolve(null);
   var usdot = String((app && (app.USDOT != null ? app.USDOT : app)) || '');
   var body = {
@@ -536,11 +561,7 @@ function fetchChecks(app) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   })
     .then(function (r) { return r.ok ? r.json() : null; })
-    .catch(function () {
-      return fetch(API_BASE + CHECKS_PATH + '?usdot=' + encodeURIComponent(usdot))
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .catch(function () { return null; });
-    });
+    .catch(function () { return null; });
 }
 
 function saveReview(payload, existingId) {
@@ -641,6 +662,16 @@ function renderModel(m) {
     $('recVerdict').textContent = rec.verdict;
     $('recReasons').innerHTML = rec.reasons.map(function (x) { return '<li>' + x + '</li>'; }).join('');
   }
+  // Manual-trigger button: the automated review runs only on click, never on open.
+  var runBtn = $('btnRunReview');
+  if (runBtn) {
+    runBtn.textContent = (m.checksReady === false) ? '▶ Run automated review' : '↻ Re-run review';
+    runBtn.disabled = false;
+  }
+  if ($('runReviewStatus')) {
+    $('runReviewStatus').textContent = (m.checksReady === false)
+      ? 'Not run yet — click to run IPQS · CarrierOK · Middesk KYB.' : '';
+  }
 
   $('appSummary').innerHTML = [
     ['Authority', a.Authority_Type],['Factoring As', a.Factoring_Authority_Selected],
@@ -654,8 +685,42 @@ function renderModel(m) {
     ? fraud.map(function(f){ var cls=f.status, ic=cls==='clear'?'✓':'!'; return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f.label+'</div><div class="fd">'+f.detail+'</div></div></div>'; }).join('')
     : '<div class="flag-empty">'+(m.checksReady===false?'Automated checks pending — enrichment has not run for this application yet.':'No fraud results returned.')+'</div>';
 
-  var ot = '<tr><th>Owner</th><th>Title</th><th>Stake</th><th>SOS Role</th></tr>';
-  (m.owners||[]).forEach(function(o){ ot += '<tr><td>'+(o.First_Name1||'')+' '+(o.Last_Name1||'')+'</td><td>'+(o.Title||'')+'</td><td>'+(o.Ownership_Percent||'')+'%</td><td><span class="pill g">'+(o.sosRole||'—')+'</span></td></tr>'; });
+  // Ownership & Entity: business-identity verification (FMCSA legal entity + Middesk KYB:
+  // SOS / EIN / watchlist) plus the applicant-declared owners, each cross-referenced to the
+  // Middesk officer list so the verification column shows real data instead of a placeholder.
+  var officers = (m.officers || []).map(function (n) { return String(n || '').toLowerCase().trim(); });
+  function ownerVerdict(o) {
+    var first = String(o.First_Name1 || '').toLowerCase().trim();
+    var last = String(o.Last_Name1 || '').toLowerCase().trim();
+    var full = (first + ' ' + last).trim();
+    var hit = officers.some(function (n) { return n && (n === full || (first && last && n.indexOf(first) >= 0 && n.indexOf(last) >= 0)); });
+    if (hit) return { t: 'Officer · SOS ✓', c: 'g' };
+    if (officers.length) return { t: 'not in SOS records', c: 'r' };
+    if (o.sosRole) return { t: o.sosRole, c: 'g' };   // demo / pre-run fallback
+    return { t: '—', c: 'b' };
+  }
+  var ot = '<tr><th>Owner / Entity</th><th>Title</th><th>Stake</th><th>Verification</th></tr>';
+  // 1) business-identity rows (FMCSA legal entity + Middesk KYB signals)
+  (m.entity || []).forEach(function (e) {
+    var pc = e.status === 'clear' ? 'g' : e.status === 'bad' ? 'r' : 'b';
+    var badge = e.status === 'clear' ? 'Verified' : e.status === 'bad' ? 'Failed' : 'Review';
+    ot += '<tr><td><b>' + e.label + '</b></td><td colspan="2" style="color:var(--of-gray-500)">' + (e.detail || '') + '</td><td><span class="pill ' + pc + '">' + badge + '</span></td></tr>';
+  });
+  // 2) applicant-declared owners, cross-referenced to the Middesk officer list
+  (m.owners || []).forEach(function (o) {
+    var v = ownerVerdict(o);
+    ot += '<tr><td>' + (o.First_Name1 || '') + ' ' + (o.Last_Name1 || '') + '</td><td>' + (o.Title || '') + '</td><td>' + (o.Ownership_Percent || '') + '%</td><td><span class="pill ' + v.c + '">' + v.t + '</span></td></tr>';
+  });
+  // 3) no declared owners but Middesk returned officers → surface them as the owners
+  if (!(m.owners || []).length && (m.officers || []).length) {
+    (m.officers || []).forEach(function (n) {
+      ot += '<tr><td>' + n + '</td><td>Officer (Middesk)</td><td>—</td><td><span class="pill g">SOS ✓</span></td></tr>';
+    });
+  }
+  // 4) nothing to show yet
+  if (!(m.entity || []).length && !(m.owners || []).length && !(m.officers || []).length) {
+    ot += '<tr><td colspan="4" style="color:var(--of-gray-500)">' + (m.checksReady === false ? 'Run the automated review to verify business identity &amp; officers.' : 'No ownership data returned.') + '</td></tr>';
+  }
   $('ownTable').innerHTML = ot;
 
   // Documents = the full required checklist (same rules as the client portal), with the
@@ -720,9 +785,37 @@ function load(usdot) {
   });
 }
 
+// Run the automated review for the currently-open application, on demand. This is the ONLY
+// path that calls the billable backend checks (IPQS · CarrierOK · Middesk KYB).
+function runReview() {
+  if (!MODEL || !MODEL.application) { showStatus('Open an application first.', 'error'); return; }
+  var btn = $('btnRunReview');
+  if (btn) btn.disabled = true;
+  if ($('runReviewStatus')) $('runReviewStatus').textContent = 'Running automated review… (IPQS · CarrierOK · Middesk KYB)';
+  runChecks(MODEL.application).then(function (checks) {
+    if (!checks) {
+      if (btn) btn.disabled = false;
+      if ($('runReviewStatus')) $('runReviewStatus').textContent = 'No results returned — try again.';
+      return;
+    }
+    MODEL.checksReady = true;
+    MODEL.fraud = checks.fraud || [];
+    MODEL.ucc = checks.ucc || [];
+    MODEL.entity = checks.entity || [];
+    MODEL.officers = checks.officers || [];
+    MODEL.risk = checks.risk || 'med';
+    MODEL.checkedAt = checks.checkedAt || '';
+    renderModel(MODEL);          // re-render clears the status + flips button to "Re-run"
+  }).catch(function (e) {
+    if (btn) btn.disabled = false;
+    if ($('runReviewStatus')) $('runReviewStatus').textContent = 'Review failed: ' + (e && e.message ? e.message : e);
+  });
+}
+
 function boot() {
   // Wire controls once.
   $('usdotBtn').addEventListener('click', function(){ load($('usdotInput').value); });
+  $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
   ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
   ['uwDecision','uwFraudFlag','uwChecklist','uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });

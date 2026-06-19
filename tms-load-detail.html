@@ -48,6 +48,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 12px; border-bottom: 1px solid #f3f1ea; }
 .doc-item .src { color: #999; }
 .doc-item.voided > span { text-decoration: line-through; opacity: .55; }
+.doc-status.busy { color: #b45309; font-weight: 700; }
+.doc-status.busy::before { content: '⏳ '; }
+.dropzone { border: 2px dashed #d8cfa8; border-radius: 8px; padding: 14px; text-align: center;
+            color: #888; cursor: pointer; font-size: 13px; }
+.dropzone.staged { border-color: #2e7d32; color: #2e7d32; font-weight: 600; }
+.dropzone.dragover { border-color: #b45309; background: #fef6e7; }
 .void-tag { text-decoration: none; display:inline-block; margin-left:6px; padding:1px 6px;
   border-radius: 10px; background:#7a1f1f; color:#fff; font-size:11px; opacity:1; }
 #status-stepper { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:11px; font-weight:700; }
@@ -199,6 +205,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <button class="btn small" data-act="preview" data-doc="rate_con">Preview</button>
       <button class="btn small primary" data-act="send" data-doc="rate_con">Send</button>
     </div>
+    <div class="doc-gen-row" data-doc="bol">
+      <div class="doc-gen-name">Bill of Lading <span class="muted">→ carrier</span></div>
+      <input class="doc-to" id="doc-to-bol" placeholder="carrier email">
+      <button class="btn small" data-act="preview" data-doc="bol">Preview</button>
+      <button class="btn small primary" data-act="send" data-doc="bol">Send</button>
+    </div>
     <div class="doc-gen-row" data-doc="customer_po">
       <div class="doc-gen-name">Customer PO <span class="muted">→ customer</span></div>
       <input class="doc-to" id="doc-to-customer_po" placeholder="customer email">
@@ -219,12 +231,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <option>POD</option><option>BOL</option><option>Lumper Receipt</option>
           <option>Carrier Invoice</option><option>Signed Rate Con</option><option>Other</option>
         </select>
-        <input type="file" id="upload-file" accept="application/pdf,image/*">
+        <div class="dropzone" id="upload-dropzone">Drop a file here or click to browse</div>
+        <input type="file" id="upload-file" accept="application/pdf,image/*" style="display:none">
         <button class="btn small primary" id="upload-btn">Upload</button>
       </div>
       <div class="doc-gen-row" style="border:none;">
         <div class="doc-gen-name">Carrier upload link <span class="muted">(no login)</span></div>
         <button class="btn small" id="carrier-link-btn">Get link</button>
+        <button class="btn small primary" id="carrier-email-btn">Email to carrier</button>
       </div>
       <div id="carrier-link-box" class="muted" style="margin-top:6px; word-break:break-all;"></div>
     </div>
@@ -744,6 +758,7 @@ window.addEventListener('load', function(){
   });
   wireDocButtons();
   wireUploadControls();
+  wireDropzone();
   refreshDocCard();
   renderStepper(val('f-status'));
   var exTog = document.getElementById('f-exception-toggle');
@@ -795,13 +810,18 @@ function _downloadPdf(b64, name) {
   } catch (e) {}
 }
 
-function _docStatus(msg) { var el = document.getElementById('doc-status'); if (el) el.textContent = msg || ''; }
+function _docStatus(msg, busy) {
+  var el = document.getElementById('doc-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.className = busy ? 'doc-status busy' : 'muted';
+}
 
 function generateDoc(docType, send) {
   if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
   var toEl = document.getElementById('doc-to-' + docType);
   var recipient = toEl ? toEl.value : '';
-  _docStatus(send ? 'Sending…' : 'Generating…');
+  _docStatus(send ? 'Sending…' : 'Generating…', true);
   return fetch(BROKER_API_BASE + '/tms-doc/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_type: docType,
@@ -827,7 +847,7 @@ function wireDocButtons() {
 function uploadBrokerDoc(docType, file) {
   if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
   if (!file) { _docStatus('Choose a file to upload.'); return Promise.resolve(); }
-  _docStatus('Uploading…');
+  _docStatus('Uploading…', true);
   var fd = new FormData();
   fd.append('email', brokerEmail);
   fd.append('load_id', loadId);
@@ -856,15 +876,52 @@ function fetchCarrierLink() {
     });
 }
 
+function emailCarrierLink() {
+  if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
+  _docStatus('Emailing the carrier…', true);
+  return fetch(BROKER_API_BASE + '/tms-doc/upload-link?email=' + encodeURIComponent(brokerEmail) +
+               '&load_id=' + encodeURIComponent(loadId) + '&send=1')
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      var box = document.getElementById('carrier-link-box');
+      if (p && p.emailed) { _docStatus('Upload link emailed to the carrier.'); if (box) box.textContent = 'Emailed: ' + (p.url || ''); }
+      else { _docStatus((p && p.email_error) || 'Could not email the link.'); }
+    })
+    .catch(function(){ _docStatus('Network error emailing the link.'); });
+}
+
+var _stagedFileRef = null;
+function setStagedFile(file) {
+  _stagedFileRef = file || null;
+  var dz = document.getElementById('upload-dropzone');
+  if (!dz) return;
+  if (_stagedFileRef) { dz.className = 'dropzone staged'; dz.textContent = '✓ ' + _stagedFileRef.name + ' attached'; }
+  else { dz.className = 'dropzone'; dz.textContent = 'Drop a file here or click to browse'; }
+}
+function wireDropzone() {
+  var dz = document.getElementById('upload-dropzone');
+  var fi = document.getElementById('upload-file');
+  if (!dz || !fi) return;
+  dz.addEventListener('click', function(){ fi.click(); });
+  fi.addEventListener('change', function(){ setStagedFile(fi.files && fi.files[0]); });
+  dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', function(){ dz.classList.remove('dragover'); });
+  dz.addEventListener('drop', function(e){
+    e.preventDefault(); dz.classList.remove('dragover');
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) setStagedFile(e.dataTransfer.files[0]);
+  });
+}
+
 function wireUploadControls() {
   var ub = document.getElementById('upload-btn');
   if (ub) ub.addEventListener('click', function(){
     var sel = document.getElementById('upload-doc-type');
-    var fi = document.getElementById('upload-file');
-    uploadBrokerDoc(sel ? sel.value : 'Other', fi && fi.files ? fi.files[0] : null);
+    uploadBrokerDoc(sel ? sel.value : 'Other', _stagedFileRef).then(function(){ setStagedFile(null); });
   });
   var cb = document.getElementById('carrier-link-btn');
   if (cb) cb.addEventListener('click', fetchCarrierLink);
+  var ceb = document.getElementById('carrier-email-btn');
+  if (ceb) ceb.addEventListener('click', emailCarrierLink);
 }
 
 function _docSide(t) {
@@ -977,7 +1034,9 @@ window.vettingExtraHtml = vettingExtraHtml;
 window.applyTemplate = applyTemplate; window.hydrate = hydrate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
-window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink;
+window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
+window.setStagedFile = setStagedFile;
+Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
 </script>
 </body>
 </html>

@@ -24,6 +24,9 @@ select, input[type=file] { width: 100%; border: 1px solid #d8d8d8; border-radius
 .status { font-size: 13px; font-weight: 600; margin-top: 10px; }
 .status.ok { color: #2e7d32; } .status.err { color: #c62828; }
 .uploaded { font-size: 12px; color: #2e7d32; padding: 5px 0; }
+.dropzone { border: 2px dashed #d8cfa8; border-radius: 8px; padding: 16px; text-align: center; color: #888; cursor: pointer; margin-bottom: 12px; }
+.dropzone.staged { border-color: #2e7d32; color: #2e7d32; font-weight: 600; }
+.dropzone.dragover { border-color: #F97316; background: #fef6e7; }
 
 @media (max-width: 640px) {
   html, body { overflow-x: hidden; }
@@ -44,7 +47,8 @@ select, input[type=file] { width: 100%; border: 1px solid #d8d8d8; border-radius
     <label>Document type</label>
     <select id="ctype"></select>
     <label>File</label>
-    <input type="file" id="cfile" accept="application/pdf,image/*">
+    <div class="dropzone" id="cdropzone">Drop your file here or tap to choose</div>
+    <input type="file" id="cfile" accept="application/pdf,image/*" style="display:none">
     <button class="btn" id="cupload">Upload</button>
     <div class="status" id="cstatus"></div>
     <div id="uploaded-list"></div>
@@ -131,19 +135,42 @@ function boot() {
   loadSummary();
 }
 
+var _carrierStaged = null;
+function setCarrierStagedFile(file) {
+  _carrierStaged = file || null;
+  var dz = document.getElementById('cdropzone');
+  if (!dz) return;
+  if (_carrierStaged) { dz.className = 'dropzone staged'; dz.textContent = '✓ ' + _carrierStaged.name + ' ready to upload'; }
+  else { dz.className = 'dropzone'; dz.textContent = 'Drop your file here or tap to choose'; }
+}
+function wireCarrierDropzone() {
+  var dz = document.getElementById('cdropzone');
+  var fi = document.getElementById('cfile');
+  if (!dz || !fi) return;
+  dz.addEventListener('click', function(){ fi.click(); });
+  fi.addEventListener('change', function(){ setCarrierStagedFile(fi.files && fi.files[0]); });
+  dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', function(){ dz.classList.remove('dragover'); });
+  dz.addEventListener('drop', function(e){
+    e.preventDefault(); dz.classList.remove('dragover');
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) setCarrierStagedFile(e.dataTransfer.files[0]);
+  });
+}
+
 window.addEventListener('load', function(){
   var b = document.getElementById('cupload');
   if (b) b.addEventListener('click', function(){
     var sel = document.getElementById('ctype');
-    var fi = document.getElementById('cfile');
-    uploadFile(sel ? sel.value : 'Other', fi && fi.files ? fi.files[0] : null);
+    uploadFile(sel ? sel.value : 'Other', _carrierStaged).then(function(){ setCarrierStagedFile(null); });
   });
+  wireCarrierDropzone();
   boot();
 });
 
 // expose for tests
 window.renderSummary = renderSummary; window.getToken = getToken;
 window.uploadFile = uploadFile; window.boot = boot;
+window.setCarrierStagedFile = setCarrierStagedFile;
 </script>
 </body>
 </html>

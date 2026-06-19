@@ -58,3 +58,12 @@ test('missing token shows an error state', () => {
   window.boot();
   assert.match(window.document.body.textContent, /link/i);
 });
+
+test('dropping a file on the carrier page shows it staged', () => {
+  const { window } = makeWidget();
+  const f = new window.File([new Uint8Array([1,2,3])], 'pod.pdf', { type: 'application/pdf' });
+  window.setCarrierStagedFile(f);
+  const dz = window.document.getElementById('cdropzone');
+  assert.match(dz.textContent, /pod\.pdf/);
+  assert.match(dz.textContent, /ready|attached/i);
+});

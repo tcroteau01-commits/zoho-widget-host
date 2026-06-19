@@ -67,6 +67,30 @@ test('renderDocList shows existing documents', () => {
   assert.match(rows[0].textContent, /Rate Con/);
 });
 
+test('generating cue is visibly busy, not muted gray', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.loadId = '1001';
+  // call the status helper directly in busy mode
+  window._docStatus('Generating…', true);
+  const el = window.document.getElementById('doc-status');
+  assert.equal(el.classList.contains('busy'), true);
+  assert.equal(el.classList.contains('muted'), false);
+  assert.match(el.textContent, /Generating/);
+});
+
+test('BOL row exists and generates with doc_type bol', async () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.loadId = '1001';
+  window.document.getElementById('doc-to-bol').value = 'dispatch@roadway.com';
+  await window.generateDoc('bol', true);
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].url, /\/tms-doc\/generate$/);
+  assert.equal(posts[0].body.doc_type, 'bol');
+  assert.equal(posts[0].body.send, true);
+});
+
 test('voided rate con renders struck and does not satisfy the carrier-doc gate', () => {
   const { window } = makeWidget();
   const { renderDocList, _gateFailures } = window;

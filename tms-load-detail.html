@@ -957,6 +957,50 @@ function _vettingWarnings(load) {
   return w;
 }
 
+var _zoneStaged = { customer: null, carrier: null };
+var _ZONE_TYPES = {
+  customer: ['POD', 'BOL', 'Lumper Receipt', 'Other'],
+  carrier: ['Carrier Invoice', 'Signed Rate Con'],
+};
+function setZoneStagedFile(side, file) {
+  _zoneStaged[side] = file || null;
+  var dz = document.getElementById('zone-' + side + '-dropzone');
+  if (!dz) return;
+  if (_zoneStaged[side]) { dz.className = 'dropzone staged'; dz.textContent = '✓ ' + _zoneStaged[side].name + ' attached'; }
+  else { dz.className = 'dropzone'; dz.textContent = 'Drop a file here or click to browse'; }
+}
+function _zoneActionsHtml(side) {
+  var opts = _ZONE_TYPES[side].map(function (t) { return '<option>' + t + '</option>'; }).join('');
+  return '<select id="zone-' + side + '-type" class="doc-to" style="margin-top:8px">' + opts + '</select>' +
+    '<div class="dropzone" id="zone-' + side + '-dropzone">Drop a file here or click to browse</div>' +
+    '<input type="file" id="zone-' + side + '-file" accept="application/pdf,image/*" style="display:none">' +
+    '<button class="btn small primary" id="zone-' + side + '-upload-btn">Upload</button>';
+}
+function _wireZone(side) {
+  var actions = document.getElementById('zone-' + side + '-actions');
+  if (!actions) return;
+  actions.insertAdjacentHTML('afterbegin', _zoneActionsHtml(side));
+  var dz = document.getElementById('zone-' + side + '-dropzone');
+  var fi = document.getElementById('zone-' + side + '-file');
+  if (dz && fi) {
+    dz.addEventListener('click', function () { fi.click(); });
+    fi.addEventListener('change', function () { setZoneStagedFile(side, fi.files && fi.files[0]); });
+    dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', function () { dz.classList.remove('dragover'); });
+    dz.addEventListener('drop', function (e) {
+      e.preventDefault(); dz.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) setZoneStagedFile(side, e.dataTransfer.files[0]);
+    });
+  }
+  var btn = document.getElementById('zone-' + side + '-upload-btn');
+  if (btn) btn.addEventListener('click', function () {
+    var sel = document.getElementById('zone-' + side + '-type');
+    uploadBrokerDoc(sel ? sel.value : _ZONE_TYPES[side][0], _zoneStaged[side])
+      .then(function () { setZoneStagedFile(side, null); });
+  });
+}
+function wireZoneUploads() { _wireZone('customer'); _wireZone('carrier'); }
+
 function renderSubmitPanel(load, docs) {
   var panel = document.getElementById('submit-panel');
   if (!panel || !load) return;
@@ -1000,6 +1044,7 @@ function renderSubmitPanel(load, docs) {
     '<button id="btn-submit-factoring" disabled>Submit for Factoring</button>' +
     '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
 
+  wireZoneUploads();
   _refreshGates(load, docs, warnings);
   var inv = document.getElementById('f-factoring-invoice');
   if (inv) inv.oninput = function () { _refreshGates(load, docs, warnings); };
@@ -1063,6 +1108,8 @@ window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
 window.setStagedFile = setStagedFile;
+window.setZoneStagedFile = setZoneStagedFile;
+window.wireZoneUploads = wireZoneUploads;
 Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
 </script>
 </body>

@@ -89,3 +89,19 @@ test('submit panel renders two document zones sorted by side', () => {
   // POD must not appear in the carrier zone
   assert.doesNotMatch(carr.textContent, /POD/);
 });
+
+test('carrier zone upload posts the carrier doc-type via uploadBrokerDoc', async () => {
+  const dom = boot();
+  const w = dom.window;
+  w.loadId = '1001';
+  const posted = [];
+  w.uploadBrokerDoc = function(docType, file){ posted.push({ docType, file }); return Promise.resolve(); };
+  w.renderSubmitPanel({ id: '1', status: 'Delivered', carrier_id: 'v1', vetting: {} }, []);
+  const f = new w.File([new Uint8Array([1])], 'inv.pdf', { type: 'application/pdf' });
+  w.setZoneStagedFile('carrier', f);
+  // trigger the carrier zone upload button
+  w.document.getElementById('zone-carrier-upload-btn').click();
+  await Promise.resolve();
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].docType, 'Carrier Invoice');
+});

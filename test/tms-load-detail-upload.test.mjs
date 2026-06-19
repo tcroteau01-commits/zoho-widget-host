@@ -17,7 +17,7 @@ function makeWidget() {
         if (String(url).indexOf('/tms-doc/upload-link') !== -1)
           return Promise.resolve({ json: () => Promise.resolve({ url: 'https://x.github.io/tms-carrier-upload.html?token=1001.abc', token: '1001.abc', emailed: true }) });
         if (String(url).indexOf('/tms-doc/upload') !== -1)
-          return Promise.resolve({ json: () => Promise.resolve({ ok: true, document_id: 'doc_9' }) });
+          return Promise.resolve({ json: () => Promise.resolve({ ok: true, document_id: 'doc_9', status: 'POD Received' }) });
         if (String(url).indexOf('/tms-docs') !== -1)
           return Promise.resolve({ json: () => Promise.resolve({ documents: [] }) });
         return Promise.resolve({ json: () => Promise.resolve({ carriers: [], customers: [], templates: [] }) });
@@ -85,4 +85,15 @@ test('emailCarrierLink requests send=1 and reports emailed', async () => {
   const hit = calls.find(c => /\/tms-doc\/upload-link/.test(c.url));
   assert.ok(hit, 'called the upload-link route');
   assert.match(hit.url, /send=1/);
+});
+
+test('upload reflects an auto-advanced status in the stepper and load', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.loadId = '1001';
+  window._currentLoad = { id: '1001', status: 'Delivered' };
+  // mock fetch for /tms-doc/upload returns the advanced status
+  const f = new window.File([new Uint8Array([1])], 'pod.pdf', { type: 'application/pdf' });
+  await window.uploadBrokerDoc('POD', f);
+  assert.equal(window._currentLoad.status, 'POD Received');
 });

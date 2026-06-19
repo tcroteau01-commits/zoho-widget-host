@@ -865,7 +865,15 @@ function uploadBrokerDoc(docType, file) {
   return fetch(BROKER_API_BASE + '/tms-doc/upload', { method: 'POST', body: fd })
     .then(function(r){ return r.json(); })
     .then(function(p){
-      if (p && p.ok) { _docStatus('Uploaded.'); loadDocList(); }
+      if (p && p.ok) {
+        _docStatus('Uploaded.');
+        if (p.status && window._currentLoad && p.status !== window._currentLoad.status) {
+          window._currentLoad.status = p.status;
+          setVal('f-status', p.status);
+          renderStepper(p.status);
+        }
+        loadDocList();
+      }
       else _docStatus((p && p.error) || 'Upload failed.');
     })
     .catch(function(){ _docStatus('Network error uploading.'); });

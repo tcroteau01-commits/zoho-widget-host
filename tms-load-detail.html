@@ -272,7 +272,7 @@ function renderCreditCallout(credit, invoiceAmount) {
   box.innerHTML =
     '<div style="background:' + bg + ';border:1px solid ' + color + '33;border-radius:8px;padding:9px 11px;font-size:12px">' +
     '<b>Credit:</b> ' + money(avail) + ' available of ' + money(limit) +
-    ' · <span style="color:' + color + ';font-weight:700">' + pct + '% used' + (over ? ' — OVER LIMIT' : '') + '</span>' +
+    ' · <span style="color:' + color + ';font-weight:700">' + pct + '% used' + (over ? ' - OVER LIMIT' : '') + '</span>' +
     (over ? '<div style="color:#c62828;margin-top:4px">This load puts the customer over their approved limit. You can still book it; OperFi will review.</div>' : '') +
     '</div>';
 }
@@ -632,6 +632,7 @@ function hydrate(load) {
   window._currentLoad = load;
   renderSubmitPanel(load, window._loadedDocs || []);
   renderStepper(val('f-status'));
+  fetchCredit();
 }
 
 function showLoading(on) {

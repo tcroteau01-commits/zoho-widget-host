@@ -48,6 +48,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 12px; border-bottom: 1px solid #f3f1ea; }
 .doc-item .src { color: #999; }
 .doc-item.voided > span { text-decoration: line-through; opacity: .55; }
+.doc-status.busy { color: #b45309; font-weight: 700; }
+.doc-status.busy::before { content: '⏳ '; }
 .void-tag { text-decoration: none; display:inline-block; margin-left:6px; padding:1px 6px;
   border-radius: 10px; background:#7a1f1f; color:#fff; font-size:11px; opacity:1; }
 #status-stepper { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:11px; font-weight:700; }
@@ -795,13 +797,18 @@ function _downloadPdf(b64, name) {
   } catch (e) {}
 }
 
-function _docStatus(msg) { var el = document.getElementById('doc-status'); if (el) el.textContent = msg || ''; }
+function _docStatus(msg, busy) {
+  var el = document.getElementById('doc-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.className = busy ? 'doc-status busy' : 'muted';
+}
 
 function generateDoc(docType, send) {
   if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
   var toEl = document.getElementById('doc-to-' + docType);
   var recipient = toEl ? toEl.value : '';
-  _docStatus(send ? 'Sending…' : 'Generating…');
+  _docStatus(send ? 'Sending…' : 'Generating…', true);
   return fetch(BROKER_API_BASE + '/tms-doc/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_type: docType,
@@ -827,7 +834,7 @@ function wireDocButtons() {
 function uploadBrokerDoc(docType, file) {
   if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
   if (!file) { _docStatus('Choose a file to upload.'); return Promise.resolve(); }
-  _docStatus('Uploading…');
+  _docStatus('Uploading…', true);
   var fd = new FormData();
   fd.append('email', brokerEmail);
   fd.append('load_id', loadId);

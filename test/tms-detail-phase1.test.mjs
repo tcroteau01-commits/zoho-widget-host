@@ -98,3 +98,21 @@ test('credit callout shows availability and does not flag when within limit', ()
   assert.match(box.textContent, /38,000/);
   assert.equal(w.document.getElementById('f-credit-over-limit').value, '');
 });
+
+test('draftEligible only for pre-carrier statuses', () => {
+  const w = makeWidget();
+  assert.equal(w.draftEligible('Draft'), true);
+  assert.equal(w.draftEligible('Available'), true);
+  assert.equal(w.draftEligible('Covered'), false);
+  assert.equal(w.draftEligible('In Transit'), false);
+});
+
+test('Save as Draft button is hidden once a load is past Available', () => {
+  const w = makeWidget();
+  w.document.getElementById('f-status').value = 'Covered';
+  w.refreshSaveButtons();
+  assert.ok(w.document.getElementById('save-draft-btn').classList.contains('hidden'));
+  w.document.getElementById('f-status').value = 'Draft';
+  w.refreshSaveButtons();
+  assert.ok(!w.document.getElementById('save-draft-btn').classList.contains('hidden'));
+});

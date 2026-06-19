@@ -237,8 +237,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <span class="errline" id="form-error"></span>
     <span class="okline" id="form-ok"></span>
     <button class="btn" id="save-template-btn">Save as Template</button>
-    <button class="btn" id="save-draft-btn">Save as Draft</button>
-    <button class="btn primary" id="book-load-btn">Book Load</button>
+    <button class="btn" id="duplicate-btn">Duplicate…</button>
+    <button class="btn hidden" id="save-draft-btn">Save as Draft</button>
+    <button class="btn primary" id="save-btn">Save</button>
   </div>
 
   </div><!-- /#edit-mode -->
@@ -330,6 +331,7 @@ function renderStepper(current) {
 function setLoadStatus(status) {
   setVal('f-status', status);
   renderStepper(status);
+  refreshSaveButtons();
   if (loadId && brokerEmail) {
     fetch(BROKER_API_BASE + '/tms-status', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -537,7 +539,7 @@ function saveLoad(statusOverride) {
   var body = collectForm();
   if (statusOverride) body.status = statusOverride;
   if (!body.customer_id) { showError('Select an approved customer before saving.'); return Promise.resolve(); }
-  var btns = ['save-draft-btn', 'book-load-btn'].map(function(id){ return document.getElementById(id); });
+  var btns = ['save-draft-btn', 'save-btn'].map(function(id){ return document.getElementById(id); });
   btns.forEach(function(b){ if (b) b.disabled = true; });
   return fetch(BROKER_API_BASE + '/tms-load', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -565,6 +567,37 @@ function bookLoad() {
   return saveLoad(s);
 }
 window.bookLoad = bookLoad;
+
+function draftEligible(status) { return (status || 'Draft') === 'Draft' || status === 'Available'; }
+
+function refreshSaveButtons() {
+  var b = document.getElementById('save-draft-btn');
+  if (b) b.classList.toggle('hidden', !draftEligible(val('f-status')));
+}
+
+function saveAndReturn() {
+  return saveLoad().then(function(){
+    if (!document.getElementById('form-error').textContent) {
+      try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}
+    }
+  });
+}
+
+function duplicateLoad(n) {
+  n = Math.max(1, Number(n) || 1);
+  var base = collectForm();
+  base.id = ''; base.status = 'Draft'; base.carrier_id = ''; base.carrier_pay = '';
+  var chain = Promise.resolve();
+  for (var i = 0; i < n; i++) {
+    chain = chain.then(function(){
+      return fetch(BROKER_API_BASE + '/tms-load', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(base) }).then(function(r){ return r.json(); });
+    });
+  }
+  return chain.then(function(){ showOk(n + ' draft' + (n===1?'':'s') + ' created.'); });
+}
+window.draftEligible = draftEligible; window.refreshSaveButtons = refreshSaveButtons;
+window.saveAndReturn = saveAndReturn; window.duplicateLoad = duplicateLoad;
 
 function saveTemplate() {
   if (!val('f-customer_id')) { showError('Pick a customer first to save a template.'); return; }
@@ -633,6 +666,7 @@ function hydrate(load) {
   renderSubmitPanel(load, window._loadedDocs || []);
   renderStepper(val('f-status'));
   fetchCredit();
+  refreshSaveButtons();
 }
 
 function showLoading(on) {
@@ -710,10 +744,11 @@ window.addEventListener('load', function(){
   document.getElementById('f-carrier_id').addEventListener('change', onCarrierChange);
   document.getElementById('add-pickup').addEventListener('click', function(){ addStop('Pickup'); });
   document.getElementById('add-delivery').addEventListener('click', function(){ addStop('Delivery'); });
-  var sd = document.getElementById('save-draft-btn');
-  if (sd) sd.onclick = function(){ saveLoad('Draft'); };
-  var bl = document.getElementById('book-load-btn');
-  if (bl) bl.onclick = function(){ bookLoad(); };
+  document.getElementById('save-btn').onclick = saveAndReturn;
+  document.getElementById('save-draft-btn').onclick = function(){ saveLoad('Draft'); };
+  document.getElementById('duplicate-btn').onclick = function(){
+    var n = window.prompt('How many copies (as drafts)?', '1'); if (n) duplicateLoad(n);
+  };
   document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
   document.getElementById('back-btn').addEventListener('click', function(){
     try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}

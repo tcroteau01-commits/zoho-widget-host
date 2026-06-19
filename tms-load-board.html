@@ -336,7 +336,7 @@ function renderStepper(load) {
   var html = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips">';
   TMS_STATUSES.forEach(function(s, i){
     var cls = 'chip', click = '';
-    if (s === 'Submitted') { cls += ' locked'; }
+    if (['Ready to Submit','Submitted'].indexOf(s) !== -1) { cls += ' locked'; }
     else if (i < cur) { cls += ' done'; click = ' data-status="' + s + '"'; }
     else if (i === cur) { cls += ' current'; }
     else { cls += ' upcoming'; click = ' data-status="' + s + '"'; }

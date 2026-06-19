@@ -172,6 +172,16 @@ test('applyTemplate pre-fills shipper leg', () => {
   assert.equal(window.document.getElementById('f-invoice_amount').value, '2000');
 });
 
+test('template control lives in the customer section header', () => {
+  const { window } = makeWidget();
+  const sel = window.document.getElementById('f-template');
+  assert.ok(sel, 'template select exists');
+  // it is inside the customer section, not a standalone top card
+  const customer = window.document.getElementById('section-customer') ||
+                   window.document.querySelector('[data-section="customer"]');
+  assert.ok(customer && customer.contains(sel), 'template select is within the customer section');
+});
+
 test('f-status is a hidden input defaulting to Draft', () => {
   const { window } = makeWidget();
   const el = window.document.getElementById('f-status');
@@ -189,4 +199,53 @@ test('saveLoad with explicit Draft status posts status Draft', async () => {
   window.document.getElementById('f-carrier_id').value = 'v1';
   await window.saveLoad('Draft');
   assert.equal(posts.at(-1).body.status, 'Draft');
+});
+
+test('applyTemplate pre-fills full load including stops', () => {
+  const { window } = makeWidget();
+  window.populateCustomers(CUSTOMERS.customers);
+  window.applyTemplate({
+    customer_id: 'cu1', origin: 'Dallas', destination: 'Atlanta', equipment: 'Reefer',
+    commodity: 'Produce', weight: '42000', temperature: '34F', piece_count: '24',
+    accessorials: 'Detention', special_instructions: 'Tarp', default_invoice_amount: '2000',
+    default_customer_payment_terms: 'Net 30',
+    stops: [{ stop_type: 'Pickup', sequence: 1, company_name: 'Ship Co', address: '9 B St' },
+            { stop_type: 'Delivery', sequence: 2, company_name: 'Acme', address: '1 A St' }],
+  });
+  assert.equal(window.document.getElementById('f-weight').value, '42000');
+  assert.equal(window.document.getElementById('f-special_instructions').value, 'Tarp');
+  const stopRows = window.document.querySelectorAll('.stop-row');
+  assert.equal(stopRows.length, 2);
+});
+
+test('saveTemplate posts the full load shape including stops', async () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.prompt = () => 'Lane A';
+  // f-customer_id is a SELECT -- populate customers so the option exists, then select it
+  window.populateCustomers(CUSTOMERS.customers);
+  window.document.getElementById('f-customer_id').value = 'cu1';
+  // text fields: set by id suffix; number fields (weight, piece_count, invoice_amount) need numeric values
+  ['f-origin','f-destination','f-equipment','f-commodity','f-temperature','f-accessorials','f-special_instructions','f-customer_payment_terms']
+    .forEach(function(id){ var el = window.document.getElementById(id); if (el) el.value = id.replace('f-',''); });
+  var wEl = window.document.getElementById('f-weight'); if (wEl) wEl.value = '4500';
+  window.addStop && window.addStop();   // create a stop row if the helper exists
+  await window.saveTemplate();
+  const post = posts.find(p => /\/tms-template$/.test(p.url));
+  assert.ok(post, 'posted to /tms-template');
+  assert.equal(post.body.template_name, 'Lane A');
+  assert.equal(post.body.weight, '4500');
+  assert.equal(post.body.special_instructions, 'special_instructions');
+  assert.ok(Array.isArray(post.body.stops), 'stops array sent');
+});
+
+test('updateTemplate PATCHes the applied template with the full shape', async () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.applyTemplate({ id: 't1', customer_id: 'cu1', origin: 'Dallas', stops: [] });
+  window.document.getElementById('f-equipment') && (window.document.getElementById('f-equipment').value = 'Flatbed');
+  await window.updateTemplate();
+  const post = posts.find(p => /\/tms-template\/t1$/.test(p.url));
+  assert.ok(post, 'PATCHed /tms-template/t1');
+  assert.equal(post.body.equipment, 'Flatbed');
 });

@@ -124,16 +124,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <input type="hidden" id="f-status" value="Draft">
 
-  <div class="card">
-    <h3>Template</h3>
-    <div class="field">
-      <label>Start from a saved template (optional)</label>
-      <select id="f-template"><option value="">— None —</option></select>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Customer (Shipper Leg)</h3>
+  <div class="card" id="section-customer">
+    <h3 style="display:flex;align-items:center;gap:10px;">Customer (Shipper Leg)
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;">
+        <select id="f-template" style="font-size:12px;padding:2px 6px;border-radius:6px;border:1px solid #ccc;max-width:160px;"><option value="">from template &#9660;</option></select>
+        <button type="button" id="update-template-btn" style="font-size:12px;background:none;border:none;color:#4a90d9;cursor:pointer;padding:0;white-space:nowrap;display:none;">Update template</button>
+        <button type="button" id="save-template-btn" style="font-size:12px;background:none;border:none;color:#4a90d9;cursor:pointer;padding:0;white-space:nowrap;">Save as template</button>
+      </span>
+    </h3>
     <div class="grid">
       <div class="field"><label>Customer *</label><select id="f-customer_id"><option value="">— Select —</option></select></div>
       <div class="field"><label>Customer PO / Reference</label><input id="f-customer_reference"></div>
@@ -259,7 +257,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   <div class="actions">
     <span class="errline" id="form-error"></span>
     <span class="okline" id="form-ok"></span>
-    <button class="btn" id="save-template-btn">Save as Template</button>
     <button class="btn" id="duplicate-btn">Duplicate…</button>
     <button class="btn hidden" id="save-draft-btn">Save as Draft</button>
     <button class="btn primary" id="save-btn">Save</button>
@@ -611,30 +608,87 @@ function duplicateLoad(n) {
 window.draftEligible = draftEligible; window.refreshSaveButtons = refreshSaveButtons;
 window.saveAndReturn = saveAndReturn; window.duplicateLoad = duplicateLoad;
 
+var _appliedTemplateId = '';
+
 function saveTemplate() {
-  if (!val('f-customer_id')) { showError('Pick a customer first to save a template.'); return; }
+  if (!val('f-customer_id')) { showError('Pick a customer first to save a template.'); return Promise.resolve(); }
   var name = (typeof window.prompt === 'function') ? window.prompt('Template name?') : '';
-  if (!name) return;
-  fetch(BROKER_API_BASE + '/tms-template', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: brokerEmail, template_name: name, customer_id: val('f-customer_id'),
-        origin: val('f-origin'), destination: val('f-destination'), equipment: val('f-equipment'),
-        commodity: val('f-commodity'), default_invoice_amount: val('f-invoice_amount'),
-        default_customer_payment_terms: val('f-customer_payment_terms') }) })
+  if (!name) return Promise.resolve();
+  var load = collectForm();
+  var body = {
+    email: brokerEmail, template_name: name,
+    customer_id: val('f-customer_id'),
+    origin: val('f-origin'), destination: val('f-destination'),
+    equipment: val('f-equipment'), commodity: val('f-commodity'),
+    weight: val('f-weight'), temperature: val('f-temperature'), piece_count: val('f-piece_count'),
+    accessorials: val('f-accessorials'), special_instructions: val('f-special_instructions'),
+    default_invoice_amount: val('f-invoice_amount'),
+    default_customer_payment_terms: val('f-customer_payment_terms'),
+    stops: load.stops || [],
+  };
+  return fetch(BROKER_API_BASE + '/tms-template', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body) })
     .then(function(r){ return r.json(); })
     .then(function(p){ if (p && p.ok) showOk('Template saved.'); else showError('Could not save template.'); });
 }
 
+function updateTemplate() {
+  if (!_appliedTemplateId) { showError('Apply a template first to update it.'); return Promise.resolve(); }
+  var load = collectForm();
+  var body = {
+    email: brokerEmail, template_name: (window._appliedTemplateName || 'Template'),
+    customer_id: val('f-customer_id'), origin: val('f-origin'), destination: val('f-destination'),
+    equipment: val('f-equipment'), commodity: val('f-commodity'),
+    weight: val('f-weight'), temperature: val('f-temperature'), piece_count: val('f-piece_count'),
+    accessorials: val('f-accessorials'), special_instructions: val('f-special_instructions'),
+    default_invoice_amount: val('f-invoice_amount'),
+    default_customer_payment_terms: val('f-customer_payment_terms'),
+    stops: load.stops || [],
+  };
+  return fetch(BROKER_API_BASE + '/tms-template/' + encodeURIComponent(_appliedTemplateId), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r) { return r.json(); })
+    .then(function(p) { if (p && p.ok) showOk('Template updated.'); else showError((p && p.error) || 'Update failed.'); });
+}
+
+function applyTemplateStops(stops) {
+  var box = document.getElementById('stops');
+  if (!box) return;
+  // Clear existing stop rows
+  var existing = box.querySelectorAll('.stop-row');
+  for (var i = 0; i < existing.length; i++) existing[i].parentNode.removeChild(existing[i]);
+  // Rebuild from template stops
+  (stops || []).forEach(function(s) {
+    addStop(s.stop_type || 'Pickup');
+    var rows = box.querySelectorAll('.stop-row');
+    var r = rows[rows.length - 1];
+    ['company_name', 'address', 'appointment', 'reference_no'].forEach(function(k) {
+      var e = r.querySelector('[data-k="' + k + '"]'); if (e) e.value = s[k] || '';
+    });
+  });
+}
+
 function applyTemplate(t) {
   if (!t) return;
+  _appliedTemplateId = t.id || '';
+  window._appliedTemplateName = t.template_name || '';
   ensureCustomerOption(t.customer_id);
   setVal('f-customer_id', t.customer_id || '');
   setVal('f-origin', t.origin || '');
   setVal('f-destination', t.destination || '');
   setVal('f-equipment', t.equipment || '');
   setVal('f-commodity', t.commodity || '');
+  setVal('f-weight', t.weight || '');
+  setVal('f-temperature', t.temperature || '');
+  setVal('f-piece_count', t.piece_count || '');
+  setVal('f-accessorials', t.accessorials || '');
+  setVal('f-special_instructions', t.special_instructions || '');
   setVal('f-invoice_amount', t.default_invoice_amount || '');
   setVal('f-customer_payment_terms', t.default_customer_payment_terms || '');
+  applyTemplateStops(t.stops || []);
   recomputeMargin();
+  var btn = document.getElementById('update-template-btn');
+  if (btn) btn.style.display = _appliedTemplateId ? '' : 'none';
 }
 
 function populateTemplates(templates) {
@@ -762,6 +816,7 @@ window.addEventListener('load', function(){
     var n = window.prompt('How many copies (as drafts)?', '1'); if (n) duplicateLoad(n);
   };
   document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
+  document.getElementById('update-template-btn').addEventListener('click', updateTemplate);
   document.getElementById('back-btn').addEventListener('click', function(){
     try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}
   });
@@ -1137,7 +1192,7 @@ window.addStop = addStop; window.removeStop = removeStop; window.recomputeMargin
 window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers; window.ensureCustomerOption = ensureCustomerOption;
 window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; window.saveLoad = saveLoad;
 window.vettingExtraHtml = vettingExtraHtml;
-window.applyTemplate = applyTemplate; window.hydrate = hydrate;
+window.applyTemplate = applyTemplate; window.applyTemplateStops = applyTemplateStops; window.hydrate = hydrate; window.saveTemplate = saveTemplate; window.updateTemplate = updateTemplate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;

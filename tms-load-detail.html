@@ -62,6 +62,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .step.current { background:#e8a020; color:#fff; border-color:#e8a020; }
 .step.locked { background:#f5f5f5; color:#aaa; border-color:#eee; }
 .step-sep { color:#ccc; }
+.fz-banner { background:#fef6e7; border:1px solid #f0d9a8; border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:13px; color:#7a5a12; }
+.fz-zones { display:flex; gap:12px; flex-wrap:wrap; }
+.fz-zone { flex:1; min-width:240px; border:1px solid #e6e3da; border-radius:10px; padding:12px; }
+.fz-zone h4 { font-size:12px; text-transform:uppercase; letter-spacing:0.4px; color:#888; margin:0 0 8px; }
+.fz-doc { font-size:12px; color:#444; padding:4px 0; border-bottom:1px solid #f3f1ea; }
+.fz-doc.voided { text-decoration:line-through; color:#999; }
+.fz-empty { font-size:12px; color:#aaa; padding:4px 0; }
 
 @media (max-width: 640px) {
   html, body { overflow-x: hidden; }
@@ -82,6 +89,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   #submit-panel input[type="text"], #submit-panel button { width: 100%; box-sizing: border-box; }
   #btn-submit-factoring { min-height: 44px; }
 }
+#btn-submit-factoring.ready { background:#e8a020; color:#fff; }
+.gate-ok { color:#2e7d32; } .gate-bad { color:#c62828; }
 </style>
 </head>
 <body>
@@ -856,7 +865,15 @@ function uploadBrokerDoc(docType, file) {
   return fetch(BROKER_API_BASE + '/tms-doc/upload', { method: 'POST', body: fd })
     .then(function(r){ return r.json(); })
     .then(function(p){
-      if (p && p.ok) { _docStatus('Uploaded.'); loadDocList(); }
+      if (p && p.ok) {
+        _docStatus('Uploaded.');
+        if (p.status && window._currentLoad && p.status !== window._currentLoad.status) {
+          window._currentLoad.status = p.status;
+          setVal('f-status', p.status);
+          renderStepper(p.status);
+        }
+        loadDocList();
+      }
       else _docStatus((p && p.error) || 'Upload failed.');
     })
     .catch(function(){ _docStatus('Network error uploading.'); });
@@ -931,15 +948,11 @@ function _docSide(t) {
 
 function _gateFailures(load, docs) {
   var f = [];
-  if ((load.status || '') !== 'POD Received')
-    f.push("Load must be at 'POD Received' (currently '" + (load.status || '-') + "').");
+  if ((load.status || '') !== 'Ready to Submit')
+    f.push("Load must be 'Ready to Submit' (currently '" + (load.status || '-') + "'). Upload the POD and the carrier invoice.");
   if (!load.carrier_id) f.push('Assign a carrier before submitting.');
-  var sides = {};
-  (docs || []).forEach(function (d) { if (!d.voided) sides[_docSide(d.document_type)] = true; });
-  if (!sides.customer) f.push('At least one customer-side document is required.');
-  if (!sides.carrier) f.push('At least one carrier-side document is required.');
   var inv = document.getElementById('f-factoring-invoice');
-  if (!inv || !inv.value.trim()) f.push('Carrier/Factoring Invoice # is required.');
+  if (!inv || !inv.value.trim()) f.push('Carrier / Factoring Invoice # is required.');
   return f;
 }
 
@@ -948,6 +961,68 @@ function _vettingWarnings(load) {
   if (v.authority_active === false) w.push('Carrier authority is not active.');
   if (v.risk_flag) w.push('Carrier risk flag: ' + v.risk_flag);
   return w;
+}
+
+var _zoneStaged = { customer: null, carrier: null };
+var _ZONE_TYPES = {
+  customer: ['POD', 'BOL', 'Lumper Receipt', 'Other'],
+  carrier: ['Carrier Invoice', 'Signed Rate Con'],
+};
+function setZoneStagedFile(side, file) {
+  _zoneStaged[side] = file || null;
+  var dz = document.getElementById('zone-' + side + '-dropzone');
+  if (!dz) return;
+  if (_zoneStaged[side]) { dz.className = 'dropzone staged'; dz.textContent = '✓ ' + _zoneStaged[side].name + ' attached'; }
+  else { dz.className = 'dropzone'; dz.textContent = 'Drop a file here or click to browse'; }
+}
+function _zoneActionsHtml(side) {
+  var opts = _ZONE_TYPES[side].map(function (t) { return '<option>' + t + '</option>'; }).join('');
+  return '<select id="zone-' + side + '-type" class="doc-to" style="margin-top:8px">' + opts + '</select>' +
+    '<div class="dropzone" id="zone-' + side + '-dropzone">Drop a file here or click to browse</div>' +
+    '<input type="file" id="zone-' + side + '-file" accept="application/pdf,image/*" style="display:none">' +
+    '<button class="btn small primary" id="zone-' + side + '-upload-btn">Upload</button>';
+}
+function _wireZone(side) {
+  var actions = document.getElementById('zone-' + side + '-actions');
+  if (!actions) return;
+  actions.insertAdjacentHTML('afterbegin', _zoneActionsHtml(side));
+  var dz = document.getElementById('zone-' + side + '-dropzone');
+  var fi = document.getElementById('zone-' + side + '-file');
+  if (dz && fi) {
+    dz.addEventListener('click', function () { fi.click(); });
+    fi.addEventListener('change', function () { setZoneStagedFile(side, fi.files && fi.files[0]); });
+    dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', function () { dz.classList.remove('dragover'); });
+    dz.addEventListener('drop', function (e) {
+      e.preventDefault(); dz.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) setZoneStagedFile(side, e.dataTransfer.files[0]);
+    });
+  }
+  var btn = document.getElementById('zone-' + side + '-upload-btn');
+  if (btn) btn.addEventListener('click', function () {
+    var sel = document.getElementById('zone-' + side + '-type');
+    uploadBrokerDoc(sel ? sel.value : _ZONE_TYPES[side][0], _zoneStaged[side])
+      .then(function () { setZoneStagedFile(side, null); });
+  });
+  var actionsEl = document.getElementById('zone-' + side + '-actions');
+  if (actionsEl) {
+    if (side === 'customer') {
+      actionsEl.insertAdjacentHTML('beforeend',
+        '<button class="btn small" id="zone-customer-geninvoice-btn" style="margin-top:8px">Generate customer invoice</button>');
+      var g = document.getElementById('zone-customer-geninvoice-btn');
+      if (g) g.addEventListener('click', function () { generateDoc('customer_invoice', false); });
+    } else {
+      actionsEl.insertAdjacentHTML('beforeend',
+        '<button class="btn small" id="zone-carrier-remind-btn" style="margin-top:8px">Remind carrier</button>');
+      var rm = document.getElementById('zone-carrier-remind-btn');
+      if (rm) rm.addEventListener('click', function () { emailCarrierLink(); });
+    }
+  }
+}
+function wireZoneUploads() {
+  _zoneStaged = { customer: null, carrier: null };
+  _wireZone('customer');
+  _wireZone('carrier');
 }
 
 function renderSubmitPanel(load, docs) {
@@ -960,10 +1035,30 @@ function renderSubmitPanel(load, docs) {
         : '<p>This load has been submitted for factoring.</p>') + '</div>';
     return;
   }
+  docs = docs || [];
+  function zoneDocs(side) {
+    return docs.filter(function (d) { return _docSide(d.document_type) === side; });
+  }
+  function docRows(side) {
+    var rows = zoneDocs(side).map(function (d) {
+      return '<div class="fz-doc' + (d.voided ? ' voided' : '') + '">' + esc(d.document_type) +
+        (d.voided ? ' (voided)' : '') + '</div>';
+    });
+    return rows.length ? rows.join('') : '<div class="fz-empty">None yet.</div>';
+  }
   var warnings = _vettingWarnings(load);
   panel.innerHTML =
     '<div class="card"><h3>Submit for Factoring</h3>' +
-    '<ul id="gate-list" class="muted" style="margin:6px 0;padding-left:18px"></ul>' +
+    '<div class="fz-banner">Turn this delivered load into a carrier invoice plus POD, then submit it for factoring.</div>' +
+    '<div class="fz-zones">' +
+      '<div class="fz-zone" id="zone-customer"><h4>Customer Documents</h4>' +
+        '<div id="zone-customer-docs">' + docRows('customer') + '</div>' +
+        '<div id="zone-customer-actions"></div></div>' +
+      '<div class="fz-zone" id="zone-carrier"><h4>Carrier Documents</h4>' +
+        '<div id="zone-carrier-docs">' + docRows('carrier') + '</div>' +
+        '<div id="zone-carrier-actions"></div></div>' +
+    '</div>' +
+    '<ul id="gate-list" class="muted" style="margin:10px 0;padding-left:18px"></ul>' +
     (warnings.length
       ? '<div id="override-wrap" style="margin:6px 0"><label><input type="checkbox" id="chk-override"> ' +
         'Override carrier vetting warning and submit anyway</label></div>'
@@ -973,6 +1068,7 @@ function renderSubmitPanel(load, docs) {
     '<button id="btn-submit-factoring" disabled>Submit for Factoring</button>' +
     '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
 
+  wireZoneUploads();
   _refreshGates(load, docs, warnings);
   var inv = document.getElementById('f-factoring-invoice');
   if (inv) inv.oninput = function () { _refreshGates(load, docs, warnings); };
@@ -984,12 +1080,22 @@ function _refreshGates(load, docs, warnings) {
   var failures = _gateFailures(load, docs);
   var ul = document.getElementById('gate-list');
   if (ul) {
-    var lines = failures.map(function (x) { return '<li>✗ ' + x + '</li>'; })
-      .concat((warnings || []).map(function (x) { return '<li>⚠ ' + x + '</li>'; }));
-    ul.innerHTML = lines.length ? lines.join('') : '<li>✓ Ready to submit</li>';
+    var checks = [
+      { ok: !!load.carrier_id, label: 'Carrier assigned' },
+      { ok: (load.status || '') === 'Ready to Submit', label: 'Ready to Submit (POD + carrier invoice uploaded)' },
+      { ok: !!(document.getElementById('f-factoring-invoice') || {}).value &&
+            !!document.getElementById('f-factoring-invoice').value.trim(), label: 'Carrier / Factoring Invoice # entered' },
+    ];
+    var lines = checks.map(function (c) {
+      return '<li class="' + (c.ok ? 'gate-ok' : 'gate-bad') + '">' + (c.ok ? '✓ ' : '✗ ') + c.label + '</li>';
+    }).concat((warnings || []).map(function (x) { return '<li>⚠ ' + x + '</li>'; }));
+    ul.innerHTML = lines.join('');
   }
   var btn = document.getElementById('btn-submit-factoring');
-  if (btn) btn.disabled = failures.length > 0;
+  if (btn) {
+    btn.disabled = failures.length > 0;
+    if (failures.length > 0) btn.classList.remove('ready'); else btn.classList.add('ready');
+  }
 }
 
 function submitForFactoring(load) {
@@ -1036,6 +1142,8 @@ window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
 window.setStagedFile = setStagedFile;
+window.setZoneStagedFile = setZoneStagedFile;
+window.wireZoneUploads = wireZoneUploads;
 Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
 </script>
 </body>

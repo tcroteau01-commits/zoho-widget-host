@@ -91,9 +91,9 @@ test('BOL row exists and generates with doc_type bol', async () => {
   assert.equal(posts[0].body.send, true);
 });
 
-test('voided rate con renders struck and does not satisfy the carrier-doc gate', () => {
+test('voided rate con renders struck', () => {
   const { window } = makeWidget();
-  const { renderDocList, _gateFailures } = window;
+  const { renderDocList } = window;
   const docs = [
     { document_type: 'Rate Con', source: 'system-generated', voided: true },
     { document_type: 'Customer Invoice', source: 'system-generated', voided: false },
@@ -102,7 +102,5 @@ test('voided rate con renders struck and does not satisfy the carrier-doc gate',
   const voidedRow = window.document.querySelector('.doc-item.voided');
   assert.ok(voidedRow, 'voided row has the voided class');
   assert.match(voidedRow.textContent, /Voided/);
-  // carrier-side doc (Rate Con) is voided -> gate still requires a carrier doc
-  const fails = _gateFailures({ status: 'POD Received', carrier_id: 'v1' }, docs);
-  assert.ok(fails.some(f => /carrier-side document/.test(f)));
+  // Doc-side presence gating (carrier/customer side) is now enforced server-side via evaluate_submission_gates.
 });

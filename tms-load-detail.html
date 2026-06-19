@@ -238,6 +238,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="doc-gen-row" style="border:none;">
         <div class="doc-gen-name">Carrier upload link <span class="muted">(no login)</span></div>
         <button class="btn small" id="carrier-link-btn">Get link</button>
+        <button class="btn small primary" id="carrier-email-btn">Email to carrier</button>
       </div>
       <div id="carrier-link-box" class="muted" style="margin-top:6px; word-break:break-all;"></div>
     </div>
@@ -875,6 +876,20 @@ function fetchCarrierLink() {
     });
 }
 
+function emailCarrierLink() {
+  if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
+  _docStatus('Emailing the carrier…', true);
+  return fetch(BROKER_API_BASE + '/tms-doc/upload-link?email=' + encodeURIComponent(brokerEmail) +
+               '&load_id=' + encodeURIComponent(loadId) + '&send=1')
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      var box = document.getElementById('carrier-link-box');
+      if (p && p.emailed) { _docStatus('Upload link emailed to the carrier.'); if (box) box.textContent = 'Emailed: ' + (p.url || ''); }
+      else { _docStatus((p && p.email_error) || 'Could not email the link.'); }
+    })
+    .catch(function(){ _docStatus('Network error emailing the link.'); });
+}
+
 var _stagedFileRef = null;
 function setStagedFile(file) {
   _stagedFileRef = file || null;
@@ -905,6 +920,8 @@ function wireUploadControls() {
   });
   var cb = document.getElementById('carrier-link-btn');
   if (cb) cb.addEventListener('click', fetchCarrierLink);
+  var ceb = document.getElementById('carrier-email-btn');
+  if (ceb) ceb.addEventListener('click', emailCarrierLink);
 }
 
 function _docSide(t) {
@@ -1017,7 +1034,7 @@ window.vettingExtraHtml = vettingExtraHtml;
 window.applyTemplate = applyTemplate; window.hydrate = hydrate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
-window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink;
+window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
 window.setStagedFile = setStagedFile;
 Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
 </script>

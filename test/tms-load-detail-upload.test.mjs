@@ -15,7 +15,7 @@ function makeWidget() {
       window.fetch = function(url, init){
         calls.push({ url: url, init: init || {} });
         if (String(url).indexOf('/tms-doc/upload-link') !== -1)
-          return Promise.resolve({ json: () => Promise.resolve({ url: 'https://x.github.io/tms-carrier-upload.html?token=1001.abc', token: '1001.abc' }) });
+          return Promise.resolve({ json: () => Promise.resolve({ url: 'https://x.github.io/tms-carrier-upload.html?token=1001.abc', token: '1001.abc', emailed: true }) });
         if (String(url).indexOf('/tms-doc/upload') !== -1)
           return Promise.resolve({ json: () => Promise.resolve({ ok: true, document_id: 'doc_9' }) });
         if (String(url).indexOf('/tms-docs') !== -1)
@@ -75,4 +75,14 @@ test('upload button uploads the staged file', async () => {
   window.document.getElementById('upload-doc-type').value = 'POD';
   await window.uploadBrokerDoc('POD', window._stagedFile);
   assert.ok(calls.some(c => /\/tms-doc\/upload$/.test(c.url)));
+});
+
+test('emailCarrierLink requests send=1 and reports emailed', async () => {
+  const { window, calls } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.loadId = '1001';
+  await window.emailCarrierLink();
+  const hit = calls.find(c => /\/tms-doc\/upload-link/.test(c.url));
+  assert.ok(hit, 'called the upload-link route');
+  assert.match(hit.url, /send=1/);
 });

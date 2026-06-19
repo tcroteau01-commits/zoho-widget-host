@@ -996,6 +996,20 @@ function _wireZone(side) {
     uploadBrokerDoc(sel ? sel.value : _ZONE_TYPES[side][0], _zoneStaged[side])
       .then(function () { setZoneStagedFile(side, null); });
   });
+  var actionsEl = document.getElementById('zone-' + side + '-actions');
+  if (actionsEl) {
+    if (side === 'customer') {
+      actionsEl.insertAdjacentHTML('beforeend',
+        '<button class="btn small" id="zone-customer-geninvoice-btn" style="margin-top:8px">Generate customer invoice</button>');
+      var g = document.getElementById('zone-customer-geninvoice-btn');
+      if (g) g.addEventListener('click', function () { generateDoc('customer_invoice', false); });
+    } else {
+      actionsEl.insertAdjacentHTML('beforeend',
+        '<button class="btn small" id="zone-carrier-remind-btn" style="margin-top:8px">Remind carrier</button>');
+      var rm = document.getElementById('zone-carrier-remind-btn');
+      if (rm) rm.addEventListener('click', function () { emailCarrierLink(); });
+    }
+  }
 }
 function wireZoneUploads() { _wireZone('customer'); _wireZone('carrier'); }
 

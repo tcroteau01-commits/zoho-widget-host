@@ -132,3 +132,17 @@ test('carrier zone upload posts the carrier doc-type via uploadBrokerDoc', async
   assert.equal(posted.length, 1);
   assert.equal(posted[0].docType, 'Carrier Invoice');
 });
+
+test('zone action buttons call generateDoc and emailCarrierLink', () => {
+  const dom = boot();
+  const w = dom.window;
+  w.loadId = '1001';
+  let genArg = null, reminded = false;
+  w.generateDoc = function(t){ genArg = t; return Promise.resolve(); };
+  w.emailCarrierLink = function(){ reminded = true; return Promise.resolve(); };
+  w.renderSubmitPanel({ id: '1', status: 'Delivered', carrier_id: 'v1', vetting: {} }, []);
+  w.document.getElementById('zone-customer-geninvoice-btn').click();
+  w.document.getElementById('zone-carrier-remind-btn').click();
+  assert.equal(genArg, 'customer_invoice');
+  assert.equal(reminded, true);
+});

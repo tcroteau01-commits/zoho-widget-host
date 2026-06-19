@@ -33,6 +33,9 @@ function makeFetch(records) {
       body = { submitted: ['900'], skipped: [], count: 1 };
     } else if (u.indexOf('/draft-loads/alias') !== -1) {
       body = { ok: true };
+    } else if (u.indexOf('/remove-doc') !== -1) {
+      body = { ok: true, slot: (opts && opts.body ? JSON.parse(opts.body).slot : ''),
+               has_customer_docs: false, has_carrier_docs: true };
     } else if (/\/draft-loads\/\d+/.test(u)) {
       body = { status: 'ready', reasons: [] };
     } else if (u.indexOf('/draft-loads') !== -1) {
@@ -992,10 +995,15 @@ test('attachFilesToSlot stages files as pending and uploads nothing', () => {
   assert.ok(!records.some(r => r.url.indexOf('/upload-doc') !== -1));
 });
 
-test('paperworkStatus is ready only when both slots uploaded', () => {
+test('paperworkStatus is ready when both slots are placed, attached, or uploaded', () => {
   const { window } = makeWidget();
-  assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'uploaded' }), 'attention');
+  // both slots satisfied (placed counts as satisfied)
+  assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'uploaded' }), 'ready');
   assert.equal(window.paperworkStatus({ customer: 'uploaded', carrier: 'uploaded' }), 'ready');
+  assert.equal(window.paperworkStatus({ customer: 'pending', carrier: 'pending' }), 'ready');
+  // only one slot satisfied → attention
+  assert.equal(window.paperworkStatus({ customer: 'uploaded', carrier: false }), 'attention');
+  assert.equal(window.paperworkStatus({ customer: false, carrier: 'uploaded' }), 'attention');
 });
 
 // ---- Task 4: assign + move ----
@@ -1131,4 +1139,75 @@ test('commitPaperwork double-call fires merge+upload only once per slot', async 
   await Promise.all([p1, p2]);
   assert.equal(merges, 2,  'mergeFilesToPDF must be called exactly once per slot (2 slots)');
   assert.equal(uploads, 2, '_uploadDoc must be called exactly once per slot (2 slots)');
+});
+
+// ---- Task 2 (slot state): seed from server + count placed-or-attached ----
+test('paperworkStatus counts placed or server-attached slots as ready', () => {
+  const { window } = makeWidget();
+  const w = window;
+  assert.equal(w.paperworkStatus({ customer: 'pending', carrier: 'server' }), 'ready');
+  assert.equal(w.paperworkStatus({ customer: 'server', carrier: 'uploaded' }), 'ready');
+  assert.equal(w.paperworkStatus({ customer: 'server', carrier: false }), 'attention');
+});
+
+test('openPaperwork seeds slots from has_*_docs', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'R', invoice: 'I',
+    has_customer_docs: true, has_carrier_docs: false }]);
+  assert.equal(window.__pw.slots['A'].customer, 'server');
+  assert.equal(window.__pw.slots['A'].carrier, false);
+  assert.equal(window.paperworkStatus(window.__pw.slots['A']), 'attention');
+});
+
+test('a server-seeded slot renders an already-attached badge, not an empty slot', () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: 'A', ref: 'R', invoice: 'I',
+    has_customer_docs: true, has_carrier_docs: false }]);
+  const row = window.document.querySelector('[data-row="A"]');
+  const custCell = row.querySelector('[data-slot-wrap="customer"]');
+  assert.match(custCell.textContent, /already attached/i);
+  // and exposes a remove control for the server doc
+  assert.ok(custCell.querySelector('.slot-remove'));
+});
+
+// ---- Task 3: auto-attach on exit, drop manual button, server-doc delete ----
+test('the Attach all packets button is gone', () => {
+  const { window } = makeWidget();
+  assert.equal(window.document.getElementById('pw-commit'), null);
+});
+
+test('removing a server-attached slot calls remove-doc and clears the slot', async () => {
+  const { window, records } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.openPaperwork([{ id: '900', ref: 'R', invoice: 'I',
+    has_customer_docs: true, has_carrier_docs: true }]);
+  await window.removeServerDoc('900', 'customer');
+  const hit = records.find(r => r.url.indexOf('/draft-loads/900/remove-doc') !== -1);
+  assert.ok(hit, 'remove-doc was called');
+  assert.equal(JSON.parse(hit.opts.body).slot, 'customer');
+  assert.equal(window.__pw.slots['900'].customer, false);
+});
+
+test('exitPaperwork uploads placed files then runs the after-callback', async () => {
+  const { window, records } = makeWidget();
+  window.openPaperwork([{ id: '900', ref: 'R', invoice: 'I' }]);
+  window.attachFilesToSlot('900', 'customer', [fakeFile('R.pdf')]);
+  let ran = false;
+  window.mergeFilesToPDF = () => Promise.resolve(new window.Blob(['p']));
+  window._uploadDoc = () => Promise.resolve(true);
+  await window.exitPaperwork(() => { ran = true; });
+  assert.equal(ran, true, 'after-callback ran on success');
+  assert.equal(window.__pw.slots['900'].customer, 'uploaded');
+});
+
+test('exitPaperwork aborts navigation when an upload fails', async () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: '900', ref: 'R', invoice: 'I' }]);
+  window.attachFilesToSlot('900', 'customer', [fakeFile('R.pdf')]);
+  window.mergeFilesToPDF = () => Promise.resolve(new window.Blob(['x']));
+  window._uploadDoc = () => Promise.resolve(false);   // upload fails
+  let ran = false;
+  await window.exitPaperwork(() => { ran = true; });
+  assert.equal(ran, false, 'after-callback must NOT run when upload fails');
+  assert.equal(window.__pw.slots['900'].customer, 'pending', 'slot stays pending on failed upload');
 });

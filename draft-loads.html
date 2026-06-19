@@ -302,7 +302,6 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
   <div class="foot">
     <div class="l" id="pw-foot"><b>0 ready</b></div>
     <button class="btn" id="pw-back">Back to drafts</button>
-    <button class="btn" id="pw-commit">Attach all packets</button>
     <button class="btn amber" id="pw-done">Done — return to queue</button>
   </div>
 </div>
@@ -470,7 +469,8 @@ function bulkAttachDocs(){
   var loads=__state.drafts.filter(function(d){ return sel.indexOf(d.id)!==-1; }).map(function(d){
     return { id:d.id, ref:d.customer_reference_number, invoice:d.carrier_factoring_invoice,
       customer_name:d.customer_name||d.customer_raw||'', carrier_name:d.carrier_name||'',
-      carrier_mc:d.carrier_mc||'', carrier_dot:d.carrier_dot||'' };
+      carrier_mc:d.carrier_mc||'', carrier_dot:d.carrier_dot||'',
+      has_customer_docs:!!d.has_customer_docs, has_carrier_docs:!!d.has_carrier_docs };
   });
   if(!loads.length){ showToast('Select at least one draft'); return; }
   clearSelection();
@@ -888,8 +888,8 @@ window.addEventListener('load', function(){
   var s=document.getElementById('search');
   if (s) s.addEventListener('input', function(){ __state.search=s.value; renderQueue(); });
   bind('import-csv', function(){ openImportModal(); });
-  bind('pw-back', function(){ closePaperwork(); loadQueue(); });
-  bind('pw-back-link', function(e){ if(e&&e.preventDefault) e.preventDefault(); closePaperwork(); loadQueue(); });
+  bind('pw-back', function(){ exitPaperwork(function(){ closePaperwork(); loadQueue(); }); });
+  bind('pw-back-link', function(e){ if(e&&e.preventDefault) e.preventDefault(); exitPaperwork(function(){ closePaperwork(); loadQueue(); }); });
   bind('pw-done', function(){ finishPaperwork(); });
   bind('new-draft', function(){ newDraft(); });
   bind('submit-all', function(){ submitAllReady(); });
@@ -917,7 +917,6 @@ window.addEventListener('load', function(){
     drop.addEventListener('dragleave', function(){ drop.classList.remove('drag'); });
     drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag'); if(e.dataTransfer&&e.dataTransfer.files.length) dropAllFiles(e.dataTransfer.files); });
   }
-  var cmt=document.getElementById('pw-commit'); if(cmt) cmt.addEventListener('click', function(){ commitPaperwork(); });
   window.addEventListener('beforeunload', function(e){
     if(hasPendingUploads()){ e.preventDefault(); e.returnValue=''; return ''; }
   });
@@ -1156,7 +1155,8 @@ function routeFileToSlot(filename, loads){
 
 function paperworkStatus(slots){
   slots=slots||{};
-  return (slots.customer==='uploaded' && slots.carrier==='uploaded') ? 'ready' : 'attention';
+  function satisfied(v){ return v==='pending' || v==='uploaded' || v==='server'; }
+  return (satisfied(slots.customer) && satisfied(slots.carrier)) ? 'ready' : 'attention';
 }
 
 function openPaperwork(loads){
@@ -1164,7 +1164,11 @@ function openPaperwork(loads){
   __pw.slots = {};
   __pw.files = {};
   __pw.tray = [];
-  __pw.loads.forEach(function(l){ __pw.slots[l.id]={customer:false,carrier:false}; __pw.files[l.id]={customer:[],carrier:[]}; });
+  __pw.loads.forEach(function(l){
+    __pw.slots[l.id]={ customer: l.has_customer_docs ? 'server' : false,
+                       carrier: l.has_carrier_docs ? 'server' : false };
+    __pw.files[l.id]={customer:[],carrier:[]};
+  });
   document.querySelectorAll('.wrap').forEach(function(w){ if (w.id!=='paperwork-wrap') w.classList.add('pw-hidden'); });
   var pw=document.getElementById('paperwork-wrap'); if (pw) pw.classList.remove('pw-hidden');
   renderPaperwork(__pw.loads);
@@ -1177,11 +1181,16 @@ function closePaperwork(){
 function slotHtml(l, slot){
   var state=__pw.slots[l.id] && __pw.slots[l.id][slot];
   var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
+  if (state==='server' && !files.length){
+    return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+slot+' packet on file</span> ✓'+
+           ' <span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'">✕</span></div>'+
+           '<div class="auto" style="color:var(--green)">✓ already attached</div>';
+  }
   if ((state==='pending' || state==='uploaded') && files.length){
     var nm=files[files.length-1].name;
     var more = files.length>1 ? ' <span class="auto" style="display:inline">+'+(files.length-1)+' more</span>' : '';
     var badge = state==='uploaded' ? ' ✓' : '';
-    var note = state==='uploaded' ? '<div class="auto">✓ attached</div>' : '<div class="auto">staged — not yet sent</div>';
+    var note = state==='uploaded' ? '<div class="auto">✓ attached</div>' : '<div class="auto" style="color:var(--green)">Ready — attaches when you leave</div>';
     return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+esc(nm)+'</span>'+more+badge+
            ' <span class="slot-preview" title="Preview" data-load="'+esc(l.id)+'" data-slot="'+slot+'">👁</span>'+
            '<span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'">✕</span></div>'+
@@ -1197,15 +1206,20 @@ function slotHtml(l, slot){
 
 function renderPaperwork(loads){
   if (loads) __pw.loads = loads;
-  __pw.loads.forEach(function(l){ if(!__pw.slots[l.id]){ __pw.slots[l.id]={customer:false,carrier:false}; __pw.files[l.id]={customer:[],carrier:[]}; } });
+  __pw.loads.forEach(function(l){ if(!__pw.slots[l.id]){
+    __pw.slots[l.id]={ customer: l.has_customer_docs ? 'server' : false,
+                       carrier: l.has_carrier_docs ? 'server' : false };
+    __pw.files[l.id]={customer:[],carrier:[]};
+  } });
   var host=document.getElementById('paperwork');
   if(!host) return;
   host.innerHTML='';
   __pw.loads.forEach(function(l){
     var st=paperworkStatus(__pw.slots[l.id]);
+    var _has = function(s){ var v=__pw.slots[l.id][s]; return v==='pending'||v==='uploaded'||v==='server'; };
     var statHtml = st==='ready'
       ? '<span class="stat ready"><span class="dot"></span>Ready</span>'
-      : '<span class="stat attn"><span class="dot"></span>'+ (__pw.slots[l.id].customer==='uploaded'?'Carrier doc':(__pw.slots[l.id].carrier==='uploaded'?'Customer doc':'Both needed')) +'</span>';
+      : '<span class="stat attn"><span class="dot"></span>'+ (_has('customer')?'Carrier doc':(_has('carrier')?'Customer doc':'Both needed')) +'</span>';
     var carrId = l.carrier_mc ? ('MC '+esc(l.carrier_mc)) : (l.carrier_dot ? ('DOT '+esc(l.carrier_dot)) : '');
     var idBits=[];
     if (l.ref) idBits.push('Cust ref '+esc(l.ref));
@@ -1312,8 +1326,31 @@ function moveSlotFile(fromLoad, fromSlot, toLoad, toSlot){
   attachFilesToSlot(toLoad, toSlot, files);
 }
 
-// Clear a slot but RETURN its files to the tray so nothing is lost.
+// Delete an already-attached server doc for this draft, then clear the slot.
+function removeServerDoc(loadId, slot){
+  return fetch(BROKER_API_BASE+'/draft-loads/'+encodeURIComponent(loadId)+'/remove-doc', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ email:brokerEmail, slot:slot })
+  }).then(function(r){ return r.json(); }).then(function(res){
+    if(res && res.ok){
+      if(__pw.slots[loadId]) __pw.slots[loadId][slot]=false;
+      renderPaperwork(__pw.loads);
+      showToast('Attached '+slot+' doc removed');
+      return true;
+    }
+    showToast('Could not remove doc'); return false;
+  }).catch(function(){ showToast('Could not remove doc'); return false; });
+}
+
+// Clear a slot. Server docs are deleted on the draft (with confirm); locally-placed
+// files are returned to the unmatched tray so nothing is lost.
 function removeSlot(loadId, slot){
+  var state=__pw.slots[loadId] && __pw.slots[loadId][slot];
+  if(state==='server'){
+    if(typeof window.confirm==='function' && !window.confirm('Remove the attached '+slot+' doc from this load?')) return;
+    removeServerDoc(loadId, slot);
+    return;
+  }
   var files=(__pw.files[loadId]&&__pw.files[loadId][slot])||[];
   files.forEach(function(f){
     __pw.tray.push({ file:f, candidates: matchFileToLoads(f.name, __pw.loads).candidates });
@@ -1362,7 +1399,7 @@ function commitPaperwork(){
   return Promise.all(jobs).then(function(results){
     var failed=results.filter(function(r){ return !r.ok; }).length;
     renderPaperwork(__pw.loads);
-    if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed, retry') : 'All packets attached'); }
+    if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed — still here, retry') : 'All packets attached'); }
     return results;
   }).then(function(results){
     __pw.committing=false;
@@ -1473,7 +1510,15 @@ function renderPaperworkProgress(){
   var foot=document.getElementById('pw-foot'); if(foot) foot.innerHTML='<b>'+ready+' ready</b> · '+(total-ready)+' still missing a packet';
 }
 
-function finishPaperwork(){ closePaperwork(); loadQueue(); }
+// Commit placed files, then (only on full success) run the navigation callback.
+function exitPaperwork(after){
+  return commitPaperwork().then(function(results){
+    var failed=(results||[]).filter(function(r){ return !r.ok; }).length;
+    if(failed){ return; }
+    if(typeof after==='function') after();
+  });
+}
+function finishPaperwork(){ exitPaperwork(function(){ closePaperwork(); loadQueue(); }); }
 
 /* expose import + paperwork */
 window.openImportModal=openImportModal;
@@ -1493,6 +1538,8 @@ window.attachFilesToSlot=attachFilesToSlot;
 window.assignTrayFile=assignTrayFile;
 window.moveSlotFile=moveSlotFile;
 window.removeSlot=removeSlot;
+window.removeServerDoc=removeServerDoc;
+window.exitPaperwork=exitPaperwork;
 window.deleteTrayFile=deleteTrayFile;
 window.dropAllFiles=dropAllFiles;
 window.commitPaperwork=commitPaperwork;

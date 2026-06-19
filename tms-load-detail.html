@@ -124,16 +124,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <input type="hidden" id="f-status" value="Draft">
 
-  <div class="card">
-    <h3>Template</h3>
-    <div class="field">
-      <label>Start from a saved template (optional)</label>
-      <select id="f-template"><option value="">— None —</option></select>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Customer (Shipper Leg)</h3>
+  <div class="card" id="section-customer">
+    <h3 style="display:flex;align-items:center;gap:10px;">Customer (Shipper Leg)
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;">
+        <select id="f-template" style="font-size:12px;padding:2px 6px;border-radius:6px;border:1px solid #ccc;max-width:160px;"><option value="">from template &#9660;</option></select>
+        <button type="button" id="save-template-btn" style="font-size:12px;background:none;border:none;color:#4a90d9;cursor:pointer;padding:0;white-space:nowrap;">Save as template</button>
+      </span>
+    </h3>
     <div class="grid">
       <div class="field"><label>Customer *</label><select id="f-customer_id"><option value="">— Select —</option></select></div>
       <div class="field"><label>Customer PO / Reference</label><input id="f-customer_reference"></div>
@@ -259,7 +256,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   <div class="actions">
     <span class="errline" id="form-error"></span>
     <span class="okline" id="form-ok"></span>
-    <button class="btn" id="save-template-btn">Save as Template</button>
     <button class="btn" id="duplicate-btn">Duplicate…</button>
     <button class="btn hidden" id="save-draft-btn">Save as Draft</button>
     <button class="btn primary" id="save-btn">Save</button>

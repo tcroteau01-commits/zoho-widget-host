@@ -172,6 +172,16 @@ test('applyTemplate pre-fills shipper leg', () => {
   assert.equal(window.document.getElementById('f-invoice_amount').value, '2000');
 });
 
+test('template control lives in the customer section header', () => {
+  const { window } = makeWidget();
+  const sel = window.document.getElementById('f-template');
+  assert.ok(sel, 'template select exists');
+  // it is inside the customer section, not a standalone top card
+  const customer = window.document.getElementById('section-customer') ||
+                   window.document.querySelector('[data-section="customer"]');
+  assert.ok(customer && customer.contains(sel), 'template select is within the customer section');
+});
+
 test('f-status is a hidden input defaulting to Draft', () => {
   const { window } = makeWidget();
   const el = window.document.getElementById('f-status');

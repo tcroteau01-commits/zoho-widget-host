@@ -556,17 +556,6 @@ function saveLoad(statusOverride) {
     .catch(function(){ btns.forEach(function(b){ if (b) b.disabled = false; }); showError('Network error saving load.'); });
 }
 
-function bookLoad() {
-  if (!val('f-carrier_id')) {
-    return saveLoad('Draft').then(function() {
-      showError('Assign a carrier to book this load — saved as draft.');
-    });
-  }
-  var s = val('f-status');
-  if (!s || s === 'Draft') s = 'Booked';
-  return saveLoad(s);
-}
-window.bookLoad = bookLoad;
 
 function draftEligible(status) { return (status || 'Draft') === 'Draft' || status === 'Available'; }
 

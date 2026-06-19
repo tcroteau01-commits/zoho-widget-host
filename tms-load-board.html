@@ -38,31 +38,31 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .pos { color: #2e7d32; font-weight: 700; }
 .neg { color: #c62828; font-weight: 700; }
 .chip { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
-.chip.draft { background: #eee; color: #777; }
-.chip.booked { background: #fff3e0; color: #b86e00; }
-.chip.covered { background: #e3f2fd; color: #1565c0; }
-.chip.dispatched, .chip.intransit { background: #ede7f6; color: #5e35b1; }
-.chip.delivered, .chip.podreceived { background: #e8f5e9; color: #2e7d32; }
+.chip.draft, .chip.available { background: #ececec; color: #777; }
+.chip.covered, .chip.dispatched { background: #fff3d6; color: #b8860b; }
+.chip.intransit { background: #eef4ec; color: #3a7d44; }
+.chip.delivered, .chip.podreceived, .chip.readytosubmit { background: #e8f5e9; color: #2e7d32; }
 .chip.submitted { background: #272727; color: #fff; }
 .chip.cancelled { background: #f1f1f1; color: #999; text-decoration: line-through; }
+.chip.issue { background: #fdecea; color: #c62828; }
 .empty { text-align: center; color: #999; padding: 40px 0; }
 
 /* slide-out panel */
 .hidden { display: none !important; }
 #tms-backdrop { position: fixed; inset: 0; background: rgba(16,24,40,.35); z-index: 9998; }
-#tms-slideout { position: fixed; top: 0; right: 0; height: 100%; width: 480px; max-width: 92vw; background: #f7f8fa; box-shadow: -12px 0 40px rgba(16,24,40,.18); transform: translateX(100%); transition: transform .25s ease; z-index: 9999; overflow-y: auto; }
+#tms-slideout { position: fixed; top: 0; right: 0; height: 100%; width: 480px; max-width: 92vw; background: #f0efe9; box-shadow: -12px 0 40px rgba(16,24,40,.18); transform: translateX(100%); transition: transform .25s ease; z-index: 9999; overflow-y: auto; }
 #tms-slideout.open { transform: translateX(0); }
-#tms-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1f2a44; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; z-index: 10000; box-shadow: 0 8px 24px rgba(16,24,40,.3); }
+#tms-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #272727; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; z-index: 10000; box-shadow: 0 8px 24px rgba(16,24,40,.3); }
 
 /* read-only detail (moved from the detail page) */
-#tms-slideout .vhead { background: linear-gradient(160deg,#1f2a44,#2b3a5e); color: #fff; padding: 16px 22px 20px; }
+#tms-slideout .vhead { background: #272727; color: #fff; padding: 16px 22px 20px; border-bottom: 3px solid #e8a020; }
 #tms-slideout .vhead-top { display: flex; justify-content: space-between; align-items: center; color: #aeb8cc; font-size: 13px; }
 #tms-slideout .vlink { cursor: pointer; font-size: 18px; line-height: 1; }
 #tms-slideout .vtag { background: #14b8a6; color: #04201c; font-weight: 700; font-size: 11px; letter-spacing: .5px; padding: 3px 9px; border-radius: 6px; }
 #tms-slideout .vtitle { font-size: 22px; font-weight: 800; margin-top: 12px; }
 #tms-slideout .vsub { color: #aeb8cc; font-size: 12.5px; margin-top: 5px; }
 #tms-slideout .vactions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
-#tms-slideout .vcards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; background: #f7f8fa; }
+#tms-slideout .vcards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; background: #f0efe9; }
 #tms-slideout .vcard { background: #fff; border: 1px solid #eaecf0; border-radius: 12px; padding: 14px 16px; }
 #tms-slideout .vcard.wide { grid-column: 1 / -1; }
 #tms-slideout .vlabel { font-size: 11px; color: #667085; letter-spacing: .5px; font-weight: 700; margin-bottom: 10px; }
@@ -145,9 +145,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <span id="bulk-count" class="muted"></span>
     <select id="bulk-status">
       <option value="">Set status…</option>
-      <option>Draft</option><option>Booked</option><option>Covered</option>
-      <option>Dispatched</option><option>In Transit</option>
-      <option>Delivered</option><option>POD Received</option>
+      <option>Draft</option><option>Available</option><option>Covered</option>
+      <option>Dispatched</option><option>In Transit</option><option>Delivered</option>
     </select>
     <button class="btn" id="bulk-apply">Apply</button>
     <button class="btn" id="bulk-cancel">Cancel selected</button>
@@ -169,11 +168,12 @@ var allLoads = [];
 var activeStatus = 'all';
 var searchTerm = '';
 
-var STATUSES = ['all', 'Draft', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Submitted', 'Cancelled'];
+var STATUSES = ['all', 'Draft', 'Available', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Ready to Submit', 'Submitted', 'Cancelled'];
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function money(n){ var v = Number(n)||0; return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function chipClass(s){ return 'chip ' + String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
+window.chipClass = chipClass;
 
 function renderPills() {
   var box = document.getElementById('pills');
@@ -294,12 +294,15 @@ function renderView(load) {
   }).join('') || '<div class="muted">No stops</div>';
   var v = document.getElementById('tms-slideout-body');
   if (!v) return;
+  var issue = load.exception_reason
+    ? '<span class="chip issue">⚠ ' + esc(load.exception_reason) + '</span>' : '';
   v.innerHTML =
     '<div class="vhead">'
     + '<div class="vhead-top"><span class="vlink" id="v-close">&times;</span><span class="vtag">TMS LOAD</span></div>'
     + '<div class="vtitle">' + esc(load.load_number || '') + ' · ' + esc(load.customer_name || '') + '</div>'
     + '<div class="vsub">' + esc(lane) + '</div>'
     + '<div id="v-stepper"></div>'
+    + (issue ? '<div class="vactions" style="margin-top:8px">' + issue + '</div>' : '')
     + '<div class="vactions" id="v-actions"></div>'
     + '</div>'
     + '<div class="vcards">'
@@ -319,7 +322,7 @@ function renderView(load) {
   if (close) close.addEventListener('click', closeSlideout);
 }
 
-var TMS_STATUSES = ['Draft', 'Booked', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Submitted'];
+var TMS_STATUSES = ['Draft', 'Available', 'Covered', 'Dispatched', 'In Transit', 'Delivered', 'POD Received', 'Ready to Submit', 'Submitted'];
 
 function renderStepper(load) {
   var el = document.getElementById('v-stepper');
@@ -328,12 +331,12 @@ function renderStepper(load) {
     el.innerHTML = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips"><span class="chip cancelled">Cancelled</span></div>';
     return;
   }
-  var cur = TMS_STATUSES.indexOf(load.status || 'Booked');
+  var cur = TMS_STATUSES.indexOf(load.status || 'Draft');
   if (cur < 0) cur = 1;
   var html = '<div class="vlabel" style="color:#8b97ad">LIFECYCLE</div><div class="chips">';
   TMS_STATUSES.forEach(function(s, i){
     var cls = 'chip', click = '';
-    if (s === 'Submitted') { cls += ' locked'; }
+    if (['Ready to Submit','Submitted'].indexOf(s) !== -1) { cls += ' locked'; }
     else if (i < cur) { cls += ' done'; click = ' data-status="' + s + '"'; }
     else if (i === cur) { cls += ' current'; }
     else { cls += ' upcoming'; click = ' data-status="' + s + '"'; }
@@ -507,6 +510,7 @@ window.changeStatus = changeStatus;
 window.onRowCheck = onRowCheck; window.toggleBulkBar = toggleBulkBar;
 window.bulkApply = bulkApply; window.bulkCancel = bulkCancel;
 window.canCancel = canCancel; window.cancelLoad = cancelLoad;
+window.STATUSES = STATUSES; window.TMS_STATUSES = TMS_STATUSES;
 </script>
 </body>
 </html>

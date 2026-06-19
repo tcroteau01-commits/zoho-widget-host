@@ -50,6 +50,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-item.voided > span { text-decoration: line-through; opacity: .55; }
 .void-tag { text-decoration: none; display:inline-block; margin-left:6px; padding:1px 6px;
   border-radius: 10px; background:#7a1f1f; color:#fff; font-size:11px; opacity:1; }
+#status-stepper { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:11px; font-weight:700; }
+.step { padding:6px 10px; border-radius:14px; background:#fff; border:1px solid #d8d8d8; color:#666; }
+.step.settable { cursor:pointer; }
+.step.current { background:#e8a020; color:#fff; border-color:#e8a020; }
+.step.locked { background:#f5f5f5; color:#aaa; border-color:#eee; }
+.step-sep { color:#ccc; }
 
 @media (max-width: 640px) {
   html, body { overflow-x: hidden; }
@@ -92,6 +98,17 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <div id="edit-mode">
 
+  <div class="card" id="stepper-card" style="padding:14px 18px">
+    <div id="status-stepper"></div>
+    <label style="font-size:12px;color:#c62828;display:inline-flex;gap:6px;margin-top:8px">
+      <input type="checkbox" id="f-exception-toggle"> ⚠ Flag an issue
+    </label>
+    <input id="f-exception-reason" class="hidden" placeholder="Issue reason (e.g. late delivery)"
+           style="margin-top:6px;border:1px solid #e0b4b4;border-radius:8px;padding:8px 10px;font-size:12px;width:100%">
+  </div>
+
+  <input type="hidden" id="f-status" value="Draft">
+
   <div class="card">
     <h3>Template</h3>
     <div class="field">
@@ -118,26 +135,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <option value="Quick Pay"></option>
         </datalist>
       </div>
+      <div class="field" style="grid-column:1/-1"><div id="credit-callout"></div></div>
+      <input type="hidden" id="f-credit-over-limit" value="">
     </div>
-  </div>
-
-  <div class="card">
-    <h3>Carrier (Carrier Leg)</h3>
-    <div class="grid">
-      <div class="field"><label>Carrier</label><select id="f-carrier_id"><option value="">— Select —</option></select></div>
-      <div class="field"><label>Carrier MC</label><input id="f-carrier_mc" readonly title="Auto-filled from the selected carrier"></div>
-      <div class="field"><label>Carrier Pay</label><input id="f-carrier_pay" type="number" step="0.01"></div>
-      <div class="field" style="grid-column:1/-1"><span class="muted">Leave blank to save as a draft and assign a carrier later.</span></div>
-      <div class="field"><label>Status</label>
-        <select id="f-status">
-          <option>Draft</option><option>Booked</option><option>Covered</option>
-          <option>Dispatched</option><option>In Transit</option>
-          <option>Delivered</option><option>POD Received</option>
-        </select>
-      </div>
-    </div>
-    <div id="vetting-badge"></div>
-    <div class="margin-box"><span class="lbl">Margin</span><span id="margin-display">$0</span></div>
   </div>
 
   <div class="card">
@@ -145,7 +145,16 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div class="grid three">
       <div class="field"><label>Origin</label><input id="f-origin"></div>
       <div class="field"><label>Destination</label><input id="f-destination"></div>
-      <div class="field"><label>Equipment</label><input id="f-equipment"></div>
+      <div class="field"><label>Equipment</label>
+        <select id="f-equipment">
+          <option value="">— Select —</option>
+          <option>Dry Van</option><option>Reefer</option><option>Flatbed</option>
+          <option>Step Deck</option><option>Hotshot</option><option>Box Truck</option>
+          <option>Sprinter/Cargo Van</option><option>Power Only</option><option>Conestoga</option>
+          <option>RGN/Lowboy</option><option>Tanker</option><option>Dry Bulk</option>
+          <option>Auto Carrier</option><option>Other</option>
+        </select>
+      </div>
       <div class="field"><label>Commodity</label><input id="f-commodity"></div>
       <div class="field"><label>Weight</label><input id="f-weight" type="number"></div>
       <div class="field"><label>Piece / Pallet Count</label><input id="f-piece_count" type="number"></div>
@@ -164,6 +173,22 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <button class="btn small" id="add-pickup">+ Pickup</button>
       <button class="btn small" id="add-delivery">+ Delivery</button>
     </div>
+  </div>
+
+  <div class="card">
+    <h3>Carrier (Carrier Leg)</h3>
+    <div class="grid">
+      <div class="field"><label>Carrier</label><select id="f-carrier_id"><option value="">— Select —</option></select></div>
+      <div class="field"><label>Carrier Pay</label>
+        <div style="display:flex;align-items:center;border:1px solid #d8d8d8;border-radius:8px;padding:0 10px">
+          <span style="color:#888">$</span>
+          <input id="f-carrier_pay" type="number" step="0.01" style="border:none;outline:none;flex:1;padding:10px 6px">
+        </div>
+      </div>
+      <div class="field" style="grid-column:1/-1"><span class="muted">Leave blank to save as a draft and assign a carrier later.</span></div>
+    </div>
+    <div id="vetting-badge"></div>
+    <div class="margin-box"><span class="lbl">Margin</span><span id="margin-display">$0</span></div>
   </div>
 
   <div class="card hidden" id="docs-card">
@@ -212,8 +237,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <span class="errline" id="form-error"></span>
     <span class="okline" id="form-ok"></span>
     <button class="btn" id="save-template-btn">Save as Template</button>
-    <button class="btn" id="save-draft-btn">Save as Draft</button>
-    <button class="btn primary" id="book-load-btn">Book Load</button>
+    <button class="btn" id="duplicate-btn">Duplicate…</button>
+    <button class="btn hidden" id="save-draft-btn">Save as Draft</button>
+    <button class="btn primary" id="save-btn">Save</button>
   </div>
 
   </div><!-- /#edit-mode -->
@@ -231,11 +257,89 @@ function val(id){ var el = document.getElementById(id); return el ? el.value : '
 function setVal(id, v){ var el = document.getElementById(id); if (el) el.value = (v==null?'':v); }
 function money(n){ var v = Number(n)||0; return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
 
-function recomputeMargin() {
-  var m = (Number(val('f-invoice_amount'))||0) - (Number(val('f-carrier_pay'))||0);
-  var el = document.getElementById('margin-display');
-  if (el) { el.textContent = money(m); el.style.color = m >= 0 ? '#2e7d32' : '#c62828'; }
+function renderCreditCallout(credit, invoiceAmount) {
+  var box = document.getElementById('credit-callout');
+  if (!box || !credit) { if (box) box.innerHTML = ''; return; }
+  var limit = Number(credit.limit) || 0;
+  var used = Number(credit.used) || 0;
+  var addl = Number(invoiceAmount) || 0;
+  var projected = used + addl;
+  var avail = limit - used;
+  var pct = limit > 0 ? Math.round(projected / limit * 100) : 0;
+  var over = limit > 0 && projected > limit;
+  setVal('f-credit-over-limit', over ? '1' : '');
+  var color = over ? '#c62828' : (pct >= 80 ? '#b8860b' : '#2e7d32');
+  var bg = over ? '#fdecea' : (pct >= 80 ? '#fff8e8' : '#eef7ee');
+  box.innerHTML =
+    '<div style="background:' + bg + ';border:1px solid ' + color + '33;border-radius:8px;padding:9px 11px;font-size:12px">' +
+    '<b>Credit:</b> ' + money(avail) + ' available of ' + money(limit) +
+    ' · <span style="color:' + color + ';font-weight:700">' + pct + '% used' + (over ? ' - OVER LIMIT' : '') + '</span>' +
+    (over ? '<div style="color:#c62828;margin-top:4px">This load puts the customer over their approved limit. You can still book it; OperFi will review.</div>' : '') +
+    '</div>';
 }
+window.renderCreditCallout = renderCreditCallout;
+
+// /funding-credit returns {Buy_Limit, Sum_Amount_GL_3002, Remaining_Credit, Percent_Used, available}
+// Parse the formatted-string server keys into plain numbers for renderCreditCallout.
+function _parseCreditResponse(c) {
+  function stripFmt(s) { return parseFloat(String(s || '').replace(/[,$%]/g, '')) || 0; }
+  return {
+    limit: stripFmt(c.Buy_Limit),
+    used: stripFmt(c.Sum_Amount_GL_3002),
+    available: stripFmt(c.Remaining_Credit)
+  };
+}
+
+function fetchCredit() {
+  var cid = val('f-customer_id');
+  if (!cid || !brokerEmail) { renderCreditCallout(null); return; }
+  fetch(BROKER_API_BASE + '/funding-credit?email=' + encodeURIComponent(brokerEmail) + '&customer_id=' + encodeURIComponent(cid))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(c){ if (c && c.available !== false) renderCreditCallout(_parseCreditResponse(c), val('f-invoice_amount')); else renderCreditCallout(null); });
+}
+
+function recomputeMargin() {
+  var inv = Number(val('f-invoice_amount'))||0;
+  var m = inv - (Number(val('f-carrier_pay'))||0);
+  var el = document.getElementById('margin-display');
+  if (el) {
+    var pct = inv > 0 ? ' (' + (m / inv * 100).toFixed(1) + '%)' : '';
+    el.textContent = money(m) + pct;
+    el.style.color = m >= 0 ? '#2e7d32' : '#c62828';
+  }
+}
+
+var TMS_STEPS = ['Draft','Available','Covered','Dispatched','In Transit','Delivered'];
+var TMS_AUTO_STEPS = ['POD Received','Ready to Submit','Submitted'];
+
+function renderStepper(current) {
+  var box = document.getElementById('status-stepper');
+  if (!box) return;
+  current = current || val('f-status') || 'Draft';
+  var all = TMS_STEPS.concat(TMS_AUTO_STEPS);
+  box.innerHTML = all.map(function(s){
+    var locked = TMS_AUTO_STEPS.indexOf(s) !== -1;
+    var cls = 'step' + (s === current ? ' current' : '') + (locked ? ' locked' : ' settable');
+    var lock = locked ? '🔒 ' : '';
+    return '<span class="' + cls + '" data-status="' + esc(s) + '">' + lock + esc(s) + '</span>';
+  }).join('<span class="step-sep">›</span>');
+  box.querySelectorAll('.step.settable').forEach(function(el){
+    el.addEventListener('click', function(){ setLoadStatus(el.getAttribute('data-status')); });
+  });
+}
+
+function setLoadStatus(status) {
+  setVal('f-status', status);
+  renderStepper(status);
+  refreshSaveButtons();
+  if (loadId && brokerEmail) {
+    fetch(BROKER_API_BASE + '/tms-status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: brokerEmail, load_id: loadId, status: status }) });
+  }
+}
+window.renderStepper = renderStepper; window.setLoadStatus = setLoadStatus;
+window.TMS_STEPS = TMS_STEPS; window.TMS_AUTO_STEPS = TMS_AUTO_STEPS;
 
 function _acquireTarget() {
   var out = { load_id: '', mode: 'new' };
@@ -414,6 +518,8 @@ function collectForm() {
     commodity: val('f-commodity'), weight: val('f-weight'), piece_count: val('f-piece_count'),
     temperature: val('f-temperature'), bol_number: val('f-bol_number'), pro_number: val('f-pro_number'),
     special_instructions: val('f-special_instructions'), accessorials: val('f-accessorials'),
+    credit_over_limit: val('f-credit-over-limit') ? true : false,
+    exception_reason: val('f-exception-reason'),
     vetting: _vettingFromCarrier(),
     stops: collectStops()
   };
@@ -433,7 +539,7 @@ function saveLoad(statusOverride) {
   var body = collectForm();
   if (statusOverride) body.status = statusOverride;
   if (!body.customer_id) { showError('Select an approved customer before saving.'); return Promise.resolve(); }
-  var btns = ['save-draft-btn', 'book-load-btn'].map(function(id){ return document.getElementById(id); });
+  var btns = ['save-draft-btn', 'save-btn'].map(function(id){ return document.getElementById(id); });
   btns.forEach(function(b){ if (b) b.disabled = true; });
   return fetch(BROKER_API_BASE + '/tms-load', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -450,17 +556,37 @@ function saveLoad(statusOverride) {
     .catch(function(){ btns.forEach(function(b){ if (b) b.disabled = false; }); showError('Network error saving load.'); });
 }
 
-function bookLoad() {
-  if (!val('f-carrier_id')) {
-    return saveLoad('Draft').then(function() {
-      showError('Assign a carrier to book this load — saved as draft.');
+
+function draftEligible(status) { return (status || 'Draft') === 'Draft' || status === 'Available'; }
+
+function refreshSaveButtons() {
+  var b = document.getElementById('save-draft-btn');
+  if (b) b.classList.toggle('hidden', !draftEligible(val('f-status')));
+}
+
+function saveAndReturn() {
+  return saveLoad().then(function(){
+    if (!document.getElementById('form-error').textContent) {
+      try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}
+    }
+  });
+}
+
+function duplicateLoad(n) {
+  n = Math.max(1, Number(n) || 1);
+  var base = collectForm();
+  base.id = ''; base.status = 'Draft'; base.carrier_id = ''; base.carrier_pay = '';
+  var chain = Promise.resolve();
+  for (var i = 0; i < n; i++) {
+    chain = chain.then(function(){
+      return fetch(BROKER_API_BASE + '/tms-load', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(base) }).then(function(r){ return r.json(); });
     });
   }
-  var s = val('f-status');
-  if (!s || s === 'Draft') s = 'Booked';
-  return saveLoad(s);
+  return chain.then(function(){ showOk(n + ' draft' + (n===1?'':'s') + ' created.'); });
 }
-window.bookLoad = bookLoad;
+window.draftEligible = draftEligible; window.refreshSaveButtons = refreshSaveButtons;
+window.saveAndReturn = saveAndReturn; window.duplicateLoad = duplicateLoad;
 
 function saveTemplate() {
   if (!val('f-customer_id')) { showError('Pick a customer first to save a template.'); return; }
@@ -527,6 +653,9 @@ function hydrate(load) {
   refreshDocCard();
   window._currentLoad = load;
   renderSubmitPanel(load, window._loadedDocs || []);
+  renderStepper(val('f-status'));
+  fetchCredit();
+  refreshSaveButtons();
 }
 
 function showLoading(on) {
@@ -598,14 +727,17 @@ window.addEventListener('load', function(){
   loadId = t.load_id;
   if (loadId) { document.getElementById('page-title').textContent = 'Edit Load'; showLoading(true); }
   document.getElementById('f-invoice_amount').addEventListener('input', recomputeMargin);
+  document.getElementById('f-invoice_amount').addEventListener('input', fetchCredit);
   document.getElementById('f-carrier_pay').addEventListener('input', recomputeMargin);
+  document.getElementById('f-customer_id').addEventListener('change', fetchCredit);
   document.getElementById('f-carrier_id').addEventListener('change', onCarrierChange);
   document.getElementById('add-pickup').addEventListener('click', function(){ addStop('Pickup'); });
   document.getElementById('add-delivery').addEventListener('click', function(){ addStop('Delivery'); });
-  var sd = document.getElementById('save-draft-btn');
-  if (sd) sd.onclick = function(){ saveLoad('Draft'); };
-  var bl = document.getElementById('book-load-btn');
-  if (bl) bl.onclick = function(){ bookLoad(); };
+  document.getElementById('save-btn').onclick = saveAndReturn;
+  document.getElementById('save-draft-btn').onclick = function(){ saveLoad('Draft'); };
+  document.getElementById('duplicate-btn').onclick = function(){
+    var n = window.prompt('How many copies (as drafts)?', '1'); if (n) duplicateLoad(n);
+  };
   document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
   document.getElementById('back-btn').addEventListener('click', function(){
     try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}
@@ -613,6 +745,11 @@ window.addEventListener('load', function(){
   wireDocButtons();
   wireUploadControls();
   refreshDocCard();
+  renderStepper(val('f-status'));
+  var exTog = document.getElementById('f-exception-toggle');
+  if (exTog) exTog.addEventListener('change', function(){
+    document.getElementById('f-exception-reason').classList.toggle('hidden', !exTog.checked);
+  });
   boot();
 });
 

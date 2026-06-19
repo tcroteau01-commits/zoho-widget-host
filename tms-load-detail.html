@@ -1019,7 +1019,11 @@ function _wireZone(side) {
     }
   }
 }
-function wireZoneUploads() { _wireZone('customer'); _wireZone('carrier'); }
+function wireZoneUploads() {
+  _zoneStaged = { customer: null, carrier: null };
+  _wireZone('customer');
+  _wireZone('carrier');
+}
 
 function renderSubmitPanel(load, docs) {
   var panel = document.getElementById('submit-panel');

@@ -237,6 +237,65 @@ function pendingDocs(documents) {
   }).filter(function (d) { return isPendingDoc(d.status); });
 }
 
+// Document checklist — SAME rules as the client doc portal + underwriting tool, so Sales sees
+// the full expected list with the prospect's uploaded Document records matched in by type.
+var BASE_DOCS = [
+  { key:'factoring_agreement', label:'OperFi Factoring Agreement',  type:'Signed Agreement' },
+  { key:'noa',                 label:'OperFi Notice of Assignment', type:'NOA' },
+  { key:'operating_authority', label:'Operating Authority',         type:'Operating Authority' },
+  { key:'insurance',           label:'Insurance Certificate',       type:'Insurance Certificate' },
+  { key:'voided_check',        label:'Voided Check (printed company name)', type:'Voided Check' },
+  { key:'drivers_license',     label:"Driver's License (all owners)", type:'Drivers License' },
+  { key:'w9',                  label:'W-9',                          type:'W-9' }
+];
+function requiredDocs(application) {
+  application = application || {};
+  var ft = String(application.Business_Formation_Type || application.formationType || '').toLowerCase();
+  var vet = String(application.Veteran || application.Veteran_Status || application.veteran || '').toLowerCase();
+  var list = BASE_DOCS.slice();
+  if (/sole|proprietor|\bdba\b/.test(ft)) {
+    list.push({ key:'utility_bill', label:'Utility Bill (current address)', type:'Utility Bill' });
+    list.push({ key:'ssn_card',     label:'Social Security Card',           type:'Social Security Card' });
+  } else if (/llc|corp|partnership/.test(ft)) {
+    list.push({ key:'formation', label:'Formation Documents', type:'Articles of Formation' });
+  }
+  if (vet === 'yes' || vet === 'true' || vet === 'veteran') {
+    list.push({ key:'proof_of_service', label:'Proof of Service', type:'Proof of Service' });
+  }
+  return list;
+}
+function docType(d){ return Array.isArray(d) ? d[0] : (d && (d.Document_Type || d.type)); }
+function docStatus(d){ return Array.isArray(d) ? d[2] : (d && (d.Status || d.status)); }
+function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
+function isUploadedStatus(s){ return !isPendingDoc(s); }
+function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'verified') return 3; if (isUploadedStatus(s)) return 2; if (s === 'rejected') return 1; return 0; }
+function reconcileDocs(required, documents) {
+  required = required || []; documents = documents || [];
+  var byType = {};
+  documents.forEach(function (d) {
+    var t = normType(docType(d)), st = docStatus(d) || '';
+    if (!byType[t] || statusRank(st) > statusRank(byType[t])) byType[t] = st;
+  });
+  var checklist = required.map(function (item) {
+    var st = byType[normType(item.type)];
+    return {
+      key:item.key, label:item.label, type:item.type,
+      status: st || 'Needed',
+      uploaded: !!st && isUploadedStatus(st),
+      verified: !!st && /verified/i.test(String(st)),
+      rejected: !!st && /rejected/i.test(String(st))
+    };
+  });
+  var reqTypes = {}; required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
+  var extras = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && isUploadedStatus(docStatus(d)); })
+    .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received' }; });
+  return {
+    checklist: checklist, extras: extras,
+    uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
+    total: checklist.length
+  };
+}
+
 // Read-only estimate for setting client expectations (NOT a confirmed offer).
 function estTerms(application) {
   application = application || {};
@@ -272,7 +331,7 @@ function buildDocRequestPayload(appId, docType) {
 
 var OFS = {
   deriveStage: deriveStage, statusPill: statusPill, computeKPIs: computeKPIs,
-  pendingDocs: pendingDocs, isPendingDoc: isPendingDoc, estTerms: estTerms,
+  pendingDocs: pendingDocs, isPendingDoc: isPendingDoc, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, estTerms: estTerms,
   filterMyPipeline: filterMyPipeline, buildNotePayload: buildNotePayload,
   buildDocRequestPayload: buildDocRequestPayload,
   SALES_ATTR: SALES_ATTR, SALES_NOTES_FIELD: SALES_NOTES_FIELD, APPLICATION_LOOKUP: APPLICATION_LOOKUP, STEPS: STEPS
@@ -415,7 +474,6 @@ function selectApp(i) {
 
 function renderDetail(app, d) {
   var stage = deriveStage(app);
-  var pend = pendingDocs(d.documents);
   var terms = estTerms(app);
   var statePill = stage.terminal
     ? (stage.status === 'Declined' ? '<span class="decision-state-pill bad">✕ Declined</span>' : '<span class="decision-state-pill">Abandoned</span>')
@@ -435,13 +493,19 @@ function renderDetail(app, d) {
     return '<div class="step ' + cls + '"><div class="node">' + node + '</div><div class="slabel">' + esc(label) + '</div></div>';
   }).join('');
 
-  var pendHtml = pend.length
-    ? pend.map(function (x) {
-        return '<div class="chk"><span class="mark bad">○</span><div class="chk-body"><div class="lbl">' + esc(x.type) + '</div>' +
-          (x.status ? '<div class="det">' + esc(x.status) + '</div>' : '') + '</div>' +
-          '<button class="btn ghost sm js-nudge" data-doc="' + esc(x.type) + '">Nudge client</button></div>';
-      }).join('')
-    : '<div class="muted" style="font-size:12.5px">Nothing outstanding — Underwriting has what it needs.</div>';
+  // Full document checklist (same rules as the doc portal + underwriting tool): every required
+  // doc with its status; uploaded ones show Received/Verified, still-needed ones keep a Nudge.
+  var docRec = reconcileDocs(requiredDocs(app), d.documents);
+  var docsHtml = docRec.checklist.map(function (c) {
+    var det = c.verified ? 'Verified' : (c.uploaded ? 'Received' : (c.rejected ? 'Rejected — re-upload' : 'Needed'));
+    return '<div class="chk"><span class="mark ' + (c.uploaded ? 'ok' : 'bad') + '">' + (c.uploaded ? '✓' : '○') + '</span>' +
+      '<div class="chk-body"><div class="lbl">' + esc(c.label) + '</div><div class="det">' + det + '</div></div>' +
+      (c.uploaded ? '' : '<button class="btn ghost sm js-nudge" data-doc="' + esc(c.type) + '">Nudge client</button>') + '</div>';
+  }).join('') +
+  docRec.extras.map(function (e) {
+    return '<div class="chk"><span class="mark ok">✓</span><div class="chk-body"><div class="lbl">' + esc(e.label) +
+      '</div><div class="det">' + esc(e.status) + ' · additional</div></div></div>';
+  }).join('');
 
   var uwNote = d.uwNotes
     ? '<div class="note uw"><div class="who">Underwriting <span class="role">UW</span></div><div class="txt">' + esc(d.uwNotes) + '</div>' + (d.uwWhen ? '<div class="when">' + esc(d.uwWhen) + '</div>' : '') + '</div>'
@@ -458,8 +522,8 @@ function renderDetail(app, d) {
 
     '<div class="card"><div class="card-title">Where it stands</div><div class="stepper">' + stepsHtml + '</div></div>' +
 
-    '<div class="grid2"><div class="card"><div class="card-title">What Underwriting is waiting on <span class="count">' + pend.length + '</span></div>' + pendHtml +
-      '<div class="hint">Underwriting requests documents from the prospect. Use “Nudge client” to send a reminder — Sales can’t mark docs received.</div></div>' +
+    '<div class="grid2"><div class="card"><div class="card-title">Documents <span class="count">' + docRec.uploadedCount + ' / ' + docRec.total + ' received</span></div>' + docsHtml +
+      '<div class="hint">Documents the prospect uploads appear here as Received. Use “Nudge client” on a still-needed item to send a reminder — Sales can’t mark docs received.</div></div>' +
 
       '<div class="card"><div class="card-title">Estimated Terms <span class="count">from rate engine</span></div><div class="rate-box">' +
         '<div class="rate-item"><div class="rv">' + esc(terms.rate) + '</div><div class="rl">Est. Rate</div></div>' +

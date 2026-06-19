@@ -238,3 +238,14 @@ test('saveTemplate posts the full load shape including stops', async () => {
   assert.equal(post.body.special_instructions, 'special_instructions');
   assert.ok(Array.isArray(post.body.stops), 'stops array sent');
 });
+
+test('updateTemplate PATCHes the applied template with the full shape', async () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.applyTemplate({ id: 't1', customer_id: 'cu1', origin: 'Dallas', stops: [] });
+  window.document.getElementById('f-equipment') && (window.document.getElementById('f-equipment').value = 'Flatbed');
+  await window.updateTemplate();
+  const post = posts.find(p => /\/tms-template\/t1$/.test(p.url));
+  assert.ok(post, 'PATCHed /tms-template/t1');
+  assert.equal(post.body.equipment, 'Flatbed');
+});

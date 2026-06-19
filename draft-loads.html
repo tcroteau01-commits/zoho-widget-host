@@ -1183,7 +1183,7 @@ function slotHtml(l, slot){
   var files=(__pw.files[l.id]&&__pw.files[l.id][slot])||[];
   if (state==='server' && !files.length){
     return '<div class="filled"><span class="pdf">PDF</span><span class="nm">'+slot+' packet on file</span> ✓'+
-           ' <span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'"></span></div>'+
+           ' <span class="slot-remove" title="Remove" data-load="'+esc(l.id)+'" data-slot="'+slot+'">✕</span></div>'+
            '<div class="auto" style="color:var(--green)">✓ already attached</div>';
   }
   if ((state==='pending' || state==='uploaded') && files.length){
@@ -1399,7 +1399,7 @@ function commitPaperwork(){
   return Promise.all(jobs).then(function(results){
     var failed=results.filter(function(r){ return !r.ok; }).length;
     renderPaperwork(__pw.loads);
-    if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed, retry') : 'All packets attached'); }
+    if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed — still here, retry') : 'All packets attached'); }
     return results;
   }).then(function(results){
     __pw.committing=false;
@@ -1514,7 +1514,7 @@ function renderPaperworkProgress(){
 function exitPaperwork(after){
   return commitPaperwork().then(function(results){
     var failed=(results||[]).filter(function(r){ return !r.ok; }).length;
-    if(failed){ showToast(failed+' upload'+(failed===1?'':'s')+' failed — still here, retry'); return; }
+    if(failed){ return; }
     if(typeof after==='function') after();
   });
 }

@@ -1199,3 +1199,15 @@ test('exitPaperwork uploads placed files then runs the after-callback', async ()
   assert.equal(ran, true, 'after-callback ran on success');
   assert.equal(window.__pw.slots['900'].customer, 'uploaded');
 });
+
+test('exitPaperwork aborts navigation when an upload fails', async () => {
+  const { window } = makeWidget();
+  window.openPaperwork([{ id: '900', ref: 'R', invoice: 'I' }]);
+  window.attachFilesToSlot('900', 'customer', [fakeFile('R.pdf')]);
+  window.mergeFilesToPDF = () => Promise.resolve(new window.Blob(['x']));
+  window._uploadDoc = () => Promise.resolve(false);   // upload fails
+  let ran = false;
+  await window.exitPaperwork(() => { ran = true; });
+  assert.equal(ran, false, 'after-callback must NOT run when upload fails');
+  assert.equal(window.__pw.slots['900'].customer, 'pending', 'slot stays pending on failed upload');
+});

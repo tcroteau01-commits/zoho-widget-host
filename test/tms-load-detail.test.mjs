@@ -200,3 +200,24 @@ test('saveLoad with explicit Draft status posts status Draft', async () => {
   await window.saveLoad('Draft');
   assert.equal(posts.at(-1).body.status, 'Draft');
 });
+
+test('saveTemplate posts the full load shape including stops', async () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.prompt = () => 'Lane A';
+  // f-customer_id is a SELECT -- populate customers so the option exists, then select it
+  window.populateCustomers(CUSTOMERS.customers);
+  window.document.getElementById('f-customer_id').value = 'cu1';
+  // text fields: set by id suffix; number fields (weight, piece_count, invoice_amount) need numeric values
+  ['f-origin','f-destination','f-equipment','f-commodity','f-temperature','f-accessorials','f-special_instructions','f-customer_payment_terms']
+    .forEach(function(id){ var el = window.document.getElementById(id); if (el) el.value = id.replace('f-',''); });
+  var wEl = window.document.getElementById('f-weight'); if (wEl) wEl.value = '4500';
+  window.addStop && window.addStop();   // create a stop row if the helper exists
+  await window.saveTemplate();
+  const post = posts.find(p => /\/tms-template$/.test(p.url));
+  assert.ok(post, 'posted to /tms-template');
+  assert.equal(post.body.template_name, 'Lane A');
+  assert.equal(post.body.weight, '4500');
+  assert.equal(post.body.special_instructions, 'special_instructions');
+  assert.ok(Array.isArray(post.body.stops), 'stops array sent');
+});

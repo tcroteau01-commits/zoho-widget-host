@@ -486,10 +486,15 @@ function renderStatus(data, isDemo) {
     '<div class="card"><div class="card-title">Need a hand?</div>' + repHtml + '</div>';
 
   Array.prototype.forEach.call(el('docList').querySelectorAll('.js-up'), function (b) {
+    var key = b.getAttribute('data-key'), type = b.getAttribute('data-type');
+    var input = el('f-' + key);
+    // Click Upload → open the file picker. Choosing a file uploads it immediately (no second click).
     b.addEventListener('click', function () {
-      var input = el('f-' + b.getAttribute('data-key'));
-      if (!input || !input.files || !input.files.length) { input && input.click(); return; }
-      uploadDoc(b.getAttribute('data-type'), input.files[0], b);
+      if (input && input.files && input.files.length) { uploadDoc(type, input.files[0], b); return; }
+      if (input) input.click();
+    });
+    if (input) input.addEventListener('change', function () {
+      if (input.files && input.files.length) uploadDoc(type, input.files[0], b);
     });
   });
 }

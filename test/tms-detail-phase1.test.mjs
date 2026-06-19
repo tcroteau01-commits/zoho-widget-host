@@ -58,3 +58,27 @@ test('clicking a settable step updates f-status', () => {
   dispatched.click();
   assert.equal(w.document.getElementById('f-status').value, 'Dispatched');
 });
+
+test('equipment is a dropdown with the standard types', () => {
+  const w = makeWidget();
+  const eq = w.document.getElementById('f-equipment');
+  assert.equal(eq.tagName, 'SELECT');
+  const opts = [...eq.options].map(o => o.value);
+  ['Dry Van','Reefer','Flatbed','Step Deck','Hotshot','Box Truck','Sprinter/Cargo Van','Power Only','Conestoga','RGN/Lowboy','Tanker','Dry Bulk','Auto Carrier','Other']
+    .forEach(t => assert.ok(opts.includes(t), `missing ${t}`));
+});
+
+test('standalone carrier MC field is removed', () => {
+  const w = makeWidget();
+  assert.equal(w.document.getElementById('f-carrier_mc'), null);
+});
+
+test('margin shows dollars and percent', () => {
+  const w = makeWidget();
+  w.document.getElementById('f-invoice_amount').value = '1000';
+  w.document.getElementById('f-carrier_pay').value = '750';
+  w.recomputeMargin();
+  const txt = w.document.getElementById('margin-display').textContent;
+  assert.match(txt, /\$250/);
+  assert.match(txt, /25(\.0)?%/);
+});

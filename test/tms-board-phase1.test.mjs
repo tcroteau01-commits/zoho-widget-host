@@ -26,3 +26,20 @@ test('bulk-status select offers the settable statuses and not Booked', () => {
   assert.ok(opts.includes('Available'));
   assert.ok(!opts.includes('Booked'));
 });
+
+test('chipClass maps the new statuses to css-safe classes', () => {
+  const w = board();
+  assert.equal(w.chipClass('Available'), 'chip available');
+  assert.equal(w.chipClass('Ready to Submit'), 'chip readytosubmit');
+});
+
+test('stylesheet defines the new chip classes and drops the blue/purple rainbow', () => {
+  const w = board();
+  const css = [...w.document.querySelectorAll('style')].map(s => s.textContent).join('\n');
+  assert.match(css, /\.chip\.available/);
+  assert.match(css, /\.chip\.readytosubmit/);
+  assert.match(css, /\.chip\.issue/);
+  // covered should now be amber, not blue #1565c0
+  assert.doesNotMatch(css, /#1565c0/);
+  assert.doesNotMatch(css, /#5e35b1/);
+});

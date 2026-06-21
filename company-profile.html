@@ -1200,7 +1200,7 @@ function renderLogoSection(logoUri) {
   if (!sec) return;
   var img = logoUri
     ? '<img src="' + logoUri + '" alt="Company logo" style="max-height:60px;max-width:240px;">'
-    : '<div class="muted">No logo on file. It appears on your generated documents.</div>';
+    : '<div class="muted" style="color:#6B7280;">No logo on file. It appears on your generated documents.</div>';
   var controls = '';
   if (canManage) {
     controls =
@@ -1208,7 +1208,7 @@ function renderLogoSection(logoUri) {
       '<input type="file" id="logo-file" accept="image/png,image/jpeg" style="display:none;">' +
       '<button class="modal-btn" data-act="upload-logo">' + (logoUri ? 'Replace logo' : 'Upload logo') + '</button>' +
       (logoUri ? ' <button class="modal-btn ghost" data-act="remove-logo">Remove</button>' : '') +
-      '<div id="logo-msg" class="muted" style="margin-top:6px;"></div>' +
+      '<div id="logo-msg" class="muted" style="margin-top:6px;color:#6B7280;"></div>' +
       '</div>';
   }
   sec.innerHTML = '<h3>Company Logo</h3>' + img + controls;
@@ -1223,7 +1223,7 @@ function renderLogoSection(logoUri) {
 
 function _logoMsg(text, kind) {
   var m = document.getElementById('logo-msg');
-  if (m) { m.textContent = text || ''; m.className = (kind === 'error') ? 'err' : 'muted'; }
+  if (m) { m.textContent = text || ''; m.className = (kind === 'error') ? 'err' : 'muted'; m.style.color = (kind === 'error') ? '#c0392b' : '#6B7280'; }
 }
 
 function uploadLogo(file) {

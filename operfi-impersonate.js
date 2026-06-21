@@ -1,5 +1,5 @@
 /* OperFi portal admin impersonation. Include once per logged-in widget:
-   <script src="https://tcroteau01-commits.github.io/zoho-widget-host/operfi-impersonate.js?v=1"></script>
+   <script src="https://app.operfi.com/operfi-impersonate.js?v=1"></script>
    For admins it renders a top admin bar with a client picker; the choice (a client
    contact email) is stored in localStorage and appended as ?impersonate= to every
    broker-API call by the fetch wrapper below. Non-admins are unaffected. */

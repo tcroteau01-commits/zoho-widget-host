@@ -557,7 +557,7 @@ function bindGlobalUI() {
     currentSearch = e.target.value.toLowerCase().trim();
     applyFilters();
   });
-  document.getElementById('btn-new').addEventListener('click', function() { navigateParent('#Page:Credit_Check_NEW'); });
+  document.getElementById('btn-new').addEventListener('click', function() { navigateParent('#Page:Credit_Check'); });
   document.getElementById('btn-export').addEventListener('click', exportCsv);
 
   // Panel close + keyboard
@@ -765,7 +765,7 @@ function renderList() {
       var action = btn.dataset.action;
       var recId = btn.dataset.recid;
       if (action === 'boost') navigateParent('#Form:Credit_Boost_Request' + (recId ? '?Company_Name_ID=' + encodeURIComponent(recId) : ''));
-      else if (action === 'resubmit') navigateParent('#Page:Credit_Check_NEW');
+      else if (action === 'resubmit') navigateParent('#Page:Credit_Check');
     });
   });
 }
@@ -1062,7 +1062,7 @@ function renderPanel() {
     navigateParent('#Form:Credit_Boost_Request' + (recId ? '?Company_Name_ID=' + encodeURIComponent(recId) : ''));
   });
   var rs = document.getElementById('p-resubmit');
-  if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check_NEW'); });
+  if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check'); });
 
   wireDecisionSection(r);
   fetchFraudCheck(r);

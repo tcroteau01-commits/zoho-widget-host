@@ -350,7 +350,7 @@ function bindGlobalUI() {
     applyFilters();
   });
   document.getElementById('btn-new').addEventListener('click', function() {
-    navigateParent('#Page:Onboarding_Submissions_New');
+    navigateParent('#Page:Carrier_Onboarding');
   });
   document.getElementById('btn-export').addEventListener('click', exportCsv);
 
@@ -524,7 +524,7 @@ function renderList() {
       e.stopPropagation();
       if (btn.classList.contains('disabled')) return;
       var action = btn.dataset.action;
-      if (action === 'invoice') navigateParent('#Page:Load_Details_NEW');
+      if (action === 'invoice') navigateParent('#Page:Load_Details');
     });
   });
 }
@@ -699,7 +699,7 @@ function renderPanel() {
   var inv = document.getElementById('p-invoice');
   if (inv && !inv.disabled) inv.addEventListener('click', function() {
     stashCarrierProfileTarget(r.ID, '');
-    navigateParent('#Page:Load_Details_NEW?Vendor_ID=' + encodeURIComponent(r.ID));
+    navigateParent('#Page:Load_Details?Vendor_ID=' + encodeURIComponent(r.ID));
   });
   var prof = document.getElementById('p-profile');
   if (prof) prof.addEventListener('click', function() {
@@ -709,7 +709,7 @@ function renderPanel() {
   var noa = document.getElementById('p-noa');
   if (noa) noa.addEventListener('click', function() {
     stashNoaTarget(r.ID);
-    navigateParent('#Page:NOA_Management_New?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
+    navigateParent('#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
   });
 }
 

@@ -1626,7 +1626,7 @@ function renderNoaCard(c) {
     // click handler so the button did nothing.
     var sp = new URLSearchParams(window.location.search);
     var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
-    var url = origin.replace(/\/$/, '') + '/#Page:NOA_Management_New?Vendor_ID=' + encodeURIComponent(vendorId);
+    var url = origin.replace(/\/$/, '') + '/#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(vendorId);
     try { window.top.location.href = url; return; } catch (e) {}
     try { window.parent.location.href = url; return; } catch (e) {}
     try { window.open(url, '_top'); } catch (e) {}

@@ -133,5 +133,5 @@ test('editDraftLoad stashes the draft id and navigates to the Load Details form'
   try { w.sessionStorage.removeItem('draftId'); } catch (e) {}
   w.editDraftLoad('900');
   assert.equal(w.sessionStorage.getItem('draftId'), '900');
-  assert.equal(w.__lastNav, 'https://brokerhub.operfi.com/#Page:Load_Details_NEW');
+  assert.equal(w.__lastNav, 'https://brokerhub.operfi.com/#Page:Load_Details');
 });

@@ -458,6 +458,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   </div>
 
+  <div id="logo-section" class="card" style="margin-top:18px;"></div>
+
   <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-16.1</div>
 </div>
 
@@ -585,6 +587,7 @@ var selectedRoles = [];
 var editingContactId = null;     // null = add mode; a contact ID = edit mode
 var selfContactId = '';          // the acting contact (can't delete yourself)
 var canManage = false;           // server-authoritative: Full Access client or impersonating admin
+var lastLogoUri = '';            // last logo_uri from /broker-account; re-used when canManage changes
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
@@ -684,8 +687,10 @@ function loadAccount() {
     return res.json();
   }).then(function(payload) {
     account = payload.account || null;
+    lastLogoUri = (payload && payload.logo_uri) ? payload.logo_uri : '';
     console.log('[CompanyProfile] account:', account);
     renderAccount();
+    renderLogoSection(lastLogoUri);
   }).catch(function(err) {
     console.error('[CompanyProfile] /broker-account failed', err);
     document.getElementById('company-body').innerHTML =
@@ -777,6 +782,7 @@ function loadUsers() {
       console.log('[CompanyProfile] users:', data.length);
       selfContactId = (res && res.self_contact_id) ? String(res.self_contact_id) : '';
       canManage = !!(res && res.can_manage);
+      renderLogoSection(lastLogoUri);
       allUsers = data.slice().sort(function(a, b) {
         return parseDate(b.Added_Time) - parseDate(a.Added_Time);
       });
@@ -1180,6 +1186,78 @@ function submitContact() {
   });
 }
 
+// ── Company Logo section ──────────────────────────────────────────────────
+function validateLogoFile(file) {
+  if (!file) return 'Choose a PNG or JPG file.';
+  var t = (file.type || '').toLowerCase();
+  if (t !== 'image/png' && t !== 'image/jpeg' && t !== 'image/jpg') return 'Logo must be a PNG or JPG image.';
+  if (file.size > 3 * 1024 * 1024) return 'Logo must be 3 MB or smaller.';
+  return null;
+}
+
+function renderLogoSection(logoUri) {
+  var sec = document.getElementById('logo-section');
+  if (!sec) return;
+  var img = logoUri
+    ? '<img src="' + logoUri + '" alt="Company logo" style="max-height:60px;max-width:240px;">'
+    : '<div class="muted">No logo on file. It appears on your generated documents.</div>';
+  var controls = '';
+  if (canManage) {
+    controls =
+      '<div style="margin-top:10px;">' +
+      '<input type="file" id="logo-file" accept="image/png,image/jpeg" style="display:none;">' +
+      '<button class="modal-btn" data-act="upload-logo">' + (logoUri ? 'Replace logo' : 'Upload logo') + '</button>' +
+      (logoUri ? ' <button class="modal-btn ghost" data-act="remove-logo">Remove</button>' : '') +
+      '<div id="logo-msg" class="muted" style="margin-top:6px;"></div>' +
+      '</div>';
+  }
+  sec.innerHTML = '<h3>Company Logo</h3>' + img + controls;
+  if (canManage) {
+    var fileInput = sec.querySelector('#logo-file');
+    sec.querySelector('[data-act="upload-logo"]').addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function () { if (fileInput.files[0]) uploadLogo(fileInput.files[0]); });
+    var rm = sec.querySelector('[data-act="remove-logo"]');
+    if (rm) rm.addEventListener('click', function () { if (confirm('Remove the company logo?')) removeLogo(); });
+  }
+}
+
+function _logoMsg(text, kind) {
+  var m = document.getElementById('logo-msg');
+  if (m) { m.textContent = text || ''; m.className = (kind === 'error') ? 'err' : 'muted'; }
+}
+
+function uploadLogo(file) {
+  var err = validateLogoFile(file);
+  if (err) { _logoMsg(err, 'error'); return Promise.resolve(); }
+  _logoMsg('Uploading…');
+  var fd = new FormData();
+  fd.append('email', brokerEmail);
+  fd.append('file', file);
+  return fetch(BROKER_API_BASE + '/broker-logo', { method: 'POST', body: fd })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok || !res.d.ok) { _logoMsg((res.d && (res.d.error || res.d.message)) || 'Upload failed.', 'error'); return; }
+      _logoMsg('Logo updated.');
+      loadAccount();
+    })
+    .catch(function () { _logoMsg('Upload failed.', 'error'); });
+}
+
+function removeLogo() {
+  _logoMsg('Removing…');
+  var fd = new FormData();
+  fd.append('email', brokerEmail);
+  fd.append('remove', 'true');
+  return fetch(BROKER_API_BASE + '/broker-logo', { method: 'POST', body: fd })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok || !res.d.ok) { _logoMsg('Could not remove logo.', 'error'); return; }
+      _logoMsg('Logo removed.');
+      loadAccount();
+    })
+    .catch(function () { _logoMsg('Could not remove logo.', 'error'); });
+}
+
 // ── Format helpers ────────────────────────────────────────────────────────
 function formatAddress(addr) {
   if (!addr) return '';
@@ -1250,6 +1328,27 @@ window.openViewModal = function() {
   if (typeof window.canManage === 'boolean') canManage = window.canManage;
   if (typeof window.selfContactId === 'string') selfContactId = window.selfContactId;
   return openViewModal.apply(this, arguments);
+};
+window.validateLogoFile = function() {
+  return validateLogoFile.apply(this, arguments);
+};
+window.renderLogoSection = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  if (typeof window.canManage === 'boolean') canManage = window.canManage;
+  return renderLogoSection.apply(this, arguments);
+};
+window.uploadLogo = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  if (typeof window.canManage === 'boolean') canManage = window.canManage;
+  return uploadLogo.apply(this, arguments);
+};
+window.removeLogo = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  if (typeof window.canManage === 'boolean') canManage = window.canManage;
+  return removeLogo.apply(this, arguments);
 };
 
 })();

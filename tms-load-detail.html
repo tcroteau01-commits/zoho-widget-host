@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1154,14 +1154,20 @@ function renderSubmitPanel(load, docs) {
       '<div class="fz-zone" id="zone-carrier"><h4>Carrier Documents</h4>' +
         '<div id="zone-carrier-docs">' + docRows('carrier') + '</div></div>' +
     '</div>' +
-    '<ul id="gate-list" class="muted" style="margin:10px 0;padding-left:18px"></ul>' +
-    (warnings.length
-      ? '<div id="override-wrap" style="margin:6px 0"><label><input type="checkbox" id="chk-override"> ' +
-        'Override carrier vetting warning and submit anyway</label></div>'
-      : '') +
-    '<div class="field"><label>Carrier / Factoring Invoice #</label>' +
-    '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></div>' +
-    '<button id="btn-submit-factoring" class="btn primary" disabled>Submit for Factoring</button>' +
+    '<div class="fz-zones" style="margin-top:12px">' +
+      '<div class="fz-zone" id="zone-checklist">' +
+        '<ul id="gate-list" class="muted" style="margin:0;padding-left:18px"></ul>' +
+        (warnings.length
+          ? '<div id="override-wrap" style="margin:6px 0 0"><label><input type="checkbox" id="chk-override"> ' +
+            'Override carrier vetting warning and submit anyway</label></div>'
+          : '') +
+      '</div>' +
+      '<div class="fz-zone" id="zone-invoice">' +
+        '<div class="field"><label>Carrier / Factoring Invoice #</label>' +
+        '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></div>' +
+      '</div>' +
+    '</div>' +
+    '<button id="btn-submit-factoring" class="btn primary" disabled style="margin-top:12px">Submit for Factoring</button>' +
     '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
 
   // Wire Preview buttons

@@ -355,3 +355,22 @@ test('packet doc rows use a flex layout so buttons do not wrap', () => {
   assert.match(html, /\.fz-doc\s*\{[^}]*display\s*:\s*flex/);
   assert.match(html, /\.fz-doc-label\s*\{[^}]*flex\s*:\s*1/);
 });
+
+test('invoice # sits in the right column with checklist on the left, submit full-width below', () => {
+  const dom = boot();
+  const { renderSubmitPanel } = dom.window;
+  renderSubmitPanel(
+    { id: '1', status: 'POD Received', carrier_id: 'v1', vetting: { authority_active: true } },
+    [{ document_type: 'POD', in_submission: true }]
+  );
+  const doc = dom.window.document;
+  const invZone = doc.getElementById('zone-invoice');
+  const checkZone = doc.getElementById('zone-checklist');
+  assert.ok(invZone && checkZone, 'both lower zones render');
+  assert.ok(invZone.contains(doc.getElementById('f-factoring-invoice')), 'invoice field in right zone');
+  assert.ok(checkZone.contains(doc.getElementById('gate-list')), 'checklist in left zone');
+  // submit button is NOT inside any fz-zones row (stays full-width below)
+  const btn = doc.getElementById('btn-submit-factoring');
+  assert.ok(btn, 'submit button present');
+  assert.strictEqual(btn.closest('.fz-zones'), null, 'submit is full-width, outside the columns');
+});

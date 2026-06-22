@@ -249,3 +249,21 @@ test('updateTemplate PATCHes the applied template with the full shape', async ()
   assert.ok(post, 'PATCHed /tms-template/t1');
   assert.equal(post.body.equipment, 'Flatbed');
 });
+
+test('vettingExtraHtml warns on dual authority', () => {
+  const { window } = makeWidget();
+  const html = window.vettingExtraHtml({ authority_class: 'dual' });
+  assert.match(html, /double-broker/i);
+});
+
+test('vettingExtraHtml warns on broker_only authority', () => {
+  const { window } = makeWidget();
+  const html = window.vettingExtraHtml({ authority_class: 'broker_only' });
+  assert.match(html, /broker authority/i);
+});
+
+test('vettingExtraHtml does not warn for a carrier', () => {
+  const { window } = makeWidget();
+  const html = window.vettingExtraHtml({ authority_class: 'carrier' });
+  assert.doesNotMatch(html, /double-broker|broker authority/i);
+});

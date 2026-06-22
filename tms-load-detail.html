@@ -1109,67 +1109,6 @@ function _vettingWarnings(load) {
   return w;
 }
 
-var _zoneStaged = { customer: null, carrier: null };
-var _ZONE_TYPES = {
-  customer: ['POD', 'BOL', 'Lumper Receipt', 'Other'],
-  carrier: ['Carrier Invoice', 'Signed Rate Con'],
-};
-function setZoneStagedFile(side, file) {
-  _zoneStaged[side] = file || null;
-  var dz = document.getElementById('zone-' + side + '-dropzone');
-  if (!dz) return;
-  if (_zoneStaged[side]) { dz.className = 'dropzone staged'; dz.textContent = '✓ ' + _zoneStaged[side].name + ' attached'; }
-  else { dz.className = 'dropzone'; dz.textContent = 'Drop a file here or click to browse'; }
-}
-function _zoneActionsHtml(side) {
-  var opts = _ZONE_TYPES[side].map(function (t) { return '<option>' + t + '</option>'; }).join('');
-  return '<select id="zone-' + side + '-type" class="doc-to" style="margin-top:8px">' + opts + '</select>' +
-    '<div class="dropzone" id="zone-' + side + '-dropzone">Drop a file here or click to browse</div>' +
-    '<input type="file" id="zone-' + side + '-file" accept="application/pdf,image/*" style="display:none">' +
-    '<button class="btn small primary" id="zone-' + side + '-upload-btn">Upload</button>';
-}
-function _wireZone(side) {
-  var actions = document.getElementById('zone-' + side + '-actions');
-  if (!actions) return;
-  actions.insertAdjacentHTML('afterbegin', _zoneActionsHtml(side));
-  var dz = document.getElementById('zone-' + side + '-dropzone');
-  var fi = document.getElementById('zone-' + side + '-file');
-  if (dz && fi) {
-    dz.addEventListener('click', function () { fi.click(); });
-    fi.addEventListener('change', function () { setZoneStagedFile(side, fi.files && fi.files[0]); });
-    dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('dragover'); });
-    dz.addEventListener('dragleave', function () { dz.classList.remove('dragover'); });
-    dz.addEventListener('drop', function (e) {
-      e.preventDefault(); dz.classList.remove('dragover');
-      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) setZoneStagedFile(side, e.dataTransfer.files[0]);
-    });
-  }
-  var btn = document.getElementById('zone-' + side + '-upload-btn');
-  if (btn) btn.addEventListener('click', function () {
-    var sel = document.getElementById('zone-' + side + '-type');
-    uploadBrokerDoc(sel ? sel.value : _ZONE_TYPES[side][0], _zoneStaged[side])
-      .then(function () { setZoneStagedFile(side, null); });
-  });
-  var actionsEl = document.getElementById('zone-' + side + '-actions');
-  if (actionsEl) {
-    if (side === 'customer') {
-      actionsEl.insertAdjacentHTML('beforeend',
-        '<button class="btn small" id="zone-customer-geninvoice-btn" style="margin-top:8px">Generate customer invoice</button>');
-      var g = document.getElementById('zone-customer-geninvoice-btn');
-      if (g) g.addEventListener('click', function () { generateDoc('customer_invoice', false); });
-    } else {
-      actionsEl.insertAdjacentHTML('beforeend',
-        '<button class="btn small" id="zone-carrier-remind-btn" style="margin-top:8px">Remind carrier</button>');
-      var rm = document.getElementById('zone-carrier-remind-btn');
-      if (rm) rm.addEventListener('click', function () { emailCarrierLink(); });
-    }
-  }
-}
-function wireZoneUploads() {
-  _zoneStaged = { customer: null, carrier: null };
-  _wireZone('customer');
-  _wireZone('carrier');
-}
 
 function renderSubmitPanel(load, docs) {
   var panel = document.getElementById('submit-panel');
@@ -1182,13 +1121,19 @@ function renderSubmitPanel(load, docs) {
     return;
   }
   docs = docs || [];
-  function zoneDocs(side) {
-    return docs.filter(function (d) { return _docSide(d.document_type) === side; });
+  function inSubmissionDocs(side) {
+    return docs.filter(function (d) { return d.in_submission && _docSide(d.document_type) === side; });
   }
   function docRows(side) {
-    var rows = zoneDocs(side).map(function (d) {
-      return '<div class="fz-doc' + (d.voided ? ' voided' : '') + '">' + esc(d.document_type) +
-        (d.voided ? ' (voided)' : '') + '</div>';
+    var rows = inSubmissionDocs(side).map(function (d) {
+      var label = '<span class="fz-doc-label' + (d.voided ? ' voided' : '') + '">' + esc(d.document_type) +
+        (d.voided ? ' (voided)' : '') + '</span>';
+      var previewBtn = d.has_file
+        ? '<button class="btn small pkt-preview" data-url="' + esc(BROKER_API_BASE + '/tms-doc-file?t=' + encodeURIComponent(d.preview_token)) +
+          '" data-title="' + esc(d.document_type) + '">Preview</button>'
+        : '';
+      var removeBtn = '<button class="btn small pkt-remove" data-doc-id="' + esc(d.id) + '">Remove</button>';
+      return '<div class="fz-doc' + (d.voided ? ' voided' : '') + '">' + label + previewBtn + removeBtn + '</div>';
     });
     return rows.length ? rows.join('') : '<div class="fz-empty">None yet.</div>';
   }
@@ -1198,11 +1143,9 @@ function renderSubmitPanel(load, docs) {
     '<div class="fz-banner">Turn this delivered load into a carrier invoice plus POD, then submit it for factoring.</div>' +
     '<div class="fz-zones">' +
       '<div class="fz-zone" id="zone-customer"><h4>Customer Documents</h4>' +
-        '<div id="zone-customer-docs">' + docRows('customer') + '</div>' +
-        '<div id="zone-customer-actions"></div></div>' +
+        '<div id="zone-customer-docs">' + docRows('customer') + '</div></div>' +
       '<div class="fz-zone" id="zone-carrier"><h4>Carrier Documents</h4>' +
-        '<div id="zone-carrier-docs">' + docRows('carrier') + '</div>' +
-        '<div id="zone-carrier-actions"></div></div>' +
+        '<div id="zone-carrier-docs">' + docRows('carrier') + '</div></div>' +
     '</div>' +
     '<ul id="gate-list" class="muted" style="margin:10px 0;padding-left:18px"></ul>' +
     (warnings.length
@@ -1214,7 +1157,22 @@ function renderSubmitPanel(load, docs) {
     '<button id="btn-submit-factoring" disabled>Submit for Factoring</button>' +
     '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
 
-  wireZoneUploads();
+  // Wire Preview buttons
+  panel.querySelectorAll('button.pkt-preview').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openDocViewer(btn.dataset.url, btn.dataset.title);
+    });
+  });
+  // Wire Remove buttons
+  panel.querySelectorAll('button.pkt-remove').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      fetch(BROKER_API_BASE + '/tms-doc/submission', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: window.brokerEmail, load_id: window.loadId, doc_id: btn.dataset.docId, in_submission: false }),
+      }).then(function () { refreshDocs(); });
+    });
+  });
+
   _refreshGates(load, docs, warnings);
   var inv = document.getElementById('f-factoring-invoice');
   if (inv) inv.oninput = function () { _refreshGates(load, docs, warnings); };
@@ -1288,8 +1246,6 @@ window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window.renderDocLibrary = renderDocLibrary; window.refreshDocs = refreshDocs; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
 window.setStagedFile = setStagedFile;
-window.setZoneStagedFile = setZoneStagedFile;
-window.wireZoneUploads = wireZoneUploads;
 Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
 
 // --- Document viewer modal ---

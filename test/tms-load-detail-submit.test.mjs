@@ -74,12 +74,15 @@ test('submit gate fails when no carrier is assigned', () => {
   assert.strictEqual(dom.window.document.getElementById('btn-submit-factoring').disabled, true);
 });
 
-test('submit panel renders two document zones sorted by side', () => {
+test('submit panel renders two document zones (only in_submission docs)', () => {
   const dom = boot();
   const w = dom.window;
   w.renderSubmitPanel(
     { id: '1', status: 'Delivered', carrier_id: 'v1', vetting: {} },
-    [{ document_type: 'POD' }, { document_type: 'Carrier Invoice' }]
+    [
+      { id: 'd1', document_type: 'POD', has_file: true, voided: false, in_submission: true, preview_token: 't1' },
+      { id: 'd2', document_type: 'Carrier Invoice', has_file: true, voided: false, in_submission: true, preview_token: 't2' },
+    ]
   );
   const cust = w.document.getElementById('zone-customer');
   const carr = w.document.getElementById('zone-carrier');
@@ -117,32 +120,159 @@ test('submit stays disabled when status is only POD Received', () => {
   assert.equal(btn.disabled, true);
 });
 
-test('carrier zone upload posts the carrier doc-type via uploadBrokerDoc', async () => {
-  const dom = boot();
+// ── W3: in-submission-only packet tests ─────────────────────────────────────
+
+function bootW3() {
+  const posts = [];
+  const dom = new JSDOM(html, {
+    runScripts: 'dangerously',
+    url: 'https://tcroteau01-commits.github.io/tms-load-detail.html',
+    beforeParse(window) {
+      window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => new Promise(() => {}) } } };
+      window.fetch = function(url, init) {
+        if (init && init.method === 'POST') {
+          posts.push({ url, body: JSON.parse(init.body) });
+          return Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+        }
+        return Promise.resolve({ json: () => Promise.resolve({ carriers: [], customers: [], templates: [], documents: [] }) });
+      };
+    }
+  });
+  dom.window.brokerEmail = 'b@x.com';
+  dom.window.loadId = 'LD001';
+  dom.window.BROKER_API_BASE = 'http://api';
+  return { dom, posts };
+}
+
+test('W3: packet shows only in_submission docs, not others', () => {
+  const { dom } = bootW3();
   const w = dom.window;
-  w.loadId = '1001';
-  const posted = [];
-  w.uploadBrokerDoc = function(docType, file){ posted.push({ docType, file }); return Promise.resolve(); };
-  w.renderSubmitPanel({ id: '1', status: 'Delivered', carrier_id: 'v1', vetting: {} }, []);
-  const f = new w.File([new Uint8Array([1])], 'inv.pdf', { type: 'application/pdf' });
-  w.setZoneStagedFile('carrier', f);
-  // trigger the carrier zone upload button
-  w.document.getElementById('zone-carrier-upload-btn').click();
-  await Promise.resolve();
-  assert.equal(posted.length, 1);
-  assert.equal(posted[0].docType, 'Carrier Invoice');
+  const docs = [
+    { id: 'd1', document_type: 'POD', has_file: true, voided: false, in_submission: true, preview_token: 'tok1' },
+    { id: 'd2', document_type: 'Rate Con', has_file: true, voided: false, in_submission: false, preview_token: 'tok2' },
+    { id: 'd3', document_type: 'Carrier Invoice', has_file: true, voided: false, in_submission: true, preview_token: 'tok3' },
+  ];
+  w.renderSubmitPanel({ id: 'LD001', status: 'Ready to Submit', carrier_id: 'v1', vetting: {} }, docs);
+  const panel = w.document.getElementById('submit-panel');
+  // POD (in_submission=true) must appear
+  assert.match(panel.textContent, /POD/);
+  // Carrier Invoice (in_submission=true) must appear
+  assert.match(panel.textContent, /Carrier Invoice/);
+  // Rate Con (in_submission=false) must NOT appear in the packet
+  // (it may appear in the gate list text but not as a doc row)
+  const rows = panel.querySelectorAll('.fz-doc');
+  const rowTexts = Array.from(rows).map(r => r.textContent);
+  assert.ok(rowTexts.some(t => /POD/.test(t)), 'POD row present');
+  assert.ok(rowTexts.some(t => /Carrier Invoice/.test(t)), 'Carrier Invoice row present');
+  assert.ok(!rowTexts.some(t => /Rate Con/.test(t)), 'Rate Con row absent from packet');
 });
 
-test('zone action buttons call generateDoc and emailCarrierLink', () => {
-  const dom = boot();
+test('W3: customer zone shows only customer-side in_submission docs', () => {
+  const { dom } = bootW3();
   const w = dom.window;
-  w.loadId = '1001';
-  let genArg = null, reminded = false;
-  w.generateDoc = function(t){ genArg = t; return Promise.resolve(); };
-  w.emailCarrierLink = function(){ reminded = true; return Promise.resolve(); };
-  w.renderSubmitPanel({ id: '1', status: 'Delivered', carrier_id: 'v1', vetting: {} }, []);
-  w.document.getElementById('zone-customer-geninvoice-btn').click();
-  w.document.getElementById('zone-carrier-remind-btn').click();
-  assert.equal(genArg, 'customer_invoice');
-  assert.equal(reminded, true);
+  const docs = [
+    { id: 'd1', document_type: 'POD', has_file: true, voided: false, in_submission: true, preview_token: 'tok1' },
+    { id: 'd2', document_type: 'Carrier Invoice', has_file: true, voided: false, in_submission: true, preview_token: 'tok2' },
+    { id: 'd3', document_type: 'BOL', has_file: true, voided: false, in_submission: false, preview_token: 'tok3' },
+  ];
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, docs);
+  const cust = w.document.getElementById('zone-customer');
+  const carr = w.document.getElementById('zone-carrier');
+  // POD → customer side (in_submission=true)
+  assert.match(cust.textContent, /POD/);
+  // BOL → customer side (in_submission=false) — must NOT appear
+  assert.doesNotMatch(cust.textContent, /BOL/);
+  // Carrier Invoice → carrier side (in_submission=true)
+  assert.match(carr.textContent, /Carrier Invoice/);
+  // POD must NOT appear in carrier zone
+  assert.doesNotMatch(carr.textContent, /POD/);
+});
+
+test('W3: empty state when no in_submission docs for a side', () => {
+  const { dom } = bootW3();
+  const w = dom.window;
+  const docs = [
+    { id: 'd1', document_type: 'Rate Con', has_file: true, voided: false, in_submission: false, preview_token: 'tok1' },
+  ];
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, docs);
+  const panel = w.document.getElementById('submit-panel');
+  const emptyDivs = panel.querySelectorAll('.fz-empty');
+  assert.ok(emptyDivs.length >= 2, 'both sides show None yet. when no in_submission docs');
+});
+
+test('W3: Preview button appears for in_submission doc with has_file', () => {
+  const { dom } = bootW3();
+  const w = dom.window;
+  const calls = [];
+  w.openDocViewer = function(url, title) { calls.push({ url, title }); };
+  const docs = [
+    { id: 'd1', document_type: 'POD', has_file: true, voided: false, in_submission: true, preview_token: 'abc123' },
+  ];
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, docs);
+  const panel = w.document.getElementById('submit-panel');
+  const previewBtn = panel.querySelector('button.pkt-preview');
+  assert.ok(previewBtn, 'Preview button exists');
+  previewBtn.click();
+  assert.equal(calls.length, 1, 'openDocViewer called');
+  assert.match(calls[0].url, /\/tms-doc-file\?t=abc123$/);
+  assert.equal(calls[0].title, 'POD');
+});
+
+test('W3: Preview button absent when has_file is false', () => {
+  const { dom } = bootW3();
+  const w = dom.window;
+  const docs = [
+    { id: 'd1', document_type: 'POD', has_file: false, voided: false, in_submission: true, preview_token: '' },
+  ];
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, docs);
+  const panel = w.document.getElementById('submit-panel');
+  const previewBtn = panel.querySelector('button.pkt-preview');
+  assert.ok(!previewBtn, 'No Preview button when has_file=false');
+});
+
+test('W3: voided in_submission doc shows strikethrough indicator', () => {
+  const { dom } = bootW3();
+  const w = dom.window;
+  const docs = [
+    { id: 'd1', document_type: 'POD', has_file: true, voided: true, in_submission: true, preview_token: 'tok1' },
+  ];
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, docs);
+  const panel = w.document.getElementById('submit-panel');
+  const voidedRow = panel.querySelector('.fz-doc.voided');
+  assert.ok(voidedRow, 'voided row has voided class');
+  assert.match(voidedRow.textContent, /voided/i);
+});
+
+test('W3: Remove button posts in_submission:false and calls refreshDocs', async () => {
+  const { dom, posts } = bootW3();
+  const w = dom.window;
+  let refreshed = false;
+  w.refreshDocs = function() { refreshed = true; return Promise.resolve(); };
+  const docs = [
+    { id: 'd1', document_type: 'POD', has_file: true, voided: false, in_submission: true, preview_token: 'tok1' },
+  ];
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, docs);
+  const panel = w.document.getElementById('submit-panel');
+  const removeBtn = panel.querySelector('button.pkt-remove');
+  assert.ok(removeBtn, 'Remove button exists');
+  removeBtn.click();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(posts.length, 1, 'one POST made');
+  assert.match(posts[0].url, /\/tms-doc\/submission$/);
+  assert.equal(posts[0].body.doc_id, 'd1');
+  assert.equal(posts[0].body.in_submission, false);
+  assert.equal(posts[0].body.email, 'b@x.com');
+  assert.equal(posts[0].body.load_id, 'LD001');
+  assert.equal(refreshed, true, 'refreshDocs called after Remove');
+});
+
+test('W3: no upload dropzone elements in the packet panel', () => {
+  const { dom } = bootW3();
+  const w = dom.window;
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, []);
+  const panel = w.document.getElementById('submit-panel');
+  assert.ok(!panel.querySelector('.dropzone'), 'no .dropzone elements in packet');
+  assert.ok(!panel.querySelector('input[type="file"]'), 'no file inputs in packet');
+  assert.ok(!panel.querySelector('#zone-customer-upload-btn'), 'no upload button in packet');
+  assert.ok(!panel.querySelector('#zone-carrier-upload-btn'), 'no carrier upload button in packet');
 });

@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+﻿import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
@@ -234,6 +234,27 @@ test('renderDocLibrary: Add button posts in_submission:true to /tms-doc/submissi
   assert.equal(posts[0].body.load_id, 'LD001');
 });
 
+test('library rows wrap controls in an aligned action group for both states', () => {
+  const { window } = makeLibraryWidget();
+  const { renderDocLibrary } = window;
+  renderDocLibrary([
+    { id: 'a', document_type: 'Carrier Invoice', source: 'broker-upload',
+      uploaded_at: '2026-06-22T15:11', has_file: true, in_submission: true },
+    { id: 'b', document_type: 'Rate Con', source: 'system-generated',
+      uploaded_at: '2026-06-22T15:09', has_file: true, in_submission: false },
+  ]);
+  const items = window.document.querySelectorAll('#doc-list .doc-lib-item');
+  assert.strictEqual(items.length, 2);
+  items.forEach((it) => {
+    const actions = it.querySelector('.doc-lib-actions');
+    assert.ok(actions, 'each row has a .doc-lib-actions group');
+    assert.ok(actions.querySelector('.doc-lib-preview'), 'preview in actions');
+    assert.ok(actions.querySelector('.doc-lib-delete'), 'delete in actions');
+  });
+  // in_submission row shows the badge; the other shows the add button
+  assert.ok(items[0].querySelector('.doc-lib-actions .doc-lib-badge'));
+  assert.ok(items[1].querySelector('.doc-lib-actions .doc-lib-add'));
+});
 test('refreshDocs: re-fetches /tms-docs and re-renders library and submit panel', async () => {
   const { window } = makeLibraryWidget();
   window._currentLoad = { id: 'LD001', status: 'Delivered', vetting: {} };

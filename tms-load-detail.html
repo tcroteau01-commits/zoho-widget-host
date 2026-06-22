@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -48,6 +48,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 12px; border-bottom: 1px solid #f3f1ea; }
 .doc-item .src { color: #999; }
 .doc-item.voided > span { text-decoration: line-through; opacity: .55; }
+.doc-lib-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.doc-lib-actions .doc-lib-add, .doc-lib-actions .doc-lib-badge { min-width:128px; text-align:center; box-sizing:border-box; }
+.doc-lib-badge { display:inline-block; padding:7px 12px; font-size:12px; font-weight:600; color:#2e7d32; }
 .doc-status.busy { color: #b45309; font-weight: 700; }
 .doc-status.busy::before { content: '⏳ '; }
 .dropzone { border: 2px dashed #d8cfa8; border-radius: 8px; padding: 14px; text-align: center;
@@ -946,10 +949,13 @@ function renderDocLibrary(docs) {
     label.innerHTML = '<strong>' + esc(d.document_type) + '</strong>' + voidTag +
       ' <span class="src">' + esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
 
+    var actions = document.createElement('div');
+    actions.className = 'doc-lib-actions';
+    actions.appendChild(previewBtn);
+    actions.appendChild(deleteBtn);
+    actions.appendChild(submissionCtrl);
     el.appendChild(label);
-    el.appendChild(previewBtn);
-    el.appendChild(deleteBtn);
-    el.appendChild(submissionCtrl);
+    el.appendChild(actions);
     box.appendChild(el);
   });
 }

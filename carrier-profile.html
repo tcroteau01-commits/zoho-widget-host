@@ -502,6 +502,16 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 }
 .btn-primary.amber { background: var(--of-amber); }
 
+/* Carrier Documents card */
+.cp-docs-body { display: flex; flex-direction: column; gap: 10px; }
+.cp-doc-group { }
+.cp-doc-grouptitle { font-size: 11px; font-weight: 700; color: var(--of-gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.cp-doc-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--of-gray-100); }
+.cp-doc-row:last-child { border-bottom: none; }
+.cp-doc-name { flex: 1; font-size: 13px; color: var(--of-charcoal-soft); min-width: 0; word-break: break-all; }
+.cp-doc-link { font-size: 12px; font-weight: 600; color: var(--of-blue-text); text-decoration: none; white-space: nowrap; }
+.cp-doc-link:hover { text-decoration: underline; }
+
 /* Footer note */
 .footer-note {
   text-align: center; font-size: 11px; color: var(--of-gray-500);
@@ -691,6 +701,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <!-- Factoring / NOA -->
   <div id="cp-noa-card" class="card"></div>
+
+  <!-- Carrier Documents (WorkDrive) -->
+  <div class="card" id="cp-docs-card">
+    <div class="card-title">Documents</div>
+    <div id="cp-docs-body" class="cp-docs-body">Loading documents…</div>
+  </div>
 
   <!-- Vendor Comments -->
   <div class="card">
@@ -989,6 +1005,8 @@ function renderProfile(p) {
     .then(function(r){ return r.json(); })
     .then(function(p){ if (p && p.carriers && p.carriers[0]) renderNoaCard(p.carriers[0]); })
     .catch(function(){});
+  // Non-blocking carrier documents card
+  loadCarrierDocs();
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1768,6 +1786,40 @@ function wireDecisionCapture(p){
   if(mr) mr.innerHTML='System recommendation: <strong>'+esc(p.system_recommendation||'Hold')+'</strong>';
   var pb=document.querySelector('.decision-bar-actions .btn-secondary'); if(pb) pb.onclick=function(){ window.print(); };
   var rb=document.querySelector('.refresh-btn'); if(rb) rb.onclick=refreshAll;
+}
+
+// ── Carrier Documents (WorkDrive) ──────────────────────────────────────────
+function renderCarrierDocs(data) {
+  var body = document.getElementById('cp-docs-body');
+  if (!body) return;
+  if (!data || data._error) { body.textContent = 'Could not load documents. Please try again.'; return; }
+  var docs = (data.documents || []);
+  if (!docs.length) { body.textContent = 'No documents on file.'; return; }
+  var groups = {};
+  docs.forEach(function (d) { (groups[d.label] = groups[d.label] || []).push(d); });
+  var html = '';
+  Object.keys(groups).forEach(function (label) {
+    html += '<div class="cp-doc-group"><div class="cp-doc-grouptitle">' + esc(label) + '</div>';
+    groups[label].forEach(function (d) {
+      var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token);
+      html += '<div class="cp-doc-row"><span class="cp-doc-name">' + esc(d.filename) + '</span>' +
+        '<a class="cp-doc-link" href="' + url + '" target="_blank" rel="noopener">Preview</a>' +
+        '<a class="cp-doc-link" href="' + url + '" download>Download</a></div>';
+    });
+    html += '</div>';
+  });
+  body.innerHTML = html;
+}
+
+function loadCarrierDocs() {
+  var body = document.getElementById('cp-docs-body');
+  if (body) body.textContent = 'Loading documents…';
+  if (!brokerEmail || !vendorId) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/carrier-docs?email=' + encodeURIComponent(brokerEmail) +
+               '&vendor_id=' + encodeURIComponent(vendorId))
+    .then(function (r) { if (!r.ok) return { _error: true }; return r.json(); })
+    .then(function (d) { renderCarrierDocs(d); })
+    .catch(function () { renderCarrierDocs({ _error: true }); });
 }
 
 // boot() is invoked by the window 'load' handler above, after Vendor_ID acquisition.

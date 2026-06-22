@@ -864,24 +864,93 @@ function refreshDocCard() {
 
 function loadDocList() {
   if (!loadId || !brokerEmail) return;
-  fetch(BROKER_API_BASE + '/tms-docs?email=' + encodeURIComponent(brokerEmail) + '&load_id=' + encodeURIComponent(loadId))
-    .then(function(r){ return r.json(); })
-    .then(function(p){ renderDocList((p && p.documents) || []); });
+  refreshDocs();
 }
 
 function renderDocList(docs) {
   window._loadedDocs = docs;
+  renderDocLibrary(docs);
+}
+
+function refreshDocs() {
+  if (!loadId || !brokerEmail) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/tms-docs?email=' + encodeURIComponent(brokerEmail) + '&load_id=' + encodeURIComponent(loadId))
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      var docs = (p && p.documents) || [];
+      window._loadedDocs = docs;
+      renderDocLibrary(docs);
+      if (window._currentLoad) renderSubmitPanel(window._currentLoad, docs);
+    });
+}
+
+function renderDocLibrary(docs) {
+  window._loadedDocs = docs;
   if (window._currentLoad) renderSubmitPanel(window._currentLoad, docs);
   var box = document.getElementById('doc-list');
   if (!box) return;
-  if (!docs.length) { box.innerHTML = '<div class="muted">No documents generated yet.</div>'; return; }
+  if (!docs || !docs.length) { box.innerHTML = '<div class="muted">No documents yet.</div>'; return; }
   box.innerHTML = '';
   docs.forEach(function(d){
     var el = document.createElement('div');
-    el.className = 'doc-item' + (d.voided ? ' voided' : '');
-    var tag = d.voided ? ' <span class="void-tag">Voided — carrier changed</span>' : '';
-    el.innerHTML = '<span>' + esc(d.document_type) + tag + '</span><span class="src">' +
-      esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
+    el.className = 'doc-lib-item doc-item' + (d.voided ? ' voided' : '');
+
+    // Preview button
+    var previewBtn = document.createElement('button');
+    previewBtn.className = 'btn small doc-lib-preview' + (d.has_file ? '' : ' hidden');
+    previewBtn.textContent = 'Preview';
+    (function(doc){
+      previewBtn.addEventListener('click', function(){
+        openDocViewer(BROKER_API_BASE + '/tms-doc-file?t=' + encodeURIComponent(doc.preview_token || ''), doc.document_type);
+      });
+    })(d);
+
+    // Delete button
+    var deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn small doc-lib-delete';
+    deleteBtn.textContent = 'Delete';
+    (function(doc){
+      deleteBtn.addEventListener('click', function(){
+        if (!confirm('Delete this document?')) return;
+        fetch(BROKER_API_BASE + '/tms-doc/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_id: doc.id })
+        }).then(function(r){ return r.json(); }).then(function(){ refreshDocs(); });
+      });
+    })(d);
+
+    // Submission control: badge or Add button
+    var submissionCtrl;
+    if (d.in_submission) {
+      submissionCtrl = document.createElement('span');
+      submissionCtrl.className = 'doc-lib-badge';
+      submissionCtrl.textContent = '✓ In submission';
+    } else {
+      submissionCtrl = document.createElement('button');
+      submissionCtrl.className = 'btn small doc-lib-add';
+      submissionCtrl.textContent = 'Add to submission';
+      (function(doc){
+        submissionCtrl.addEventListener('click', function(){
+          fetch(BROKER_API_BASE + '/tms-doc/submission', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_id: doc.id, in_submission: true })
+          }).then(function(r){ return r.json(); }).then(function(){ refreshDocs(); });
+        });
+      })(d);
+    }
+
+    // Label
+    var label = document.createElement('span');
+    var voidTag = d.voided ? ' <span class="void-tag">Voided</span>' : '';
+    label.innerHTML = '<strong>' + esc(d.document_type) + '</strong>' + voidTag +
+      ' <span class="src">' + esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
+
+    el.appendChild(label);
+    el.appendChild(previewBtn);
+    el.appendChild(deleteBtn);
+    el.appendChild(submissionCtrl);
     box.appendChild(el);
   });
 }

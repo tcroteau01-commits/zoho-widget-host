@@ -320,3 +320,32 @@ test('W4: .ready amber behavior still composes with .btn.primary', () => {
   assert.ok(btn.classList.contains('btn'), '.btn class still present');
   assert.ok(btn.classList.contains('primary'), '.primary class still present');
 });
+
+test('W4: disabled attr present when gates fail, absent when gates pass; btn+primary always present', () => {
+  // Gates fail: no carrier, wrong status
+  const { dom: domFail } = bootW3();
+  const wF = domFail.window;
+  wF.renderSubmitPanel(
+    { id: 'LD001', status: 'In Transit', carrier_id: '', vetting: {} },
+    []
+  );
+  const btnFail = wF.document.getElementById('btn-submit-factoring');
+  assert.equal(btnFail.disabled, true, 'disabled attribute set when gates fail (grey state)');
+  assert.ok(btnFail.classList.contains('btn'), '.btn class present on disabled button');
+  assert.ok(btnFail.classList.contains('primary'), '.primary class present on disabled button');
+
+  // Gates pass: correct status, carrier, invoice
+  const { dom: domPass } = bootW3();
+  const wP = domPass.window;
+  wP.renderSubmitPanel(
+    { id: 'LD001', status: 'Ready to Submit', carrier_id: 'v1', vetting: {} },
+    [{ document_type: 'POD' }, { document_type: 'Carrier Invoice' }]
+  );
+  const inv = wP.document.getElementById('f-factoring-invoice');
+  inv.value = 'FCT-1';
+  inv.dispatchEvent(new wP.Event('input'));
+  const btnPass = wP.document.getElementById('btn-submit-factoring');
+  assert.equal(btnPass.disabled, false, 'disabled attribute cleared when gates pass (amber state)');
+  assert.ok(btnPass.classList.contains('btn'), '.btn class present on enabled button');
+  assert.ok(btnPass.classList.contains('primary'), '.primary class present on enabled button');
+});

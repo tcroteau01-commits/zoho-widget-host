@@ -29,6 +29,8 @@ test('renders grouped docs with preview + download links', async () => {
   assert.match(card.textContent, /Insurance \(COI\)/);
   // a download/preview link carries the token
   assert.match(card.innerHTML, /carrier-doc-file\?t=TOKA/);
+  // the Download link passes the filename so the server names + extensions the file
+  assert.match(card.innerHTML, /name=NOA-1\.pdf/);
 });
 
 test('empty state when no documents', async () => {

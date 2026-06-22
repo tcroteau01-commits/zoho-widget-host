@@ -349,3 +349,9 @@ test('W4: disabled attr present when gates fail, absent when gates pass; btn+pri
   assert.ok(btnPass.classList.contains('btn'), '.btn class present on enabled button');
   assert.ok(btnPass.classList.contains('primary'), '.primary class present on enabled button');
 });
+
+test('packet doc rows use a flex layout so buttons do not wrap', () => {
+  // CSS layout is not computed by jsdom; assert the stylesheet declares the rule.
+  assert.match(html, /\.fz-doc\s*\{[^}]*display\s*:\s*flex/);
+  assert.match(html, /\.fz-doc-label\s*\{[^}]*flex\s*:\s*1/);
+});

@@ -1817,10 +1817,13 @@ function renderCarrierDocs(data) {
     html += '<div class="cp-doc-group"><div class="cp-doc-grouptitle">' + esc(label) + '</div>';
     groups[label].forEach(function (d) {
       var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token);
+      // pass the filename so the download is named & extensioned by the server (cross-origin
+      // ignores the download attr, so the server's Content-Disposition is what controls it)
+      var dlUrl = url + '&name=' + encodeURIComponent(String(d.filename || ''));
       var fname = esc(String(d.filename || ''));
       html += '<div class="cp-doc-row"><span class="cp-doc-name">' + fname + '</span>' +
         '<button class="cp-doc-link cp-doc-preview" data-token="' + esc(d.preview_token) + '" data-filename="' + fname + '">Preview</button>' +
-        '<a class="cp-doc-link" href="' + url + '" download>Download</a></div>';
+        '<a class="cp-doc-link" href="' + esc(dlUrl) + '" download>Download</a></div>';
     });
     html += '</div>';
   });

@@ -155,3 +155,46 @@ test('null filename renders without throwing and does not flip to error state', 
   assert.ok(!card.textContent.includes('Could not load'), 'card is NOT in error state');
   assert.match(card.textContent, /Insurance \(COI\)/, 'valid doc still renders');
 });
+
+test('upload control shows when a relationship folder exists', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'COI-1.pdf', preview_token: 'T' }] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  assert.ok(w.document.getElementById('cp-up-file'), 'file input present');
+  assert.ok(w.document.getElementById('cp-up-type'), 'type select present');
+});
+
+test('upload control hidden for no-folder carriers', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 0, documents: [], reason: 'no_documents' }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  assert.strictEqual(w.document.getElementById('cp-up-file'), null);
+  assert.match(w.document.getElementById('cp-docs-card').textContent, /set up with you/i);
+});
+
+test('uploadCarrierDoc posts FormData and refreshes on success', async () => {
+  const calls = [];
+  const dom = boot(async (url, opts) => {
+    calls.push({ url, opts });
+    if (url.includes('/carrier-doc-upload')) return { ok: true, json: async () => ({ ok: true, filename: 'NOA-x.pdf' }) };
+    return { ok: true, json: async () => ({ count: 0, documents: [] }) };
+  });
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  // simulate a chosen file + type
+  const fileInput = w.document.getElementById('cp-up-file');
+  Object.defineProperty(fileInput, 'files', { value: [new w.File(['x'], 'x.pdf', { type: 'application/pdf' })] });
+  w.document.getElementById('cp-up-type').value = 'noa';
+  await w.uploadCarrierDoc();
+  const up = calls.find(c => c.url.includes('/carrier-doc-upload'));
+  assert.ok(up, 'posted to /carrier-doc-upload');
+  assert.strictEqual(up.opts.method, 'POST');
+  assert.ok(up.opts.body instanceof w.FormData);
+  assert.strictEqual(up.opts.body.get('doc_type'), 'noa');
+  // a refresh fetch to /carrier-docs happened after upload
+  assert.ok(calls.filter(c => c.url.includes('/carrier-docs')).length >= 2);
+});

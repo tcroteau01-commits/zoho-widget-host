@@ -510,6 +510,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .cp-doc-name { flex: 1; font-size: 13px; color: var(--of-charcoal-soft); min-width: 0; word-break: break-all; }
 .cp-doc-link { font-size: 12px; font-weight: 600; color: var(--of-blue-text); text-decoration: none; white-space: nowrap; }
 .cp-doc-link:hover { text-decoration: underline; }
+.cp-up { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px dashed var(--of-beige-line); margin-top: 6px; }
+.cp-up-title { width: 100%; font-size: 11px; font-weight: 700; color: var(--of-gray-500); text-transform: uppercase; letter-spacing: 0.5px; }
+.cp-up-type { font-family: inherit; font-size: 12px; padding: 5px 8px; border: 1px solid var(--of-beige-line); border-radius: 6px; background: #fff; color: var(--of-charcoal-soft); }
+.cp-up-msg { font-size: 12px; color: var(--of-gray-700); }
+.cp-up-hint { font-size: 12px; color: var(--of-gray-500); font-style: italic; }
 
 /* Footer note */
 .footer-note {
@@ -1804,32 +1809,80 @@ function _bindCarrierDocsListener() {
   _cpDocsListenerBound = true;
 }
 
+function carrierUploadHtml() {
+  var opts = [['noa','NOA'],['lor','LOR'],['coi','Insurance (COI)'],['banking','Banking'],
+              ['bca','Broker-Carrier Agreement'],['dl',"Driver's License"],['other','Other']];
+  var sel = '<select id="cp-up-type" class="cp-up-type">' +
+    opts.map(function (o) { return '<option value="' + o[0] + '">' + esc(o[1]) + '</option>'; }).join('') + '</select>';
+  return '<div class="cp-up"><div class="cp-up-title">Add a document</div>' +
+    sel + '<input type="file" id="cp-up-file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp">' +
+    '<button class="cp-doc-link" id="cp-up-btn" onclick="uploadCarrierDoc()">Upload</button>' +
+    '<span id="cp-up-msg" class="cp-up-msg"></span></div>';
+}
+
 function renderCarrierDocs(data) {
   var body = document.getElementById('cp-docs-body');
   if (!body) return;
   if (!data || data._error) { body.textContent = 'Could not load documents. Please try again.'; return; }
+  // reason present = no relationship folder (no_folder, no_documents, etc.)
+  // show a hint but no upload control
+  if (data.reason) {
+    body.innerHTML = 'No documents on file. <span class="cp-up-hint">Document upload available once this carrier is set up with you.</span>';
+    return;
+  }
   var docs = (data.documents || []);
-  if (!docs.length) { body.textContent = 'No documents on file.'; return; }
-  var groups = {};
-  docs.forEach(function (d) { (groups[d.label] = groups[d.label] || []).push(d); });
   var html = '';
-  Object.keys(groups).forEach(function (label) {
-    html += '<div class="cp-doc-group"><div class="cp-doc-grouptitle">' + esc(label) + '</div>';
-    groups[label].forEach(function (d) {
-      var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token);
-      // pass the filename so the download is named & extensioned by the server (cross-origin
-      // ignores the download attr, so the server's Content-Disposition is what controls it)
-      var dlUrl = url + '&name=' + encodeURIComponent(String(d.filename || ''));
-      var fname = esc(String(d.filename || ''));
-      html += '<div class="cp-doc-row"><span class="cp-doc-name">' + fname + '</span>' +
-        '<button class="cp-doc-link cp-doc-preview" data-token="' + esc(d.preview_token) + '" data-filename="' + fname + '">Preview</button>' +
-        '<a class="cp-doc-link" href="' + esc(dlUrl) + '" download>Download</a></div>';
+  if (!docs.length) {
+    html = '<div style="color:var(--of-gray-500);font-size:13px;">No files yet.</div>';
+  } else {
+    var groups = {};
+    docs.forEach(function (d) { (groups[d.label] = groups[d.label] || []).push(d); });
+    Object.keys(groups).forEach(function (label) {
+      html += '<div class="cp-doc-group"><div class="cp-doc-grouptitle">' + esc(label) + '</div>';
+      groups[label].forEach(function (d) {
+        var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token);
+        // pass the filename so the download is named & extensioned by the server (cross-origin
+        // ignores the download attr, so the server's Content-Disposition is what controls it)
+        var dlUrl = url + '&name=' + encodeURIComponent(String(d.filename || ''));
+        var fname = esc(String(d.filename || ''));
+        html += '<div class="cp-doc-row"><span class="cp-doc-name">' + fname + '</span>' +
+          '<button class="cp-doc-link cp-doc-preview" data-token="' + esc(d.preview_token) + '" data-filename="' + fname + '">Preview</button>' +
+          '<a class="cp-doc-link" href="' + esc(dlUrl) + '" download>Download</a></div>';
+      });
+      html += '</div>';
     });
-    html += '</div>';
-  });
+  }
+  // folder exists — append upload control
+  html += carrierUploadHtml();
   body.innerHTML = html;
   _bindCarrierDocsListener();
 }
+
+function uploadCarrierDoc() {
+  var typeEl = document.getElementById('cp-up-type');
+  var fileEl = document.getElementById('cp-up-file');
+  var msg = document.getElementById('cp-up-msg');
+  var btn = document.getElementById('cp-up-btn');
+  if (!fileEl || !fileEl.files || !fileEl.files.length) { if (msg) msg.textContent = 'Choose a file first.'; return Promise.resolve(); }
+  var fd = new FormData();
+  fd.append('email', brokerEmail);
+  fd.append('vendor_id', vendorId);
+  fd.append('doc_type', (typeEl && typeEl.value) || 'other');
+  fd.append('file', fileEl.files[0]);
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Uploading…';
+  return fetch(BROKER_API_BASE + '/carrier-doc-upload', { method: 'POST', body: fd })
+    .then(function (r) { return r.ok ? r.json() : r.json().then(function (e) { throw e; }); })
+    .then(function () { if (msg) msg.textContent = 'Uploaded.'; return loadCarrierDocs(); })
+    .catch(function (e) {
+      var m = (e && e.error === 'file too large') ? 'File too large (max 20 MB).'
+            : (e && e.error === 'no_relationship_folder') ? 'Upload not available for this carrier yet.'
+            : 'Upload failed. Please try again.';
+      if (msg) msg.textContent = m;
+    })
+    .then(function () { if (btn) btn.disabled = false; });
+}
+if (typeof window !== 'undefined') { window.uploadCarrierDoc = uploadCarrierDoc; }
 
 function loadCarrierDocs() {
   closeCarrierDoc();

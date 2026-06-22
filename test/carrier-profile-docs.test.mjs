@@ -46,3 +46,69 @@ test('error state on workdrive error', async () => {
   await w.loadCarrierDocs();
   assert.match(w.document.getElementById('cp-docs-card').textContent, /could not load|error/i);
 });
+
+test('preview opens inline viewer', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
+    { type: 'noa', label: 'NOA / LOR', filename: 'NOA-1.pdf', preview_token: 'TOKA' }] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  w.openCarrierDoc('TOKA', 'NOA-1.pdf');
+  const viewer = w.document.getElementById('cp-doc-viewer');
+  assert.ok(viewer && viewer.style.display !== 'none');
+  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKA/);
+});
+
+test('closeCarrierDoc hides viewer', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
+    { type: 'noa', label: 'NOA / LOR', filename: 'NOA-1.pdf', preview_token: 'TOKA' }] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  w.openCarrierDoc('TOKA', 'NOA-1.pdf');
+  w.closeCarrierDoc();
+  const viewer = w.document.getElementById('cp-doc-viewer');
+  assert.ok(viewer && viewer.style.display === 'none');
+  assert.strictEqual(viewer.innerHTML, '');
+});
+
+test('preview uses img for image files', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'COI.png', preview_token: 'TOKB' }] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  w.openCarrierDoc('TOKB', 'COI.png');
+  const viewer = w.document.getElementById('cp-doc-viewer');
+  assert.ok(viewer && viewer.style.display !== 'none');
+  assert.match(viewer.innerHTML, /<img/i);
+  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKB/);
+});
+
+test('preview uses iframe for PDF files', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
+    { type: 'noa', label: 'NOA / LOR', filename: 'NOA.pdf', preview_token: 'TOKC' }] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  w.openCarrierDoc('TOKC', 'NOA.pdf');
+  const viewer = w.document.getElementById('cp-doc-viewer');
+  assert.ok(viewer && viewer.style.display !== 'none');
+  assert.match(viewer.innerHTML, /<iframe/i);
+  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKC/);
+});
+
+test('preview button in rendered doc row calls openCarrierDoc', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
+    { type: 'noa', label: 'NOA / LOR', filename: 'NOA-1.pdf', preview_token: 'TOKD' }] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  const card = w.document.getElementById('cp-docs-card');
+  const previewBtn = card.querySelector('button.cp-doc-link');
+  assert.ok(previewBtn, 'Preview button should exist');
+  previewBtn.click();
+  const viewer = w.document.getElementById('cp-doc-viewer');
+  assert.ok(viewer && viewer.style.display !== 'none');
+  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKD/);
+});

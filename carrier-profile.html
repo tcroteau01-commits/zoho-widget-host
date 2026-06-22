@@ -708,6 +708,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div id="cp-docs-body" class="cp-docs-body">Loading documents…</div>
   </div>
 
+  <!-- Document viewer (inline PDF/image) -->
+  <div id="cp-doc-viewer" class="cp-doc-viewer" style="display:none"></div>
+
   <!-- Vendor Comments -->
   <div class="card">
     <div class="card-title">Comments &amp; Notes <span class="tag">Visible to your team and OperFi</span></div>
@@ -1803,7 +1806,7 @@ function renderCarrierDocs(data) {
     groups[label].forEach(function (d) {
       var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token);
       html += '<div class="cp-doc-row"><span class="cp-doc-name">' + esc(d.filename) + '</span>' +
-        '<a class="cp-doc-link" href="' + url + '" target="_blank" rel="noopener">Preview</a>' +
+        '<button class="cp-doc-link" onclick="openCarrierDoc(\'' + esc(d.preview_token) + '\',\'' + d.filename.replace(/'/g, "\\'" ) + '\')">Preview</button>' +
         '<a class="cp-doc-link" href="' + url + '" download>Download</a></div>';
     });
     html += '</div>';
@@ -1820,6 +1823,26 @@ function loadCarrierDocs() {
     .then(function (r) { if (!r.ok) return { _error: true }; return r.json(); })
     .then(function (d) { renderCarrierDocs(d); })
     .catch(function () { renderCarrierDocs({ _error: true }); });
+}
+
+// -- Carrier Document Viewer --
+function openCarrierDoc(token, filename) {
+  var v = document.getElementById('cp-doc-viewer');
+  if (!v) return;
+  var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(token);
+  var isImg = /\.(png|jpe?g|gif|webp)$/i.test(filename || '');
+  v.innerHTML = '<button class="cp-doc-close" onclick="closeCarrierDoc()">Close</button>' +
+    (isImg ? '<img src="' + url + '" alt="' + esc(filename || '') + '" style="max-width:100%">'
+           : '<iframe src="' + url + '" style="width:100%;height:70vh;border:0"></iframe>');
+  v.style.display = 'block';
+}
+function closeCarrierDoc() {
+  var v = document.getElementById('cp-doc-viewer');
+  if (v) { v.style.display = 'none'; v.innerHTML = ''; }
+}
+if (typeof window !== 'undefined') {
+  window.openCarrierDoc = openCarrierDoc;
+  window.closeCarrierDoc = closeCarrierDoc;
 }
 
 // boot() is invoked by the window 'load' handler above, after Vendor_ID acquisition.

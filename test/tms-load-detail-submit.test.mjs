@@ -276,3 +276,47 @@ test('W3: no upload dropzone elements in the packet panel', () => {
   assert.ok(!panel.querySelector('#zone-customer-upload-btn'), 'no upload button in packet');
   assert.ok(!panel.querySelector('#zone-carrier-upload-btn'), 'no carrier upload button in packet');
 });
+
+// ── W4: invoice .field wrapper + full-width primary submit button ────────────
+
+test('W4: invoice input is wrapped in a .field div with label', () => {
+  const { dom } = bootW3();
+  const w = dom.window;
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, []);
+  const panel = w.document.getElementById('submit-panel');
+  const inv = panel.querySelector('#f-factoring-invoice');
+  assert.ok(inv, '#f-factoring-invoice exists');
+  const fieldDiv = inv.closest('.field');
+  assert.ok(fieldDiv, '#f-factoring-invoice is wrapped in a .field div');
+  const lbl = fieldDiv.querySelector('label');
+  assert.ok(lbl, '.field contains a label element');
+  assert.match(lbl.textContent, /Carrier \/ Factoring Invoice/i, 'label text matches');
+});
+
+test('W4: submit button has btn and primary classes', () => {
+  const { dom } = bootW3();
+  const w = dom.window;
+  w.renderSubmitPanel({ id: 'LD001', status: 'Delivered', carrier_id: 'v1', vetting: {} }, []);
+  const btn = w.document.getElementById('btn-submit-factoring');
+  assert.ok(btn, '#btn-submit-factoring exists');
+  assert.ok(btn.classList.contains('btn'), 'button has .btn class');
+  assert.ok(btn.classList.contains('primary'), 'button has .primary class');
+  assert.ok(btn.disabled, 'button is disabled by default');
+});
+
+test('W4: .ready amber behavior still composes with .btn.primary', () => {
+  const { dom } = bootW3();
+  const w = dom.window;
+  w.renderSubmitPanel(
+    { id: 'LD001', status: 'Ready to Submit', carrier_id: 'v1', vetting: {} },
+    [{ document_type: 'POD' }, { document_type: 'Carrier Invoice' }]
+  );
+  const inv = w.document.getElementById('f-factoring-invoice');
+  inv.value = 'FCT-999';
+  inv.dispatchEvent(new w.Event('input'));
+  const btn = w.document.getElementById('btn-submit-factoring');
+  assert.equal(btn.disabled, false, 'button enabled when gates pass');
+  assert.ok(btn.classList.contains('ready'), 'button has .ready class when enabled');
+  assert.ok(btn.classList.contains('btn'), '.btn class still present');
+  assert.ok(btn.classList.contains('primary'), '.primary class still present');
+});

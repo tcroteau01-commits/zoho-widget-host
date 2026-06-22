@@ -87,9 +87,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .errline, .okline { margin-right: 0; }
   /* Submit-for-factoring panel button + input full-width */
   #submit-panel input[type="text"], #submit-panel button { width: 100%; box-sizing: border-box; }
-  #btn-submit-factoring { min-height: 44px; }
 }
-#btn-submit-factoring.ready { background:#e8a020; color:#fff; }
+#btn-submit-factoring { width:100%; min-height:44px; }
+#btn-submit-factoring.ready { background:#e8a020; color:#fff; border-color:#e8a020; }
 .gate-ok { color:#2e7d32; } .gate-bad { color:#c62828; }
 /* --- Document viewer modal --- */
 .doc-viewer-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.52); z-index:10000; display:flex; align-items:center; justify-content:center; }
@@ -1152,9 +1152,9 @@ function renderSubmitPanel(load, docs) {
       ? '<div id="override-wrap" style="margin:6px 0"><label><input type="checkbox" id="chk-override"> ' +
         'Override carrier vetting warning and submit anyway</label></div>'
       : '') +
-    '<label>Carrier / Factoring Invoice # ' +
-    '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></label>' +
-    '<button id="btn-submit-factoring" disabled>Submit for Factoring</button>' +
+    '<div class="field"><label>Carrier / Factoring Invoice #</label>' +
+    '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></div>' +
+    '<button id="btn-submit-factoring" class="btn primary" disabled>Submit for Factoring</button>' +
     '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
 
   // Wire Preview buttons

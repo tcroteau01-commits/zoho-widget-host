@@ -504,7 +504,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 /* Carrier Documents card */
 .cp-docs-body { display: flex; flex-direction: column; gap: 10px; }
-.cp-doc-group { }
 .cp-doc-grouptitle { font-size: 11px; font-weight: 700; color: var(--of-gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .cp-doc-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--of-gray-100); }
 .cp-doc-row:last-child { border-bottom: none; }
@@ -1792,6 +1791,19 @@ function wireDecisionCapture(p){
 }
 
 // ── Carrier Documents (WorkDrive) ──────────────────────────────────────────
+var _cpDocsListenerBound = false;
+function _bindCarrierDocsListener() {
+  if (_cpDocsListenerBound) return;
+  var body = document.getElementById('cp-docs-body');
+  if (!body) return;
+  body.addEventListener('click', function (e) {
+    var btn = e.target;
+    if (!btn || !btn.classList.contains('cp-doc-preview')) return;
+    openCarrierDoc(btn.getAttribute('data-token') || '', btn.getAttribute('data-filename') || '');
+  });
+  _cpDocsListenerBound = true;
+}
+
 function renderCarrierDocs(data) {
   var body = document.getElementById('cp-docs-body');
   if (!body) return;
@@ -1805,16 +1817,19 @@ function renderCarrierDocs(data) {
     html += '<div class="cp-doc-group"><div class="cp-doc-grouptitle">' + esc(label) + '</div>';
     groups[label].forEach(function (d) {
       var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token);
-      html += '<div class="cp-doc-row"><span class="cp-doc-name">' + esc(d.filename) + '</span>' +
-        '<button class="cp-doc-link" onclick="openCarrierDoc(\'' + esc(d.preview_token) + '\',\'' + d.filename.replace(/'/g, "\\'" ) + '\')">Preview</button>' +
+      var fname = esc(String(d.filename || ''));
+      html += '<div class="cp-doc-row"><span class="cp-doc-name">' + fname + '</span>' +
+        '<button class="cp-doc-link cp-doc-preview" data-token="' + esc(d.preview_token) + '" data-filename="' + fname + '">Preview</button>' +
         '<a class="cp-doc-link" href="' + url + '" download>Download</a></div>';
     });
     html += '</div>';
   });
   body.innerHTML = html;
+  _bindCarrierDocsListener();
 }
 
 function loadCarrierDocs() {
+  closeCarrierDoc();
   var body = document.getElementById('cp-docs-body');
   if (body) body.textContent = 'Loading documents…';
   if (!brokerEmail || !vendorId) return Promise.resolve();
@@ -1830,9 +1845,10 @@ function openCarrierDoc(token, filename) {
   var v = document.getElementById('cp-doc-viewer');
   if (!v) return;
   var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(token);
-  var isImg = /\.(png|jpe?g|gif|webp)$/i.test(filename || '');
+  var fname = String(filename || '');
+  var isImg = /\.(png|jpe?g|gif|webp)$/i.test(fname);
   v.innerHTML = '<button class="cp-doc-close" onclick="closeCarrierDoc()">Close</button>' +
-    (isImg ? '<img src="' + url + '" alt="' + esc(filename || '') + '" style="max-width:100%">'
+    (isImg ? '<img src="' + url + '" alt="' + esc(fname) + '" style="max-width:100%">'
            : '<iframe src="' + url + '" style="width:100%;height:70vh;border:0"></iframe>');
   v.style.display = 'block';
 }

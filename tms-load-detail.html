@@ -87,10 +87,20 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .errline, .okline { margin-right: 0; }
   /* Submit-for-factoring panel button + input full-width */
   #submit-panel input[type="text"], #submit-panel button { width: 100%; box-sizing: border-box; }
-  #btn-submit-factoring { min-height: 44px; }
 }
-#btn-submit-factoring.ready { background:#e8a020; color:#fff; }
+#btn-submit-factoring { width:100%; min-height:44px; }
+#btn-submit-factoring:disabled { background:#d8d8d8; color:#888; border-color:#d8d8d8; opacity:1; cursor:not-allowed; }
 .gate-ok { color:#2e7d32; } .gate-bad { color:#c62828; }
+/* --- Document viewer modal --- */
+.doc-viewer-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.52); z-index:10000; display:flex; align-items:center; justify-content:center; }
+.doc-viewer { background:#fff; border-radius:12px; border:1px solid #e6e3da; width:88vw; max-width:1100px; height:85vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 8px 40px rgba(0,0,0,.22); }
+.doc-viewer-header { display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid #e6e3da; flex-shrink:0; }
+.doc-viewer-title { font-size:14px; font-weight:700; color:#272727; flex:1; }
+.doc-viewer-newtab { font-size:12px; font-weight:600; color:#2b4a8b; text-decoration:none; padding:6px 12px; border:1px solid #d8d8d8; border-radius:8px; white-space:nowrap; }
+.doc-viewer-newtab:hover { background:#eef2fb; border-color:#b8c4e4; }
+.doc-viewer-close { background:transparent; border:none; cursor:pointer; font-size:20px; color:#888; line-height:1; padding:4px 6px; border-radius:6px; }
+.doc-viewer-close:hover { background:#f3f1ea; color:#333; }
+.doc-viewer iframe { flex:1; border:none; width:100%; background:#f9f9f9; }
 </style>
 </head>
 <body>
@@ -264,6 +274,19 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   </div><!-- /#edit-mode -->
 </div>
+
+<!-- Document viewer modal (hidden by default) -->
+<div class="doc-viewer-backdrop hidden" id="doc-viewer-backdrop">
+  <div class="doc-viewer">
+    <div class="doc-viewer-header">
+      <span class="doc-viewer-title" id="doc-viewer-title"></span>
+      <a class="doc-viewer-newtab" id="doc-viewer-newtab" href="#" target="_blank" rel="noopener">Open in new tab ↗</a>
+      <button class="doc-viewer-close" id="doc-viewer-close" onclick="closeDocViewer()" title="Close">✕</button>
+    </div>
+    <iframe id="doc-viewer-iframe" src="" title="Document preview" allowfullscreen></iframe>
+  </div>
+</div>
+
 <script>
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
 var brokerEmail = '';
@@ -841,24 +864,92 @@ function refreshDocCard() {
 
 function loadDocList() {
   if (!loadId || !brokerEmail) return;
-  fetch(BROKER_API_BASE + '/tms-docs?email=' + encodeURIComponent(brokerEmail) + '&load_id=' + encodeURIComponent(loadId))
-    .then(function(r){ return r.json(); })
-    .then(function(p){ renderDocList((p && p.documents) || []); });
+  refreshDocs();
 }
 
 function renderDocList(docs) {
   window._loadedDocs = docs;
-  if (window._currentLoad) renderSubmitPanel(window._currentLoad, docs);
+  renderDocLibrary(docs);
+}
+
+function refreshDocs() {
+  if (!loadId || !brokerEmail) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/tms-docs?email=' + encodeURIComponent(brokerEmail) + '&load_id=' + encodeURIComponent(loadId))
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      var docs = (p && p.documents) || [];
+      window._loadedDocs = docs;
+      renderDocLibrary(docs);
+      if (window._currentLoad) renderSubmitPanel(window._currentLoad, docs);
+    });
+}
+
+function renderDocLibrary(docs) {
+  window._loadedDocs = docs;
   var box = document.getElementById('doc-list');
   if (!box) return;
-  if (!docs.length) { box.innerHTML = '<div class="muted">No documents generated yet.</div>'; return; }
+  if (!docs || !docs.length) { box.innerHTML = '<div class="muted">No documents yet.</div>'; return; }
   box.innerHTML = '';
   docs.forEach(function(d){
     var el = document.createElement('div');
-    el.className = 'doc-item' + (d.voided ? ' voided' : '');
-    var tag = d.voided ? ' <span class="void-tag">Voided — carrier changed</span>' : '';
-    el.innerHTML = '<span>' + esc(d.document_type) + tag + '</span><span class="src">' +
-      esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
+    el.className = 'doc-lib-item doc-item' + (d.voided ? ' voided' : '');
+
+    // Preview button
+    var previewBtn = document.createElement('button');
+    previewBtn.className = 'btn small doc-lib-preview' + (d.has_file ? '' : ' hidden');
+    previewBtn.textContent = 'Preview';
+    (function(doc){
+      previewBtn.addEventListener('click', function(){
+        openDocViewer(BROKER_API_BASE + '/tms-doc-file?t=' + encodeURIComponent(doc.preview_token || ''), doc.document_type);
+      });
+    })(d);
+
+    // Delete button
+    var deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn small doc-lib-delete';
+    deleteBtn.textContent = 'Delete';
+    (function(doc){
+      deleteBtn.addEventListener('click', function(){
+        if (!confirm('Delete this document?')) return;
+        fetch(BROKER_API_BASE + '/tms-doc/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_id: doc.id })
+        }).then(function(r){ return r.json(); }).then(function(){ refreshDocs(); });
+      });
+    })(d);
+
+    // Submission control: badge or Add button
+    var submissionCtrl;
+    if (d.in_submission) {
+      submissionCtrl = document.createElement('span');
+      submissionCtrl.className = 'doc-lib-badge';
+      submissionCtrl.textContent = '✓ In submission';
+    } else {
+      submissionCtrl = document.createElement('button');
+      submissionCtrl.className = 'btn small doc-lib-add';
+      submissionCtrl.textContent = 'Add to submission';
+      (function(doc){
+        submissionCtrl.addEventListener('click', function(){
+          fetch(BROKER_API_BASE + '/tms-doc/submission', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_id: doc.id, in_submission: true })
+          }).then(function(r){ return r.json(); }).then(function(){ refreshDocs(); });
+        });
+      })(d);
+    }
+
+    // Label
+    var label = document.createElement('span');
+    var voidTag = d.voided ? ' <span class="void-tag">Voided</span>' : '';
+    label.innerHTML = '<strong>' + esc(d.document_type) + '</strong>' + voidTag +
+      ' <span class="src">' + esc(d.source) + ' · ' + esc((d.uploaded_at || '').replace('T', ' ').slice(0, 16)) + '</span>';
+
+    el.appendChild(label);
+    el.appendChild(previewBtn);
+    el.appendChild(deleteBtn);
+    el.appendChild(submissionCtrl);
     box.appendChild(el);
   });
 }
@@ -1018,67 +1109,6 @@ function _vettingWarnings(load) {
   return w;
 }
 
-var _zoneStaged = { customer: null, carrier: null };
-var _ZONE_TYPES = {
-  customer: ['POD', 'BOL', 'Lumper Receipt', 'Other'],
-  carrier: ['Carrier Invoice', 'Signed Rate Con'],
-};
-function setZoneStagedFile(side, file) {
-  _zoneStaged[side] = file || null;
-  var dz = document.getElementById('zone-' + side + '-dropzone');
-  if (!dz) return;
-  if (_zoneStaged[side]) { dz.className = 'dropzone staged'; dz.textContent = '✓ ' + _zoneStaged[side].name + ' attached'; }
-  else { dz.className = 'dropzone'; dz.textContent = 'Drop a file here or click to browse'; }
-}
-function _zoneActionsHtml(side) {
-  var opts = _ZONE_TYPES[side].map(function (t) { return '<option>' + t + '</option>'; }).join('');
-  return '<select id="zone-' + side + '-type" class="doc-to" style="margin-top:8px">' + opts + '</select>' +
-    '<div class="dropzone" id="zone-' + side + '-dropzone">Drop a file here or click to browse</div>' +
-    '<input type="file" id="zone-' + side + '-file" accept="application/pdf,image/*" style="display:none">' +
-    '<button class="btn small primary" id="zone-' + side + '-upload-btn">Upload</button>';
-}
-function _wireZone(side) {
-  var actions = document.getElementById('zone-' + side + '-actions');
-  if (!actions) return;
-  actions.insertAdjacentHTML('afterbegin', _zoneActionsHtml(side));
-  var dz = document.getElementById('zone-' + side + '-dropzone');
-  var fi = document.getElementById('zone-' + side + '-file');
-  if (dz && fi) {
-    dz.addEventListener('click', function () { fi.click(); });
-    fi.addEventListener('change', function () { setZoneStagedFile(side, fi.files && fi.files[0]); });
-    dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('dragover'); });
-    dz.addEventListener('dragleave', function () { dz.classList.remove('dragover'); });
-    dz.addEventListener('drop', function (e) {
-      e.preventDefault(); dz.classList.remove('dragover');
-      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) setZoneStagedFile(side, e.dataTransfer.files[0]);
-    });
-  }
-  var btn = document.getElementById('zone-' + side + '-upload-btn');
-  if (btn) btn.addEventListener('click', function () {
-    var sel = document.getElementById('zone-' + side + '-type');
-    uploadBrokerDoc(sel ? sel.value : _ZONE_TYPES[side][0], _zoneStaged[side])
-      .then(function () { setZoneStagedFile(side, null); });
-  });
-  var actionsEl = document.getElementById('zone-' + side + '-actions');
-  if (actionsEl) {
-    if (side === 'customer') {
-      actionsEl.insertAdjacentHTML('beforeend',
-        '<button class="btn small" id="zone-customer-geninvoice-btn" style="margin-top:8px">Generate customer invoice</button>');
-      var g = document.getElementById('zone-customer-geninvoice-btn');
-      if (g) g.addEventListener('click', function () { generateDoc('customer_invoice', false); });
-    } else {
-      actionsEl.insertAdjacentHTML('beforeend',
-        '<button class="btn small" id="zone-carrier-remind-btn" style="margin-top:8px">Remind carrier</button>');
-      var rm = document.getElementById('zone-carrier-remind-btn');
-      if (rm) rm.addEventListener('click', function () { emailCarrierLink(); });
-    }
-  }
-}
-function wireZoneUploads() {
-  _zoneStaged = { customer: null, carrier: null };
-  _wireZone('customer');
-  _wireZone('carrier');
-}
 
 function renderSubmitPanel(load, docs) {
   var panel = document.getElementById('submit-panel');
@@ -1091,13 +1121,19 @@ function renderSubmitPanel(load, docs) {
     return;
   }
   docs = docs || [];
-  function zoneDocs(side) {
-    return docs.filter(function (d) { return _docSide(d.document_type) === side; });
+  function inSubmissionDocs(side) {
+    return docs.filter(function (d) { return d.in_submission && _docSide(d.document_type) === side; });
   }
   function docRows(side) {
-    var rows = zoneDocs(side).map(function (d) {
-      return '<div class="fz-doc' + (d.voided ? ' voided' : '') + '">' + esc(d.document_type) +
-        (d.voided ? ' (voided)' : '') + '</div>';
+    var rows = inSubmissionDocs(side).map(function (d) {
+      var label = '<span class="fz-doc-label' + (d.voided ? ' voided' : '') + '">' + esc(d.document_type) +
+        (d.voided ? ' (voided)' : '') + '</span>';
+      var previewBtn = d.has_file
+        ? '<button class="btn small pkt-preview" data-url="' + esc(BROKER_API_BASE + '/tms-doc-file?t=' + encodeURIComponent(d.preview_token)) +
+          '" data-title="' + esc(d.document_type) + '">Preview</button>'
+        : '';
+      var removeBtn = '<button class="btn small pkt-remove" data-doc-id="' + esc(d.id) + '">Remove</button>';
+      return '<div class="fz-doc' + (d.voided ? ' voided' : '') + '">' + label + previewBtn + removeBtn + '</div>';
     });
     return rows.length ? rows.join('') : '<div class="fz-empty">None yet.</div>';
   }
@@ -1107,23 +1143,36 @@ function renderSubmitPanel(load, docs) {
     '<div class="fz-banner">Turn this delivered load into a carrier invoice plus POD, then submit it for factoring.</div>' +
     '<div class="fz-zones">' +
       '<div class="fz-zone" id="zone-customer"><h4>Customer Documents</h4>' +
-        '<div id="zone-customer-docs">' + docRows('customer') + '</div>' +
-        '<div id="zone-customer-actions"></div></div>' +
+        '<div id="zone-customer-docs">' + docRows('customer') + '</div></div>' +
       '<div class="fz-zone" id="zone-carrier"><h4>Carrier Documents</h4>' +
-        '<div id="zone-carrier-docs">' + docRows('carrier') + '</div>' +
-        '<div id="zone-carrier-actions"></div></div>' +
+        '<div id="zone-carrier-docs">' + docRows('carrier') + '</div></div>' +
     '</div>' +
     '<ul id="gate-list" class="muted" style="margin:10px 0;padding-left:18px"></ul>' +
     (warnings.length
       ? '<div id="override-wrap" style="margin:6px 0"><label><input type="checkbox" id="chk-override"> ' +
         'Override carrier vetting warning and submit anyway</label></div>'
       : '') +
-    '<label>Carrier / Factoring Invoice # ' +
-    '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></label>' +
-    '<button id="btn-submit-factoring" disabled>Submit for Factoring</button>' +
+    '<div class="field"><label>Carrier / Factoring Invoice #</label>' +
+    '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></div>' +
+    '<button id="btn-submit-factoring" class="btn primary" disabled>Submit for Factoring</button>' +
     '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
 
-  wireZoneUploads();
+  // Wire Preview buttons
+  panel.querySelectorAll('button.pkt-preview').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openDocViewer(btn.dataset.url, btn.dataset.title);
+    });
+  });
+  // Wire Remove buttons
+  panel.querySelectorAll('button.pkt-remove').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      fetch(BROKER_API_BASE + '/tms-doc/submission', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: window.brokerEmail, load_id: window.loadId, doc_id: btn.dataset.docId, in_submission: false }),
+      }).then(function () { refreshDocs(); });
+    });
+  });
+
   _refreshGates(load, docs, warnings);
   var inv = document.getElementById('f-factoring-invoice');
   if (inv) inv.oninput = function () { _refreshGates(load, docs, warnings); };
@@ -1194,12 +1243,48 @@ window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; wind
 window.vettingExtraHtml = vettingExtraHtml;
 window.applyTemplate = applyTemplate; window.applyTemplateStops = applyTemplateStops; window.hydrate = hydrate; window.saveTemplate = saveTemplate; window.updateTemplate = updateTemplate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
-window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
+window.renderDocList = renderDocList; window.renderDocLibrary = renderDocLibrary; window.refreshDocs = refreshDocs; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
 window.setStagedFile = setStagedFile;
-window.setZoneStagedFile = setZoneStagedFile;
-window.wireZoneUploads = wireZoneUploads;
 Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
+
+// --- Document viewer modal ---
+function openDocViewer(url, title) {
+  var backdrop = document.getElementById('doc-viewer-backdrop');
+  var iframe   = document.getElementById('doc-viewer-iframe');
+  var titleEl  = document.getElementById('doc-viewer-title');
+  var anchor   = document.getElementById('doc-viewer-newtab');
+  if (!backdrop) return;
+  iframe.src   = url;
+  anchor.href  = url;
+  titleEl.textContent = title || '';
+  backdrop.classList.remove('hidden');
+}
+
+function closeDocViewer() {
+  var backdrop = document.getElementById('doc-viewer-backdrop');
+  var iframe   = document.getElementById('doc-viewer-iframe');
+  if (!backdrop) return;
+  backdrop.classList.add('hidden');
+  // reset src so the iframe stops loading/playing
+  iframe.src = '';
+}
+
+window.openDocViewer  = openDocViewer;
+window.closeDocViewer = closeDocViewer;
+
+// wire backdrop click + ESC (modal markup is above this script block, so the elements exist)
+(function() {
+  var backdrop = document.getElementById('doc-viewer-backdrop');
+  if (backdrop) {
+    backdrop.addEventListener('click', function(e) {
+      if (e.target === backdrop) closeDocViewer();
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeDocViewer();
+  });
+})();
 </script>
 </body>
 </html>

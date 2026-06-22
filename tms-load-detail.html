@@ -886,7 +886,6 @@ function refreshDocs() {
 
 function renderDocLibrary(docs) {
   window._loadedDocs = docs;
-  if (window._currentLoad) renderSubmitPanel(window._currentLoad, docs);
   var box = document.getElementById('doc-list');
   if (!box) return;
   if (!docs || !docs.length) { box.innerHTML = '<div class="muted">No documents yet.</div>'; return; }
@@ -1286,7 +1285,7 @@ window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; wind
 window.vettingExtraHtml = vettingExtraHtml;
 window.applyTemplate = applyTemplate; window.applyTemplateStops = applyTemplateStops; window.hydrate = hydrate; window.saveTemplate = saveTemplate; window.updateTemplate = updateTemplate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
-window.renderDocList = renderDocList; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
+window.renderDocList = renderDocList; window.renderDocLibrary = renderDocLibrary; window.refreshDocs = refreshDocs; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
 window.setStagedFile = setStagedFile;
 window.setZoneStagedFile = setZoneStagedFile;

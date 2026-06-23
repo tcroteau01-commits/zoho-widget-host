@@ -90,6 +90,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 body.is-carrier .carrier-only { display: block; }
 body.is-broker .broker-only { display: block; }
 body.is-carrier .chips.carrier-only, body.is-broker .chips.broker-only { display: flex; }
+.tline.broker-only { display: none; } /* beat the later `.tline{display:flex}` tie so broker-only rows stay hidden for carriers */
 body.is-broker .tline.broker-only { display: flex; } /* keep space-between so the value stays right-aligned */
 body.is-ambiguous .ambiguous-only { display: block; }
 body.is-vet .vet-only { display: block; }
@@ -455,21 +456,9 @@ body.show-contacts .contacts-only { display: block; }
       </div>
 
       <div class="divider"></div>
-      <div class="section-h">Program Terms</div>
-      <div class="row2">
-        <div class="field"><label>Setup Fee</label><input type="text" id="opSetupFee" placeholder="Confirmed by Underwriting"></div>
-        <div class="field"><label>Monthly Minimum</label><input type="text" id="opMonthlyMin" placeholder="Confirmed by Underwriting"></div>
-      </div>
-      <div class="row2">
-        <div class="field"><label>Repurchase Period</label><input type="text" id="opRepurchase" placeholder="e.g. 90 days"></div>
-        <div class="field"><label>Collection Service Fee</label><input type="text" id="opCollectionFee" placeholder="If applicable"></div>
-      </div>
-      <div class="subnote">These are standard program terms — your underwriter confirms the final figures at approval.</div>
-
-      <div class="divider"></div>
       <div class="field"><label><span class="chip" id="termsChip" style="display:inline-flex"><span class="cx">✓</span> I agree to the OperFi Terms &amp; Conditions <span class="req">*</span></span></label><div class="ferr" data-err="terms">You must accept the Terms &amp; Conditions.</div></div>
       <div class="broker-only">
-        <div class="field"><span class="chip" id="appFeeChip" style="display:inline-flex"><span class="cx">✓</span> I authorize the $150 due-diligence application fee</span></div>
+        <div class="field"><span class="chip" id="appFeeChip" style="display:inline-flex"><span class="cx">✓</span> I authorize the $150 due-diligence application fee <span class="req">*</span></span><div class="ferr" data-err="appFee">You must authorize the $150 due-diligence application fee.</div></div>
         <div class="subnote">The $150 application fee applies to broker applications and is collected at submission.</div>
       </div>
 
@@ -491,6 +480,7 @@ body.show-contacts .contacts-only { display: block; }
         <div class="tline"><span class="tk">Your Rate</span><span class="tv" id="rvRate" style="color:var(--of-orange)">—</span></div>
         <div class="tline"><span class="tk">Advance</span><span class="tv" id="rvAdv">—</span></div>
         <div class="tline"><span class="tk">Credit Line</span><span class="tv" id="rvLimit">—</span></div>
+        <div class="tline broker-only"><span class="tk">Application Fee</span><span class="tv" id="rvAppFee">$150 (authorized)</span></div>
       </div>
       <div class="nav">
         <button class="btn ghost" type="button" data-go="4">← Back</button>
@@ -558,47 +548,44 @@ var FORM = {
 var APPLICATION_LOOKUP = 'Application';
 
 // ───────────────────────────── RATE ENGINE ──────────────────────────────────
-var CARRIER_BASE = {
-  semi:       { annual: 2.75, '90': 3.25 },
-  box:        { annual: 3.25, '90': 3.75 },
-  hotshotcdl: { annual: 3.00, '90': 3.50 }
+// Direct rate card — mirrors the OperFi factoring rate sheet exactly. Keyed by
+// veteran status → contract type → term. fee = factoring fee (the headline
+// "Factoring Rate"), escrow = reserve held back, advance = 100 − fee − escrow
+// (pre-computed to match the sheet to the basis point). No equipment-class or
+// per-deal adders — every price is read straight from this table.
+var RATE_TABLE = {
+  nonvet: {
+    nonrecourse: { annual: { fee: 3.00, escrow: 0.00, advance: 97.00 }, '90': { fee: 3.50, escrow: 0.00, advance: 96.50 } },
+    recourse:    { annual: { fee: 2.75, escrow: 0.00, advance: 97.25 }, '90': { fee: 3.25, escrow: 0.00, advance: 96.75 } },
+    brokerage:   { annual: { fee: 3.00, escrow: 7.00, advance: 90.00 }, '90': { fee: 3.50, escrow: 6.50, advance: 90.00 } }
+  },
+  vet: {
+    nonrecourse: { annual: { fee: 2.75, escrow: 0.00, advance: 97.25 }, '90': { fee: 3.25, escrow: 0.00, advance: 96.75 } },
+    recourse:    { annual: { fee: 2.50, escrow: 0.00, advance: 97.50 }, '90': { fee: 3.00, escrow: 0.00, advance: 97.00 } },
+    brokerage:   { annual: { fee: 2.75, escrow: 7.25, advance: 90.00 }, '90': { fee: 3.25, escrow: 6.75, advance: 90.00 } }
+  }
 };
-var BROKER = {
-  nonvet: { annual: { rate: 3.00, reserve: 7.0 }, '90': { rate: 3.50, reserve: 6.5 } },
-  vet:    { annual: { rate: 2.75, reserve: 7.25 }, '90': { rate: 3.00, reserve: 7.0 } }
-};
-var PARTNER_PROMO_KEYS = ['Hotshot-USA', 'TAP', 'SWITCH'];
-var PROMO_RATE = 1.99;
 var DEFAULT_LIMIT = 30000;
 
-function deriveRateClass(equipTypes, hotshotIsCDL) {
-  var t = equipTypes || [];
-  var has = function (v) { return t.indexOf(v) !== -1; };
-  if (has('Box Truck') || has('Sprinter Van') || (has('Hotshot') && !hotshotIsCDL)) return 'box';
-  if (has('Hotshot') && hotshotIsCDL) return 'hotshotcdl';
-  return 'semi';
+// Resolve which rate-sheet cell applies to the prospect's selections.
+function rateRow(state) {
+  var term = state.term === '90' ? '90' : 'annual';
+  var vetKey = state.vet ? 'vet' : 'nonvet';
+  var type = state.authority === 'broker' ? 'brokerage'
+    : (state.recourse === 'nonrecourse' ? 'nonrecourse' : 'recourse');
+  return RATE_TABLE[vetKey][type][term];
 }
 
 function computeQuote(state) {
   var term = state.term === '90' ? '90' : 'annual';
-  var rate, reserve = 0, promoApplied = false;
-  if (state.authority === 'broker') {
-    var b = (state.vet ? BROKER.vet : BROKER.nonvet)[term];
-    rate = b.rate; reserve = b.reserve;
-  } else {
-    var cls = deriveRateClass(state.equipTypes, state.hotshotCDL);
-    rate = CARRIER_BASE[cls][term];
-    if (state.recourse === 'nonrecourse') rate += 0.25;
-    if (state.vet) rate -= 0.25;
-    if (term === 'annual' && PARTNER_PROMO_KEYS.indexOf(state.partnerKey) !== -1) { rate = PROMO_RATE; promoApplied = true; }
-    reserve = 0;
-  }
-  rate = Math.round(rate * 100) / 100;
-  var advance = Math.round((100 - rate - reserve) * 100) / 100;
+  var row = rateRow(state);
+  var rate = row.fee;        // headline "Factoring Rate"
+  var reserve = row.escrow;  // escrow / reserve held back
+  var advance = row.advance; // funded on day one
   var trucks = parseInt(state.trucks, 10) || 1;
   var limit = state.authority === 'carrier' ? trucks * DEFAULT_LIMIT : DEFAULT_LIMIT;
   var qpTotal = state.authority === 'broker' ? (parseInt(state.qp, 10) || 0) + 2 : null;
-  return { rate: rate, reserve: reserve, advance: advance, termMonths: term === 'annual' ? 12 : 3, limit: limit, qpTotal: qpTotal, promoApplied: promoApplied };
+  return { rate: rate, reserve: reserve, advance: advance, termMonths: term === 'annual' ? 12 : 3, limit: limit, qpTotal: qpTotal };
 }
 
 function resolveAuthority(authorityType, factoringSelected) {
@@ -651,10 +638,6 @@ function buildApplicationPayload(s) {
     Advance_Rate: q.advance,
     Term_Months: q.termMonths,
     Purchase_Limit: q.limit,
-    Setup_Fee: s.setupFee || '',
-    Monthly_Minimum: s.monthlyMinimum || '',
-    Repurchase_Period: s.repurchasePeriod || '',
-    Collection_Service_Fee: s.collectionServiceFee || '',
     Application_Date: s.applicationDate || '',
     Terms_Accepted: !!s.termsAccepted
   };
@@ -733,6 +716,7 @@ function validateAll(s) {
   req(/^\d{4}$/.test(s.pin || ''), 'opPin', 'Create a 4-digit portal PIN.');
   req((s.pin || '') === (s.pinConfirm || ''), 'opPinConfirm', 'Your PINs do not match.');
   req(s.termsAccepted, 'terms', 'You must accept the Terms & Conditions.');
+  if (s.authority === 'broker') req(s.appFeePaid, 'appFee', 'You must authorize the $150 due-diligence application fee.');
   return { ok: errors.length === 0, errors: errors };
 }
 
@@ -747,7 +731,7 @@ function formatPlace(d) {
 // ──────────────────────────── EXPOSED API ───────────────────────────────────
 var OF = {
   config: { API_BASE: API_BASE, USDOT_LOOKUP_PATH: USDOT_LOOKUP_PATH, SUBMIT_PATH: SUBMIT_PATH, CRM_SYNC_PATH: CRM_SYNC_PATH, FORM: FORM, APPLICATION_LOOKUP: APPLICATION_LOOKUP, PLACES_AC_PATH: PLACES_AC_PATH, PLACE_DETAILS_PATH: PLACE_DETAILS_PATH },
-  deriveRateClass: deriveRateClass, computeQuote: computeQuote, resolveAuthority: resolveAuthority,
+  rateRow: rateRow, computeQuote: computeQuote, resolveAuthority: resolveAuthority,
   buildApplicationPayload: buildApplicationPayload, buildOwnerPayloads: buildOwnerPayloads,
   buildChildPayloads: buildChildPayloads, buildSubmitBody: buildSubmitBody, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail,
   formatPlace: formatPlace
@@ -890,7 +874,6 @@ function readState() {
     pin: val('opPin'), pinConfirm: val('opPinConfirm'),
     creditIssues: creditIssues, creditExplanation: val('opCreditExpl'),
     term: UI.term, recourse: UI.recourse, qp: UI.qp,
-    setupFee: val('opSetupFee'), monthlyMinimum: val('opMonthlyMin'), repurchasePeriod: val('opRepurchase'), collectionServiceFee: val('opCollectionFee'),
     termsAccepted: UI.termsAccepted, appFeePaid: UI.appFeePaid,
     owners: owners, relatedEntities: relatedEntities, customers: customers, trustedContacts: trustedContacts
   };
@@ -898,8 +881,7 @@ function readState() {
 
 function recalc() {
   var s = { authority: UI.authority, vet: UI.vet, term: UI.term, recourse: UI.recourse,
-    equipTypes: qsa('#equipChips .chip.sel').map(function (c) { return c.getAttribute('data-equip'); }),
-    hotshotCDL: UI.hotshotCDL, trucks: val('opTrucks') || 1, qp: UI.qp, partnerKey: UI.partnerKey };
+    trucks: val('opTrucks') || 1, qp: UI.qp };
   var q = computeQuote(s);
   $('rateVal').textContent = q.rate.toFixed(2);
   $('advVal').textContent = q.advance.toFixed(2) + '%';
@@ -908,8 +890,8 @@ function recalc() {
   $('limitVal').textContent = '$' + q.limit.toLocaleString();
   $('qpVal').textContent = q.qpTotal != null ? (q.qpTotal + '% (' + UI.qp + '%+2%)') : '—';
   $('termsAuth').textContent = (UI.authority === 'carrier' ? 'Carrier' : 'Broker') + ' · ' + (UI.businessName || '—');
-  $('promoBox').classList.toggle('show', q.promoApplied || UI.vet);
-  $('promoBox').textContent = q.promoApplied ? '🎉 Partner promo rate applied: 1.99%' : '🎖 Veteran discount applied: −0.25%';
+  $('promoBox').classList.toggle('show', !!UI.vet);
+  $('promoBox').textContent = '🎖 Veteran pricing applied';
   $('rvName').textContent = UI.businessName || '—';
   $('rvAuth').textContent = UI.authority === 'carrier' ? 'Carrier' : 'Broker';
   $('rvOwners').textContent = qsa('#ownerList .owner-block').filter(function (b) { var e = b.querySelector('[data-of="first"]'); return e && e.value.trim(); }).length || 1;
@@ -987,6 +969,7 @@ function validateStep(step) {
     }
   } else if (step === 4) {
     if (!UI.termsAccepted) fail($('termsChip'), 'terms');
+    if (UI.authority === 'broker' && !UI.appFeePaid) fail($('appFeeChip'), 'appFee');
   }
 
   if (bad.length) {
@@ -1062,8 +1045,14 @@ function initDom() {
       $('foundBanner').classList.add('show');
       $('next0').disabled = (flow === 'ambiguous');
       $('opName').value = d.name || ''; $('opDBA').value = d.dba || ''; $('opEIN').value = d.ein || ''; $('opUsdot').value = dot; $('opMC').value = d.mc || '';
-      $('opPhone').value = d.phone || ''; $('opEmail').value = d.email || '';
-      if (flow === 'carrier') { $('opTrucks').value = d.trucks || 1; if (d.drivers != null && d.drivers !== '') $('opDrivers').value = d.drivers; }
+      if (flow === 'carrier') {
+        // Carriers enter their own business phone/email — the FMCSA-listed contact is often a
+        // dispatch service or stale, so leave these blank rather than prefill from the lookup.
+        $('opPhone').value = ''; $('opEmail').value = '';
+        $('opTrucks').value = d.trucks || 1; if (d.drivers != null && d.drivers !== '') $('opDrivers').value = d.drivers;
+      } else {
+        $('opPhone').value = d.phone || ''; $('opEmail').value = d.email || '';
+      }
       $('termsPanel').classList.remove('hidden');
       recalc();
     });

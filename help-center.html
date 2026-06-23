@@ -1,0 +1,550 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OperFi Broker Portal — Help Center</title><style>
+:root{--ink:#1b2a4a;--ink2:#0f1b33;--amber:#e8a33d;--amber2:#b6791d;--paper:#f4f6fa;
+--card:#fff;--muted:#7a8699;--line:#e3e7ee;}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;scroll-padding-top:18px;}
+body{margin:0;font-family:'Segoe UI',Calibri,Arial,sans-serif;color:#1f2933;background:var(--paper);
+line-height:1.55;font-size:15px;}
+a{color:var(--amber2);text-decoration:none;}
+.topbar{position:sticky;top:0;z-index:30;background:var(--ink2);color:#fff;display:flex;align-items:center;
+gap:10px;padding:12px 22px;box-shadow:0 2px 10px rgba(0,0,0,.12);}
+.topbar .dot{width:10px;height:10px;border-radius:50%;background:var(--amber);}
+.topbar b{font-size:15px;letter-spacing:.2px;}.topbar span{color:#aeb8cc;font-size:13px;}
+.hero{background:linear-gradient(150deg,var(--ink) 0%,var(--ink2) 100%);color:#fff;
+padding:54px 22px 60px;text-align:center;position:relative;overflow:hidden;}
+.hero:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:5px;background:var(--amber);}
+.hero h1{font-size:30px;font-weight:700;margin:0 0 6px;}
+.hero p{color:#c3cce0;margin:0 0 26px;font-size:16px;}
+.searchwrap{max-width:680px;margin:0 auto;position:relative;}
+#q{width:100%;padding:18px 20px 18px 52px;font-size:17px;border:none;border-radius:14px;
+box-shadow:0 10px 30px rgba(0,0,0,.25);outline:3px solid transparent;}
+#q:focus{outline:3px solid var(--amber);}
+.searchwrap .mag{position:absolute;left:20px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;}
+.chips{max-width:760px;margin:18px auto 0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
+.chip{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);
+border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer;font-family:inherit;transition:background .15s;}
+.chip:hover,.chip:focus-visible{background:var(--amber);border-color:var(--amber);color:var(--ink2);outline:none;}
+.wrap{max-width:1120px;margin:0 auto;padding:0 22px;}
+.cats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:-34px auto 8px;position:relative;z-index:5;}
+.cat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px;
+box-shadow:0 4px 14px rgba(20,30,55,.06);transition:transform .15s,box-shadow .15s;}
+.cat:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(20,30,55,.12);}
+.cat h4{margin:0 0 4px;color:var(--ink);font-size:16px;}
+.cat p{margin:0;color:var(--muted);font-size:13px;}
+.layout{display:grid;grid-template-columns:230px 1fr;gap:34px;margin:40px 0 60px;align-items:start;}
+.side{position:sticky;top:18px;display:flex;flex-direction:column;gap:2px;}
+.side a{color:#4a5568;font-size:13.5px;padding:7px 12px;border-radius:8px;border-left:3px solid transparent;}
+.side a:hover{background:#eef1f7;color:var(--ink);}
+.side a.active{border-left-color:var(--amber);color:var(--ink);font-weight:600;background:#fff;}
+h2.block{color:var(--ink);font-size:21px;margin:0 0 14px;}
+.faq-group{margin-bottom:22px;}
+.faq-group h3{color:var(--amber2);font-size:14px;text-transform:uppercase;letter-spacing:.6px;
+margin:18px 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px;}
+details.qa,details.guide{background:var(--card);border:1px solid var(--line);border-radius:10px;
+margin:8px 0;overflow:hidden;}
+details.qa summary,details.guide summary{cursor:pointer;padding:14px 18px;font-weight:600;color:var(--ink);
+list-style:none;display:flex;align-items:center;gap:10px;position:relative;}
+summary::-webkit-details-marker{display:none;}
+details.qa summary:after,details.guide summary:after{content:"+";position:absolute;right:18px;
+color:var(--amber2);font-size:20px;font-weight:400;transition:transform .2s;}
+details[open]>summary:after{content:"\2212";}
+details.qa summary:hover,details.guide summary:hover{background:#f8fafd;}
+.ans{padding:0 18px 16px;color:#37445a;}
+.ans p{margin:0;}
+.g-num{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;
+background:var(--ink);color:#fff;border-radius:6px;font-size:12px;}
+.g-body{padding:6px 20px 18px;}
+.g-body h3{color:var(--amber2);font-size:14.5px;margin:18px 0 4px;}
+.g-body p,.g-body li{font-size:14.5px;}
+.g-body strong{color:var(--ink);}
+.g-body table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px;}
+.g-body th{background:var(--ink);color:#fff;text-align:left;padding:7px 10px;}
+.g-body td{border:1px solid var(--line);padding:6px 10px;}
+.g-body tr:nth-child(even) td{background:#f7f9fc;}
+.g-body blockquote{background:#fdf6e9;border-left:4px solid var(--amber);margin:12px 0;
+padding:8px 14px;border-radius:0 6px 6px 0;}
+.g-body figure{margin:14px 0;text-align:center;}
+.g-body figure img{max-width:100%;border:1px solid var(--line);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);}
+.g-body figcaption{font-size:12px;color:var(--muted);margin-top:5px;font-style:italic;}
+.helpfast{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 22px;padding:14px 16px;
+background:var(--card);border:1px solid var(--line);border-radius:12px;}
+.helpfast .hf-label{font-weight:700;color:var(--ink);font-size:13px;margin-right:6px;}
+.helpfast a{flex:1 1 170px;background:#f7f9fc;border:1px solid var(--line);border-radius:9px;
+padding:8px 12px;display:flex;flex-direction:column;color:var(--amber2);transition:border-color .15s;}
+.helpfast a:hover{border-color:var(--amber);}
+.helpfast a b{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;font-weight:600;}
+#noresults{display:none;color:var(--muted);padding:20px;text-align:center;}
+.count{color:var(--muted);font-size:13px;margin:0 0 10px;}
+footer{background:var(--ink2);color:#aeb8cc;text-align:center;padding:22px;font-size:13px;}
+footer a{color:var(--amber);}
+mark{background:#ffe7ad;padding:0 2px;border-radius:3px;}
+@media(max-width:820px){.cats{grid-template-columns:1fr;margin-top:-20px;}.layout{grid-template-columns:1fr;}
+.side{position:static;flex-direction:row;flex-wrap:wrap;}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto;transition:none!important;}}
+</style></head><body>
+<section class="hero">
+  <h1>How can we help?</h1>
+  <p>Search your question, or browse the guides below.</p>
+  <div class="searchwrap"><span class="mag">&#9906;</span>
+    <input id="q" type="search" autocomplete="off" placeholder="Search &mdash; e.g. &ldquo;was my load paid&rdquo;, &ldquo;reset password&rdquo;, &ldquo;get paid&rdquo;"></div>
+  <div class="chips"><button class="chip" type="button">Was my load paid to the carrier or factor</button><button class="chip" type="button">Why aren&#x27;t my loads showing</button><button class="chip" type="button">How do I get paid my own margin</button><button class="chip" type="button">Reset my password or OTP</button><button class="chip" type="button">Why is the Submit button disabled</button><button class="chip" type="button">How do I onboard a carrier</button></div>
+</section>
+<div class="wrap">
+  <div class="cats"><a class="cat" href="#sec-2-get-a-customer-credit-approved"><h4>Credit &amp; customers</h4><p>Run a credit check, read approvals, and credit limits.</p></a><a class="cat" href="#sec-3-booking-and-submitting-loads"><h4>Book &amp; submit a load</h4><p>The Submit Load wizard and OperFi TMS, start to finish.</p></a><a class="cat" href="#sec-4-onboard-a-carrier"><h4>Carriers &amp; onboarding</h4><p>Onboard a carrier, send links, check the risk profile.</p></a><a class="cat" href="#sec-5-collect-documents-rate-con-bol-pod"><h4>Documents</h4><p>Generate and collect rate cons, BOLs, and PODs.</p></a><a class="cat" href="#sec-7-get-paid-your-margin-the-operfi-wallet-fees-and-reserves"><h4>Get paid</h4><p>Your margin, the OperFi Wallet, fees, and reserves.</p></a><a class="cat" href="#sec-9-company-profile-trusted-contacts-and-user-access"><h4>Account &amp; users</h4><p>Company profile, trusted contacts, and access.</p></a><a class="cat" href="#sec-12-resources-and-downloads"><h4>Resources &amp; downloads</h4><p>Templates, agreements, generators, and training.</p></a></div>
+  <div class="layout">
+    <nav class="side" aria-label="Sections"><a href="#sec-1-quick-start">Quick Start</a><a href="#sec-2-get-a-customer-credit-approved">Get a Customer Credit-Approved</a><a href="#sec-3-booking-and-submitting-loads">Booking and Submitting Loads</a><a href="#sec-4-onboard-a-carrier">Onboard a Carrier</a><a href="#sec-5-collect-documents-rate-con-bol-pod">Collect Documents (Rate Con, BOL, POD)</a><a href="#sec-6-track-your-loads-aging-and-carrier-pay">Track Your Loads, Aging, and Carrier Pay</a><a href="#sec-7-get-paid-your-margin-the-operfi-wallet-fees-and-reserves">Get Paid: Your Margin, the OperFi Wallet, Fees, and Reserves</a><a href="#sec-8-switching-your-factoring-to-operfi-and-updating-a-carrier-s-factor">Switching Your Factoring to OperFi, and Updating a Carrier&#x27;s Factor</a><a href="#sec-9-company-profile-trusted-contacts-and-user-access">Company Profile, Trusted Contacts, and User Access</a><a href="#sec-10-fraud-and-security-what-operfi-does-and-what-you-should-do">Fraud and Security: What OperFi Does and What You Should Do</a><a href="#sec-12-resources-and-downloads">Resources and Downloads</a><a href="#sec-13-glossary">Glossary</a><a href="#faq">FAQ and Troubleshooting</a></nav>
+    <main>
+      <section id="faq"><h2 class="block">Frequently asked questions</h2>
+        <div class="helpfast"><span class="hf-label">Need help fast?</span>
+          <a href="mailto:credit@operfi.com"><b>Credit approvals</b>credit@operfi.com</a>
+          <a href="mailto:vendors@operfi.com"><b>Vendor payments</b>vendors@operfi.com</a>
+          <a href="mailto:billing@operfi.com"><b>Invoice submissions</b>billing@operfi.com</a>
+          <a href="mailto:brokersupport@operfi.com"><b>Fraud / other</b>brokersupport@operfi.com</a>
+        </div>
+        <p class="count" id="count"></p>
+        <div id="faqwrap"><div class="faq-group"><h3>Payments (most common)</h3><details class="qa" data-text="was load x paid to the carrier or to their factoring company? search the load in **vendor payments** to see status, paid date, and the paid party. if the carrier has a confirmed (acknowledged) noa, we pay the factoring company, not the carrier directly."><summary>Was load X paid to the carrier or to their factoring company?</summary><div class="ans">Search the load in <strong>Vendor Payments</strong> to see status, paid date, and the paid party. If the carrier has a confirmed (Acknowledged) NOA, we pay the factoring company, not the carrier directly.</div></details><details class="qa" data-text="how do i check whether a carrier or vendor has been paid? vendor payments, searched by load number or the carrier&#x27;s invoice number. it shows pending or paid and the paid date."><summary>How do I check whether a carrier or vendor has been paid?</summary><div class="ans">Vendor Payments, searched by load number or the carrier's invoice number. It shows pending or paid and the paid date.</div></details><details class="qa" data-text="how can carriers or factors check payment status themselves? send them to **operfi.com/brokerpay** with your broker mc and the load number. we do not give carriers payment updates directly; this lets them self-serve."><summary>How can carriers or factors check payment status themselves?</summary><div class="ans">Send them to <strong>operfi.com/brokerpay</strong> with your broker MC and the load number. We do not give carriers payment updates directly; this lets them self-serve.</div></details><details class="qa" data-text="how do i get paid my own margin? from the **operfi wallet** on the dashboard, daily or weekly, by wire ($25), ach ($5), or tank ($3)."><summary>How do I get paid my own margin?</summary><div class="ans">From the <strong>OperFi Wallet</strong> on the dashboard, daily or weekly, by wire ($25), ACH ($5), or Tank ($3).</div></details></div><div class="faq-group"><h3>Loads not showing in the portal</h3><details class="qa" data-text="my loads aren&#x27;t showing / i can&#x27;t access my loads. this is almost always the daily sync between our accounting systems and the portal. give it 24 hours. also confirm the load was actually submitted for funding and the customer is fully set up (approved, billing contact on file, in factorview, noa acknowledged). if it still isn&#x27;t showing, call your account executive."><summary>My loads aren&#x27;t showing / I can&#x27;t access my loads.</summary><div class="ans">This is almost always the daily sync between our accounting systems and the portal. Give it 24 hours. Also confirm the load was actually submitted for funding and the customer is fully set up (Approved, billing contact on file, in FactorView, NOA Acknowledged). If it still isn't showing, call your account executive.</div></details><details class="qa" data-text="a load shows &quot;no buyer&quot; or won&#x27;t pull up the customer. the customer is not fully transactable yet. they must be approved with a billing contact, added to factorview and linked to you, and have the noa confirmed (it reads &quot;sent&quot; until acknowledged, then flips to &quot;acknowledged&quot;)."><summary>A load shows &quot;no buyer&quot; or won&#x27;t pull up the customer.</summary><div class="ans">The customer is not fully transactable yet. They must be Approved with a billing contact, added to FactorView and linked to you, and have the NOA confirmed (it reads "Sent" until acknowledged, then flips to "Acknowledged").</div></details></div><div class="faq-group"><h3>Login, OTP, and users</h3><details class="qa" data-text="how do i reset my password or handle the otp login? use the reset option on the portal login page. login uses your password plus an emailed one-time password. if the otp email does not arrive, contact **brokersupport@operfi.com**."><summary>How do I reset my password or handle the OTP login?</summary><div class="ans">Use the reset option on the portal login page. Login uses your password plus an emailed one-time password. If the OTP email does not arrive, contact <strong>brokersupport@operfi.com</strong>.</div></details><details class="qa" data-text="how do i add a user or trusted contact? company profile &gt; add trusted contact, then choose their roles. full access users only. provisioning can take up to 24 hours."><summary>How do I add a user or trusted contact?</summary><div class="ans">Company Profile &gt; Add Trusted Contact, then choose their roles. Full Access users only. Provisioning can take up to 24 hours.</div></details></div><div class="faq-group"><h3>Fees, the formula, reserves, and chargebacks</h3><details class="qa" data-text="what is the formula for my payout? margin = customer bill minus carrier pay, advanced at 90%, with a 3.5% factoring fee and 6.5% held in escrow on the standard new-broker card. see section 7 for the full rate card."><summary>What is the formula for my payout?</summary><div class="ans">Margin = customer bill minus carrier pay, advanced at 90%, with a 3.5% factoring fee and 6.5% held in escrow on the standard new-broker card. See section 7 for the full rate card.</div></details><details class="qa" data-text="what does quick pay cost? operfi must net 2%. you can charge the carrier up to 5%, keeping 0% to 3%."><summary>What does quick pay cost?</summary><div class="ans">OperFi must net 2%. You can charge the carrier up to 5%, keeping 0% to 3%.</div></details><details class="qa" data-text="how do reserves and reserve release work? your reserve is held in escrow while the invoice is outstanding. when the customer pays, it moves to cash reserves in your wallet and you can request release anytime."><summary>How do reserves and reserve release work?</summary><div class="ans">Your reserve is held in escrow while the invoice is outstanding. When the customer pays, it moves to cash reserves in your Wallet and you can request release anytime.</div></details><details class="qa" data-text="what is the 75 day reserve notice? we have attempted collection, the invoice is 75 days old, and under recourse it will be charged back at 90 days. chase your customer now."><summary>What is the 75 Day Reserve Notice?</summary><div class="ans">We have attempted collection, the invoice is 75 days old, and under recourse it will be charged back at 90 days. Chase your customer now.</div></details><details class="qa" data-text="what happens if my customer never pays? operfi is recourse. unpaid at 90 days means a chargeback to you. manage your aging and work slow customers early."><summary>What happens if my customer never pays?</summary><div class="ans">OperFi is recourse. Unpaid at 90 days means a chargeback to you. Manage your aging and work slow customers early.</div></details></div><div class="faq-group"><h3>Carrier onboarding</h3><details class="qa" data-text="the carrier says the onboarding link didn&#x27;t work or they didn&#x27;t get it. resend it from recently sent links and forward your cc&#x27;d copy. the carrier must complete it themselves so our fraud checks run on the real signer."><summary>The carrier says the onboarding link didn&#x27;t work or they didn&#x27;t get it.</summary><div class="ans">Resend it from Recently Sent Links and forward your CC'd copy. The carrier must complete it themselves so our fraud checks run on the real signer.</div></details><details class="qa" data-text="what is the difference between full carrier onboarding and the vendor pay link? full onboarding generates your broker-carrier agreement and a certificate-holder insurance notice. the vendor pay link skips those two but still sends the factor notification. both run the same fraud checks."><summary>What is the difference between full Carrier Onboarding and the Vendor Pay Link?</summary><div class="ans">Full onboarding generates your broker-carrier agreement and a certificate-holder insurance notice. The Vendor Pay Link skips those two but still sends the factor notification. Both run the same fraud checks.</div></details></div><div class="faq-group"><h3>Customers, credit, and holds</h3><details class="qa" data-text="why is the credit app button disabled? most likely the customer&#x27;s credit is already approved, or a credit application has already been sent."><summary>Why is the Credit App button disabled?</summary><div class="ans">Most likely the customer's credit is already approved, or a credit application has already been sent.</div></details><details class="qa" data-text="my customer came back pending. open the customer and send a credit application. they verify by otp and list three trade and one bank reference, which we email to verify."><summary>My customer came back Pending.</summary><div class="ans">Open the customer and send a credit application. They verify by OTP and list three trade and one bank reference, which we email to verify.</div></details><details class="qa" data-text="how do i get a customer above $30,000? buy a credit boost: $25 for up to $50,000, or $50 for $100,000 or more. the fee covers our underwriting and does not guarantee approval."><summary>How do I get a customer above $30,000?</summary><div class="ans">Buy a Credit Boost: $25 for up to $50,000, or $50 for $100,000 or more. The fee covers our underwriting and does not guarantee approval.</div></details><details class="qa" data-text="my submission shows &quot;on hold.&quot; common triggers: the noa is not yet confirmed; a new customer or relationship is under invoice verification; an all-quick-pay carrier with no noa hit an exposure cap; a carrier pay-term mismatch; or your reserve is under the required margin. resolve the underlying item or contact us."><summary>My submission shows &quot;on hold.&quot;</summary><div class="ans">Common triggers: the NOA is not yet confirmed; a new customer or relationship is under invoice verification; an all-quick-pay carrier with no NOA hit an exposure cap; a carrier pay-term mismatch; or your reserve is under the required margin. Resolve the underlying item or contact us.</div></details></div><div class="faq-group"><h3>NOAs and switching factors</h3><details class="qa" data-text="a carrier i pay switched factoring companies. use **noa management**: upload the letter of release from the old factor and the new noa for the new factor. we update the factor of record."><summary>A carrier I pay switched factoring companies.</summary><div class="ans">Use <strong>NOA Management</strong>: upload the Letter of Release from the old factor and the new NOA for the new factor. We update the factor of record.</div></details><details class="qa" data-text="the carrier pay-terms warning popped up at submission. the carrier&#x27;s invoice type does not match their pay terms on file (for example, quick pay versus net 30, or a factoring carrier not marked as factoring). correct the carrier&#x27;s pay terms, or contact us before submitting."><summary>The carrier pay-terms warning popped up at submission.</summary><div class="ans">The carrier's invoice type does not match their pay terms on file (for example, quick pay versus net 30, or a factoring carrier not marked as factoring). Correct the carrier's pay terms, or contact us before submitting.</div></details></div><div class="faq-group"><h3>Fraud and compliance</h3><details class="qa" data-text="what types of fraud should i watch for? customer fraud (scammers posing as legitimate shippers to steal freight), agent fraud (fake freight agents who apply only to scam you), and carrier fraud (double brokering, identity theft, unauthorized carrier substitutions)."><summary>What types of fraud should I watch for?</summary><div class="ans">Customer fraud (scammers posing as legitimate shippers to steal freight), agent fraud (fake freight agents who apply only to scam you), and carrier fraud (double brokering, identity theft, unauthorized carrier substitutions).</div></details><details class="qa" data-text="how do i prevent customer (shipper) fraud? verify the domain age (new domains are a red flag), cross-check the shipper against industry databases, call them on an officially listed number, and confirm pickup and delivery addresses are not remote or fake warehouses."><summary>How do I prevent customer (shipper) fraud?</summary><div class="ans">Verify the domain age (new domains are a red flag), cross-check the shipper against industry databases, call them on an officially listed number, and confirm pickup and delivery addresses are not remote or fake warehouses.</div></details><details class="qa" data-text="how do i prevent carrier fraud? check mc and dot history for red flags like frequent address changes, watch for vpn or voip signals, confirm identity with fmcsa and carrierok, and send no rate confirmation until verification is complete."><summary>How do I prevent carrier fraud?</summary><div class="ans">Check MC and DOT history for red flags like frequent address changes, watch for VPN or VOIP signals, confirm identity with FMCSA and CarrierOK, and send no rate confirmation until verification is complete.</div></details></div><div class="faq-group"><h3>Cargo claims and broker liability (Carmack Amendment)</h3><details class="qa" data-text="what is the carmack amendment? the carmack amendment (49 u.s.c. section 14706) governs liability for freight loss or damage in interstate commerce. carriers bear the primary responsibility, but brokers have obligations when a claim arises."><summary>What is the Carmack Amendment?</summary><div class="ans">The Carmack Amendment (49 U.S.C. Section 14706) governs liability for freight loss or damage in interstate commerce. Carriers bear the primary responsibility, but brokers have obligations when a claim arises.</div></details><details class="qa" data-text="what are my responsibilities under carmack? have a signed broker-carrier agreement, do not pay the carrier while a claim is open, help process the claim and coordinate with insurers if needed, and keep thorough records (rate confirmations, bols, and carrier communications)."><summary>What are my responsibilities under Carmack?</summary><div class="ans">Have a signed Broker-Carrier Agreement, do not pay the carrier while a claim is open, help process the claim and coordinate with insurers if needed, and keep thorough records (rate confirmations, BOLs, and carrier communications).</div></details><details class="qa" data-text="a carrier damaged freight or there is a loss. what do i do? confirm the carrier&#x27;s insurance is active, do not pay the carrier until the claim is resolved, and help your customer submit the claim."><summary>A carrier damaged freight or there is a loss. What do I do?</summary><div class="ans">Confirm the carrier's insurance is active, do not pay the carrier until the claim is resolved, and help your customer submit the claim.</div></details><details class="qa" data-text="i found out after the fact that my load was double-brokered. what now? do not pay any carrier until the rightful one is identified. confirm who actually moved the load, wait for the legitimate carrier to surface, and update payment details accordingly. a signed broker-carrier agreement is your protection here."><summary>I found out after the fact that my load was double-brokered. What now?</summary><div class="ans">Do not pay any carrier until the rightful one is identified. Confirm who actually moved the load, wait for the legitimate carrier to surface, and update payment details accordingly. A signed Broker-Carrier Agreement is your protection here.</div></details></div><div class="faq-group"><h3>General</h3><details class="qa" data-text="i can&#x27;t see a feature others have. your access depends on your roles. ask your account&#x27;s full access owner to adjust them in company profile."><summary>I can&#x27;t see a feature others have.</summary><div class="ans">Your access depends on your roles. Ask your account's Full Access owner to adjust them in Company Profile.</div></details><details class="qa" data-text="what is factoring? operfi purchases your broker invoices and advances your margin so you have cash flow now instead of waiting on customer payment, while we bill your customer and pay your carriers."><summary>What is factoring?</summary><div class="ans">OperFi purchases your broker invoices and advances your margin so you have cash flow now instead of waiting on customer payment, while we bill your customer and pay your carriers.</div></details><details class="qa" data-text="who do i contact? reach the right team directly: credit approvals **credit@operfi.com**, vendor payments **vendors@operfi.com**, invoice submissions **billing@operfi.com**, and fraud or anything else **brokersupport@operfi.com**. or your assigned account executive. hours are monday to friday, 8:00 am to 5:00 pm cst."><summary>Who do I contact?</summary><div class="ans">Reach the right team directly: credit approvals <strong>credit@operfi.com</strong>, vendor payments <strong>vendors@operfi.com</strong>, invoice submissions <strong>billing@operfi.com</strong>, and fraud or anything else <strong>brokersupport@operfi.com</strong>. Or your assigned account executive. Hours are Monday to Friday, 8:00 AM to 5:00 PM CST.</div></details></div></div>
+        <p id="noresults">No matches. Try fewer or different words, or browse the guides below.</p>
+      </section>
+      <h2 class="block" style="margin-top:38px;">Guides</h2>
+      <details class="guide" id="sec-1-quick-start"><summary><span class="g-num">1</span>Quick Start</summary><div class="g-body"><p>Welcome to the OperFi Broker Portal. This is where you run a load from start to finish: get a customer credit-approved, book the load, send paperwork to your carrier, and submit the load to us for factoring. This page is the five-minute version. Each step links to a full guide.</p>
+<p><strong>The path, start to finish:</strong></p>
+<ol>
+<li><strong>Log in.</strong> Use the link OperFi provided. Your dashboard opens with a snapshot of your activity.</li>
+<li><strong>Get your customer credit-approved.</strong> Go to <strong>New Credit Check</strong> and submit the customer (shipper) you want to bill. We review credit and you'll see the decision under <strong>Customer Approvals</strong>. You can only factor loads for an approved customer, so do this first.</li>
+<li><strong>Onboard your carrier</strong> (if they're new). Send them an onboarding link so they appear in your carrier list.</li>
+<li><strong>Get the load submitted for factoring.</strong> Two ways, and most brokers use the first:<ul>
+<li><strong>Submit Load wizard</strong> (Path A): if you booked the load elsewhere, go to <strong>Invoice Submission &gt; Load Details</strong> and walk the three steps, Customer, Carrier, Review &amp; Submit, attaching paperwork as you go.</li>
+<li><strong>OperFi TMS</strong> (Path B): if you run loads in OperFi, book and move the load in <strong>TMS &gt; Load Board</strong>, then submit once it's Ready to Submit.</li>
+</ul>
+</li>
+<li><strong>We fund it.</strong> The load goes straight into our funding queue. No re-keying, no separate handoff.</li>
+</ol>
+<p><strong>Then track it.</strong> Watch the load under <strong>Submission History</strong>, see open balances under <strong>AR Aging</strong>, review margin under <strong>Loads &amp; Margin</strong>, and check carrier pay under <strong>Vendor Payments</strong>.</p>
+<blockquote>
+<p><strong>A few ground rules that save time:</strong>
+- A customer must be <strong>Approved</strong> before it shows up when you book a load.
+- A carrier must be <strong>onboarded with OperFi</strong> before it appears in your carrier list.
+- You can't submit a load for factoring until it's <strong>Ready to Submit</strong>: delivered, a carrier assigned, the POD on file, and the carrier's invoice on file.</p>
+<p><strong>One rule that prevents the most expensive mistake:</strong> always get a customer credit-approved <strong>before</strong> you run their loads. Booking a stack of loads first and submitting later risks a denial after your carriers already need to be paid. Approvals can also change day to day.</p>
+</blockquote>
+<hr /></div></details><details class="guide" id="sec-2-get-a-customer-credit-approved"><summary><span class="g-num">2</span>Get a Customer Credit-Approved</summary><div class="g-body"><p>Before you can book and factor a load, the customer you are billing (the shipper) has to be credit-approved by OperFi. This is always the first step with a new customer.</p>
+<h3>Step 1 — Open New Credit Check</h3>
+<p>From the dashboard, go to <strong>New Credit Check</strong>.</p>
+<figure><img loading="lazy" src="help-assets/01-dashboard.png" alt="Dashboard with New Credit Check highlighted"/><figcaption>Dashboard with New Credit Check highlighted</figcaption></figure>
+<h3>Step 2 — Enter the customer</h3>
+<p>Fill in the customer's company name, address, and phone, plus their website or LinkedIn if you have it. Use the corporate headquarters address and be precise, so credit does not look up the wrong company. Add the billing contact if you have it.</p>
+<figure><img loading="lazy" src="help-assets/02-credit-check.png" alt="New Credit Check form with address autocomplete"/><figcaption>New Credit Check form with address autocomplete</figcaption></figure>
+<h3>Step 3 — Submit</h3>
+<p>Submit the request. It goes to our credit team for review. Our primary source is Ansonia Credit Data. You do not need to do anything else.</p>
+<h3>Step 4 — Watch for the decision</h3>
+<p>Open <strong>Customer Approvals</strong> to see status. A customer moves from pending to one of:</p>
+<ul>
+<li><strong>Approved</strong> with a credit limit. You can now book and factor loads for them.</li>
+<li><strong>Credit Boost Requested</strong> when more limit has been asked for. These customers are still bookable.</li>
+<li><strong>Pending</strong>, usually meaning credit could not confidently identify the company or there was not enough data.</li>
+<li><strong>Declined</strong>, with a reason where we can share one.</li>
+</ul>
+<figure><img loading="lazy" src="help-assets/03-customer-approvals.png" alt="Customer Approvals list showing statuses and credit limits"/><figcaption>Customer Approvals list showing statuses and credit limits</figcaption></figure>
+<h3>Credit limits and what a check costs</h3>
+<p>Initial customer approvals run anywhere from <strong>$5,000 to $30,000</strong>, depending on how much credit data is available. <strong>Credit checks at or below a $30,000 approval are free.</strong></p>
+<p>To go higher, you can purchase a <strong>Credit Boost</strong>: <strong>$25</strong> to try for up to <strong>$50,000</strong>, or <strong>$50</strong> for <strong>$100,000 or more</strong>. The fee covers the underwriting, due diligence, and paid reports we run, so paying for a boost does not guarantee an approval.</p>
+<h3>Live credit availability when you book</h3>
+<p>Once a customer is approved, the portal shows their <strong>live credit availability</strong> as you book a load. Pick the customer in the Submit Load wizard (or in TMS) and you will see how much of their limit is used and how much remains, with a warning when they are near or over the limit. You can still book; we review over-limit loads on our side.</p>
+<figure><img loading="lazy" src="help-assets/27-credit-availability.png" alt="Live credit availability indicator on a customer near their limit"/><figcaption>Live credit availability indicator on a customer near their limit</figcaption></figure>
+<h3>When a customer comes back Pending</h3>
+<p>Pending usually means credit cannot confidently identify the company or there is not enough data. Open the customer and use <strong>send a credit application</strong>. The customer gets an emailed link, completes one-time-password (OTP) email verification, and lists three trade references plus one bank reference, which the system emails for verification. The application also carries basic broker-shipper / MSA-type terms.</p>
+<h3>Master Service Agreements (MSAs)</h3>
+<p>MSAs are encouraged at <strong>any</strong> credit limit. A broker is most protected with a customer when an MSA is in place. There is no fixed dollar trigger, since customers are case by case, but if your volume with a customer is over about <strong>$50,000</strong> we will ask about it, and to take credit over <strong>$100,000</strong> we will most likely require one. MSA, broker-shipper, and co-broker templates are under <strong>Company Profile &gt; Resources &amp; FAQ</strong>.</p>
+<h3>Step 5 — Keep billing details current</h3>
+<p>You can edit a submitted customer's billing contact (name, phone, email) from Customer Approvals before funding. Open the customer and use <strong>Edit Billing Info</strong>.</p>
+<h3>Common questions</h3>
+<ul>
+<li><strong>How long does approval take?</strong> It varies by customer. Check Customer Approvals; you do not need to call.</li>
+<li><strong>My customer was declined. Now what?</strong> Reach out to us. Some declines are about missing information rather than credit itself.</li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-3-booking-and-submitting-loads"><summary><span class="g-num">3</span>Booking and Submitting Loads</summary><div class="g-body"><p>There are two ways to work loads in the portal. Pick the one that matches how you operate. <strong>Most brokers use Path A.</strong></p>
+<ul>
+<li><strong>Path A: Submit a Load for Factoring.</strong> You manage loads in your own TMS (or by hand) and use OperFi just to send the paperwork and get funded. A quick three-step wizard.</li>
+<li><strong>Path B: Manage Loads in OperFi TMS.</strong> You run the whole load lifecycle inside OperFi, from booking a carrier through delivery, then submit for factoring without re-keying.</li>
+</ul>
+<p>Both end the same way: the load lands in OperFi's funding queue. Documents (Section 5) and tracking (Section 6) apply to both.</p>
+<hr />
+<h2>Path A — Submit a Load for Factoring (most brokers)</h2>
+<p>Use this when a load is booked and delivered and you just need to send us the paperwork for funding. Go to <strong>Invoice Submission &gt; Load Details</strong>. It is a three-step wizard with your live summary and the submit button on the right.</p>
+<h3>Before you start</h3>
+<ul>
+<li>The <strong>customer</strong> you are billing is credit-approved (Section 2).</li>
+<li>You have the <strong>customer paperwork</strong> (rate confirmation, BOL/POD) and the <strong>carrier's invoice</strong> ready to upload.</li>
+</ul>
+<h3>Step 1 — Customer / Shipper</h3>
+<ul>
+<li><strong>Customer Name.</strong> Pick the shipper from the dropdown. Only <strong>approved</strong> customers appear; if yours is missing, submit it under New Credit Check first.</li>
+<li><strong>Customer Reference #</strong> and <strong>Customer Rate</strong> (what you bill the shipper).</li>
+<li><strong>Customer Documents.</strong> Drag in the Rate Confirmation, BOL, and any customer paperwork.</li>
+<li>Click <strong>Next: Carrier Info</strong>.</li>
+</ul>
+<figure><img loading="lazy" src="help-assets/04-load-details.png" alt="Submit Load wizard, Step 1 Customer / Shipper"/><figcaption>Submit Load wizard, Step 1 Customer / Shipper</figcaption></figure>
+<h3>Step 2 — Carrier</h3>
+<ul>
+<li>Select the <strong>carrier</strong> that hauled the load and enter the <strong>carrier rate</strong> (what you pay them). Your <strong>margin</strong> updates live in the summary on the right.</li>
+<li>Upload the <strong>carrier documents</strong> (their invoice and paperwork). Customer and carrier documents stay separated automatically.</li>
+<li>Continue to <strong>Review &amp; Submit</strong>.</li>
+</ul>
+<figure><img loading="lazy" src="help-assets/24-wizard-carrier.png" alt="Submit Load wizard, Step 2 Carrier"/><figcaption>Submit Load wizard, Step 2 Carrier</figcaption></figure>
+<h3>Step 3 — Review &amp; Submit</h3>
+<ul>
+<li>The right-hand summary shows <strong>Customer, Customer Rate, Carrier, Carrier Rate, and Margin</strong>. Confirm it is right.</li>
+<li>Click <strong>Submit Load for Funding</strong>. The load goes into OperFi's funding queue and we take it from there.</li>
+<li>Not ready? <strong>Save as Draft</strong> at any point. Submit only enables once all three steps are complete.</li>
+</ul>
+<figure><img loading="lazy" src="help-assets/25-wizard-review.png" alt="Submit Load wizard, Step 3 Review &amp; Submit with the summary panel"/><figcaption>Submit Load wizard, Step 3 Review &amp; Submit with the summary panel</figcaption></figure>
+<h3>Common questions</h3>
+<ul>
+<li><strong>My customer isn't in the dropdown.</strong> It isn't credit-approved yet.</li>
+<li><strong>Submit is disabled.</strong> You haven't finished all three steps. The right panel shows what is still missing.</li>
+<li><strong>Where did it go after I submitted?</strong> To <strong>Submission History</strong> as Processing. Track balances under AR Aging and carrier pay under Vendor Payments.</li>
+</ul>
+<hr />
+<h2>Path B — Manage Loads in OperFi TMS (full load management)</h2>
+<p>Use this to run loads end to end inside OperFi: book a carrier, move the load through delivery, generate paperwork, and submit for factoring without leaving the portal. Go to <strong>TMS &gt; Load Board</strong>.</p>
+<p>The board shows your loads with <strong>Load, Status, Customer, Lane, Carrier, Invoice, and Margin</strong>, plus totals for Active Loads, Total Invoice, Total Margin, and Ready to Submit. Filter by status across the lifecycle: <strong>Draft, Available, Covered, Dispatched, In Transit, Delivered, POD Received, Ready to Submit, Submitted, Cancelled</strong>.</p>
+<figure><img loading="lazy" src="help-assets/20-tms-board.png" alt="TMS Load Board with status filters"/><figcaption>TMS Load Board with status filters</figcaption></figure>
+<h3>Step 1 — Create the load</h3>
+<p>Click <strong>+ New Load</strong>. Pick your <strong>approved customer</strong>, enter the <strong>customer rate</strong> and the <strong>lane</strong> (origin and destination, with address autocomplete and multi-stop support), and set <strong>equipment, weight, and reference numbers</strong>. A new load starts in <strong>Draft</strong>.</p>
+<figure><img loading="lazy" src="help-assets/23-tms-new-load.png" alt="TMS New Load form with the live margin display"/><figcaption>TMS New Load form with the live margin display</figcaption></figure>
+<h3>Step 2 — Assign a carrier</h3>
+<p>Open the <strong>Carrier</strong> dropdown and select the carrier. The portal shows its <strong>pay terms</strong>, <strong>factoring company</strong> if any, and whether a <strong>NOA/LOR</strong> is on file, and warns you if the carrier is flagged <strong>Do Not Use</strong>. Leave it blank and <strong>Save as Draft</strong> while you find a truck; assign a carrier to move it into the active lifecycle.</p>
+<h3>Step 3 — Send paperwork and move the load</h3>
+<p>From the load's <strong>Documents</strong> section, generate and send the <strong>Rate Confirmation</strong> (and Customer PO, Invoice, or BOL). Use <strong>Get Upload Link</strong> or <strong>Email to Carrier</strong> so the carrier returns the BOL, POD, and their invoice with no login. Update status as the load moves: <strong>Covered, Dispatched, In Transit, Delivered</strong>. Documents auto-advance status: the POD moves it to <strong>POD Received</strong>, and the carrier's invoice makes it <strong>Ready to Submit</strong>.</p>
+<blockquote>
+<p>Put your own NOA email address in the rate confirmation's special instructions. OperFi does not provide a broker-specific NOA address; set up your own and include it on rate cons and carrier setup documents.</p>
+</blockquote>
+<figure><img loading="lazy" src="help-assets/21-tms-load-detail.png" alt="TMS load detail with the status stepper and Documents section"/><figcaption>TMS load detail with the status stepper and Documents section</figcaption></figure>
+<h3>Step 4 — Submit for factoring</h3>
+<p>When the load is <strong>Ready to Submit</strong>, open the <strong>Submit for Factoring</strong> panel. It checks that a carrier is assigned, the POD is on file, the carrier's invoice is on file, and the status is Ready to Submit. When the checklist clears, <strong>Submit for Factoring</strong> turns amber. Click it and the load locks as <strong>Submitted</strong> in the funding queue.</p>
+<figure><img loading="lazy" src="help-assets/22-tms-carrier-docs-submit.png" alt="TMS Submit for Factoring panel with the readiness checklist"/><figcaption>TMS Submit for Factoring panel with the readiness checklist</figcaption></figure>
+<h3>Bulk import: Draft Loads from a CSV</h3>
+<p>If you run a lot of loads, you do not have to enter them one at a time. Under <strong>Invoice Submission &gt; Draft Loads</strong> you can <strong>Import CSV</strong> to bring in many loads at once.</p>
+<ol>
+<li>Click <strong>Import CSV</strong> and download the template if you need it, then choose your file (a TMS export works).</li>
+<li>The portal <strong>matches your customers and carriers</strong> and shows a preview with each row's status before anything is created. Review it, then <strong>Create drafts</strong>.</li>
+<li>Your imported loads land as <strong>drafts</strong>. Resolve anything that needs attention (a missing customer match, missing documents), then <strong>Submit all Ready</strong> in bulk when they are good to go.</li>
+</ol>
+<figure><img loading="lazy" src="help-assets/28-draft-loads.png" alt="Draft Loads list with bulk import and status"/><figcaption>Draft Loads list with bulk import and status</figcaption></figure>
+<figure><img loading="lazy" src="help-assets/29-draft-loads-import.png" alt="CSV import preview matching customers and carriers"/><figcaption>CSV import preview matching customers and carriers</figcaption></figure>
+<h3>Common questions</h3>
+<ul>
+<li><strong>My carrier isn't in the dropdown.</strong> They aren't onboarded under your account yet (Section 4).</li>
+<li><strong>The carrier fell off.</strong> Clear or change the carrier; clearing returns the load to Draft and voids any rate con sent to the old carrier.</li>
+<li><strong>I need to cancel a load.</strong> Any load not yet delivered can be cancelled and later restored.</li>
+<li><strong>My import shows rows that need attention.</strong> That usually means a customer or carrier could not be auto-matched. Fix it on the draft, then submit.</li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-4-onboard-a-carrier"><summary><span class="g-num">4</span>Onboard a Carrier</summary><div class="g-body"><p>A carrier has to be set up under your account before it appears in your carrier list and you can book it. The portal lets you look the carrier up and send them an onboarding link. Carrier onboarding is free for OperFi clients.</p>
+<h3>Full Carrier Onboarding vs the Vendor Pay Link</h3>
+<p>Both live under <strong>Carrier Onboarding</strong> and run the same intake and fraud checks.</p>
+<ul>
+<li><strong>Full Carrier Onboarding</strong> generates your broker-carrier agreement, sends the insurance company a certificate-holder notice (so you are notified of insurance changes), builds the full carrier profile, manages NOAs, and sends a factor notification.</li>
+<li><strong>Vendor Pay Link</strong> does the same intake but does <strong>not</strong> generate a broker-carrier agreement or a certificate-holder notice. It still sends the factor notification. Use it if you already handle agreements through RMIS or MyCarrierPackets.</li>
+</ul>
+<h3>Step 1 — Look up the carrier</h3>
+<p>Go to <strong>Carrier Onboarding</strong>. Search by <strong>DOT</strong> or <strong>MC number</strong>. The portal pulls the carrier's details so you are not typing them by hand.</p>
+<figure><img loading="lazy" src="help-assets/09b-carrier-lookup.png" alt="Carrier Onboarding search by DOT or MC"/><figcaption>Carrier Onboarding search by DOT or MC</figcaption></figure>
+<h3>Step 2 — Send the onboarding link</h3>
+<p>Send the carrier the onboarding link. The recipient email is locked to the carrier's verified FMCSA email as a fraud safeguard; you can add an additional recipient if you need to. The carrier receives an email noting that you are partnering with OperFi to handle carrier payments, with a link to complete their profile, provide insurance, and review and sign your broker-carrier agreement.</p>
+<blockquote>
+<p>Do not fill the form out for the carrier. The carrier must complete it themselves so our IP, VOIP, and bank fraud checks run on the real signer. You are CC'd on the same email, so if the carrier says they never received it, you can forward your copy.</p>
+</blockquote>
+<figure><img loading="lazy" src="help-assets/26-send-modal.png" alt="Send onboarding link modal"/><figcaption>Send onboarding link modal</figcaption></figure>
+<h3>Step 3 — Track status under Recently Sent Links</h3>
+<p>The list shows each link as:</p>
+<ul>
+<li><strong>Sent</strong> when the link has gone out but the carrier has not completed setup.</li>
+<li><strong>Completed</strong> (green) once the carrier finishes and a vendor record exists under your account.</li>
+</ul>
+<p>If a carrier has not acted, use <strong>Resend</strong>. Repeat sends are labeled so you can see "sent 2x." A carrier is not purchasable until their NOA is confirmed (the link moves past Sent).</p>
+<figure><img loading="lazy" src="help-assets/12-recently-sent-links.png" alt="Recently Sent Links with Sent / Completed and Resend"/><figcaption>Recently Sent Links with Sent / Completed and Resend</figcaption></figure>
+<h3>Carriers that use a factoring company (NOA)</h3>
+<p>If a carrier factors, they upload their NOA during onboarding and we track and lock that relationship, then send the factor a notification. Loads are not purchased until the NOA is confirmed. Watch for a mismatch: a carrier may say "quick pay" but submit an invoice that carries an NOA. The portal flags this at submission, and you upload the NOA to the <strong>NOA Management</strong> tool to lock the correct factor so the right party is paid.</p>
+<h3>Check a carrier's risk profile</h3>
+<p>Open a carrier from <strong>Vendors</strong> to see its <strong>Carrier Risk Profile</strong>. We pull live data from CarrierOK, FMCSA, IPQS, FedACH, and the OperFi network into a single system recommendation (for example, Hold or Proceed) with the specific flags behind it: out-of-service alerts, IPQS fraud score, shared phones, severe violations, authority age, and insurance status. Use it alongside your own underwriting before you book, and document your decision right from the profile.</p>
+<figure><img loading="lazy" src="help-assets/31-carrier-profile.png" alt="Carrier Risk Profile with the system recommendation and vetting flags"/><figcaption>Carrier Risk Profile with the system recommendation and vetting flags</figcaption></figure>
+<h3>Common questions</h3>
+<ul>
+<li><strong>The carrier says they never got it.</strong> Resend the link from Recently Sent Links, and forward your CC'd copy. Confirm the FMCSA email on file is one they actually monitor; add a second recipient if needed.</li>
+<li><strong>A carrier shows Do Not Use.</strong> That is our risk flag, often sent as a "carrier added to OperFi's Do Not Use list" email after signup. Take it seriously and check with us before booking.</li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-5-collect-documents-rate-con-bol-pod"><summary><span class="g-num">5</span>Collect Documents (Rate Con, BOL, POD)</summary><div class="g-body"><p>Every load you factor needs paperwork on both sides: a customer-side document (the POD) and a carrier-side document (the carrier's invoice). You generate the outbound documents and collect the inbound ones from one place on the load.</p>
+<h3>Generating documents</h3>
+<p>In the load's <strong>Documents</strong> section you can generate:</p>
+<ul>
+<li><strong>Rate Confirmation</strong> for the carrier</li>
+<li><strong>Bill of Lading (BOL)</strong> for the carrier or shipper, non-negotiable, with no pricing on it</li>
+<li><strong>Customer PO</strong> and <strong>Customer Invoice</strong> for your customer</li>
+</ul>
+<p>Each one can be previewed (download the PDF) or sent by email. While a document is generating you'll see a clear indicator so you know it's working.</p>
+<blockquote>
+<p>The portal enforces document separation. The carrier never sees your customer rate or PO. The customer never sees carrier pay, accessorials, or carrier special instructions. You do not have to manage this; it is built in.</p>
+</blockquote>
+<figure><img loading="lazy" src="help-assets/22-tms-carrier-docs-submit.png" alt="Documents section listing Rate Con, BOL, PO, Invoice"/><figcaption>Documents section listing Rate Con, BOL, PO, Invoice</figcaption></figure>
+<h3>Collecting the BOL and POD</h3>
+<p>Use <strong>Get Upload Link</strong> or <strong>Email to Carrier</strong> to give your carrier a secure, no-login upload page. They drop in the BOL, POD, lumper receipts, and their invoice, and it attaches to the right load automatically. They get visual confirmation that the file was received.</p>
+<p>You can also upload documents yourself by dragging them into the <strong>Customer Docs</strong> or <strong>Carrier Docs</strong> zone on the load.</p>
+<h3>What you need to get funded</h3>
+<p>A funding package centers on the <strong>rate confirmation</strong> plus a <strong>signed BOL or POD</strong> showing pickup and delivery, with receipts and any required approvals for accessorials. Include the load reference number on each file. Paperwork is most often rejected for missing signatures or dates, unreadable scans, a missing rate con, or a missing attachment. If that happens, rescan clearly, submit the complete packet, and confirm it was received.</p>
+<h3>How documents drive status</h3>
+<ul>
+<li>Drop the <strong>POD</strong> into Customer Docs and the load advances to <strong>POD Received</strong>.</li>
+<li>Add the <strong>carrier's invoice</strong> into Carrier Docs (with the POD already there) and the load becomes <strong>Ready to Submit</strong>.</li>
+</ul>
+<p>That is the signal the load is ready to factor.</p>
+<h3>Common questions</h3>
+<ul>
+<li><strong>Can the carrier upload without a login?</strong> Yes. The link is all they need.</li>
+<li><strong>I uploaded the wrong file.</strong> Delete it from the document zone while the load is still pre-submit and upload the correct one.</li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-6-track-your-loads-aging-and-carrier-pay"><summary><span class="g-num">6</span>Track Your Loads, Aging, and Carrier Pay</summary><div class="g-body"><p>Once a load is submitted, the portal is where you watch it through funding and payment.</p>
+<h3>Submission History</h3>
+<p>Every submitted load lands here. A load shows as <strong>Processing</strong> while we fund it. Open any load to see its detail and its funding record. If you submitted a load on hold, this is where you will see it.</p>
+<figure><img loading="lazy" src="help-assets/05-submission-history.png" alt="Submission History list"/><figcaption>Submission History list</figcaption></figure>
+<h3>AR Aging</h3>
+<p>See what your customers owe and how old it is. Open a customer to see the loads behind the balance. Click a load to jump to its detail. Watch your aging buckets, since loads over 90 days are usually problematic, and work slow customers early.</p>
+<figure><img loading="lazy" src="help-assets/06-ar-aging.png" alt="AR Aging with a customer expanded"/><figcaption>AR Aging with a customer expanded</figcaption></figure>
+<h3>Loads &amp; Margin</h3>
+<p>Review the revenue and margin on your loads in one place.</p>
+<h3>Vendor Payments</h3>
+<p>See what is owed to and paid to your carriers. Each carrier shows the pay terms that apply to them under your account. Search a load number or the carrier's invoice number to see whether it is pending or paid, the paid date, and the paid party. This is your best resource when a carrier or factor asks you about payment status. Use <strong>Refresh</strong> if you want the very latest; payment data updates about once a day.</p>
+<figure><img loading="lazy" src="help-assets/07-vendor-payments.png" alt="Vendor Payments list with terms and the Refresh button"/><figcaption>Vendor Payments list with terms and the Refresh button</figcaption></figure>
+<h3>Send carriers and factors to Broker Pay</h3>
+<p>You do not have to field every "was I paid" call yourself. Send carriers and factoring companies to <strong>operfi.com/brokerpay</strong>. They enter your broker MC and the load number and get a status page showing the factoring company, paid or pending status, and the due date. OperFi's team does not give payment-status updates to carriers, that is the broker's job, and this link lets carriers self-serve.</p>
+<h3>Dashboard and Reports</h3>
+<p>The <strong>Dashboard</strong> tracks customer concentrations, aging buckets, total outstandings, open customer and vendor invoices, and 30-day purchase trends with margin over time. <strong>Reports</strong> include purchase and margin by month, fee reports, client payments, and aging summaries. Do not go "out of sight, out of mind" after submitting; use these to watch both customer payments and carrier payments.</p>
+<h3>Common questions</h3>
+<ul>
+<li><strong>A balance looks wrong or stale.</strong> Use the Refresh button. If it still looks off, contact us.</li>
+<li><strong>When does my carrier get paid?</strong> It follows the pay terms shown on the carrier in Vendor Payments.</li>
+<li><strong>A load I just had processed isn't showing.</strong> Our accounting and processing systems sync to the portal about once a day, so a newly processed load may not appear right away. Give it 24 hours, and confirm the load was actually submitted for funding, then contact your account executive if it still isn't showing.</li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-7-get-paid-your-margin-the-operfi-wallet-fees-and-reserves"><summary><span class="g-num">7</span>Get Paid: Your Margin, the OperFi Wallet, Fees, and Reserves</summary><div class="g-body"><p>This section explains how you actually get your money and what it costs.</p>
+<h3>How your payout is calculated</h3>
+<p>Your payout is your <strong>margin</strong>: the customer bill minus carrier pay, advanced at your advance rate. You request it from the <strong>OperFi Wallet</strong>, daily or weekly, by wire or the Tank payment platform. The Wallet shows your <strong>Cash Reserve</strong> (available to release today) and your <strong>Escrow Reserve</strong> (releases as your customers pay their open invoices). To pull funds, enter an amount under <strong>Request a Reserve Release</strong>, pick your funding method, and submit. Requests before the 1:00 PM CST cutoff process the same business day for wire and Tank, next business day for ACH.</p>
+<figure><img loading="lazy" src="help-assets/30-operfi-wallet.png" alt="OperFi Wallet with cash and escrow reserves and the reserve release form"/><figcaption>OperFi Wallet with cash and escrow reserves and the reserve release form</figcaption></figure>
+<h3>Your broker rate card</h3>
+<p>These are the standard starting rates for a new broker. The two columns are the <strong>term you choose when you sign up</strong>: a <strong>90-day term</strong> or an <strong>annual term</strong>. The annual term carries a lower factoring fee in exchange for the longer commitment. Volume discounts also apply: if you reach <strong>$50,000 or more</strong> or <strong>$100,000 or more</strong> in monthly revenue, contact us (after your first 90 days) to discuss a rate adjustment.</p>
+<table>
+<thead>
+<tr>
+<th>Line item</th>
+<th>90-Day Term</th>
+<th>Annual Term</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Factoring Fee</td>
+<td>3.50%</td>
+<td>3.00%</td>
+</tr>
+<tr>
+<td>Escrow</td>
+<td>6.50%</td>
+<td>7.00%</td>
+</tr>
+<tr>
+<td>Advance Rate</td>
+<td>90.00%</td>
+<td>90.00%</td>
+</tr>
+</tbody>
+</table>
+<p>How to read it: on a standard load we <strong>advance 90%</strong> of the receivable, hold the <strong>escrow reserve</strong>, and take the <strong>factoring fee</strong>, which together add up to the full invoice. As your volume grows, those numbers improve.</p>
+<h3>Margin and the 10% rule</h3>
+<p>Your margin on a load should be at least <strong>10%</strong>. If a single load comes in under 10%, your other loads in the same submission should cover the shortfall so the whole submission is not below 10%. If the submission as a whole is below 10%, you fund the difference and send OperFi the remaining balance to make up your reserve escrow.</p>
+<h3>Reserves and reserve release</h3>
+<p>While a customer invoice is outstanding, your reserve is held in <strong>escrow</strong>. When the customer pays that invoice, the escrow reserve transfers into <strong>cash reserves</strong>, which you see in your OperFi Wallet, and you can request a release at any time.</p>
+<h3>Transfer fees</h3>
+<ul>
+<li><strong>Wire:</strong> $25</li>
+<li><strong>ACH:</strong> $5</li>
+<li><strong>Tank:</strong> $3</li>
+</ul>
+<h3>The one-time setup fee</h3>
+<p>There is a one-time <strong>$150</strong> application fee. If you reach <strong>$10,000</strong> in factored receivables and ask for it back, we reimburse it.</p>
+<h3>Quick pay and non-factored carriers</h3>
+<p>Quick pay is a two-day option, with the fee set on day one, and OperFi must net a minimum of <strong>2%</strong>. You can charge your carrier up to <strong>5%</strong> for quick pay, so the carrier's quick-pay fee runs <strong>2% to 5%</strong>, of which you keep <strong>0% to 3%</strong>. For paying a carrier on a non-factored load, OperFi charges a <strong>2% processing fee</strong>, which you can pass to the carrier.</p>
+<blockquote>
+<p>Note on lumpers and fuel advances: OperFi does not process <strong>lumper advances</strong> for broker clients, and <strong>fuel advances</strong> are for carriers, not brokers. If you want to extend a fuel advance to one of your own carriers, that is case by case and not every broker client qualifies. Ask us.</p>
+</blockquote>
+<h3>Recourse, the 75-day notice, and chargebacks</h3>
+<p>OperFi factoring is <strong>recourse</strong>. At <strong>75 days</strong> you receive a notice that we have attempted collection and that the invoice will be charged back at <strong>90 days</strong>. If it is still unpaid at day 90, it is charged back to you. When you get a 75-day notice, contact your customer to get it paid or find out the issue before the chargeback hits. Watch your aging and work slow customers early.</p>
+<h3>Remittance emails</h3>
+<p>Remittance emails show funding and fee details and how payments were applied to carriers and factoring companies. They are sent from your accounting email, and you are CC'd on each one, so you can answer a carrier who says they never got their remittance. If something looks wrong, gather the load reference and contact accounting.</p>
+<h3>Common questions</h3>
+<ul>
+<li><strong>How do I get my margin?</strong> Request it from the OperFi Wallet, daily or weekly, by wire or Tank.</li>
+<li><strong>What does it cost to factor a load?</strong> See the rate card above. Standard new-broker factoring fee is 3.5%, advance 90%.</li>
+<li><strong>What is the 75 Day Reserve Notice?</strong> A heads-up that an invoice is 75 days old and will be charged back at 90 days under recourse. Chase your customer now.</li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-8-switching-your-factoring-to-operfi-and-updating-a-carrier-s-factor"><summary><span class="g-num">8</span>Switching Your Factoring to OperFi, and Updating a Carrier&#x27;s Factor</summary><div class="g-body"><h3>Switching your factoring to OperFi (buyout)</h3>
+<p>OperFi runs the buy-in for you:</p>
+<ol>
+<li>We complete due diligence and UCC searches.</li>
+<li>We contact your current factor to confirm you are eligible to leave and to request your aging.</li>
+<li>Once eligible, we send you the factoring agreement.</li>
+<li>We request the buyout agreement and final aging from your current factor.</li>
+<li>Both sides sign.</li>
+<li>We wire the buyout amount to pay off your prior factor in full.</li>
+<li>We request the Letter of Release.</li>
+<li>We finish your setup on our side.</li>
+</ol>
+<p>After payoff, the old factor forwards any stray customer payments for a short window. If you ever want to leave OperFi, you can terminate with 30 days' written notice, with no minimum-volume, setup, or termination penalties.</p>
+<blockquote>
+<p>Timeline and cost vary by your current factoring company. Every factor handles a buyout differently, so speed and cost depend on them.</p>
+</blockquote>
+<h3>Updating a carrier that changed factors</h3>
+<p>When a carrier you pay switches factoring companies, go to the <strong>NOA Management</strong> tool and upload the <strong>Letter of Release</strong> from the previous factor and the new <strong>Notice of Assignment</strong> for the new factor. We update the carrier's factor of record so payments route to the correct factoring company going forward.</p>
+<hr /></div></details><details class="guide" id="sec-9-company-profile-trusted-contacts-and-user-access"><summary><span class="g-num">9</span>Company Profile, Trusted Contacts, and User Access</summary><div class="g-body"><p>Company Profile is where you manage your company information and the people on your team who can use the portal.</p>
+<h3>Your company information</h3>
+<p>Keep your company name, address, and contact details current here. If you have a <strong>company logo</strong>, you can upload it so it appears on the documents you generate (your Rate Cons, POs, Invoices, and BOLs carry your brand, not OperFi's).</p>
+<p>Set up separate emails so your records stay clean: an <strong>admin email</strong> for profile and account changes, an <strong>operations email</strong> for setup and onboarding confirmations and fraudulent-carrier notices, and an <strong>accounting email</strong> for remittances (you are CC'd on each). Keep a dedicated <strong>NOA email</strong> for your rate-con special instructions.</p>
+<figure><img loading="lazy" src="help-assets/08-company-profile.png" alt="Company Profile with company info and logo upload"/><figcaption>Company Profile with company info and logo upload</figcaption></figure>
+<h3>Trusted contacts and user access</h3>
+<p>The people who can log in to your portal are your <strong>trusted contacts</strong>. A trusted contact also adds a layer of security for sensitive requests and helps us verify identity. Each contact has one or more <strong>roles</strong> that decide what they can do:</p>
+<ul>
+<li><strong>Full Access</strong> — everything, including adding and removing users. Keep this to one or two people.</li>
+<li><strong>Funding Submissions</strong> — booking loads and submitting them for factoring.</li>
+<li><strong>Credit Checks</strong> — running credit checks and viewing approvals.</li>
+<li><strong>Vendor Access</strong> — carriers, carrier onboarding, and vendor payments.</li>
+<li><strong>Account Management</strong> — editing company information and contacts.</li>
+</ul>
+<h3>Adding a user (Full Access only)</h3>
+<ol>
+<li>In Company Profile, click <strong>Add Trusted Contact</strong>.</li>
+<li>Enter the person's name and email.</li>
+<li>Choose one or more roles. Pick <strong>Full Access</strong> to grant admin privileges across everything; that selection covers the other roles on its own.</li>
+<li>Save. The right access is set up and an invite goes out. Portal access can take up to 24 hours to provision.</li>
+</ol>
+<figure><img loading="lazy" src="help-assets/10-add-trusted-contact.png" alt="Add Trusted Contact with the role cards"/><figcaption>Add Trusted Contact with the role cards</figcaption></figure>
+<h3>Editing or removing a user (Full Access only)</h3>
+<p>Open a contact to view them. From there you can <strong>Edit</strong> their roles or <strong>Remove</strong> them. Removing a user is a deliberate two-step confirm because it revokes their login. You cannot remove yourself, and the system will not let you remove your account's last Full Access owner.</p>
+<h3>Common questions</h3>
+<ul>
+<li><strong>I don't see Add or Remove user.</strong> Those controls are for Full Access users only. Ask your account's owner.</li>
+<li><strong>A new teammate can't log in yet.</strong> Provisioning can take up to 24 hours after they are added.</li>
+<li><strong>My logo looks small on documents.</strong> Upload the highest-resolution version you have. Your company name prints alongside the logo, so your documents are clearly branded either way.</li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-10-fraud-and-security-what-operfi-does-and-what-you-should-do"><summary><span class="g-num">10</span>Fraud and Security: What OperFi Does and What You Should Do</summary><div class="g-body"><p>Fraud prevention is a shared job. We run checks behind the scenes, and you still run your own underwriting.</p>
+<h3>What OperFi does behind the scenes</h3>
+<p>On carrier onboarding we run <strong>IP and VPN checks</strong> (catching data-center and overseas actors), <strong>VOIP phone checks</strong>, <strong>FMCSA point-of-contact-change monitoring</strong> (hijacked DOT PINs and phishing), and <strong>bank verification</strong> against submitted documents. We issue <strong>Do Not Use</strong> alerts after signup, manage and lock NOAs, and send factor notifications. On the customer credit side, we check the verifying email against the real company and review the application's IP for foreign or VPN use.</p>
+<h3>What you should do</h3>
+<ul>
+<li>Verify before money or freight moves. Use trusted call-backs and escalate anything inconsistent.</li>
+<li>Watch for <strong>double brokering</strong>: a party taking a load and re-brokering it without permission. Red flags include BOL name mismatches, unusual emails, and last-minute changes.</li>
+<li>Use the free <strong>domain age verification tool</strong> in the portal. Enter a customer or shipper domain and it returns how long the domain has been registered, a quick fraud signal on new solicitations.</li>
+<li>Confirm operating authority and insurance, and confirm identity is consistent across documents.</li>
+</ul>
+<h3>Common questions</h3>
+<ul>
+<li><strong>I got a Do Not Use email about a carrier.</strong> That is an intentional alert. Do not book that carrier, and review with us first.</li>
+<li><strong>A reference completed the credit app suspiciously fast.</strong> That can be a fraud signal. Flag it to us.</li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-12-resources-and-downloads"><summary><span class="g-num">12</span>Resources and Downloads</summary><div class="g-body"><p>Templates, agreements, generators, and training, in one place. Links open in a new tab.</p>
+<h3>General</h3>
+<ul>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Logistics-Policy-Manual.pdf" target="_blank" rel="noopener">Logistics Policy Manual</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Logistics-Workflow.pdf" target="_blank" rel="noopener">Logistics Workflow</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Standard-Operating-Procedures-Broker-SOPs.pdf" target="_blank" rel="noopener">Standard Operating Procedures</a></li>
+</ul>
+<h3>Customer</h3>
+<ul>
+<li><a href="https://zfrmz.com/1Nm6Gwo6AeTFkrEJbmvQ" target="_blank" rel="noopener">Credit Application for Shipper Customer</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/CUSTOMER-PACKET-TEMPLATE.pdf" target="_blank" rel="noopener">Customer Packet Template</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Broker-Shipper-Agreement.docx" target="_blank" rel="noopener">Broker-Shipper Agreement</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Broker-Shipper-Agreement-1-Page-MSA.docx" target="_blank" rel="noopener">Broker-Shipper Agreement, 1-Page MSA</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Co-Broker-Agreement-Template.pdf" target="_blank" rel="noopener">Co-Broker Agreement</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Co-Broker-Agreement-1-Page.docx" target="_blank" rel="noopener">Co-Broker Agreement, 1-Page</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Purchase-Order-Template.pdf" target="_blank" rel="noopener">Purchase Order Template</a></li>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Project-Planning-Evaluation-Form.pdf" target="_blank" rel="noopener">Project Planning Evaluation Form</a></li>
+</ul>
+<h3>Operational</h3>
+<ul>
+<li><a href="https://operfi.com/wp-content/uploads/2025/03/Broker-Packet-Setup-Example.docx" target="_blank" rel="noopener">Broker / Carrier Packet Setup Example</a></li>
+<li><a href="https://zfrmz.com/xNar8we2ISM0pYX4heVd" target="_blank" rel="noopener">Broker / Carrier Agreement Generator</a></li>
+<li><a href="https://zfrmz.com/OEwgPQXu7kn7ZpvYsC8n" target="_blank" rel="noopener">Rate Confirmation and BOL Generator</a></li>
+<li><a href="https://zfrmz.com/FUBBhYAUxNFugku3akDC" target="_blank" rel="noopener">BOL Generator</a></li>
+<li><a href="https://zfrmz.com/OeqKbKDq2PcJVi8V2dUl" target="_blank" rel="noopener">PO Generator</a></li>
+</ul>
+<h3>Training and tools</h3>
+<ul>
+<li><a href="https://operfi.trainercentralsite.com/course/mastering-broker-credit" target="_blank" rel="noopener">OperFi Academy: Broker Credit Training</a></li>
+<li><a href="https://operfi.trainercentralsite.com/course/operfi-broker-academy-mission-ready-training" target="_blank" rel="noopener">OperFi Academy: Freight Broker Training</a></li>
+<li><a href="https://operfi.trainercentralsite.com/course/operfi-boot-camp" target="_blank" rel="noopener">OperFi Academy: Trucking Boot Camp</a></li>
+<li><a href="https://www.thefreetms.com/special-offer/operfi" target="_blank" rel="noopener">AscendTMS 90-Day Free Trial</a></li>
+<li><a href="https://sales.operfi.com/carrier-ok/" target="_blank" rel="noopener">CarrierOK 30-Day Free Trial</a></li>
+<li><a href="https://www.whatsmydns.net/domain-age" target="_blank" rel="noopener">Domain Age Verification</a></li>
+<li><a href="https://phonevalidator.com/index.aspx" target="_blank" rel="noopener">VOIP Phone Validator</a></li>
+</ul>
+<hr /></div></details><details class="guide" id="sec-13-glossary"><summary><span class="g-num">13</span>Glossary</summary><div class="g-body"><ul>
+<li><strong>Advance rate</strong> — the percentage of a receivable we fund up front. Standard new-broker advance is 90%.</li>
+<li><strong>Approved</strong> — a customer that has cleared OperFi credit and can be booked and factored.</li>
+<li><strong>BOL (Bill of Lading)</strong> — the shipping document; the consignee-signed copy at delivery serves as the POD.</li>
+<li><strong>Carrier pay</strong> — what you pay your carrier for the load.</li>
+<li><strong>Chargeback</strong> — an unpaid invoice charged back to you under recourse, at 90 days.</li>
+<li><strong>Credit Boost</strong> — a paid request to approve a customer above the free $30,000 limit ($25 up to $50,000; $50 for $100,000 or more).</li>
+<li><strong>Customer rate</strong> — what you bill your customer (the shipper).</li>
+<li><strong>Draft</strong> — a load you are still building, not yet committed to a carrier.</li>
+<li><strong>DNU (Do Not Use)</strong> — an OperFi risk flag on a carrier. You can still book, but check with us.</li>
+<li><strong>Escrow / reserve</strong> — the portion of an invoice we hold until your customer pays, then release to your Wallet.</li>
+<li><strong>Factoring</strong> — OperFi advancing you funds against the load's receivable.</li>
+<li><strong>Factoring fee</strong> — our fee for factoring a load. Standard new-broker fee is 3.5%.</li>
+<li><strong>LOR / NOA</strong> — Letter of Release / Notice of Assignment, the documents that govern who is paid on a carrier's invoice.</li>
+<li><strong>Margin</strong> — customer rate minus carrier pay, shown live as you book. Target at least 10%.</li>
+<li><strong>OperFi Wallet</strong> — where your available margin and cash reserves sit, and where you request payouts.</li>
+<li><strong>POD (Proof of Delivery)</strong> — the signed proof the load was delivered; required to factor.</li>
+<li><strong>POD Received</strong> — the load has its POD and is waiting on the carrier's invoice.</li>
+<li><strong>Quick pay</strong> — a two-day carrier payment option; OperFi nets a minimum of 2%.</li>
+<li><strong>Ready to Submit</strong> — the load has its POD and the carrier's invoice and can be submitted for factoring.</li>
+<li><strong>Recourse</strong> — unpaid customer invoices are charged back to you (at 90 days).</li>
+<li><strong>Submitted</strong> — the load is in OperFi's funding queue and locked.</li>
+<li><strong>Vendor Pay Link</strong> — a lighter carrier setup that sends the factor notification without generating a broker-carrier agreement or insurance notice.</li>
+</ul></div></details>
+    </main>
+  </div>
+</div>
+<footer>OperFi Broker Portal Help Center &nbsp;&middot;&nbsp; Need a person? Email
+ <a href="mailto:brokersupport@operfi.com">brokersupport@operfi.com</a>, Mon&ndash;Fri 8:00 AM&ndash;5:00 PM CST.</footer>
+<script>
+const q=document.getElementById('q'), count=document.getElementById('count'),
+      nores=document.getElementById('noresults'), faqWrap=document.getElementById('faqwrap');
+const items=[...document.querySelectorAll('details.qa')];
+function run(){
+  const term=q.value.trim().toLowerCase();
+  const words=term.split(/\s+/).filter(Boolean);
+  let shown=0;
+  items.forEach(it=>{
+    const hay=it.dataset.text;
+    const ok=words.every(w=>hay.includes(w));
+    it.style.display=ok?'':'none';
+    if(ok){shown++; if(term) it.open=true;}
+  });
+  document.querySelectorAll('.faq-group').forEach(g=>{
+    g.style.display=[...g.querySelectorAll('details.qa')].some(d=>d.style.display!=='none')?'':'none';
+  });
+  if(term){count.textContent=shown+' result'+(shown===1?'':'s')+' for "'+q.value.trim()+'"';
+    nores.style.display=shown?'none':'block';
+    document.getElementById('faq').scrollIntoView({behavior:'smooth',block:'start'});
+  }else{count.textContent='';nores.style.display='none';items.forEach(it=>it.open=false);}
+}
+q.addEventListener('input',run);
+document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{q.value=c.textContent;run();q.focus();}));
+// active section in sidebar
+const links=[...document.querySelectorAll('.side a')];
+const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){
+  links.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+e.target.id));}});},
+  {rootMargin:'-80px 0px -70% 0px'});
+document.querySelectorAll('details.guide,#faq').forEach(s=>obs.observe(s));
+// open a guide when its nav link / card is clicked
+document.querySelectorAll('a[href^="#sec-"]').forEach(a=>a.addEventListener('click',()=>{
+  const el=document.querySelector(a.getAttribute('href')); if(el&&el.tagName==='DETAILS') el.open=true;}));
+</script></body></html>

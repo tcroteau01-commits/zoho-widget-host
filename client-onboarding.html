@@ -1146,12 +1146,21 @@ function initDom() {
   $('submitBtn').addEventListener('click', submitApplication);
   if (getQueryParam('prefill') === '1') prefillTestData();
 
-  // Test Prefill toolbar: show in standalone preview (top-level window) OR inside the Creator
-  // embed when the URL carries ?dev=1. A normal prospect (embedded iframe, no ?dev=1) never sees
-  // the test button.
+  // Test Prefill toolbar gate. It must work INSIDE the Creator embed (an iframe whose own URL
+  // Creator controls — so ?dev=1 on the Creator page does NOT reach us here). Bridge via an
+  // origin-scoped localStorage flag: visiting the standalone page once with ?dev=1 persists the
+  // flag for this browser, after which the embedded widget (same app.operfi.com origin) shows the
+  // button too. ?dev=0 clears it. A normal prospect never sets the flag, so they never see it.
   var standalone = false;
   try { standalone = (global.self === global.top); } catch (e) { standalone = false; }
-  if (standalone || getQueryParam('dev') === '1') {
+  var devParam = getQueryParam('dev');
+  try {
+    if (devParam === '1') localStorage.setItem('of_dev', '1');
+    else if (devParam === '0') localStorage.removeItem('of_dev');
+  } catch (e) {}
+  var devStored = false;
+  try { devStored = localStorage.getItem('of_dev') === '1'; } catch (e) {}
+  if (standalone || devParam === '1' || devStored) {
     var dt = $('devTools'); if (dt) dt.style.display = 'block';
     var bsb = $('btnScenarioBk'); if (bsb) bsb.addEventListener('click', prefillScenarioBk);
   }

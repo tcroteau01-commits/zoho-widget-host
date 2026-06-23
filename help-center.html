@@ -555,7 +555,11 @@ const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){
   links.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+e.target.id));}});},
   {rootMargin:'-80px 0px -70% 0px'});
 document.querySelectorAll('details.guide,#faq').forEach(s=>obs.observe(s));
-// open a guide when its nav link / card is clicked
-document.querySelectorAll('a[href^="#sec-"]').forEach(a=>a.addEventListener('click',()=>{
-  const el=document.querySelector(a.getAttribute('href')); if(el&&el.tagName==='DETAILS') el.open=true;}));
+// clicking a left-nav section or a card always navigates there, clearing any active search first
+document.querySelectorAll('.side a, .cat').forEach(a=>a.addEventListener('click',e=>{
+  e.preventDefault();
+  if(q.value){q.value='';run();}                       // exit search mode so the target is visible
+  const el=document.querySelector(a.getAttribute('href'));
+  if(el){ if(el.tagName==='DETAILS') el.open=true; el.scrollIntoView({behavior:'smooth',block:'start'}); }
+}));
 </script></body></html>

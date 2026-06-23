@@ -659,7 +659,7 @@ function renderPanel() {
           field('Email', r.Email) +
           field('Phone', formatPhone(r.Phone_Number)) +
         '</div>' +
-        (addr ? '<div style="margin-top: 14px;">' + field('Address', addr) + '</div>' : '') +
+        (addr ? '<div style="margin-top: 14px;">' + addressFieldHtml(addr) + '</div>' : '') +
       '</div>' +
 
       // Payment — broker-specific vetting badge (pay terms, factor, NOA, DNU)
@@ -752,6 +752,19 @@ function formatAddress(addr) {
   if (addr.postal_Code) csStr += (csStr ? ' ' : '') + addr.postal_Code;
   if (csStr) parts.push(csStr);
   return parts.join(', ');
+}
+function mapsHref(addr) {
+  var s = String(addr || '').trim();
+  return s ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s) : '';
+}
+function addressFieldHtml(addr) {
+  var mh = mapsHref(addr);
+  var val = mh ? '<a href="' + esc(mh) + '" target="_blank" rel="noopener">' + esc(addr) + '</a>' : esc(addr);
+  return '<div class="field"><div class="field-label">Address</div><div class="field-val">' + val + '</div></div>';
+}
+if (typeof window !== 'undefined') {
+  window.mapsHref = mapsHref;
+  window.addressFieldHtml = addressFieldHtml;
 }
 function formatPhone(v) {
   if (!v) return '';

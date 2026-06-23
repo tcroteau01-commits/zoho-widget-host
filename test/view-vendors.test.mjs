@@ -146,3 +146,17 @@ test('carrierBadge is skipped (no throw) when OperFiAV is not loaded', async () 
   // Container still rendered in the panel.
   assert.ok(w.document.getElementById('vv-carrier-av'), '#vv-carrier-av still in DOM');
 });
+
+test('addressFieldHtml wraps the address in a Maps link; plain when empty', () => {
+  const dom = makeDom();
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+
+  const linked = w.addressFieldHtml('500 W Adams St, Phoenix, AZ 85003');
+  assert.match(linked, /class="field-label">Address</);
+  assert.match(linked, /href="https:\/\/www\.google\.com\/maps\/search\/\?api=1&amp;query=/);
+  assert.match(linked, /target="_blank"/);
+
+  const empty = w.addressFieldHtml('');
+  assert.ok(!/href=/.test(empty), 'no link when empty');
+});

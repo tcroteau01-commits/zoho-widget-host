@@ -994,7 +994,7 @@ function renderPanel() {
           fieldLink('Website', r.Company_Website) +
           fieldLink('LinkedIn', r.LinkedIn_Profile) +
         '</div>' +
-        (formatAddress(r) ? '<div style="margin-top: 14px;">' + field('Address', formatAddress(r)) + '</div>' : '') +
+        (formatAddress(r) ? '<div style="margin-top: 14px;">' + addressFieldHtml(formatAddress(r)) + '</div>' : '') +
         (r.Other_Social_Media_Links ? '<div style="margin-top: 14px;">' + fieldLink('Other Social Media', r.Other_Social_Media_Links) + '</div>' : '') +
       '</div>' +
 
@@ -1339,6 +1339,16 @@ function formatAddress(r) {
   if (cityStateStr) parts.push(cityStateStr);
   return parts.join(', ');
 }
+function mapsHref(addr){
+  var s=String(addr||'').trim();
+  return s ? 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(s) : '';
+}
+function addressFieldHtml(addr){
+  var mh=mapsHref(addr);
+  var val=mh ? '<a href="'+esc(mh)+'" target="_blank" rel="noopener">'+esc(addr)+'</a>' : esc(addr);
+  return '<div class="field"><div class="field-label">Address</div><div class="field-val">'+val+'</div></div>';
+}
+if (typeof window !== 'undefined') { window.mapsHref = mapsHref; window.addressFieldHtml = addressFieldHtml; }
 function formatPhone(v) {
   if (!v) return '';
   var s = String(v).trim();

@@ -1079,6 +1079,16 @@ function _hasNetworkGraph(co){
   return !!(rf.indicator_network_graph_phone||rf.indicator_network_graph_address);
 }
 
+function mapsHref(addr){
+  var s=String(addr||'').trim();
+  return s ? 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(s) : '';
+}
+function saferHref(dot){
+  var d=String(dot||'').trim();
+  return d ? 'https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=USDOT&query_string='+encodeURIComponent(d) : '';
+}
+if (typeof window !== 'undefined') { window.mapsHref = mapsHref; window.saferHref = saferHref; }
+
 // ── Hero ───────────────────────────────────────────────────────────────────
 function renderHero(p){
   var v=p.vendor||{}, co=p.carrierok||{};
@@ -1089,11 +1099,14 @@ function renderHero(p){
     '<span><span class="key">MC#</span> '+esc(v.MC||'—')+'</span>',
     '<span><span class="key">DOT</span> '+esc(v.USDOT||'—')+'</span>'
   ];
+  var _sh=saferHref(v.USDOT);
+  if(_sh) parts.push('<span><a href="'+esc(_sh)+'" target="_blank" rel="noopener" style="color:var(--of-orange);text-decoration:underline">FMCSA SAFER ↗</a></span>');
   var authAge=_authorityAge(co); if(authAge) parts.push('<span>Authority age: '+esc(authAge)+'</span>');
   var dotAge=_years(co.dot_age); if(dotAge) parts.push('<span>DOT age: '+esc(dotAge)+'</span>');
   var loc=[co.physical_address_city||'', co.physical_address_state||v.Physical_State||'']
             .filter(function(x){return x;}).join(', ');
-  if(loc) parts.push('<span>Based in '+esc(loc)+'</span>');
+  if(loc){ var _mh=mapsHref(loc);
+    parts.push('<span>Based in '+(_mh?'<a href="'+esc(_mh)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+esc(loc)+'</a>':esc(loc))+'</span>'); }
   if(metaEl) metaEl.innerHTML=parts.join('<span class="sep">·</span>');
 }
 

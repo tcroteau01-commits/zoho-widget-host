@@ -308,7 +308,6 @@ test('unidentified broker shows a client-facing message, not a DevTools hint', a
 test('dual authority renders a warning badge, not green', async () => {
   const dom = makeWidget({ [FULL]: [], [PAY]: [] });
   boot(dom.window);
-  await waitFor(dom.window, '#lookup-result', 50).catch(() => {});
   dom.window.renderLookupResult({
     carrier: { dot_number: '111', carrier_name: 'DOUBLE BROKE LLC',
                authority_class: 'dual', authority_active: true },

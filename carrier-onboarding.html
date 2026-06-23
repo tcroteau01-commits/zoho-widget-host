@@ -824,10 +824,10 @@ function renderLookupResult(payload, queryLabel) {
   if (cls === 'carrier') {
     badges.push('<span class="status-badge green">FMCSA Active</span>');
   } else if (cls === 'dual') {
-    badges.push('<span class="status-badge red">Dual Authority — Double-Broker Risk</span>');
+    badges.push('<span class="status-badge red">Dual Authority: Double-Broker Risk</span>');
     authWarn = 'This entity holds broker authority in addition to carrier authority. Verify it is the hauling carrier and not double-brokering before onboarding.';
   } else if (cls === 'broker_only') {
-    badges.push('<span class="status-badge red">Broker Authority — Not a Carrier</span>');
+    badges.push('<span class="status-badge red">Broker Authority: Not a Carrier</span>');
     authWarn = 'This entity is registered as a broker, not a carrier. Confirm you are onboarding the actual hauling carrier.';
   } else {
     badges.push('<span class="status-badge red">No Active Authority</span>');
@@ -852,7 +852,7 @@ function renderLookupResult(payload, queryLabel) {
     '</div>';
   el.querySelector('[data-open-modal]').addEventListener('click', function() { openModal('full'); });
 }
-window.renderLookupResult = renderLookupResult;
+window.renderLookupResult = renderLookupResult;  // exposed for tests
 
 // ── History (Recently Sent Links) ─────────────────────────────────────────
 function loadHistory(refresh) {

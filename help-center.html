@@ -538,8 +538,7 @@ function run(forceTerm, doScroll){
     g.style.display=[...g.querySelectorAll('details.qa')].some(d=>d.style.display!=='none')?'':'none';
   });
   const active=!!term;
-  if(cats) cats.style.display=active?'none':'';            // collapse the browse cards while searching
-  if(guidesWrap) guidesWrap.style.display=active?'none':'';// so answers sit right under the search
+  // keep the browse cards + guides in place during search (Tom): predictable layout, always clickable
   if(active){
     count.textContent=shown+' result'+(shown===1?'':'s')+' for "'+q.value.trim()+'"';
     nores.style.display=shown?'none':'block';

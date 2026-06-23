@@ -814,10 +814,25 @@ function renderLookupResult(payload, queryLabel) {
 
   // New carrier — found in CarrierOK, not yet a vendor
   var nameDisplay = carrier.carrier_name || carrier.dba_name || ('DOT ' + carrier.dot_number);
+  // Authority class drives the badge. Green is reserved for a true carrier;
+  // broker-only / dual warn (double-broker risk). Fall back to the legacy
+  // authority_active boolean when an older backend omits authority_class.
+  var cls = carrier.authority_class ||
+            (carrier.authority_active ? 'carrier' : 'none');
   var badges = [];
-  if (carrier.authority_active)  badges.push('<span class="status-badge green">FMCSA Active</span>');
-  if (!carrier.authority_active) badges.push('<span class="status-badge red">No Active Authority</span>');
-  if (carrier.out_of_service)    badges.push('<span class="status-badge red">Out of Service</span>');
+  var authWarn = '';
+  if (cls === 'carrier') {
+    badges.push('<span class="status-badge green">FMCSA Active</span>');
+  } else if (cls === 'dual') {
+    badges.push('<span class="status-badge red">Dual Authority: Double-Broker Risk</span>');
+    authWarn = 'This entity holds broker authority in addition to carrier authority. Verify it is the hauling carrier and not double-brokering before onboarding.';
+  } else if (cls === 'broker_only') {
+    badges.push('<span class="status-badge red">Broker Authority: Not a Carrier</span>');
+    authWarn = 'This entity is registered as a broker, not a carrier. Confirm you are onboarding the actual hauling carrier.';
+  } else {
+    badges.push('<span class="status-badge red">No Active Authority</span>');
+  }
+  if (carrier.out_of_service) badges.push('<span class="status-badge red">Out of Service</span>');
 
   el.className = 'lookup-result success';
   el.innerHTML =
@@ -829,6 +844,7 @@ function renderLookupResult(payload, queryLabel) {
         (carrier.physical_city || carrier.physical_state ? '<span><b>' + esc([carrier.physical_city, carrier.physical_state].filter(Boolean).join(', ')) + '</b></span>' : '') +
         (carrier.insurance_on_file ? '<span><b>Insurance:</b> Active</span>' : '<span><b>Insurance:</b> <span style="color:#a31818;">Not on File</span></span>') +
       '</div>' +
+      (authWarn ? '<div class="result-detail error">⚠ ' + esc(authWarn) + '</div>' : '') +
       '<div class="result-detail success">New carrier — not yet in your vendors. Send them an onboarding link below to get them set up.</div>' +
     '</div>' +
     '<div class="result-actions">' +
@@ -836,6 +852,7 @@ function renderLookupResult(payload, queryLabel) {
     '</div>';
   el.querySelector('[data-open-modal]').addEventListener('click', function() { openModal('full'); });
 }
+window.renderLookupResult = renderLookupResult;  // exposed for tests
 
 // ── History (Recently Sent Links) ─────────────────────────────────────────
 function loadHistory(refresh) {

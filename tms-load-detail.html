@@ -494,6 +494,12 @@ function fetchCarrierVetting(vendorId, base) {
 
 function vettingExtraHtml(row) {
   if (!row) return '';
+  var authChip = '';
+  if (row.authority_class === 'dual') {
+    authChip = ' <span class="badge warn">Dual authority: double-broker risk</span>';
+  } else if (row.authority_class === 'broker_only') {
+    authChip = ' <span class="badge warn">Broker authority, not a carrier</span>';
+  }
   var out = '';
   if (row.pay_term) out += ' <span class="badge terms">Pay terms: ' + esc(row.pay_term) + '</span>';
   if (row.factoring_company) out += ' <span class="badge terms">Factor: ' + esc(row.factoring_company) + '</span>';
@@ -503,7 +509,7 @@ function vettingExtraHtml(row) {
   if (row.doc_on_file) {
     out += ' <span class="badge ok">' + esc((row.doc_on_file.type || 'NOA/LOR')) + ' on file</span>';
   }
-  return out;
+  return authChip + out;
 }
 
 function stopMarkup(type, seq) {

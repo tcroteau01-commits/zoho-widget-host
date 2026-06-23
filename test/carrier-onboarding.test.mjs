@@ -304,3 +304,41 @@ test('unidentified broker shows a client-facing message, not a DevTools hint', a
   assert.match(txt, /Could not identify broker/i);
   assert.doesNotMatch(txt, /DevTools|F12/i);
 });
+
+test('dual authority renders a warning badge, not green', async () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  dom.window.renderLookupResult({
+    carrier: { dot_number: '111', carrier_name: 'DOUBLE BROKE LLC',
+               authority_class: 'dual', authority_active: true },
+    existing_vendor: null
+  }, 'DOT 111');
+  const html = dom.window.document.getElementById('lookup-result').innerHTML;
+  assert.match(html, /Dual Authority/i);
+  assert.doesNotMatch(html, /FMCSA Active/i);
+});
+
+test('broker_only authority warns', async () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  dom.window.renderLookupResult({
+    carrier: { dot_number: '222', carrier_name: 'PURE BROKER INC',
+               authority_class: 'broker_only', authority_active: true },
+    existing_vendor: null
+  }, 'DOT 222');
+  const html = dom.window.document.getElementById('lookup-result').innerHTML;
+  assert.match(html, /Broker Authority/i);
+  assert.doesNotMatch(html, /FMCSA Active/i);
+});
+
+test('carrier class still renders green FMCSA Active', async () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  dom.window.renderLookupResult({
+    carrier: { dot_number: '333', carrier_name: 'REAL CARRIER LLC',
+               authority_class: 'carrier', authority_active: true },
+    existing_vendor: null
+  }, 'DOT 333');
+  const html = dom.window.document.getElementById('lookup-result').innerHTML;
+  assert.match(html, /FMCSA Active/i);
+});

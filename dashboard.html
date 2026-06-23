@@ -50,6 +50,14 @@
   .donut-center .lil { font-size: 10px; color: var(--of-muted); }
   .combo-wrap { height: 240px; position: relative; }
 
+  @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+  .shimmer { background: linear-gradient(90deg, #ececec 25%, #f5f5f5 37%, #ececec 63%); background-size: 800px 100%; animation: shimmer 1.4s infinite linear; border-radius: 6px; color: transparent !important; }
+  .sk-line { height: 14px; margin: 6px 0; }
+  .sk-tile { min-height: 86px; }
+  .sk-chart { height: 200px; }
+  .reserves-loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--of-gray-300); border-top-color: var(--of-accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   @media (max-width: 640px) {
     html, body { overflow-x: hidden; }
     .container { padding: 12px; box-sizing: border-box; max-width: 100%; }
@@ -68,7 +76,7 @@
 <div class="container" id="root">
   <div class="loading">Loading dashboard...</div>
 </div>
-<div class="version-stamp">v2026-06-16.2</div>
+<div class="version-stamp">v2026-06-23.1</div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
@@ -76,7 +84,7 @@
 <script>
 (function () {
   var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
-  var state = { email: null, data: null };
+  var state = { email: null, data: null, reserves: undefined };
   var PALETTE = ['#e8a020', '#1976d2', '#388e3c', '#7b1fa2', '#0097a7', '#cfc9b8'];
   var AGING_COLORS = { '0-30': '#388e3c', '31-60': '#a3c293', '61-74': '#e8a020', '75+': '#c62828' };
 
@@ -96,6 +104,7 @@
   function dbg(msg, extra) { try { console.log('[Dashboard]', msg, extra || ''); } catch (e) {} }
 
   function init() {
+    renderSkeleton();
     dbg('init() called. isLocalTest=' + isLocalTest() + ' url=' + location.href);
     if (isLocalTest()) {
       var m = (location.search.match(/[?&]email=([^&]+)/) || [])[1] || 't.croteau01@gmail.com';
@@ -117,18 +126,49 @@
     }).catch(function (e) { dbg('init failed:', e && e.message); showFatal(e); });
   }
 
+  function fillReserves(reserves) {
+    var body = document.getElementById('reserves-body');
+    if (!body) return;
+    if (!reserves) { body.innerHTML = '<div style="font-size:12px;color:var(--of-muted)">Reserves unavailable</div>'; return; }
+    body.innerHTML =
+      '<div><div style="font-size:20px;font-weight:700">$' + fmtMoney(reserves.cash) + '</div><div style="font-size:10px;color:var(--of-muted)">cash</div></div>' +
+      '<div style="text-align:right"><div style="font-size:16px;font-weight:600">' + fmtMoneyK(reserves.escrow) + '</div><div style="font-size:10px;color:var(--of-muted)">escrow</div></div>';
+  }
+
   function fetchAndRender() {
     if (isLocalTest()) {
       state.data = MOCK_DASHBOARD;
       render();
+      fillReserves(MOCK_DASHBOARD.snapshot.reserves);
       return;
     }
-    var url = BROKER_API_BASE + '/dashboard/summary?email=' + encodeURIComponent(state.email);
-    dbg('fetching:', url);
-    fetch(url)
-      .then(function (r) { dbg('fetch returned status:', r.status); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (d) { dbg('JSON parsed. keys:', Object.keys(d)); state.data = d; render(); })
-      .catch(function (e) { dbg('fetch failed:', e && e.message); document.getElementById('root').innerHTML = '<div class="error">Could not load dashboard: ' + escapeHtml(e.message) + '</div>'; });
+    var summaryUrl = BROKER_API_BASE + '/dashboard/summary?email=' + encodeURIComponent(state.email);
+    var reservesUrl = BROKER_API_BASE + '/wallet-reserves?email=' + encodeURIComponent(state.email);
+
+    fetch(summaryUrl)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) { state.data = d; render(); })
+      .catch(function (e) { dbg('summary failed:', e && e.message); document.getElementById('root').innerHTML = '<div class="error">Could not load dashboard: ' + escapeHtml(e.message) + '</div>'; });
+
+    fetch(reservesUrl)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (res) { state.reserves = res; fillReserves(res); })
+      .catch(function (e) { dbg('reserves failed:', e && e.message); state.reserves = null; fillReserves(null); });
+  }
+
+  function skTile() { return '<div class="kpi sk-tile"><div class="shimmer sk-line" style="width:50%"></div><div class="shimmer sk-line" style="width:80%"></div></div>'; }
+  function skChart() { return '<div class="chart-card"><div class="shimmer sk-line" style="width:40%"></div><div class="shimmer sk-chart"></div></div>'; }
+
+  function renderSkeleton() {
+    document.getElementById('root').innerHTML = '' +
+      '<div class="header-strip"><div><div class="eyebrow">Client</div>' +
+        '<div class="shimmer sk-line" style="width:180px;height:18px"></div></div>' +
+        '<div class="shimmer sk-line" style="width:120px"></div></div>' +
+      renderQuickActions() +
+      '<div class="label">Watch</div><div class="watch">' + skTile() + skTile() + skTile() + '</div>' +
+      '<div class="label">Snapshot</div><div class="kpi-strip">' + skTile() + skTile() + skTile() + skTile() + '</div>' +
+      renderKeyTasks() +
+      '<div class="label">Insights</div><div class="insights-row">' + skChart() + skChart() + '</div>';
   }
 
   function render() {
@@ -148,6 +188,8 @@
       if (!target) return;
       handleAction(target.getAttribute('data-action'));
     });
+
+    if (state.reserves !== undefined) fillReserves(state.reserves);
   }
 
   var ACTION_TO_PAGE = {
@@ -228,11 +270,13 @@
             '<div style="text-align:right"><div style="font-size:16px;font-weight:600">' + s.openAP.count + '</div><div style="font-size:10px;color:var(--of-muted)">invoices</div></div>' +
           '</div>' +
         '</div>' +
-        '<div class="kpi reserves">' +
+        '<div class="kpi reserves" id="kpi-reserves">' +
           '<div class="label" style="margin:0">Reserves</div>' +
-          '<div style="display:flex;justify-content:space-between;margin-top:6px">' +
-            '<div><div style="font-size:20px;font-weight:700">$' + fmtMoney(s.reserves.cash) + '</div><div style="font-size:10px;color:var(--of-muted)">cash</div></div>' +
-            '<div style="text-align:right"><div style="font-size:16px;font-weight:600">' + fmtMoneyK(s.reserves.escrow) + '</div><div style="font-size:10px;color:var(--of-muted)">escrow</div></div>' +
+          '<div id="reserves-body" style="display:flex;justify-content:space-between;margin-top:6px;align-items:center">' +
+            (s.reserves
+              ? ('<div><div style="font-size:20px;font-weight:700">$' + fmtMoney(s.reserves.cash) + '</div><div style="font-size:10px;color:var(--of-muted)">cash</div></div>' +
+                 '<div style="text-align:right"><div style="font-size:16px;font-weight:600">' + fmtMoneyK(s.reserves.escrow) + '</div><div style="font-size:10px;color:var(--of-muted)">escrow</div></div>')
+              : '<span class="reserves-loading"></span>') +
           '</div>' +
         '</div>' +
         '<div class="kpi month">' +

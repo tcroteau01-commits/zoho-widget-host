@@ -39,3 +39,38 @@ test('skeleton paints before data arrives, with live Quick Actions', async () =>
   assert.ok(w.document.querySelector('[data-action="submit-load"]'), 'Quick Actions live');
   assert.ok(w.document.querySelector('[data-action="nav-vendor-payments"]'), 'Key Tasks live');
 });
+
+const SUMMARY = {
+  accountName: 'Marek LLC', header: { usdot: '1', mc: '2', status: 'Active' },
+  watch: { chargebackRisk: { amount: 0, invoiceCount: 0 }, creditLimits: { customersAtRisk: 0 }, dsoDays: 38 },
+  snapshot: {
+    openAR: { amount: 1000, count: 1 }, openAP: { amount: 900, count: 1 },
+    thisMonth: { purchases: 5000, loads: 2, marginPct: 20 },
+  },
+  insights: { agingBuckets: [{ label: '0-30', amount: 1000, count: 1 }], concentration: [], monthly: [] },
+};
+
+test('summary fills tiles while reserves tile still shows a spinner', async () => {
+  const w = mountLive({ summary: SUMMARY, reserves: { cash: 5, escrow: 6 },
+                        summaryDelay: 10, reservesDelay: 200 });
+  await wait(60);                                   // summary in, reserves still pending
+  assert.ok(w.document.body.textContent.includes('Marek LLC'), 'account name rendered');
+  assert.ok(w.document.querySelector('.reserves-loading'), 'reserves spinner still showing');
+});
+
+test('reserves tile fills after /wallet-reserves resolves', async () => {
+  const w = mountLive({ summary: SUMMARY, reserves: { cash: 839.51, escrow: 13456.83 },
+                        summaryDelay: 10, reservesDelay: 30 });
+  await wait(150);
+  assert.equal(w.document.querySelector('.reserves-loading'), null, 'spinner gone');
+  assert.ok(w.document.body.textContent.includes('840') || w.document.body.textContent.includes('839'),
+            'cash value rendered');
+});
+
+test('reserves failure leaves the rest of the dashboard intact', async () => {
+  const w = mountLive({ summary: SUMMARY, reserves: {}, reservesReject: true,
+                        summaryDelay: 10, reservesDelay: 10 });
+  await wait(60);
+  assert.ok(w.document.body.textContent.includes('Marek LLC'), 'dashboard still rendered');
+  assert.ok(w.document.body.textContent.toLowerCase().includes('unavailable'), 'reserves shows unavailable');
+});

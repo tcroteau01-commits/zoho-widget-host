@@ -147,6 +147,34 @@ test('carrierBadge is skipped (no throw) when OperFiAV is not loaded', async () 
   assert.ok(w.document.getElementById('vv-carrier-av'), '#vv-carrier-av still in DOM');
 });
 
+// ── Relationship date: row "Since" column ──────────────────────────────────
+const DATED = [
+  { ID: 'A', Vendor_Name: 'Alpha Freight', Vendor_Status: 'Approved', Added_Time: '14-Mar-2025 10:00:00' },
+  { ID: 'B', Vendor_Name: 'Bravo Lines',  Vendor_Status: 'Approved' /* no Added_Time */ },
+];
+
+test('row renders a Since cell with compact Mon YYYY', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = makeFetch(DATED);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  const labels = [...w.document.querySelectorAll('.row .cell-label')].map(e => e.textContent);
+  assert.ok(labels.includes('Since'), 'a Since column label is rendered');
+  assert.match(w.document.body.textContent, /Mar 2025/);
+});
+
+test('row Since cell shows em-dash when Added_Time is absent', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = makeFetch([DATED[1]]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  // The Bravo row has no date; its Since cell must render the em-dash sentinel.
+  const row = w.document.querySelector('.row');
+  assert.match(row.textContent, /—/);
+});
+
 test('addressFieldHtml wraps the address in a Maps link; plain when empty', () => {
   const dom = makeDom();
   const w = dom.window;

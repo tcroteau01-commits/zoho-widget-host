@@ -513,13 +513,6 @@ body.show-contacts .contacts-only { display: block; }
 
 </div>
 
-<!-- Dev/test prefill toolbar. Hidden by default; shown by JS ONLY in standalone preview
-     (top-level window), so a real prospect inside Creator's iframe never sees it. -->
-<div id="devTools" style="position:fixed;bottom:14px;right:14px;z-index:9999;display:none;background:#272727;color:#fff;border-radius:12px;padding:11px 13px;box-shadow:0 8px 24px rgba(0,0,0,0.28);font-size:12px;max-width:230px">
-  <div style="font-weight:800;color:#e8a020;letter-spacing:0.6px;margin-bottom:8px;text-transform:uppercase">Test Prefill</div>
-  <button type="button" id="btnScenarioBk" class="btn orange" style="padding:9px 12px;font-size:12px;width:100%;text-align:left;line-height:1.35">3 owners · 2 trusted contacts · prior bankruptcy</button>
-</div>
-
 <!-- Zoho Creator widget SDK + shared staff-impersonation helper (Broker Portal convention) -->
 <script src="https://static.zohocdn.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
@@ -1145,25 +1138,6 @@ function initDom() {
   document.addEventListener('input', function (e) { if (e.target && e.target.classList && e.target.classList.contains('invalid')) e.target.classList.remove('invalid'); });
   $('submitBtn').addEventListener('click', submitApplication);
   if (getQueryParam('prefill') === '1') prefillTestData();
-
-  // Test Prefill toolbar gate. It must work INSIDE the Creator embed (an iframe whose own URL
-  // Creator controls — so ?dev=1 on the Creator page does NOT reach us here). Bridge via an
-  // origin-scoped localStorage flag: visiting the standalone page once with ?dev=1 persists the
-  // flag for this browser, after which the embedded widget (same app.operfi.com origin) shows the
-  // button too. ?dev=0 clears it. A normal prospect never sets the flag, so they never see it.
-  var standalone = false;
-  try { standalone = (global.self === global.top); } catch (e) { standalone = false; }
-  var devParam = getQueryParam('dev');
-  try {
-    if (devParam === '1') localStorage.setItem('of_dev', '1');
-    else if (devParam === '0') localStorage.removeItem('of_dev');
-  } catch (e) {}
-  var devStored = false;
-  try { devStored = localStorage.getItem('of_dev') === '1'; } catch (e) {}
-  if (standalone || devParam === '1' || devStored) {
-    var dt = $('devTools'); if (dt) dt.style.display = 'block';
-    var bsb = $('btnScenarioBk'); if (bsb) bsb.addEventListener('click', prefillScenarioBk);
-  }
 }
 
 // Dev/test convenience: open with ?prefill=1 to fill the form with valid carrier test data while
@@ -1197,65 +1171,6 @@ function prefillTestData() {
     // Stay on the first step so you can click Continue through each screen to verify it.
     showStatus('✓ Test data prefilled (?prefill=1) — step through each screen with Continue. Portal PIN is 1234.', 'success');
   } catch (e) { console.error('prefill error', e); }
-}
-
-// Dev/test convenience: prefill a richer carrier scenario — 3 owners (40/30/30), 2 trusted
-// contacts, and a prior bankruptcy (credit flag + explanation) — so the multi-owner / contacts /
-// adverse-credit paths can be exercised in one click. Triggered by the standalone-only Test Prefill
-// button (see #btnScenarioBk); never reachable by a real prospect inside Creator. Uses PIN 1234.
-function prefillScenarioBk() {
-  try {
-    setAuthorityUI('carrier');
-    UI.authority = 'carrier'; UI.authorityType = 'Carrier'; UI.usdot = '4366362'; UI.mc = '1709488'; UI.businessName = 'Eslinger Logistics LLC';
-    var set = function (id, v) { var e = $(id); if (e) e.value = v; };
-    set('opUsdot', '4366362'); set('opMC', '1709488'); set('opName', 'Eslinger Logistics LLC');
-    var fmt = $('opFormation'); if (fmt) fmt.value = 'LLC';
-    set('opEIN', '45-6789012');
-    set('opPhone', '6025551122'); set('opEmail', 'ap@eslingerlogistics.com'); set('opSmsPhone', '6025551122');
-    set('opPhysical', '456 Cargo Way, Phoenix, AZ 85003');
-    set('opMonthly', '$48,000'); set('opTrucks', '4'); set('opDrivers', '5');
-    set('opPin', '1234'); set('opPinConfirm', '1234');
-    var eq = document.querySelector('#equipChips .chip[data-equip="Dry Van"]');
-    if (eq && !eq.classList.contains('sel')) eq.click();
-
-    // 3 owners (40 / 30 / 30 = 100%)
-    while (qsa('#ownerList .owner-block').length < 3) addOwnerBlock();
-    var owners = [
-      { first: 'Brennan', last: 'Eslinger', title: 'CEO', pct: '40', dob: '02/14/1985', ssn: '111-22-3333', phone: '6025551122', email: 'brennan@eslingerlogistics.com', address: '456 Cargo Way, Phoenix, AZ' },
-      { first: 'Dana', last: 'Whitfield', title: 'CFO', pct: '30', dob: '07/09/1979', ssn: '222-33-4444', phone: '6025553344', email: 'dana@eslingerlogistics.com', address: '78 Mesa Rd, Phoenix, AZ' },
-      { first: 'Marcus', last: 'Reyes', title: 'COO', pct: '30', dob: '11/30/1982', ssn: '333-44-5555', phone: '6025555566', email: 'marcus@eslingerlogistics.com', address: '920 Vail St, Tempe, AZ' }
-    ];
-    qsa('#ownerList .owner-block').forEach(function (blk, i) {
-      var o = owners[i]; if (!o) return;
-      var f = function (n, v) { var e = blk.querySelector('[data-of="' + n + '"]'); if (e) e.value = v; };
-      f('first', o.first); f('last', o.last); f('title', o.title); f('pct', o.pct);
-      f('dob', o.dob); f('ssn', o.ssn); f('phone', o.phone); f('email', o.email); f('address', o.address);
-    });
-
-    // 2 trusted contacts (toggle reveals the section + adds the first row)
-    var ctog = $('contactsToggle');
-    if (ctog && !ctog.classList.contains('sel')) ctog.click();
-    while (qsa('#contactRows .sub-row').length < 2) addContactRow();
-    var contacts = [
-      { name: 'Patricia Lowe', title: 'Bookkeeper', phone: '6025557788', email: 'patricia@eslingerlogistics.com' },
-      { name: 'Sam Ortega', title: 'Dispatch Manager', phone: '6025559900', email: 'sam@eslingerlogistics.com' }
-    ];
-    qsa('#contactRows .sub-row').forEach(function (row, i) {
-      var c = contacts[i]; if (!c) return;
-      var f = function (n, v) { var e = row.querySelector('[data-f="' + n + '"]'); if (e) e.value = v; };
-      f('name', c.name); f('title', c.title); f('phone', c.phone); f('email', c.email);
-    });
-
-    // prior bankruptcy — select the credit flag (its handler reveals the explanation field) + fill it
-    var bk = document.querySelector('#creditChips .chip[data-credit="Bankruptcy"]');
-    if (bk && !bk.classList.contains('sel')) bk.click();
-    set('opCreditExpl', 'Chapter 11 filed 2019 during a prior trucking venture; fully discharged 2021. No defaults since.');
-
-    var tc = $('termsChip'); if (tc && !tc.classList.contains('sel')) tc.click();
-    var n0 = $('next0'); if (n0) n0.disabled = false;   // enable step-0 Continue (we bypassed USDOT search)
-    recalc();
-    showStatus('✓ Scenario prefilled: 3 owners · 2 trusted contacts · prior bankruptcy. Step through with Continue (PIN 1234).', 'success');
-  } catch (e) { console.error('scenario prefill error', e); }
 }
 
 function pad(n) { return n < 10 ? '0' + n : '' + n; }

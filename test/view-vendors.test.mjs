@@ -201,3 +201,82 @@ test('addressFieldHtml wraps the address in a Maps link; plain when empty', () =
   const empty = w.addressFieldHtml('');
   assert.ok(!/href=/.test(empty), 'no link when empty');
 });
+
+// ── Sorting ────────────────────────────────────────────────────────────────
+const SORT_SET = [
+  { ID: '1', Vendor_Name: 'Charlie Co',  Vendor_Status: 'Approved', Added_Time: '01-Jan-2024 00:00:00' },
+  { ID: '2', Vendor_Name: 'alpha co',    Vendor_Status: 'Approved', Added_Time: '15-Jun-2026 00:00:00' },
+  { ID: '3', Vendor_Name: 'Bravo Co',    Vendor_Status: 'Approved' /* no date */ },
+];
+
+function rowNames(w) {
+  return [...w.document.querySelectorAll('.row .cell-val.lg')].map(e => e.textContent.trim());
+}
+async function bootSorted(records) {
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = makeFetch(records);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  return w;
+}
+function setSort(w, value) {
+  const sel = w.document.getElementById('sort-select');
+  sel.value = value;
+  sel.dispatchEvent(new w.Event('change'));
+}
+
+test('sort dropdown exists with the five options', async () => {
+  const w = await bootSorted(SORT_SET);
+  const sel = w.document.getElementById('sort-select');
+  assert.ok(sel, '#sort-select present');
+  const vals = [...sel.options].map(o => o.value);
+  assert.deepEqual(vals, ['status', 'name_asc', 'name_desc', 'rel_new', 'rel_old']);
+});
+
+test('Name A-Z sorts case-insensitively', async () => {
+  const w = await bootSorted(SORT_SET);
+  setSort(w, 'name_asc');
+  assert.deepEqual(rowNames(w), ['alpha co', 'Bravo Co', 'Charlie Co']);
+});
+
+test('Name Z-A reverses', async () => {
+  const w = await bootSorted(SORT_SET);
+  setSort(w, 'name_desc');
+  assert.deepEqual(rowNames(w), ['Charlie Co', 'Bravo Co', 'alpha co']);
+});
+
+test('Relationship Newest first, missing date last', async () => {
+  const w = await bootSorted(SORT_SET);
+  setSort(w, 'rel_new');
+  assert.deepEqual(rowNames(w), ['alpha co', 'Charlie Co', 'Bravo Co']);
+});
+
+test('Relationship Oldest first, missing date last', async () => {
+  const w = await bootSorted(SORT_SET);
+  setSort(w, 'rel_old');
+  assert.deepEqual(rowNames(w), ['Charlie Co', 'alpha co', 'Bravo Co']);
+});
+
+test('status sort keeps name A-Z within one status group', async () => {
+  const w = await bootSorted(SORT_SET); // all Approved -> tiebreak is name asc
+  assert.deepEqual(rowNames(w), ['alpha co', 'Bravo Co', 'Charlie Co']);
+});
+
+test('changing sort preserves the active search filter', async () => {
+  const recs = [
+    { ID:'1', Vendor_Name:'Apple Logistics', Vendor_Status:'Approved', Added_Time:'01-Jan-2024 00:00:00' },
+    { ID:'2', Vendor_Name:'Apricot Lines',   Vendor_Status:'Approved', Added_Time:'02-Feb-2025 00:00:00' },
+    { ID:'3', Vendor_Name:'Zebra Freight',   Vendor_Status:'Approved', Added_Time:'03-Mar-2026 00:00:00' },
+  ];
+  const w = await bootSorted(recs);
+  const search = w.document.getElementById('search-input');
+  search.value = 'ap';            // matches Apple + Apricot, not Zebra
+  search.dispatchEvent(new w.Event('input'));
+  await new Promise(r => setTimeout(r, 20));
+  const before = rowNames(w).slice().sort();
+  setSort(w, 'rel_new');
+  const after = rowNames(w).slice().sort();
+  assert.deepEqual(before, ['Apple Logistics', 'Apricot Lines']);
+  assert.deepEqual(after, before, 'same records pass the filter regardless of sort');
+});

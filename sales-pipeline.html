@@ -121,6 +121,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .pill.b { background: var(--of-blue-soft); color: var(--of-blue-text); }
 .pill.n { background: var(--of-gray-100); color: var(--of-gray-700); }
 
+/* owners list (names only) */
+.owner-names { display: flex; flex-direction: column; }
+.owner-name { font-size: 13.5px; font-weight: 600; color: var(--of-charcoal); padding: 8px 0; border-bottom: 1px dashed var(--of-beige-line); }
+.owner-name:last-child { border-bottom: none; }
+
 /* notes */
 .notes { display: flex; flex-direction: column; gap: 10px; }
 .note { font-size: 12.5px; border-left: 3px solid var(--of-beige-line); padding: 4px 0 4px 12px; }
@@ -346,6 +351,11 @@ var DEMO_PIPELINE = [
   { ID: 'UW-2026-0418', Business_Name: 'Brennan Eslinger Trucking LLC', Authority_Type: 'Carrier', USDOT: '4366362',
     Application_Status: 'Docs Requested', Submitted_At: 'Jun 8, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'M. Reyes',
     loc: 'Glendale, AZ', Factoring_Rate: '3.00%', Purchase_Limit: '$30,000',
+    owners: [
+      { First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'CEO', Ownership_Percent:40, Owner_Sequence:1, Birthdate:'02/14/1985', SSN:'111-22-3333', Phone:'6025551122', Email:'brennan@eslingerlogistics.com', Address:'456 Cargo Way, Phoenix, AZ' },
+      { First_Name1:'Dana', Last_Name1:'Whitfield', Title:'CFO', Ownership_Percent:30, Owner_Sequence:2, Birthdate:'07/09/1979', SSN:'222-33-4444', Phone:'6025553344', Email:'dana@eslingerlogistics.com', Address:'78 Mesa Rd, Phoenix, AZ' },
+      { First_Name1:'Marcus', Last_Name1:'Reyes', Title:'COO', Ownership_Percent:30, Owner_Sequence:3, Birthdate:'11/30/1982', SSN:'333-44-5555', Phone:'6025555566', Email:'marcus@eslingerlogistics.com', Address:'920 Vail St, Tempe, AZ' }
+    ],
     Sales_Notes: '', UW_Notes: 'Need the Operating Agreement to verify ownership. Everything else looks on track.', UW_When: 'Jun 9, 2:16 PM',
     documents: [['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
       ['Voided Check','Prospect Upload','Received'],['Certificate of Insurance','Prospect Upload','Received'],
@@ -354,21 +364,28 @@ var DEMO_PIPELINE = [
   { ID: 'UW-2026-0405', Business_Name: 'Princeton Logistics Group LLC', Authority_Type: 'Broker', USDOT: '3421250',
     Application_Status: 'In Review', Submitted_At: 'Jun 5, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'D. Okafor',
     loc: 'Atlanta, GA', Factoring_Rate: '3.00%', Purchase_Limit: '$50,000',
+    owners: [{ First_Name1:'Jim', Last_Name1:'Princeton', Title:'Managing Member', Ownership_Percent:100, Owner_Sequence:1, Birthdate:'05/22/1976', SSN:'444-55-6666', Phone:'4045552310', Email:'jim@princetonlogistics.com', Address:'1200 Peachtree St NE, Atlanta, GA' }],
     Sales_Notes: '', UW_Notes: '', UW_When: '',
     documents: [['Signed Application','Prospect Upload','Received'],['W-9','Prospect Upload','Received'],
       ['Voided Check','Prospect Upload','Requested'],['Broker-Carrier Agreement','—','Requested']] },
   { ID: 'UW-2026-0388', Business_Name: 'Sandhill Freight Co', Authority_Type: 'Carrier', USDOT: '3771200',
     Application_Status: 'Approved', Submitted_At: 'Jun 3, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'M. Reyes',
     loc: 'Dallas, TX', Factoring_Rate: '2.75%', Purchase_Limit: '$120,000',
+    owners: [
+      { First_Name1:'Rosa', Last_Name1:'Mendez', Title:'President', Ownership_Percent:60, Owner_Sequence:1, Birthdate:'09/12/1980', SSN:'555-66-7777', Phone:'2145553311', Email:'rosa@sandhillfreight.com', Address:'500 Commerce St, Dallas, TX' },
+      { First_Name1:'Carl', Last_Name1:'Mendez', Title:'Vice President', Ownership_Percent:40, Owner_Sequence:2, Birthdate:'03/04/1978', SSN:'666-77-8888', Phone:'2145554422', Email:'carl@sandhillfreight.com', Address:'500 Commerce St, Dallas, TX' }
+    ],
     Sales_Notes: '', UW_Notes: 'Approved — agreement ready to send.', UW_When: 'Jun 6, 10:02 AM', documents: [] },
   { ID: 'UW-2026-0377', Business_Name: 'Vega Hauling LLC', Authority_Type: 'Carrier', USDOT: '3998211',
     Application_Status: 'Docs Requested', Submitted_At: 'Jun 1, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'M. Reyes',
     loc: 'Phoenix, AZ', Factoring_Rate: '3.25%', Purchase_Limit: '$25,000',
+    owners: [{ First_Name1:'Tomas', Last_Name1:'Vega', Title:'Owner', Ownership_Percent:100, Owner_Sequence:1, Birthdate:'06/18/1988', SSN:'777-88-9999', Phone:'6025556677', Email:'tomas@vegahauling.com', Address:'330 Roosevelt St, Phoenix, AZ' }],
     Sales_Notes: '', UW_Notes: 'Waiting on voided check before I can finish banking verification.', UW_When: 'Jun 4, 1:20 PM',
     documents: [['Signed Application','Prospect Upload','Verified'],['Voided Check','—','Requested']] },
   { ID: 'UW-2026-0351', Business_Name: 'Cascade Carriers Inc', Authority_Type: 'Carrier', USDOT: '3550199',
     Application_Status: 'Signed', Submitted_At: 'May 22, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'D. Okafor',
     loc: 'Boise, ID', Factoring_Rate: '2.90%', Purchase_Limit: '$80,000',
+    owners: [{ First_Name1:'Helen', Last_Name1:'Cascade', Title:'Managing Member', Ownership_Percent:100, Owner_Sequence:1, Birthdate:'12/01/1972', SSN:'888-99-0000', Phone:'2085558899', Email:'helen@cascadecarriers.com', Address:'77 River Run, Boise, ID' }],
     Sales_Notes: '', UW_Notes: 'Signed and moved to Ops.', UW_When: 'May 28, 9:00 AM', documents: [] }
 ];
 
@@ -415,9 +432,9 @@ function loadPipeline() {
 // Load the supporting records for one application (documents + UW note).
 function loadDetail(app) {
   if (STATE.mode === 'demo' || typeof fetch !== 'function') {
-    return Promise.resolve({ documents: app.documents || [], uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', salesNotes: app.Sales_Notes || '' });
+    return Promise.resolve({ documents: app.documents || [], owners: app.owners || [], uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', salesNotes: app.Sales_Notes || '' });
   }
-  // Reuse /application-by-usdot (returns documents + the latest Underwriting_Review).
+  // Reuse /application-by-usdot (returns documents + owners + the latest Underwriting_Review).
   var usdot = String(app.USDOT || '');
   return fetch(API_BASE + '/application-by-usdot?usdot=' + encodeURIComponent(usdot))
     .then(function (r) { return r.ok ? r.json() : null; })
@@ -425,9 +442,10 @@ function loadDetail(app) {
       j = j || {};
       var rev = j.review || {};
       var docs = (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; });
-      return { documents: docs, uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', salesNotes: app[SALES_NOTES_FIELD] || '' };
+      var owners = (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, Owner_Sequence:o.Owner_Sequence, Birthdate:o.Birthdate, SSN:o.SSN, Phone:o.Phone, Email:o.Email, Address:o.Address }; });
+      return { documents: docs, owners: owners, uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', salesNotes: app[SALES_NOTES_FIELD] || '' };
     })
-    .catch(function () { return { documents: [], uwNotes: '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' }; });
+    .catch(function () { return { documents: [], owners: [], uwNotes: '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' }; });
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
@@ -518,12 +536,25 @@ function renderDetail(app, d) {
   }).join('');
   var notesBody = (uwNote + salesNotesHtml) || '<div class="muted" style="font-size:12.5px">No notes yet.</div>';
 
+  // Owners — a simple list of the declared owners' names.
+  var owners = d.owners || [];
+  var ownersInner = owners.length
+    ? '<div class="owner-names">' + owners.map(function (o) {
+        var name = ((o.First_Name1 || '') + ' ' + (o.Last_Name1 || '')).trim() || '—';
+        return '<div class="owner-name">' + esc(name) + '</div>';
+      }).join('') + '</div>'
+    : '<div class="muted" style="font-size:12.5px">No owners on record for this application.</div>';
+  var ownerCard = '<div class="card"><div class="card-title">Owners <span class="count">' +
+    (owners.length ? owners.length + (owners.length === 1 ? ' owner' : ' owners') : '—') + '</span></div>' + ownersInner + '</div>';
+
   el('detail').innerHTML =
     '<div class="hero"><div class="hero-left"><div class="hero-eyebrow">Application #' + esc(app.ID) + ' · ' + esc(app.Authority_Type || '') + '</div>' +
       '<div class="hero-name">' + esc(app.Business_Name || '') + '</div><div class="hero-meta">' + meta + '</div></div>' +
       '<div>' + statePill + '</div></div>' +
 
     '<div class="card"><div class="card-title">Where it stands</div><div class="stepper">' + stepsHtml + '</div></div>' +
+
+    ownerCard +
 
     '<div class="grid2"><div class="card"><div class="card-title">Documents <span class="count">' + docRec.uploadedCount + ' / ' + docRec.total + ' received</span></div>' + docsHtml +
       '<div class="hint">Documents the prospect uploads appear here as Received. Use “Nudge client” on a still-needed item to send a reminder — Sales can’t mark docs received.</div></div>' +

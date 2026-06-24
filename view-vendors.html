@@ -47,7 +47,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   background: #fff; border: 1px solid #e6e3da; border-radius: 10px;
   padding: 14px 16px;
   display: grid;
-  grid-template-columns: 1.6fr 1fr 1.2fr 1fr 1.2fr 1fr 28px;
+  grid-template-columns: 1.5fr 0.9fr 1.15fr 0.9fr 0.7fr 1fr 1fr 28px;
   gap: 14px; align-items: center;
   cursor: pointer; transition: all 0.12s; position: relative;
 }
@@ -240,6 +240,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <input type="text" id="search-input" placeholder="Search by vendor name, MC#, DOT, or email...">
     </div>
     <div class="chips" id="chips"></div>
+    <select id="sort-select" class="btn" aria-label="Sort vendors" style="cursor:pointer;">
+      <option value="status">Status</option>
+      <option value="name_asc">Name (A–Z)</option>
+      <option value="name_desc">Name (Z–A)</option>
+      <option value="rel_new">Relationship: Newest</option>
+      <option value="rel_old">Relationship: Oldest</option>
+    </select>
   </div>
 
   <div id="results">
@@ -254,7 +261,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div id="footer-count">—</div>
   </div>
 
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-11.2</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-23.1</div>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -273,6 +280,7 @@ var brokerEmail = '';
 var allRecords = [];
 var filteredRecords = [];
 var currentFilter = 'all';
+var currentSort = 'status';
 var currentSearch = '';
 var openIndex = -1;
 var currentLoadId = 0;
@@ -349,6 +357,10 @@ function bindGlobalUI() {
     currentSearch = e.target.value.toLowerCase().trim();
     applyFilters();
   });
+  document.getElementById('sort-select').addEventListener('change', function(e) {
+    currentSort = e.target.value;
+    applyFilters();
+  });
   document.getElementById('btn-new').addEventListener('click', function() {
     navigateParent('#Page:Carrier_Onboarding');
   });
@@ -406,15 +418,39 @@ function loadAllRecords() {
   });
 }
 
-function onRecordsLoaded(records) {
-  // Sort: Approved first by name, then Pending/PaymentChange/Denied by name, DNU last
-  records.sort(function(a, b) {
+function sortRecords(records) {
+  var arr = records.slice();
+  if (currentSort === 'name_asc' || currentSort === 'name_desc') {
+    var dir = currentSort === 'name_asc' ? 1 : -1;
+    arr.sort(function(a, b) {
+      return dir * (a.Vendor_Name || '').toLowerCase()
+                     .localeCompare((b.Vendor_Name || '').toLowerCase());
+    });
+    return arr;
+  }
+  if (currentSort === 'rel_new' || currentSort === 'rel_old') {
+    var sign = currentSort === 'rel_new' ? -1 : 1;
+    arr.sort(function(a, b) {
+      var da = parseAddedTime(a.Added_Time), db = parseAddedTime(b.Added_Time);
+      if (!da && !db) return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
+      if (!da) return 1;   // missing dates always sort last
+      if (!db) return -1;
+      return sign * (da.getTime() - db.getTime());
+    });
+    return arr;
+  }
+  // 'status' (default) — preserved verbatim from the original onRecordsLoaded sort.
+  arr.sort(function(a, b) {
     var sa = statusMeta(a), sb = statusMeta(b);
     var rank = { approved: 0, pending: 1, 'payment-change': 1, denied: 2, dnu: 3, unknown: 4 };
     var diff = (rank[sa.key] || 9) - (rank[sb.key] || 9);
     if (diff !== 0) return diff;
     return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
   });
+  return arr;
+}
+
+function onRecordsLoaded(records) {
   allRecords = records;
   buildChips();
   applyFilters();
@@ -463,7 +499,7 @@ function countBy(records) {
 }
 
 function applyFilters() {
-  filteredRecords = allRecords.filter(function(r) {
+  filteredRecords = sortRecords(allRecords).filter(function(r) {
     if (currentFilter !== 'all') {
       var sm = statusMeta(r), pm = paymentMeta(r);
       if (currentFilter === 'approved' && sm.key !== 'approved') return false;
@@ -566,6 +602,10 @@ function rowHtml(r, idx) {
         (p.tag ? '<span class="tag ' + p.tag + '">' + esc(p.label) + '</span>' :
                  '<div class="cell-val" style="color:#999;">—</div>') +
         (p.sub ? '<div class="cell-sub" style="margin-top:4px;">' + esc(p.sub) + '</div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<div class="cell-label">Since</div>' +
+        '<div class="cell-val">' + esc(formatRelDate(r.Added_Time, 'short')) + '</div>' +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Status</div>' +
@@ -677,6 +717,14 @@ function renderPanel() {
         '</div>' +
       '</div>' +
 
+      // Relationship
+      '<div class="panel-section">' +
+        '<div class="panel-section-title">Relationship</div>' +
+        '<div class="field-grid">' +
+          field('Carrier since', formatRelDate(r.Added_Time, 'full')) +
+        '</div>' +
+      '</div>' +
+
     '</div>' +
     '<div class="panel-footer">' +
       '<div class="kbd-hints"><span class="kbd">↑↓</span> Navigate <span class="kbd">Esc</span> Close</div>' +
@@ -740,6 +788,30 @@ function field(label, val) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+var REL_MONTHS = { Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11 };
+var REL_MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// Parse Creator's "dd-MMM-yyyy HH:mm:ss" Added_Time into a Date (date part only).
+// Returns null for missing or unparseable input.
+function parseAddedTime(value) {
+  if (!value) return null;
+  var m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})/.exec(String(value).trim());
+  if (!m) return null;
+  var mon = REL_MONTHS[m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase()];
+  if (mon === undefined) return null;
+  var d = new Date(parseInt(m[3], 10), mon, parseInt(m[1], 10));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// 'short' -> "Mar 2025"; 'full' -> "Mar 14, 2025". Em-dash when unparseable.
+function formatRelDate(value, style) {
+  var d = parseAddedTime(value);
+  if (!d) return '—';
+  var mon = REL_MONTH_NAMES[d.getMonth()];
+  if (style === 'full') return mon + ' ' + d.getDate() + ', ' + d.getFullYear();
+  return mon + ' ' + d.getFullYear();
+}
+
 function formatAddress(addr) {
   if (!addr) return '';
   if (typeof addr === 'string') return addr;
@@ -785,7 +857,7 @@ function esc(s) {
 // ── CSV export ────────────────────────────────────────────────────────────
 function exportCsv() {
   if (!filteredRecords.length) return;
-  var headers = ['Vendor','MC','DOT','Email','Phone','Address','Payment Method','Payment Terms','Factoring Company','Status'];
+  var headers = ['Vendor','MC','DOT','Email','Phone','Address','Payment Method','Payment Terms','Factoring Company','Status','Relationship Since'];
   var rows = filteredRecords.map(function(r) {
     var s = statusMeta(r);
     var p = paymentMeta(r);
@@ -799,7 +871,8 @@ function exportCsv() {
       p.label,
       r.Payment_Terms || '',
       r.Factoring_Company || '',
-      s.label
+      s.label,
+      formatRelDate(r.Added_Time, 'full')
     ];
   });
   var csv = [headers].concat(rows).map(function(row) {

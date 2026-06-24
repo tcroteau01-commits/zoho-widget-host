@@ -175,6 +175,19 @@ test('row Since cell shows em-dash when Added_Time is absent', async () => {
   assert.match(row.textContent, /—/);
 });
 
+test('detail panel shows Carrier since with full date', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = makeFetch([{ ID: 'A', Vendor_Name: 'Alpha Freight', Vendor_Status: 'Approved',
+                         Added_Time: '14-Mar-2025 10:00:00' }]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  const panel = w.document.getElementById('panel');
+  assert.match(panel.textContent, /Carrier since/);
+  assert.match(panel.textContent, /Mar 14, 2025/);
+});
+
 test('addressFieldHtml wraps the address in a Maps link; plain when empty', () => {
   const dom = makeDom();
   const w = dom.window;

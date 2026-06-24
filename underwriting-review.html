@@ -73,6 +73,9 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .kv .k { font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--of-gray-500); font-weight:700; }
 .kv .v { font-size:13px; color:var(--of-charcoal); font-weight:600; margin-top:1px; }
 .kv .row { padding:6px 0; border-bottom:1px dashed var(--of-beige-line); }
+.kv .row.credit-expl { grid-column:1 / -1; background:var(--of-amber-soft); border:1px solid #f5e0a8; border-radius:8px; padding:10px 12px; margin-top:6px; }
+.kv .row.credit-expl .k { color:var(--of-amber-text); }
+.kv .row.credit-expl .v { white-space:pre-wrap; line-height:1.5; }
 
 .flag-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
 .flag { display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:9px; border:1px solid var(--of-beige-line); font-size:12.5px; }
@@ -123,6 +126,14 @@ tr:last-child td { border-bottom:none; }
 .rec-reasons { list-style:none; display:flex; flex-direction:column; gap:5px; }
 .rec-reasons li { font-size:13px; color:var(--of-charcoal-soft); padding-left:18px; position:relative; line-height:1.5; }
 .rec-reasons li::before { content:'▸'; position:absolute; left:0; color:var(--of-amber); font-weight:700; }
+
+/* Owner detail cards + trusted contacts */
+.owner-card { border:1px solid var(--of-beige-line); border-radius:10px; padding:13px 15px; margin-bottom:11px; background:var(--of-beige-soft); }
+.owner-card:last-child { margin-bottom:0; }
+.owner-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:9px; padding-bottom:8px; border-bottom:1px dashed var(--of-beige-line); }
+.owner-head .oseq { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--of-gray-500); font-weight:700; }
+.owner-head .on { font-size:15px; font-weight:800; color:var(--of-charcoal); letter-spacing:-0.2px; margin-top:2px; }
+.owner-head .op { font-size:13px; font-weight:800; color:var(--of-orange); white-space:nowrap; }
 
 @media (max-width:1000px){ .col-main{grid-template-columns:1fr;} .kpi-row{grid-template-columns:1fr 1fr;} }
 @media (max-width:640px){ .kpi-row,.kv,.flag-grid{grid-template-columns:1fr;} .hero{grid-template-columns:1fr;} }
@@ -191,6 +202,14 @@ tr:last-child td { border-bottom:none; }
         <div class="card">
           <div class="card-title">Ownership &amp; Entity <span class="count">FMCSA · Middesk KYB</span></div>
           <table id="ownTable"></table>
+        </div>
+        <div class="card">
+          <div class="card-title">Owner Details <span class="count" id="ownerCount">—</span></div>
+          <div id="ownerDetails"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Trusted Contacts <span class="count" id="contactCount">—</span></div>
+          <table id="contactTable"></table>
         </div>
         <div class="card">
           <div class="card-title">UCC Research <span class="count">iLien · SOS · Middesk</span></div>
@@ -428,8 +447,17 @@ var DEMO_APPS = {
       USDOT:'4366362', MC_Number:'1709488', EIN:'84-21••••', Business_Formation_Type:'LLC', Equipment_Types:['Dry Van','Flatbed'],
       Number_of_Trucks:1, Number_of_Drivers:1, Monthly_Invoices_to_Factor:'$22,000', Has_Prior_Factor:'Yes',
       Current_Previous_Factor:'TBS Factoring', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'Recourse',
-      Credit_Issues:['None'], loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes' },
-    owners: [{ First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'Managing Member', Ownership_Percent:100, sosRole:'Managing Member' }],
+      Credit_Issues:['Bankruptcy'], Credit_Explanation:'Chapter 11 filed 2019 during a prior trucking venture; fully discharged 2021. No defaults since.', loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes' },
+    owners: [
+      { First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'CEO', Ownership_Percent:40, Owner_Sequence:1, Birthdate:'02/14/1985', SSN:'111-22-3333', Phone:'6025551122', Email:'brennan@eslingerlogistics.com', Address:'456 Cargo Way, Phoenix, AZ', sosRole:'Managing Member' },
+      { First_Name1:'Dana', Last_Name1:'Whitfield', Title:'CFO', Ownership_Percent:30, Owner_Sequence:2, Birthdate:'07/09/1979', SSN:'222-33-4444', Phone:'6025553344', Email:'dana@eslingerlogistics.com', Address:'78 Mesa Rd, Phoenix, AZ', sosRole:'Member' },
+      { First_Name1:'Marcus', Last_Name1:'Reyes', Title:'COO', Ownership_Percent:30, Owner_Sequence:3, Birthdate:'11/30/1982', SSN:'333-44-5555', Phone:'6025555566', Email:'marcus@eslingerlogistics.com', Address:'920 Vail St, Tempe, AZ', sosRole:'Member' }
+    ],
+    contacts: [
+      { Name:'Patricia Lowe', Title:'Bookkeeper', Phone:'6025557788', Email:'patricia@eslingerlogistics.com' },
+      { Name:'Sam Ortega', Title:'Dispatch Manager', Phone:'6025559900', Email:'sam@eslingerlogistics.com' },
+      { Name:'Gail Stoddard', Title:'Controller', Phone:'6025550011', Email:'gail@eslingerlogistics.com' }
+    ],
     entity: [
       { label:'Legal entity (FMCSA)', detail:'Brennan Eslinger Trucking LLC · Active', status:'clear' },
       { label:'SOS registration', detail:'active', status:'clear' },
@@ -462,7 +490,10 @@ var DEMO_APPS = {
       Number_of_Trucks:0, Number_of_Drivers:0, Monthly_Invoices_to_Factor:'$48,000', Has_Prior_Factor:'No',
       Current_Previous_Factor:'', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'',
       Credit_Issues:['None'], loc:'Atlanta, GA', Assigned_Underwriter:'D. Okafor' },
-    owners: [{ First_Name1:'Jim', Last_Name1:'Princeton', Title:'Managing Member', Ownership_Percent:100, sosRole:'Managing Member' }],
+    owners: [{ First_Name1:'Jim', Last_Name1:'Princeton', Title:'Managing Member', Ownership_Percent:100, Owner_Sequence:1, Birthdate:'05/22/1976', SSN:'444-55-6666', Phone:'4045552310', Email:'jim@princetonlogistics.com', Address:'1200 Peachtree St NE, Atlanta, GA', sosRole:'Managing Member' }],
+    contacts: [
+      { Name:'Renee Carter', Title:'Operations Manager', Phone:'4045557845', Email:'renee@princetonlogistics.com' }
+    ],
     fraud: [
       ['IP Address','Atlanta, GA · no proxy','clear'],['Phone (IPQS)','Landline · score 12','clear'],
       ['Email','Business domain match','clear'],['Insurance / COI','Not required (broker)','clear'],
@@ -513,7 +544,8 @@ function loadByUSDOT(usdot) {
           appId: j.applicationId,
           reviewId: j.reviewId || null,
           application: a,
-          owners: (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, sosRole:'—' }; }),
+          owners: (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, Owner_Sequence:o.Owner_Sequence, Birthdate:o.Birthdate, SSN:o.SSN, Phone:o.Phone, Email:o.Email, Address:o.Address, sosRole:'—' }; }),
+          contacts: (j.contacts || []).map(function (c) { return { Name:c.Name, Title:c.Title, Phone:c.Phone, Email:c.Email }; }),
           documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; }),
           checksReady: !!checks,
           fraud: (checks && checks.fraud) || [],
@@ -632,6 +664,11 @@ function showStatus(msg, type){ var el=$('statusMsg'); el.textContent=msg; el.cl
 function clearStatus(){ $('statusMsg').className='status-msg'; }
 function bindToggle(id){ $(id).addEventListener('click', function(){ this.classList.toggle('on'); renderGate(); }); }
 function initials(n){ return (n||'UW').split(' ').map(function(x){return x[0];}).join('').slice(0,2); }
+// PII safety: never render a full SSN in the console — show last 4 only (•••-••-1234).
+function maskSSN(ssn){ var s=String(ssn==null?'':ssn).replace(/[^0-9]/g,''); return s ? '•••-••-'+s.slice(-4) : ''; }
+// Escape prospect free-text (e.g. the credit explanation) before inserting as HTML.
+function escHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function kvRow(k,v){ return '<div class="row"><div class="k">'+k+'</div><div class="v">'+((v!=null&&v!=='')?v:'—')+'</div></div>'; }
 
 function renderModel(m) {
   MODEL = m;
@@ -673,13 +710,21 @@ function renderModel(m) {
       ? 'Not run yet — click to run IPQS · CarrierOK · Middesk KYB.' : '';
   }
 
-  $('appSummary').innerHTML = [
+  var creditFlags = (a.Credit_Issues||[]).filter(function(c){ return c && c !== 'None'; });
+  var appHtml = [
     ['Authority', a.Authority_Type],['Factoring As', a.Factoring_Authority_Selected],
     ['Formation', a.Business_Formation_Type],['Equipment', (a.Equipment_Types||[]).join(', ')],
     ['Trucks / Drivers', a.Number_of_Trucks+' / '+a.Number_of_Drivers],['Monthly Invoices', a.Monthly_Invoices_to_Factor],
     ['Prior Factor', a.Has_Prior_Factor==='Yes' ? a.Current_Previous_Factor : 'None'],['Veteran', a.Veteran],
-    ['Requested Term', (a.Rate_Term_Selection||'').replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],['Credit Issues',(a.Credit_Issues||[]).join(', ')]
+    ['Requested Term', (a.Rate_Term_Selection||'').replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],
+    ['Credit Issues', creditFlags.length ? creditFlags.join(', ') : 'None']
   ].map(function(r){ return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+(r[1]||'—')+'</div></div>'; }).join('');
+  // When the prospect reported credit issue(s), surface THEIR explanation prominently for the underwriter.
+  if (creditFlags.length) {
+    appHtml += '<div class="row credit-expl"><div class="k">Credit Explanation</div><div class="v">' +
+      (a.Credit_Explanation ? escHtml(a.Credit_Explanation) : 'No explanation provided.') + '</div></div>';
+  }
+  $('appSummary').innerHTML = appHtml;
 
   $('fraudGrid').innerHTML = fraud.length
     ? fraud.map(function(f){ var cls=f.status, ic=cls==='clear'?'✓':'!'; return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f.label+'</div><div class="fd">'+f.detail+'</div></div></div>'; }).join('')
@@ -722,6 +767,43 @@ function renderModel(m) {
     ot += '<tr><td colspan="4" style="color:var(--of-gray-500)">' + (m.checksReady === false ? 'Run the automated review to verify business identity &amp; officers.' : 'No ownership data returned.') + '</td></tr>';
   }
   $('ownTable').innerHTML = ot;
+
+  // Owner Details — one section per declared owner with their full submitted information.
+  var owners = m.owners || [];
+  if (owners.length) {
+    $('ownerDetails').innerHTML = owners.map(function (o, i) {
+      var name = ((o.First_Name1 || '') + ' ' + (o.Last_Name1 || '')).trim() || '—';
+      var pct = (o.Ownership_Percent != null && o.Ownership_Percent !== '') ? o.Ownership_Percent + '%' : '—';
+      return '<div class="owner-card">' +
+        '<div class="owner-head"><div><div class="oseq">Owner ' + (o.Owner_Sequence || i + 1) + '</div><div class="on">' + name + '</div></div><div class="op">' + pct + '</div></div>' +
+        '<div class="kv">' +
+          kvRow('Title', o.Title) +
+          kvRow('Ownership %', pct === '—' ? '' : pct) +
+          kvRow('Birthdate', o.Birthdate) +
+          kvRow('SSN', maskSSN(o.SSN)) +
+          kvRow('Phone', o.Phone) +
+          kvRow('Email', o.Email) +
+          kvRow('Address', o.Address) +
+        '</div></div>';
+    }).join('');
+    $('ownerCount').textContent = owners.length + (owners.length === 1 ? ' owner' : ' owners');
+  } else {
+    $('ownerDetails').innerHTML = '<div class="flag-empty">' + (m.checksReady === false ? 'No owners loaded for this application yet.' : 'No owners on record.') + '</div>';
+    $('ownerCount').textContent = '—';
+  }
+
+  // Trusted Contacts — people the prospect authorized to speak to their account.
+  var contacts = m.contacts || [];
+  var ct = '<tr><th>Name</th><th>Title</th><th>Phone</th><th>Email</th></tr>';
+  if (contacts.length) {
+    contacts.forEach(function (c) {
+      ct += '<tr><td><b>' + (c.Name || '—') + '</b></td><td>' + (c.Title || '—') + '</td><td>' + (c.Phone || '—') + '</td><td>' + (c.Email || '—') + '</td></tr>';
+    });
+  } else {
+    ct += '<tr><td colspan="4" style="color:var(--of-gray-500)">No trusted contacts on this application.</td></tr>';
+  }
+  $('contactTable').innerHTML = ct;
+  $('contactCount').textContent = contacts.length ? contacts.length + (contacts.length === 1 ? ' contact' : ' contacts') : 'none';
 
   // Documents = the full required checklist (same rules as the client portal), with the
   // client's uploaded Document records matched in by type. Needed items stay visible.

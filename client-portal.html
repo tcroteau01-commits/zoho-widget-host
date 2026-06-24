@@ -445,7 +445,7 @@ function renderStatus(data, isDemo) {
       right = '<div class="doc-action">' + (c.verified ? '<span class="pill g">Verified</span>' : '<span class="pill a">Received</span>') +
         (c.link ? ' <a class="viewlink" href="' + esc(c.link) + '" target="_blank" rel="noopener">View</a>' : '') + '</div>';
     } else {
-      right = '<div class="doc-action"><input type="file" class="doc-file" id="f-' + esc(c.key) + '" accept="application/pdf,image/*">' +
+      right = '<div class="doc-action"><input type="file" class="doc-file" id="f-' + esc(c.key) + '" accept="application/pdf,image/*" multiple>' +
         '<button class="btn orange sm js-up" data-key="' + esc(c.key) + '" data-type="' + esc(c.type) + '">Upload</button></div>';
     }
     return '<div class="doc-row">' + left + right + '</div>';
@@ -479,7 +479,7 @@ function renderStatus(data, isDemo) {
       (rec.pendingCount > 0 ? '📋' : (stage.terminal ? 'ℹ️' : '✓')) + '</span><div>' + esc(guidance) + '</div></div></div>' : '') +
 
     '<div class="card"><div class="card-title">Your documents <span class="count" id="docCount">' + rec.uploadedCount + ' of ' + rec.total + ' received</span></div>' +
-      '<div class="summ">Upload each document below. PDF or photo is fine. You can come back to this page anytime to add the rest.</div>' +
+      '<div class="summ">Upload each document below. PDF or photo is fine — you can select multiple files at once for any item. You can come back to this page anytime to add the rest.</div>' +
       '<div id="docList">' + rows + extrasHtml + '</div>' +
       '<div class="toast" id="upToast"></div></div>' +
 
@@ -488,43 +488,74 @@ function renderStatus(data, isDemo) {
   Array.prototype.forEach.call(el('docList').querySelectorAll('.js-up'), function (b) {
     var key = b.getAttribute('data-key'), type = b.getAttribute('data-type');
     var input = el('f-' + key);
-    // Click Upload → open the file picker. Choosing a file uploads it immediately (no second click).
+    // Click Upload → open the file picker. Choosing file(s) uploads them immediately (no second
+    // click). The input is `multiple`, so a prospect can select several files for one document type.
     b.addEventListener('click', function () {
-      if (input && input.files && input.files.length) { uploadDoc(type, input.files[0], b); return; }
+      if (input && input.files && input.files.length) { uploadDocs(type, input.files, b); return; }
       if (input) input.click();
     });
     if (input) input.addEventListener('change', function () {
-      if (input.files && input.files.length) uploadDoc(type, input.files[0], b);
+      if (input.files && input.files.length) uploadDocs(type, input.files, b);
     });
   });
 }
 
 function upToast(kind, msg){ var t = el('upToast'); if (t) { t.className = 'toast ' + kind; t.textContent = msg; } }
 
-function uploadDoc(docType, file, btn) {
-  if (!file) { upToast('err', 'Choose a file first.'); return Promise.resolve(); }
+// Upload one OR MORE files for a single document type. The input is `multiple`, so a prospect can
+// attach several files (e.g. a multi-page insurance cert, or both sides of a license) to one line.
+// Each file is sent as its own Document record; we upload sequentially for clear progress and so a
+// PIN re-prompt stops the run cleanly, then refresh once at the end.
+function uploadDocs(docType, files, btn) {
+  files = files ? Array.prototype.slice.call(files) : [];
+  if (!files.length) { upToast('err', 'Choose at least one file first.'); return Promise.resolve(); }
+  var n = files.length, label = n + ' file' + (n === 1 ? '' : 's');
+
+  // Demo / no-fetch: simulate each upload, then re-render once.
   if (STATE.mode === 'demo' || typeof fetch !== 'function') {
-    upToast('ok', 'Uploaded ' + docType + ' (preview).');
-    STATE.data.documents = (STATE.data.documents || []).concat([{ type: docType, status: 'Received', uploadedAt: 'just now' }]);
+    files.forEach(function () {
+      STATE.data.documents = (STATE.data.documents || []).concat([{ type: docType, status: 'Received', uploadedAt: 'just now' }]);
+    });
+    upToast('ok', 'Uploaded ' + label + ' for ' + docType + ' (preview).');
     renderStatus(STATE.data, true); return Promise.resolve();
   }
+
   if (btn) btn.disabled = true;
-  upToast('', 'Uploading ' + docType + '…');
+  var done = 0, failed = 0, needVerify = false;
+  function next(i) {
+    if (i >= n || needVerify) return Promise.resolve();
+    upToast('', 'Uploading ' + docType + ' — file ' + (i + 1) + ' of ' + n + '…');
+    return postFile(docType, files[i]).then(function (p) {
+      if (p && p.ok) done++;
+      else if (p && (p.error === 'verify_required' || p.error === 'verify_invalid' || p.error === 'pin_locked')) { needVerify = true; return; }
+      else failed++;
+      return next(i + 1);
+    });
+  }
+  return next(0).then(function () {
+    if (needVerify) { renderPinPrompt('Please re-enter your USDOT, email, and PIN to continue.'); return; }
+    if (done) {
+      upToast('ok', '✓ ' + done + ' file' + (done === 1 ? '' : 's') + ' uploaded for ' + docType + (failed ? (' · ' + failed + ' failed') : '') + '.');
+      loadStatus(STATE.token);   // refresh once after the whole batch
+    } else {
+      if (btn) btn.disabled = false;
+      upToast('err', 'Upload failed — please try again.');
+    }
+  }).catch(function () { if (btn) btn.disabled = false; upToast('err', 'Network error — please try again.'); });
+}
+
+// Low-level single-file POST → resolves with the parsed JSON response (no re-render). Same
+// token + factor verification the backend already enforces for the portal.
+function postFile(docType, file) {
+  if (!file) return Promise.resolve({ error: 'no_file' });
   var fd = new FormData();
   fd.append('doc_type', docType);
   fd.append('file', file);
-  // same factors used to open the portal (verified again server-side)
   if (STATE.usdot) fd.append('usdot', STATE.usdot);
   if (STATE.email) fd.append('email', STATE.email);
   if (STATE.pin) fd.append('pin', STATE.pin);
   return fetch(API_BASE + UPLOAD_PATH + '?token=' + encodeURIComponent(STATE.token), { method: 'POST', body: fd })
-    .then(function (r) { return r.json().catch(function () { return {}; }); })
-    .then(function (p) {
-      if (p && p.ok) { upToast('ok', '✓ ' + docType + ' uploaded.'); loadStatus(STATE.token); }
-      else if (p && (p.error === 'verify_required' || p.error === 'verify_invalid' || p.error === 'pin_locked')) { renderPinPrompt('Please re-enter your USDOT, email, and PIN to continue.'); }
-      else { if (btn) btn.disabled = false; upToast('err', (p && p.error) || 'Upload failed — please try again.'); }
-    })
-    .catch(function () { if (btn) btn.disabled = false; upToast('err', 'Network error — please try again.'); });
+    .then(function (r) { return r.json().catch(function () { return {}; }); });
 }
 
 function renderRecovery(msg) {

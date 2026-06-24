@@ -263,6 +263,10 @@ test('status sort keeps name A-Z within one status group', async () => {
   assert.deepEqual(rowNames(w), ['alpha co', 'Bravo Co', 'Charlie Co']);
 });
 
+test('CSV export includes a Relationship Since column', () => {
+  assert.match(HTML, /Relationship Since/);
+});
+
 test('changing sort preserves the active search filter', async () => {
   const recs = [
     { ID:'1', Vendor_Name:'Apple Logistics', Vendor_Status:'Approved', Added_Time:'01-Jan-2024 00:00:00' },

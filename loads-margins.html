@@ -208,6 +208,22 @@
   table.dp-txns td.first { text-align: left; padding-left: 24px; }
   table.dp-txns td.last { padding-right: 24px; }
   table.dp-txns td.neg { color: var(--of-orange); }
+  table.dp-settle { width: 100%; border-collapse: collapse; font-size: 12px;
+    margin: 8px 0 16px; }
+  table.dp-settle td {
+    padding: 7px 24px; border-bottom: 1px solid var(--of-gray-100);
+    color: var(--of-charcoal); font-variant-numeric: tabular-nums; vertical-align: top;
+  }
+  table.dp-settle td.lbl { text-align: left; }
+  table.dp-settle td.amt { text-align: right; font-weight: 600; white-space: nowrap; }
+  table.dp-settle td.amt.pos { color: var(--of-green); }
+  table.dp-settle td.amt.neg { color: var(--of-orange); }
+  table.dp-settle .sub { display: block; font-size: 10px; color: var(--of-gray-500);
+    font-weight: 400; margin-top: 2px; }
+  table.dp-settle tr.net td {
+    border-top: 2px solid var(--of-gray-300); border-bottom: none;
+    font-weight: 700; font-size: 13px; padding-top: 10px;
+  }
   .pill-open { display:inline-block; padding:2px 8px; border-radius:10px;
     background:#FEF3C7; color:#92400E; font-size:11px; font-weight:600 }
   .pill-closed { display:inline-block; padding:2px 8px; border-radius:10px;
@@ -1136,7 +1152,6 @@
       var p = state.loadPreview || {};
       var L = p.load || {};
       var V = p.vendor || {};
-      var txns = p.transactions || [];
       var pill = L.arStatus === 'closed' ?
         '<span class="pill-closed">AR closed</span>' : '<span class="pill-open">AR open</span>';
 
@@ -1175,20 +1190,32 @@
           '</div>';
       }
 
-      // Transactions
-      html += '<div class="dp-section-title">All transactions on this load (' + txns.length + ')</div>' +
-        '<table class="dp-txns"><thead><tr>' +
-          '<th class="first">Date</th><th>GL Account</th><th>Note</th><th class="last">Amount</th>' +
-        '</tr></thead><tbody>';
-      for (var i = 0; i < txns.length; i++) {
-        var t = txns[i];
-        html += '<tr>' +
-          '<td class="first">' + esc(t.date || '') + '</td>' +
-          '<td>' + esc(t.glAccountName || '') + '</td>' +
-          '<td>' + esc(t.note || '') + '</td>' +
-          '<td class="last ' + (t.amount < 0 ? 'neg' : '') + '">' + fmtMoneyDec(t.amount) + '</td>' +
-        '</tr>';
+      // Settlement — broker-facing "where the money went" on the funding event.
+      // Replaces the raw GL ledger: no GL account numbers, no internal double-entry
+      // mirrors (Invoice Revenue / Cost of Sales / Client Payable). The rows
+      // reconcile to Net cash to you (= FactorView's net funded to the client).
+      var s = p.settlement || {};
+      function settleRow(label, amount, opts) {
+        opts = opts || {};
+        var rowCls = opts.net ? ' class="net"' : '';
+        var amtCls = 'amt' + (opts.net ? '' : (amount < 0 ? ' neg' : (amount > 0 ? ' pos' : '')));
+        var sub = opts.sub ? '<span class="sub">' + esc(opts.sub) + '</span>' : '';
+        return '<tr' + rowCls + '><td class="lbl">' + esc(label) + sub + '</td>' +
+               '<td class="' + amtCls + '">' + fmtMoneyDec(amount) + '</td></tr>';
       }
+      html += '<div class="dp-section-title">Where the money went</div>' +
+        '<table class="dp-settle"><tbody>';
+      html += settleRow('AR purchased', s.arPurchased);
+      if (s.carrierPay) html += settleRow('Carrier pay', s.carrierPay);
+      (s.fees || []).forEach(function (f) { html += settleRow(f.label, f.amount); });
+      (s.reserves || []).forEach(function (r) {
+        html += settleRow(r.label, r.amount, { sub: 'held, released to you later' });
+      });
+      (s.loanPayments || []).forEach(function (l) {
+        html += settleRow(l.label, l.amount, { sub: l.note });
+      });
+      (s.other || []).forEach(function (o) { html += settleRow(o.label, o.amount); });
+      html += settleRow('Net cash to you', s.netCash, { net: true });
       html += '</tbody></table>';
 
       // Quick links

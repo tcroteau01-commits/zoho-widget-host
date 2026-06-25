@@ -828,15 +828,15 @@ function deriveRedFlags(profile, docs, isDnu) {
   profile = profile || {}; docs = docs || [];
   var ipqs = profile.ipqs || {};
   var risk = (profile.risk && profile.risk.flags) || [];
-  var vendor = profile.vendor || {};
   function hasFlag(ids) { return risk.some(function (f) { return ids.indexOf(f.id) !== -1; }); }
   var types = {}; docs.forEach(function (d) { types[d.type] = true; });
 
   // Banking: flag if any bad-bank signal present (real ids from risk_model.py: _category_f_banking)
   var bankBad = hasFlag(['bank_routing_invalid', 'bank_name_mismatch', 'bank_state_mismatch',
                           'bank_account_shared', 'bank_bad_actor']) || !types.banking;
-  var factorRaw = String(vendor.Factor_Status || '').toLowerCase();
-  var factorBad = factorRaw && factorRaw.indexOf('approved') === -1;
+  // Factor: driven by risk flags from risk_model.py (factor_not_approved=Critical, factor_pending=Medium)
+  var factorRed  = hasFlag(['factor_not_approved']);
+  var factorWarn = hasFlag(['factor_pending']);
   // Footprint: IPQS top-level booleans + risk flag ids (vpn_signup, voip_phone confirmed in risk_model.py)
   var footBad = !!(ipqs.vpn_detected || ipqs.voip_number) || hasFlag(['vpn_signup', 'voip_phone']);
   var docsMissing = !types.noa || !types.coi || !types.banking;
@@ -845,7 +845,7 @@ function deriveRedFlags(profile, docs, isDnu) {
     { key: 'dnu',   label: 'DNU',       level: isDnu ? 'red' : 'ok' },
     { key: 'bank',  label: 'Bank',      level: bankBad ? 'red' : 'ok' },
     { key: 'docs',  label: 'Documents', level: docsMissing ? 'red' : 'ok' },
-    { key: 'factor',label: 'Factor',    level: factorBad ? 'red' : 'ok' },
+    { key: 'factor',label: 'Factor',    level: factorRed ? 'red' : (factorWarn ? 'warn' : 'ok') },
     { key: 'foot',  label: 'Footprint', level: footBad ? 'red' : 'ok' }
   ];
 }

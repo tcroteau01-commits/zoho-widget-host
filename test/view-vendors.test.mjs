@@ -344,10 +344,13 @@ test('opening a vendor lazy-loads carrier docs sorted recent-first', async () =>
 test('red-flag chips derive from carrier-profile + docs', async () => {
   const records = [{ ID: '901', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', Email: 'r@b.com' }];
   const profile = {
-    vendor: { Factor_Status: 'Not Approved' },
+    vendor: {},
     ipqs: { vpn_detected: true, voip_number: false },
     bank: {},
-    risk: { flags: [{ id: 'vpn_signup', category: 'Identity and Signup Fraud', severity: 'High' }] }
+    risk: { flags: [
+      { id: 'vpn_signup', category: 'Identity and Signup Fraud', severity: 'High' },
+      { id: 'factor_not_approved', category: 'Payment and Internal', severity: 'Critical' }
+    ] }
   };
   const dom = makeDom();
   const w = dom.window;
@@ -367,8 +370,11 @@ test('red-flag chips derive from carrier-profile + docs', async () => {
   await new Promise(r => setTimeout(r, 50));
   const strip = w.document.getElementById('vv-redflags').textContent;
   assert.match(strip, /Footprint/);  // VPN -> footprint flag
-  assert.match(strip, /Factor/);     // Not Approved -> factor flag
+  assert.match(strip, /Factor/);     // factor_not_approved -> factor flag
   assert.match(strip, /Documents/);  // no docs -> missing-docs flag
   // a red chip exists
   assert.ok(w.document.querySelector('#vv-redflags .vv-flag.red'), 'has a red chip');
+  // Factor chip must be red when factor_not_approved flag is present
+  const factorChip = [...w.document.querySelectorAll('#vv-redflags .vv-flag')].find(c => c.textContent === 'Factor');
+  assert.ok(factorChip && factorChip.classList.contains('red'), 'Factor chip must be red when factor_not_approved');
 });

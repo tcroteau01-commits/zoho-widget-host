@@ -272,7 +272,7 @@ test('deselecting carrier calls OperFiAV.carrierBadge with empty vendor id', asy
 
 // ── B4: Stepper gating + submit-enable logic ──────────────────────────────────
 
-test('submit stays disabled until all required fields valid', () => {
+test('submit stays disabled until all required fields AND documents are present', () => {
   const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
   const w = dom.window, d = w.document;
   assert.strictEqual(d.querySelector('#submit-btn').disabled, true);
@@ -284,7 +284,10 @@ test('submit stays disabled until all required fields valid', () => {
   w.setField('carrier-factoring-invoice', 'F1');
   w.setField('rate-con', 'RC-7');
   w.refreshValidity();
-  assert.strictEqual(d.querySelector('#submit-btn').disabled, false);
+  assert.strictEqual(d.querySelector('#submit-btn').disabled, true, 'fields complete but no docs -> still blocked');
+  w.fileStore = { cust_docs: [_doc(w, 'bol.pdf')], carrier_docs: [_doc(w, 'rc.pdf')] };
+  w.refreshValidity();
+  assert.strictEqual(d.querySelector('#submit-btn').disabled, false, 'fields + both required docs -> enabled');
 });
 
 test('submit re-disables if a required field is cleared', () => {
@@ -292,6 +295,7 @@ test('submit re-disables if a required field is cleared', () => {
   const w = dom.window, d = w.document;
   ['customer-select','customer-reference','customer-rate','carrier-select','carrier-rate','carrier-factoring-invoice','rate-con']
     .forEach(function (id, i) { w.setField(id, id.indexOf('rate')>-1 ? '100' : 'x'); });
+  w.fileStore = { cust_docs: [_doc(w, 'a.pdf')], carrier_docs: [_doc(w, 'b.pdf')] };
   w.refreshValidity();
   assert.strictEqual(d.querySelector('#submit-btn').disabled, false);
   w.setField('carrier-rate', '');
@@ -299,19 +303,24 @@ test('submit re-disables if a required field is cleared', () => {
   assert.strictEqual(d.querySelector('#submit-btn').disabled, true);
 });
 
-test('cannot reach review step until customer+carrier valid', () => {
+test('cannot reach review step until customer+carrier fields AND docs valid', () => {
   const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
   const w = dom.window;
   assert.strictEqual(w.canGoTo('review'), false);
   w.setField('customer-select', 'c9');
   w.setField('customer-reference', 'PO-1');
   w.setField('customer-rate', '2500');
+  w.fileStore = { cust_docs: [], carrier_docs: [] };
+  assert.strictEqual(w.canGoTo('carrier'), false, 'customer fields ok but no customer doc -> cannot advance');
+  w.fileStore.cust_docs = [_doc(w, 'a.pdf')];
   assert.strictEqual(w.canGoTo('carrier'), true);
   assert.strictEqual(w.canGoTo('review'), false);
   w.setField('carrier-select', 'v3');
   w.setField('carrier-rate', '2100');
   w.setField('carrier-factoring-invoice', 'F1');
   w.setField('rate-con', 'RC-7');
+  assert.strictEqual(w.canGoTo('review'), false, 'carrier fields ok but no carrier doc -> cannot reach review');
+  w.fileStore.carrier_docs = [_doc(w, 'b.pdf')];
   assert.strictEqual(w.canGoTo('review'), true);
 });
 
@@ -367,7 +376,7 @@ test('record created but an upload fails surfaces a non-lost-work message with t
   w._collectFields = () => ({ customer_id: 'c9' });
   w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: null });
   await w.submitLoad();
-  const t = w.document.getElementById('submit-status').textContent;
+  const t = w.document.getElementById('post-submit-banner').textContent;
   assert.match(t, /rec_777/);
   assert.match(t, /upload/i);
 });
@@ -620,4 +629,173 @@ test('submit blocks and creates NO funding record when a picked file is unreadab
   assert.match(t, /re-?select|select it again|remove/i);
   assert.strictEqual(w.document.getElementById('submit-btn').disabled, false,
     'submit re-enabled so the broker can fix and retry');
+});
+
+// ── Hard gates: required documents per step + red/green feedback ───────────────
+
+function _doc(w, name) {
+  return { name: name, ext: name.split('.').pop().toLowerCase(), blob: new w.Blob(['x']), error: null };
+}
+function _fillCustomer(w) {
+  w.setField('customer-select', 'c9');
+  w.setField('customer-reference', 'PO-1');
+  w.setField('customer-rate', '2500');
+}
+function _fillCarrier(w) {
+  w.setField('carrier-select', 'v3');
+  w.setField('carrier-rate', '2100');
+  w.setField('carrier-factoring-invoice', 'F1');
+  w.setField('rate-con', 'RC-7');
+}
+
+test('stepValid gates each step on its required document, not just the fields', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w); _fillCarrier(w);
+  w.fileStore = { cust_docs: [], carrier_docs: [] };
+  assert.strictEqual(w.stepValid('customer'), false, 'customer fields ok but no customer doc -> invalid');
+  assert.strictEqual(w.stepValid('carrier'), false, 'carrier fields ok but no carrier doc -> invalid');
+  w.fileStore.cust_docs = [_doc(w, 'bol.pdf')];
+  assert.strictEqual(w.stepValid('customer'), true);
+  assert.strictEqual(w.stepValid('carrier'), false, 'still no carrier doc');
+  w.fileStore.carrier_docs = [_doc(w, 'rc.pdf')];
+  assert.strictEqual(w.stepValid('carrier'), true);
+});
+
+test('a doc that failed to read does not satisfy the gate', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w);
+  w.fileStore = { cust_docs: [{ name: 'bad.pdf', ext: 'pdf', blob: null, error: 'x' }], carrier_docs: [] };
+  assert.strictEqual(w.stepValid('customer'), false, 'an unreadable-only doc set is not a satisfied gate');
+});
+
+test('a draft packet already on file satisfies the document gate', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w);
+  w.fileStore = { cust_docs: [], carrier_docs: [] };
+  assert.strictEqual(w.stepValid('customer'), false);
+  w._setDocOnFile('customer', true);  // reopened draft with has_customer_docs
+  assert.strictEqual(w.stepValid('customer'), true, 'an existing on-file packet counts as satisfied');
+});
+
+test('trying to advance without the required doc is blocked and flags the dropzone + message', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w);
+  w.fileStore = { cust_docs: [], carrier_docs: [] };
+  w.goToStep('carrier');
+  assert.ok(!w.document.getElementById('card-carrier').classList.contains('active'), 'did not advance to carrier');
+  assert.ok(w.document.getElementById('cust_docs_area').classList.contains('invalid'), 'dropzone flagged red');
+  assert.ok(w.document.getElementById('customer-error').classList.contains('show'), 'required message shown');
+});
+
+test('a blocked advance flags the visible carrier search box red, not the hidden select', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w);
+  // carrier fields filled but NO carrier picked and no carrier doc
+  w.setField('carrier-rate', '2100'); w.setField('carrier-factoring-invoice', 'F1'); w.setField('rate-con', 'RC-7');
+  w.fileStore = { cust_docs: [_doc(w, 'a.pdf')], carrier_docs: [] };
+  w.goToStep('review');  // blocked at the carrier step
+  assert.ok(w.document.getElementById('carrier-search').classList.contains('invalid'), 'search box flagged red');
+  assert.ok(!w.document.getElementById('carrier-select').classList.contains('invalid'), 'hidden select is not the flag target');
+});
+
+test('updateDocVisuals marks a satisfied dropzone valid (green) and clears invalid', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  const area = w.document.getElementById('cust_docs_area');
+  area.classList.add('invalid');
+  w.fileStore = { cust_docs: [_doc(w, 'bol.pdf')], carrier_docs: [] };
+  w.updateDocVisuals();
+  assert.ok(area.classList.contains('valid'), 'present doc -> green');
+  assert.ok(!area.classList.contains('invalid'), 'invalid flag cleared');
+});
+
+// ── Searchable carrier selector (name / MC / DOT) ─────────────────────────────
+
+function makeCarrierDom() {
+  const dom = makeB2Dom((url) => Promise.resolve({ ok: true, json: () => Promise.resolve(
+    String(url).includes('/tms-carriers')
+      ? { carriers: [
+          { vendor_id: 'v3', carrier_name: 'Hauler', mc: '123456', dot: '654321', payment_terms: 'Quickpay 2%' },
+          { vendor_id: 'v7', carrier_name: 'Brennan Trucking', mc: '998877', dot: '112233', payment_terms: 'Net 30' }
+        ] }
+      : { customers: [] }
+  )}));
+  return dom.window;
+}
+
+test('carrier section renders a search input over a hidden select', () => {
+  const d = new JSDOM(HTML).window.document;
+  assert.ok(d.getElementById('carrier-search'), 'missing #carrier-search');
+  assert.ok(d.getElementById('carrier-list'), 'missing #carrier-list results container');
+  assert.ok(d.getElementById('carrier-select'), 'hidden #carrier-select state holder remains');
+});
+
+test('carrier search filters by name, MC, or DOT', async () => {
+  const w = makeCarrierDom();
+  await w.loadCarriers();
+  w.renderCarrierResults('brennan');
+  let rows = [...w.document.querySelectorAll('#carrier-list .combo-opt')];
+  assert.ok(rows.some(r => /Brennan/i.test(r.textContent)), 'name match present');
+  assert.ok(!rows.some(r => /Hauler/.test(r.textContent)), 'non-matches excluded');
+  w.renderCarrierResults('654321');  // Hauler's DOT
+  rows = [...w.document.querySelectorAll('#carrier-list .combo-opt')];
+  assert.ok(rows.some(r => /Hauler/.test(r.textContent)), 'DOT search matches');
+  w.renderCarrierResults('998877');  // Brennan's MC
+  rows = [...w.document.querySelectorAll('#carrier-list .combo-opt')];
+  assert.ok(rows.some(r => /Brennan/i.test(r.textContent)), 'MC search matches');
+});
+
+test('carrier result rows show the carrier MC and DOT', async () => {
+  const w = makeCarrierDom();
+  await w.loadCarriers();
+  w.renderCarrierResults('hauler');
+  const row = w.document.querySelector('#carrier-list .combo-opt');
+  assert.match(row.textContent, /123456/, 'MC shown on the row');
+  assert.match(row.textContent, /654321/, 'DOT shown on the row');
+});
+
+test('selecting a carrier from search sets the value, fills the box, and shows terms', async () => {
+  const w = makeCarrierDom();
+  await w.loadCarriers();
+  w.selectCarrierFromSearch('v3');
+  assert.strictEqual(w.document.getElementById('carrier-select').value, 'v3', 'hidden select carries the id');
+  assert.match(w.document.getElementById('carrier-search').value, /Hauler/, 'search box shows the chosen name');
+  assert.match(w.document.getElementById('terms-readout-value').textContent, /Quickpay 2%/, 'terms populated via onCarrierChange');
+});
+
+// ── Post-submit reset: clear the form so the same load can't be sent twice ─────
+
+test('a successful submit clears the form, returns to step 1, and blocks resubmission', async () => {
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_900' }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });  // upload-doc ok
+  });
+  const w = dom.window, d = w.document;
+  w.setField('customer-select', 'c9'); w.setField('customer-reference', 'PO-1'); w.setField('customer-rate', '2500');
+  w.setField('carrier-select', 'v3'); w.setField('carrier-rate', '2100');
+  w.setField('carrier-factoring-invoice', 'F1'); w.setField('rate-con', 'RC-7');
+  d.getElementById('carrier-search').value = 'Hauler';
+  w.fileStore = { cust_docs: [_doc(w, 'bol.pdf')], carrier_docs: [_doc(w, 'rc.pdf')] };
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: new w.Blob(['y']) });
+  w.gotoStep('review');
+  await w.submitLoad();
+  assert.strictEqual(d.getElementById('customer-reference').value, '', 'fields cleared');
+  assert.strictEqual(d.getElementById('rate-con').value, '');
+  assert.strictEqual(d.getElementById('carrier-search').value, '', 'carrier search cleared');
+  assert.strictEqual(d.getElementById('carrier-select').value, '', 'carrier selection cleared');
+  assert.strictEqual((w.fileStore.cust_docs || []).length, 0, 'documents cleared');
+  assert.ok(d.getElementById('card-customer').classList.contains('active'), 'returned to step 1');
+  assert.ok(!d.getElementById('card-review').classList.contains('active'));
+  assert.strictEqual(d.getElementById('submit-btn').disabled, true, 'empty form -> cannot resubmit the same load');
+  assert.match(d.getElementById('post-submit-banner').textContent, /rec_900/, 'confirmation shows the record id');
+});
+
+test('submit shows a document-merge progress message before the network call', () => {
+  const dom = makeB2Dom(() => new Promise(() => {}));  // network never resolves
+  const w = dom.window, d = w.document;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => new Promise(() => {});  // merge pending -> entry message persists
+  w.fileStore = { cust_docs: [_doc(w, 'bol.pdf')], carrier_docs: [] };
+  w.submitLoad();  // not awaited: capture the synchronous entry status
+  assert.match(d.getElementById('submit-status').textContent, /merging|document/i);
 });

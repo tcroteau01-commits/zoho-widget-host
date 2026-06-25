@@ -206,7 +206,18 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .uploader:hover { border-color: #e8a020; color: #e8a020; }
 .uploader.drag-over { border-color: #e8a020; background: #fffbf0; color: #e8a020; }
-.uploader.invalid { border-color: #e53935; color: #e53935; }
+.uploader.invalid { border-color: #e53935; color: #e53935; background: #fff5f5; }
+.uploader.valid { border-color: #2e7d32; color: #2e7d32; background: #f4fbf5; }
+.combo { position: relative; }
+.combo-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
+  background: #fff; border: 1px solid #d6d9e0; border-radius: 8px; margin-top: 4px;
+  max-height: 280px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.combo-opt { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f1f4; }
+.combo-opt:last-child { border-bottom: none; }
+.combo-opt:hover, .combo-opt.active { background: #fff7e9; }
+.combo-opt .co-name { font-weight: 600; color: #222; }
+.combo-opt .co-sub { font-size: 12px; color: #777; margin-top: 1px; }
+.combo-empty { padding: 10px 12px; color: #999; font-size: 13px; }
 .uploader b { color: #666; display: block; margin-bottom: 3px; }
 .uploader input[type=file] { display: none; }
 
@@ -237,6 +248,9 @@ textarea { resize: vertical; min-height: 90px; }
   border-radius: 12px;
   padding: 18px 20px;
 }
+.post-submit-banner { padding: 12px 16px; border-radius: 8px; margin-bottom: 14px; font-weight: 600; }
+.post-submit-banner.ok { background: #eaf6ec; color: #2e7d32; border: 1px solid #b6dcbd; }
+.post-submit-banner.warn { background: #fff4e5; color: #a15c00; border: 1px solid #f0d2a0; }
 .miniprog { font-size: 11px; color: #888; text-align: center; margin-bottom: 12px; }
 .miniprog b { color: #e8a020; }
 .credit-banner {
@@ -311,6 +325,7 @@ textarea { resize: vertical; min-height: 90px; }
   </div>
 
   <div id="auth-banner" class="auth-banner"></div>
+  <div id="post-submit-banner" class="post-submit-banner" style="display:none"></div>
 
   <!-- Horizontal stepper -->
   <div class="stepper" id="stepper">
@@ -387,8 +402,13 @@ textarea { resize: vertical; min-height: 90px; }
         <div class="card-head"><div class="card-title"><span class="cnum">2</span> Carrier Information</div></div>
 
         <div class="field">
-          <label>Carrier Name / MC # <span class="req">*</span></label>
-          <select id="carrier-select">
+          <label>Carrier Name / MC # / DOT <span class="req">*</span></label>
+          <div class="combo" id="carrier-combo">
+            <input type="text" id="carrier-search" autocomplete="off" placeholder="Search by carrier name, MC #, or DOT…" />
+            <div class="combo-list" id="carrier-list" role="listbox" hidden></div>
+          </div>
+          <!-- Hidden state holder: carries the selected vendor_id and emits change. -->
+          <select id="carrier-select" style="display:none" aria-hidden="true">
             <option value="">Select a carrier…</option>
           </select>
           <div id="carrier-av"></div>
@@ -502,6 +522,10 @@ var _pendingDraftId = '';  // set during init when reopening via ?draftId=
 // In-memory file store keyed by input id (read by the merge pipeline below).
 var fileStore = {};
 
+// Tracks whether a slot's required packet is already on the record (reopened draft
+// with has_*_docs) — counts toward the document gate even when fileStore is empty.
+var docsOnFile = { customer: false, carrier: false };
+
 // ── Email / init resolution ─────────────────────────────────────────────────
 function resolveEmail() {
   try {
@@ -560,6 +584,9 @@ function loadCarriers() {
       // (safe to call multiple times; browsers ignore duplicate identical listeners
       //  added via addEventListener for named functions)
       sel.addEventListener('change', onCarrierChange);
+      // Reset the search box so a fresh load starts empty.
+      var search = document.getElementById('carrier-search');
+      if (search) search.value = '';
     })
     .catch(function () {
       var e = document.getElementById('carrier-error');
@@ -609,6 +636,72 @@ function onCarrierChange() {
       { vendorId: vid, email: brokerEmail, apiBase: BROKER_API_BASE });
   }
 }
+
+// ── Searchable carrier combobox (match by name, MC, or DOT) ───────────────────
+function _carrierMatch(c, q) {
+  return String(c.carrier_name || '').toLowerCase().indexOf(q) !== -1 ||
+         String(c.mc || '').toLowerCase().indexOf(q) !== -1 ||
+         String(c.dot || '').toLowerCase().indexOf(q) !== -1;
+}
+
+// Render the filtered carrier list (name + MC/DOT per row) and reveal it.
+function renderCarrierResults(query) {
+  var list = document.getElementById('carrier-list');
+  if (!list) return;
+  var carriers = window._carriers || [];
+  var q = String(query || '').trim().toLowerCase();
+  var matches = q ? carriers.filter(function (c) { return _carrierMatch(c, q); }) : carriers;
+  if (!carriers.length) {
+    list.innerHTML = '<div class="combo-empty">No carriers available.</div>';
+  } else if (!matches.length) {
+    list.innerHTML = '<div class="combo-empty">No carriers match that name, MC, or DOT.</div>';
+  } else {
+    list.innerHTML = matches.map(function (c) {
+      var sub = [];
+      if (c.mc) sub.push('MC ' + esc(c.mc));
+      if (c.dot) sub.push('DOT ' + esc(c.dot));
+      return '<div class="combo-opt" data-vid="' + esc(c.vendor_id) + '">' +
+        '<div class="co-name">' + esc(c.carrier_name || '') + '</div>' +
+        (sub.length ? '<div class="co-sub">' + sub.join(' · ') + '</div>' : '') +
+      '</div>';
+    }).join('');
+  }
+  list.hidden = false;
+}
+window.renderCarrierResults = renderCarrierResults;
+
+// Commit a carrier choice: stamp the hidden select (emits change -> onCarrierChange),
+// reflect the name in the search box, and close the list.
+function selectCarrierFromSearch(vendorId) {
+  var carriers = window._carriers || [];
+  var c = carriers.filter(function (x) { return String(x.vendor_id) === String(vendorId); })[0];
+  var sel = document.getElementById('carrier-select');
+  if (sel) {
+    var exists = Array.prototype.some.call(sel.options, function (o) { return o.value === String(vendorId); });
+    if (!exists && c) {
+      var o = document.createElement('option');
+      o.value = c.vendor_id; o.textContent = c.carrier_name || '';
+      sel.appendChild(o);
+    }
+    sel.value = vendorId || '';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  var search = document.getElementById('carrier-search');
+  if (search && c) search.value = c.carrier_name || '';
+  var list = document.getElementById('carrier-list');
+  if (list) list.hidden = true;
+}
+window.selectCarrierFromSearch = selectCarrierFromSearch;
+
+// Mirror the hidden select's current carrier name into the search box (draft reopen).
+function syncCarrierSearchBox() {
+  var sel = document.getElementById('carrier-select');
+  var search = document.getElementById('carrier-search');
+  if (!sel || !search) return;
+  var opt = sel.options[sel.selectedIndex];
+  search.value = (sel.value && opt) ? opt.textContent : '';
+}
+window.syncCarrierSearchBox = syncCarrierSearchBox;
 
 // ── Credit banner ─────────────────────────────────────────────────────────────
 function loadCredit(customerId) {
@@ -705,25 +798,78 @@ function onReady() {
 // ── Stepper navigation (gated) ────────────────────────────────────────────────
 var STEPS = ['customer', 'carrier', 'review'];
 
-// Returns true if all required fields for the given step are filled/valid.
+// Required text/number fields per step, and which ones must parse as a positive rate.
+var _STEP_FIELDS = {
+  customer: ['customer-select', 'customer-reference', 'customer-rate'],
+  carrier:  ['carrier-select', 'carrier-rate', 'carrier-factoring-invoice', 'rate-con']
+};
+var _RATE_FIELDS = { 'customer-rate': true, 'carrier-rate': true };
+
+function _fieldFilled(id) {
+  var el = document.getElementById(id);
+  var v = el ? el.value : '';
+  return _RATE_FIELDS[id] ? Number(v) > 0 : String(v).trim() !== '';
+}
+
+// The element to paint red for a required field. The carrier field's value lives
+// in a hidden <select>, so flag its visible proxy (the search box) instead.
+function _fieldFlagEl(id) {
+  return document.getElementById(id === 'carrier-select' ? 'carrier-search' : id);
+}
+
+// A step's document gate is satisfied by fresh readable picks OR a packet already
+// on the record (reopened draft). A set containing an unreadable file does NOT count.
+function _docSlotSatisfied(slot) {
+  var inputId = slot === 'customer' ? 'cust_docs' : 'carrier_docs';
+  var files = fileStore[inputId] || [];
+  var freshOk = files.length > 0 && files.every(function (f) { return !f.error; });
+  return freshOk || !!docsOnFile[slot];
+}
+
+// Returns true only if all required fields AND the required document for the step
+// are present. Documents are a hard gate — a load can't advance/submit without them.
 function stepValid(step) {
-  var get = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
-  if (step === 'customer') {
-    return get('customer-select').trim() !== '' &&
-           get('customer-reference').trim() !== '' &&
-           Number(get('customer-rate')) > 0;
-  }
-  if (step === 'carrier') {
-    return get('carrier-select').trim() !== '' &&
-           Number(get('carrier-rate')) > 0 &&
-           get('carrier-factoring-invoice').trim() !== '' &&
-           get('rate-con').trim() !== '';
+  if (step === 'customer' || step === 'carrier') {
+    return _STEP_FIELDS[step].every(_fieldFilled) && _docSlotSatisfied(step);
   }
   if (step === 'review') {
     return stepValid('customer') && stepValid('carrier');
   }
   return false;
 }
+
+// Paint each dropzone green when its document gate is satisfied; clear red. Never
+// ADDS red here (that happens only on an explicit blocked advance — markStepInvalid).
+function updateDocVisuals() {
+  ['customer', 'carrier'].forEach(function (slot) {
+    var map = _DOC_SLOT_DOM[slot]; if (!map) return;
+    var area = document.getElementById(map.area); if (!area) return;
+    if (_docSlotSatisfied(slot)) {
+      area.classList.add('valid');
+      area.classList.remove('invalid');
+    } else {
+      area.classList.remove('valid');
+    }
+  });
+}
+window.updateDocVisuals = updateDocVisuals;
+
+// Flag every missing required field + the dropzone red and reveal the step message.
+function markStepInvalid(step) {
+  if (step !== 'customer' && step !== 'carrier') return;
+  _STEP_FIELDS[step].forEach(function (id) {
+    var el = _fieldFlagEl(id); if (!el) return;
+    el.classList.toggle('invalid', !_fieldFilled(id));
+  });
+  var map = _DOC_SLOT_DOM[step];
+  if (map) {
+    var area = document.getElementById(map.area);
+    if (area) area.classList.toggle('invalid', !_docSlotSatisfied(step));
+  }
+  var err = document.getElementById(step + '-error');
+  if (err) err.classList.add('show');
+}
+window.markStepInvalid = markStepInvalid;
 
 // Enables/disables submit; updates .done classes on hstep indicators.
 function refreshValidity() {
@@ -741,6 +887,18 @@ function refreshValidity() {
                (s === 'review' && custDone && carrDone);
     hs.classList.toggle('done', done);
   });
+
+  // Clear red as the broker fixes things; never add red here. Hide a step's message
+  // once it's fully valid.
+  ['customer', 'carrier'].forEach(function (step) {
+    _STEP_FIELDS[step].forEach(function (id) {
+      var el = _fieldFlagEl(id);
+      if (el && _fieldFilled(id)) el.classList.remove('invalid');
+    });
+    var err = document.getElementById(step + '-error');
+    if (err && stepValid(step)) err.classList.remove('show');
+  });
+  updateDocVisuals();
 
   // Update rail note
   var railNote = document.getElementById('rail-note');
@@ -774,9 +932,20 @@ function gotoStep(name) {
 }
 
 // Gated navigation — only moves forward if canGoTo passes; backward always allowed.
+// When blocked, jump to the first incomplete step and flag what's missing (red
+// fields + dropzone + message) so the broker sees why they can't advance.
 function goToStep(name) {
   if (canGoTo(name)) {
     gotoStep(name);
+    return;
+  }
+  var order = ['customer', 'carrier'];
+  for (var i = 0; i < order.length; i++) {
+    if (!stepValid(order[i])) {
+      gotoStep(order[i]);
+      markStepInvalid(order[i]);
+      return;
+    }
   }
 }
 
@@ -823,6 +992,7 @@ function onFileChange(inputId, labelId) {
   var input = document.getElementById(inputId);
   return mergeFiles(inputId, input.files).then(function() {
     updateFileLabel(inputId, labelId);
+    if (typeof refreshValidity === 'function') refreshValidity();
   });
 }
 
@@ -844,6 +1014,7 @@ function handleDrop(e, inputId, labelId, areaId) {
   if (!e.dataTransfer.files.length) return;
   return mergeFiles(inputId, e.dataTransfer.files).then(function() {
     updateFileLabel(inputId, labelId);
+    if (typeof refreshValidity === 'function') refreshValidity();
   });
 }
 
@@ -1012,6 +1183,33 @@ window.addEventListener('load', function () {
   var carrierSel = document.getElementById('carrier-select');
   if (carrierSel) { carrierSel.addEventListener('change', onCarrierChange); }
 
+  // Searchable carrier combobox: filter on type, pick on click, close on outside click.
+  var carrierSearch = document.getElementById('carrier-search');
+  var carrierList = document.getElementById('carrier-list');
+  if (carrierSearch) {
+    carrierSearch.addEventListener('input', function () {
+      // Editing the box invalidates any prior pick until they choose again.
+      var sel = document.getElementById('carrier-select');
+      if (sel && sel.value) { sel.value = ''; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+      renderCarrierResults(carrierSearch.value);
+    });
+    carrierSearch.addEventListener('focus', function () { renderCarrierResults(carrierSearch.value); });
+  }
+  if (carrierList) {
+    // mousedown (before the input blur) so the pick registers and then closes the list.
+    carrierList.addEventListener('mousedown', function (e) {
+      var opt = e.target && e.target.closest ? e.target.closest('.combo-opt') : null;
+      if (opt && opt.getAttribute('data-vid') !== null) {
+        e.preventDefault();
+        selectCarrierFromSearch(opt.getAttribute('data-vid'));
+      }
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var combo = document.getElementById('carrier-combo');
+    if (combo && !combo.contains(e.target) && carrierList) carrierList.hidden = true;
+  });
+
   // ── Consolidated rate + text field listeners (updateMargin + refreshValidity) ──
   // Customer step fields
   var custRateEl = document.getElementById('customer-rate');
@@ -1103,17 +1301,62 @@ function _uploadDoc(recordId, fieldName, blob, filename) {
     .then(function (r) { return r.ok; }).catch(function () { return false; });
 }
 
+// After a created funding record, wipe the form back to a clean step 1 so the SAME
+// load cannot be submitted twice, and show a persistent confirmation up top.
+function resetFormAfterSubmit(recordId, uploadIssue) {
+  ['customer-select', 'customer-reference', 'customer-rate',
+   'carrier-select', 'carrier-rate', 'carrier-factoring-invoice', 'rate-con',
+   'Load_Comments', 'carrier-search'].forEach(function (id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  fileStore = {};
+  docsOnFile = { customer: false, carrier: false };
+  var cl = document.getElementById('carrier-list'); if (cl) cl.hidden = true;
+  updateFileLabel('cust_docs', 'cust_docs_label');
+  updateFileLabel('carrier_docs', 'carrier_docs_label');
+  ['customer', 'carrier'].forEach(function (step) {
+    _STEP_FIELDS[step].forEach(function (id) { var el = document.getElementById(id); if (el) el.classList.remove('invalid'); });
+    var err = document.getElementById(step + '-error'); if (err) err.classList.remove('show');
+  });
+  ['cust_docs_area', 'carrier_docs_area'].forEach(function (id) {
+    var a = document.getElementById(id); if (a) { a.classList.remove('valid'); a.classList.remove('invalid'); }
+  });
+  var ss = document.getElementById('submit-status'); if (ss) { ss.textContent = ''; ss.className = 'submit-status'; }
+  currentDraftId = null;
+  if (typeof onCustomerChange === 'function') onCustomerChange();
+  if (typeof onCarrierChange === 'function') onCarrierChange();
+  if (typeof updateMargin === 'function') updateMargin();
+  gotoStep('customer');
+  refreshValidity();  // empty form -> submit disabled, so the same load can't resubmit
+  var banner = document.getElementById('post-submit-banner');
+  if (banner) {
+    banner.className = 'post-submit-banner ' + (uploadIssue ? 'warn' : 'ok');
+    banner.innerHTML = uploadIssue
+      ? '✓ Load #' + esc(recordId) + ' submitted — but a document failed to upload. Re-upload it from Submission History or contact OperFi.'
+      : '✓ Load #' + esc(recordId) + ' submitted and is in your Submission History. The form is cleared for your next load.';
+    banner.style.display = '';
+  }
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+}
+window.resetFormAfterSubmit = resetFormAfterSubmit;
+
 function submitLoad() {
   if (_submitting) return Promise.resolve();
   _submitting = true;
   var statusEl = document.getElementById('submit-status');
   var btn = document.getElementById('submit-btn');
+  var psb = document.getElementById('post-submit-banner');
+  if (psb) psb.style.display = 'none';  // clear any prior confirmation
   if (btn) btn.disabled = true;
-  if (statusEl) statusEl.textContent = 'Submitting…';
+  var setStatus = function (msg) { if (statusEl) { statusEl.className = 'submit-status loading'; statusEl.textContent = msg; } };
+  // Staged progress so a multi-second client-side merge of big scans doesn't look hung.
+  var hasDocs = (fileStore['cust_docs'] || []).length || (fileStore['carrier_docs'] || []).length;
+  setStatus(hasDocs ? 'Merging documents…' : 'Submitting load…');
   // Merge the documents client-side FIRST. If a picked file can't be read, fail
   // loudly here — no funding record is created, so the broker can re-select the
   // file and retry without leaving an orphan record or a baked-in error PDF.
   return _mergedPdfs().then(function (pdfs) {
+    setStatus('Submitting load…');
     var payload = Object.assign({ email: brokerEmail }, _collectFields());
     return fetch(BROKER_API_BASE + '/funding-submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1132,11 +1375,12 @@ function submitLoad() {
         var ups = [];
         if (pdfs.customer) ups.push(_uploadDoc(recordId, 'Customer_Documents', pdfs.customer, 'customer_docs.pdf'));
         if (pdfs.carrier) ups.push(_uploadDoc(recordId, 'Carrier_Documents', pdfs.carrier, 'carrier_docs.pdf'));
+        if (ups.length) setStatus('Uploading documents…');
         return Promise.all(ups).then(function (results) {
           var failed = results.filter(function (ok) { return !ok; }).length;
-          if (statusEl) statusEl.textContent = failed
-            ? 'Load submitted (#' + recordId + '), but a document failed to upload — re-upload or contact OperFi.'
-            : 'Load submitted successfully (#' + recordId + ').';
+          // Clear the form back to step 1 and confirm up top — prevents resubmitting
+          // the same load now that the record exists.
+          resetFormAfterSubmit(recordId, failed > 0);
         });
       });
   }, function (mergeErr) {
@@ -1232,6 +1476,9 @@ function prefillFromDraft(draft) {
   setVal('rate-con', pick('load_rate_confirmation_number'));
   setVal('Load_Comments', pick('load_comments'));
 
+  // Reflect the reopened carrier in the search box.
+  if (typeof syncCarrierSearchBox === 'function') syncCarrierSearchBox();
+
   // Re-run dependent UI: customer change (credit), carrier change (terms), margin, validity.
   if (typeof onCustomerChange === 'function') onCustomerChange();
   if (typeof onCarrierChange === 'function') onCarrierChange();
@@ -1273,6 +1520,9 @@ var _DOC_SLOT_DOM = {
 // Show/hide a green "packet on file" indicator with a Remove link inside a slot's label.
 function _setDocOnFile(slot, present) {
   var map = _DOC_SLOT_DOM[slot]; if (!map) return;
+  if (docsOnFile.hasOwnProperty(slot)) docsOnFile[slot] = !!present;
+  if (typeof updateDocVisuals === 'function') updateDocVisuals();
+  if (typeof refreshValidity === 'function') refreshValidity();
   var label = document.getElementById(map.label); if (!label) return;
   if (present) {
     label.innerHTML = '<span style="color:#2e7d32;font-weight:600">' + slot + ' packet on file ✓</span>' +

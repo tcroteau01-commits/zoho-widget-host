@@ -95,10 +95,7 @@
     dl.removeAttribute('href');
     if (opts.filename) dl.setAttribute('download', opts.filename);
 
-    var fetchPromise = typeof global.fetch === 'function'
-      ? global.fetch(opts.url)
-      : (global.fetch && typeof global.fetch.then === 'function' ? global.fetch : Promise.reject(new Error('fetch unavailable')));
-    fetchPromise.then(function (res) {
+    global.fetch(opts.url).then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.blob();
     }).then(function (blob) {

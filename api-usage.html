@@ -112,11 +112,7 @@
   function usageBand(pct) { return pct >= 85 ? 'crit' : (pct >= 60 ? 'warn' : 'ok'); }
 
   function todayISO() {
-    var d = new Date();
-    var y = d.getFullYear();
-    var m = String(d.getMonth() + 1).padStart(2, '0');
-    var day = String(d.getDate()).padStart(2, '0');
-    return y + '-' + m + '-' + day;
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   }
 
   function escapeHtml(s) {
@@ -185,7 +181,7 @@
             if (!r.ok) {
               return r.json().then(function (b) {
                 throw new Error((b && b.error) || ('HTTP ' + r.status));
-              }).catch(function (e) { throw e; });
+              });
             }
             return r.json();
           })

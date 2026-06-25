@@ -8,7 +8,7 @@
 (function (global) {
   var doc = global.document;
   var STYLE_ID = 'opf-dv-styles';
-  var state = { objectUrl: null, scale: 1, kind: null, pdf: null };
+  var state = { objectUrl: null, scale: 1, kind: null, pdf: null, loadToken: 0 };
 
   function injectStyles() {
     if (doc.getElementById(STYLE_ID)) return;
@@ -79,7 +79,7 @@
       var img = bodyEl().querySelector('img');
       if (img) img.style.width = (state.scale * 100) + '%';
     } else if (state.kind === 'pdf' && state.pdf) {
-      renderPdf(state.pdf); // re-render at new scale (defined in Task 3)
+      renderPdf(state.pdf, state.loadToken); // re-render at new scale — pass current token (not a new load)
     }
   }
 
@@ -107,6 +107,7 @@
     wireWorker();
     bd.classList.remove('hidden');
     state.scale = 1; state.pdf = null; state.kind = null;
+    var myToken = ++state.loadToken;
     bd.querySelector('.opf-dv-title').textContent = opts.filename || 'Document';
     bodyEl().innerHTML = '<div class="opf-dv-loading">Loading…</div>';
     var dl = bd.querySelector('.opf-dv-download');
@@ -117,13 +118,15 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.blob();
     }).then(function (blob) {
+      if (myToken !== state.loadToken) return; // superseded by a newer open()
       if (state.objectUrl) global.URL.revokeObjectURL(state.objectUrl);
       state.objectUrl = global.URL.createObjectURL(blob);
       dl.setAttribute('href', state.objectUrl);
       state.kind = detectKind(blob.type, opts.mime, opts.url);
       if (state.kind === 'image') return renderImage(state.objectUrl);
-      return blob.arrayBuffer().then(renderPdfBytes);
+      return blob.arrayBuffer().then(function (ab) { renderPdfBytes(ab, myToken); });
     }).catch(function () {
+      if (myToken !== state.loadToken) return; // superseded — don't clobber the new doc's error state
       showError('Could not display this document. Use Download to save it instead.');
     });
   }
@@ -137,14 +140,21 @@
     b.appendChild(img);
   }
 
-  function renderPdfBytes(arrayBuffer) {
+  function renderPdfBytes(arrayBuffer, myToken) {
     if (!global.pdfjsLib) { showError('Document viewer failed to load.'); return; }
     global.pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise
-      .then(function (pdf) { state.pdf = pdf; renderPdf(pdf); })
-      .catch(function () { showError('Could not display this PDF. Use Download to save it instead.'); });
+      .then(function (pdf) {
+        if (myToken !== state.loadToken) return; // superseded
+        state.pdf = pdf;
+        renderPdf(pdf, myToken);
+      })
+      .catch(function () {
+        if (myToken !== state.loadToken) return; // superseded
+        showError('Could not display this PDF. Use Download to save it instead.');
+      });
   }
 
-  function renderPdf(pdf) {
+  function renderPdf(pdf, myToken) {
     var b = bodyEl();
     b.innerHTML = '';
     var pageEl = doc.querySelector('.opf-dv-page');
@@ -152,7 +162,9 @@
     var chain = Promise.resolve();
     var _loop = function (n) {
       chain = chain.then(function () {
+        if (myToken !== state.loadToken) return; // superseded — stop appending pages
         return pdf.getPage(n).then(function (page) {
+          if (myToken !== state.loadToken) return; // check again after async getPage
           var viewport = page.getViewport({ scale: state.scale });
           var canvas = doc.createElement('canvas');
           canvas.width = Math.round(viewport.width);
@@ -166,6 +178,7 @@
   }
 
   function close() {
+    ++state.loadToken; // abandon any in-flight render from the document being closed
     var bd = doc.querySelector('.opf-dv-backdrop');
     if (bd) bd.classList.add('hidden');
     if (state.objectUrl) { global.URL.revokeObjectURL(state.objectUrl); state.objectUrl = null; }

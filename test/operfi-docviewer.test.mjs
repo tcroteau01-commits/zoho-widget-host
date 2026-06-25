@@ -152,3 +152,61 @@ test('vendored pdf.js source check', () => {
   const src = readFileSync(new URL('../operfi-docviewer.js', import.meta.url), 'utf8');
   assert.match(src, /pdfjs\/pdf\.worker\.min\.js/);
 });
+
+test('load-token guard: second open() supersedes first — only second doc renders', async () => {
+  // Build a pdfFetch where we can control when the promise settles.
+  // PDF A resolves AFTER PDF B has already begun loading, simulating a slow first fetch.
+  let resolveA;
+  const fetchA = () => new Promise(resolve => { resolveA = resolve; });
+  const fetchB = () => Promise.resolve({
+    ok: true,
+    blob: () => Promise.resolve({ type: 'application/pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) })
+  });
+
+  // We need a single window with a fetch that dispatches per-call.
+  let callCount = 0;
+  const w = mk(() => {
+    callCount++;
+    return callCount === 1 ? fetchA() : fetchB();
+  });
+
+  // Wire up pdf.js stub for 3-page PDF A and 1-page PDF B; counts canvases rendered.
+  w.HTMLCanvasElement.prototype.getContext = () => ({});
+  w.pdfjsLib = {
+    GlobalWorkerOptions: {},
+    getDocument: ({ data }) => ({
+      promise: Promise.resolve({
+        // First call (PDF A) gets 3 pages, second call (PDF B) gets 1 page.
+        // We identify which by size of the ArrayBuffer slice.
+        numPages: data.byteLength === 0 ? 3 : 1,
+        getPage: () => Promise.resolve({
+          getViewport: ({ scale }) => ({ width: 100 * scale, height: 140 * scale }),
+          render: () => ({ promise: Promise.resolve() })
+        })
+      })
+    })
+  };
+
+  // Open PDF A — fetch is still pending (resolveA not yet called).
+  w.OperFiDocViewer.open({ url: '/a.pdf', filename: 'A.pdf' });
+
+  // Immediately open PDF B — this bumps loadToken, superseding A.
+  w.OperFiDocViewer.open({ url: '/b.pdf', filename: 'B.pdf' });
+
+  // Let PDF B fully render.
+  await new Promise(r => setTimeout(r, 60));
+
+  // Now resolve PDF A's fetch — its blob/render chain should be abandoned by the token guard.
+  resolveA({
+    ok: true,
+    blob: () => Promise.resolve({ type: 'application/pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) })
+  });
+
+  // Wait long enough for A's abandoned chain to have run (if the guard were absent it would append).
+  await new Promise(r => setTimeout(r, 60));
+
+  // Only B's 1 canvas should be present; A's 3 pages must not have been appended.
+  const canvases = w.document.querySelectorAll('.opf-dv-body canvas');
+  assert.equal(canvases.length, 1, 'only PDF B\'s single canvas should be in the body');
+  assert.equal(w.document.querySelector('.opf-dv-title').textContent, 'B.pdf', 'title reflects PDF B');
+});

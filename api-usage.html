@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Creator API Usage</title>
+<style>
+  :root {
+    --of-charcoal: #1d1d1f; --of-orange: #F97316; --of-orange-soft: #FEF3E8;
+    --of-gray-50: #F8F9FB; --of-gray-100: #F1F2F4; --of-gray-200: #E5E7EB;
+    --of-gray-300: #D1D5DB; --of-gray-500: #6B7280; --of-gray-700: #374151;
+    --of-green: #059669; --of-green-soft: #ECFDF5;
+    --of-amber: #D97706; --of-amber-soft: #FFFBEB;
+    --of-red: #DC2626; --of-red-soft: #FEF2F2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; background: #f0efe9; color: var(--of-charcoal); min-height: 100vh; }
+  .page { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 18px; }
+  .title { font-size: 22px; font-weight: 700; }
+  .subtitle { font-size: 12px; color: var(--of-gray-500); margin-top: 4px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .toolbar label { font-size: 13px; color: var(--of-gray-700); font-weight: 600; }
+  input[type="date"] { padding: 8px 10px; border: 1px solid var(--of-gray-300); border-radius: 8px; font-size: 13px; font-family: inherit; }
+  .btn { background: #fff; border: 1px solid var(--of-gray-300); border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 700; color: var(--of-gray-700); cursor: pointer; font-family: inherit; }
+  .btn:hover { background: var(--of-gray-50); }
+  .btn-retry { background: var(--of-orange); color: #fff; border-color: var(--of-orange); }
+  .btn-retry:hover { opacity: 0.9; }
+
+  /* Gauge */
+  .gauge-card { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .gauge-number { font-size: 36px; font-weight: 700; }
+  .gauge-label { font-size: 12px; color: var(--of-gray-500); margin-top: 2px; }
+  .gauge-bar-wrap { flex: 1; min-width: 200px; }
+  .gauge-bar-bg { height: 12px; background: var(--of-gray-100); border-radius: 6px; overflow: hidden; }
+  .gauge-bar-fill { height: 100%; border-radius: 6px; transition: width 0.4s; }
+  .gauge-meta { font-size: 12px; color: var(--of-gray-500); margin-top: 6px; }
+  .gauge-ok .gauge-number { color: var(--of-green); }
+  .gauge-ok .gauge-bar-fill { background: var(--of-green); }
+  .gauge-warn .gauge-number { color: var(--of-amber); }
+  .gauge-warn .gauge-bar-fill { background: var(--of-amber); }
+  .gauge-crit .gauge-number { color: var(--of-red); }
+  .gauge-crit .gauge-bar-fill { background: var(--of-red); }
+
+  /* KPI row */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi-card { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 14px 16px; }
+  .kpi-label { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--of-gray-500); }
+  .kpi-value { font-size: 22px; font-weight: 700; color: var(--of-charcoal); margin-top: 4px; }
+
+  /* Hour bars */
+  .section { background: #fff; border: 1px solid #e6e3da; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  .section-title { font-size: 13px; font-weight: 700; color: var(--of-gray-700); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; }
+  .hour-bars { display: flex; align-items: flex-end; gap: 3px; height: 60px; }
+  .hour-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; height: 100%; justify-content: flex-end; }
+  .hour-bar { width: 100%; background: var(--of-orange); border-radius: 2px 2px 0 0; min-height: 0; }
+  .hour-bar-label { font-size: 9px; color: var(--of-gray-500); }
+
+  /* Tables */
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th, .data-table td { padding: 8px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid var(--of-gray-100); }
+  .data-table th { background: var(--of-gray-50); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--of-gray-700); }
+  .data-table td.num, .data-table th.num { text-align: right; }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+
+  /* Reconciliation line */
+  .recon-line { font-size: 12px; color: var(--of-gray-500); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--of-gray-100); }
+  .recon-label { font-weight: 600; }
+  .recon-val { color: var(--of-charcoal); margin-left: 6px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  .error-box { background: var(--of-red-soft); border: 1px solid #fca5a5; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; color: var(--of-red); display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .error-msg { flex: 1; font-size: 13px; font-weight: 600; }
+
+  .loading { padding: 40px; text-align: center; color: var(--of-gray-500); }
+  .admin-only { padding: 60px; text-align: center; font-size: 16px; color: var(--of-gray-700); font-weight: 600; }
+
+  .version-stamp { text-align: right; font-size: 10px; color: #bbb; padding: 8px 4px 0; }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-left: 6px; }
+  .chip-admin { background: var(--of-orange-soft); color: var(--of-orange); }
+
+  .restarts-note { font-size: 11px; color: var(--of-gray-500); margin-left: 8px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="title">Creator API Usage</div>
+      <div class="subtitle">Daily Zoho Creator API call monitoring (backend + native)</div>
+    </div>
+  </div>
+  <div class="toolbar">
+    <label for="day-picker">Date</label>
+    <input type="date" id="day-picker" />
+    <button class="btn" id="btn-refresh">Refresh</button>
+  </div>
+  <div id="main-content"><div class="loading">Loading...</div></div>
+  <div class="version-stamp">v2026-06-25.1</div>
+</div>
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script>
+(function () {
+  'use strict';
+
+  var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
+  var state = { email: '', day: '' };
+
+  function usageBand(pct) { return pct >= 85 ? 'crit' : (pct >= 60 ? 'warn' : 'ok'); }
+
+  function todayISO() {
+    var d = new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function fmtNum(n) { return (n == null ? '-' : Number(n).toLocaleString()); }
+
+  // --- Email resolution (same pattern as other widgets) ---
+  function waitForZoho(attempts, delay) {
+    if (typeof ZOHO !== 'undefined' && ZOHO.CREATOR) return Promise.resolve();
+    if (attempts <= 0) return Promise.reject(new Error('Widget must run inside the OperFi Broker Portal. Append ?email=YOUR_EMAIL to test.'));
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () { waitForZoho(attempts - 1, delay).then(resolve, reject); }, delay);
+    });
+  }
+
+  function init() {
+    var today = todayISO();
+    document.getElementById('day-picker').value = today;
+    state.day = today;
+
+    document.getElementById('btn-refresh').addEventListener('click', function () {
+      state.day = document.getElementById('day-picker').value || today;
+      loadData(state.day);
+    });
+
+    document.getElementById('day-picker').addEventListener('change', function () {
+      state.day = this.value || today;
+      loadData(state.day);
+    });
+
+    var override = new URLSearchParams(window.location.search).get('email');
+    if (override) {
+      state.email = override;
+      loadData(state.day);
+      return;
+    }
+
+    waitForZoho(30, 100).then(function () {
+      return ZOHO.CREATOR.UTIL.getInitParams();
+    }).then(function (params) {
+      var loginUser = params && (params.loginUser || params.login_user || params.email);
+      state.email = loginUser || '';
+      if (!state.email) throw new Error('No login email from Creator.');
+      loadData(state.day);
+    }).catch(function (err) { showError(err.message || 'Failed to initialize.', false); });
+  }
+
+  function loadData(day) {
+    setContent('<div class="loading">Loading...</div>');
+    var email = state.email;
+    fetch(BROKER_API_BASE + '/whoami?email=' + encodeURIComponent(email))
+      .then(function (r) { return r.json(); })
+      .then(function (who) {
+        if (!who.is_admin) {
+          setContent('<div class="admin-only">Admins only.</div>');
+          return;
+        }
+        var url = BROKER_API_BASE + '/admin/api-usage?email=' + encodeURIComponent(email);
+        if (day) url += '&day=' + encodeURIComponent(day);
+        return fetch(url)
+          .then(function (r) {
+            if (!r.ok) {
+              return r.json().then(function (b) {
+                throw new Error((b && b.error) || ('HTTP ' + r.status));
+              }).catch(function (e) { throw e; });
+            }
+            return r.json();
+          })
+          .then(function (data) { render(data); });
+      })
+      .catch(function (err) { showError(err.message || 'Failed to load usage data.', true); });
+  }
+
+  function setContent(html) {
+    document.getElementById('main-content').innerHTML = html;
+  }
+
+  function showError(msg, showRetry) {
+    var retry = showRetry
+      ? '<button class="btn btn-retry" id="err-retry">Retry</button>'
+      : '';
+    setContent(
+      '<div class="error-box"><span class="error-msg">' + escapeHtml(msg) + '</span>' + retry + '</div>'
+    );
+    if (showRetry) {
+      document.getElementById('err-retry').addEventListener('click', function () {
+        loadData(state.day);
+      });
+    }
+  }
+
+  function render(d) {
+    var ceiling = d.ceiling || 27000;
+    var measured = d.measured_total || 0;
+    var pct = ceiling > 0 ? Math.round(100 * measured / ceiling) : 0;
+    var band = usageBand(pct);
+    var barW = Math.min(pct, 100);
+
+    var restartNote = (d.restarts && d.restarts > 0)
+      ? '<span class="restarts-note">(' + d.restarts + ' server restart' + (d.restarts === 1 ? '' : 's') + ' today)</span>'
+      : '';
+
+    var gaugeHtml =
+      '<div class="gauge-card gauge-' + band + '">' +
+        '<div>' +
+          '<div class="gauge-number">' + pct + '%</div>' +
+          '<div class="gauge-label">' + fmtNum(measured) + ' / ' + fmtNum(ceiling) + ' calls' + restartNote + '</div>' +
+        '</div>' +
+        '<div class="gauge-bar-wrap">' +
+          '<div class="gauge-bar-bg"><div class="gauge-bar-fill" style="width:' + barW + '%"></div></div>' +
+          '<div class="gauge-meta">Day: ' + escapeHtml(d.day || state.day) + '</div>' +
+        '</div>' +
+      '</div>';
+
+    var kpisHtml =
+      '<div class="kpis">' +
+        kpi('Backend Calls', fmtNum(d.backend_calls)) +
+        kpi('Native Calls', fmtNum(d.native_calls)) +
+        kpi('API Requests', fmtNum(d.requests)) +
+        (d.console_total != null ? kpi('Console Total', fmtNum(d.console_total)) : '') +
+      '</div>';
+
+    var hoursHtml = renderHours(d.by_hour || []);
+
+    var endpointsHtml = renderTable(
+      'Top Endpoints',
+      ['Endpoint', 'Calls', 'Requests'],
+      (d.top_endpoints || []).map(function (r) {
+        return [escapeHtml(r.endpoint), fmtNum(r.calls), fmtNum(r.requests)];
+      }),
+      [false, true, true]
+    );
+
+    var clientsHtml = renderTable(
+      'Top Clients',
+      ['Email', 'Calls', 'Requests'],
+      (d.top_clients || []).map(function (r) {
+        var label = escapeHtml(r.email || '');
+        if (r.impersonate) label += ' <span class="chip chip-admin">imp: ' + escapeHtml(r.impersonate) + '</span>';
+        return [label, fmtNum(r.calls), fmtNum(r.requests)];
+      }),
+      [false, true, true]
+    );
+
+    var reportsHtml = renderTable(
+      'Top Reports',
+      ['Report', 'Calls'],
+      (d.top_reports || []).map(function (r) {
+        return [escapeHtml(r.report), fmtNum(r.calls)];
+      }),
+      [false, true]
+    );
+
+    var nativeRows = (d.top_native || []).map(function (r) {
+      return [escapeHtml(r.function), fmtNum(r.runs), fmtNum(r.calls)];
+    });
+    var reconLine = '';
+    if (d.console_total != null) {
+      var unattributed = d.unattributed;
+      var unattribVal = unattributed != null ? fmtNum(unattributed) : 'n/a';
+      reconLine =
+        '<div class="recon-line">' +
+          '<span class="recon-label">Unattributed calls</span>' +
+          '<span class="recon-val">' + unattribVal + '</span>' +
+          '<span class="gauge-meta" style="margin-left:8px;">(console total minus measured; may reflect direct-to-Zoho calls not routed through the backend)</span>' +
+        '</div>';
+    }
+    var nativePanelInner = renderTable(
+      'Native Deluge Calls',
+      ['Function', 'Runs', 'Calls'],
+      nativeRows,
+      [false, true, true]
+    ) + reconLine;
+
+    var html =
+      gaugeHtml +
+      kpisHtml +
+      '<div class="section">' + hoursHtml + '</div>' +
+      '<div class="two-col">' + endpointsHtml + clientsHtml + '</div>' +
+      '<div class="two-col">' + reportsHtml +
+        '<div class="section">' + nativePanelInner + '</div>' +
+      '</div>';
+
+    setContent(html);
+  }
+
+  function kpi(label, value) {
+    return '<div class="kpi-card"><div class="kpi-label">' + escapeHtml(label) +
+      '</div><div class="kpi-value">' + value + '</div></div>';
+  }
+
+  function renderHours(byHour) {
+    if (!byHour || byHour.length === 0) return '';
+    var max = byHour.reduce(function (m, h) { return Math.max(m, h.calls || 0); }, 1);
+    var bars = byHour.map(function (h) {
+      var pct = Math.round(100 * (h.calls || 0) / max);
+      var showLabel = h.hour % 6 === 0;
+      return '<div class="hour-bar-wrap">' +
+        '<div class="hour-bar" style="height:' + Math.max(pct, 0) + '%;"></div>' +
+        (showLabel ? '<div class="hour-bar-label">' + h.hour + '</div>' : '<div class="hour-bar-label"></div>') +
+        '</div>';
+    }).join('');
+    return '<div class="section-title">Calls by Hour (LA time)</div>' +
+      '<div class="hour-bars">' + bars + '</div>';
+  }
+
+  function renderTable(title, headers, rows, numCols) {
+    var ths = headers.map(function (h, i) {
+      return '<th' + (numCols && numCols[i] ? ' class="num"' : '') + '>' + escapeHtml(h) + '</th>';
+    }).join('');
+    var trs = rows.length === 0
+      ? '<tr><td colspan="' + headers.length + '" style="text-align:center;color:var(--of-gray-500);padding:20px;">No data</td></tr>'
+      : rows.map(function (row) {
+          var tds = row.map(function (cell, i) {
+            return '<td' + (numCols && numCols[i] ? ' class="num"' : '') + '>' + cell + '</td>';
+          }).join('');
+          return '<tr>' + tds + '</tr>';
+        }).join('');
+    return '<div class="section"><div class="section-title">' + escapeHtml(title) + '</div>' +
+      '<table class="data-table"><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table></div>';
+  }
+
+  // Boot
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+}());
+</script>
+</body>
+</html>

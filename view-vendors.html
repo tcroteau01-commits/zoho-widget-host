@@ -244,7 +244,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <option value="status">Status</option>
       <option value="name_asc">Name (A–Z)</option>
       <option value="name_desc">Name (Z–A)</option>
-      <option value="rel_new">Relationship: Newest</option>
+      <option value="rel_new" selected>Relationship: Newest</option>
       <option value="rel_old">Relationship: Oldest</option>
     </select>
   </div>
@@ -280,7 +280,7 @@ var brokerEmail = '';
 var allRecords = [];
 var filteredRecords = [];
 var currentFilter = 'all';
-var currentSort = 'status';
+var currentSort = 'rel_new';
 var currentSearch = '';
 var openIndex = -1;
 var currentLoadId = 0;

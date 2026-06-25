@@ -202,6 +202,14 @@ test('addressFieldHtml wraps the address in a Maps link; plain when empty', () =
   assert.ok(!/href=/.test(empty), 'no link when empty');
 });
 
+test('default sort state is rel_new (most recent first)', () => {
+  assert.match(HTML, /var currentSort = 'rel_new'/);
+});
+
+test('sort dropdown marks Relationship: Newest as selected', () => {
+  assert.match(HTML, /<option value="rel_new"[^>]*selected/);
+});
+
 // ── Sorting ────────────────────────────────────────────────────────────────
 const SORT_SET = [
   { ID: '1', Vendor_Name: 'Charlie Co',  Vendor_Status: 'Approved', Added_Time: '01-Jan-2024 00:00:00' },
@@ -260,6 +268,7 @@ test('Relationship Oldest first, missing date last', async () => {
 
 test('status sort keeps name A-Z within one status group', async () => {
   const w = await bootSorted(SORT_SET); // all Approved -> tiebreak is name asc
+  setSort(w, 'status');
   assert.deepEqual(rowNames(w), ['alpha co', 'Bravo Co', 'Charlie Co']);
 });
 

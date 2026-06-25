@@ -376,7 +376,7 @@ test('record created but an upload fails surfaces a non-lost-work message with t
   w._collectFields = () => ({ customer_id: 'c9' });
   w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: null });
   await w.submitLoad();
-  const t = w.document.getElementById('submit-status').textContent;
+  const t = w.document.getElementById('post-submit-banner').textContent;
   assert.match(t, /rec_777/);
   assert.match(t, /upload/i);
 });
@@ -749,4 +749,42 @@ test('selecting a carrier from search sets the value, fills the box, and shows t
   assert.strictEqual(w.document.getElementById('carrier-select').value, 'v3', 'hidden select carries the id');
   assert.match(w.document.getElementById('carrier-search').value, /Hauler/, 'search box shows the chosen name');
   assert.match(w.document.getElementById('terms-readout-value').textContent, /Quickpay 2%/, 'terms populated via onCarrierChange');
+});
+
+// ── Post-submit reset: clear the form so the same load can't be sent twice ─────
+
+test('a successful submit clears the form, returns to step 1, and blocks resubmission', async () => {
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_900' }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });  // upload-doc ok
+  });
+  const w = dom.window, d = w.document;
+  w.setField('customer-select', 'c9'); w.setField('customer-reference', 'PO-1'); w.setField('customer-rate', '2500');
+  w.setField('carrier-select', 'v3'); w.setField('carrier-rate', '2100');
+  w.setField('carrier-factoring-invoice', 'F1'); w.setField('rate-con', 'RC-7');
+  d.getElementById('carrier-search').value = 'Hauler';
+  w.fileStore = { cust_docs: [_doc(w, 'bol.pdf')], carrier_docs: [_doc(w, 'rc.pdf')] };
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: new w.Blob(['y']) });
+  w.gotoStep('review');
+  await w.submitLoad();
+  assert.strictEqual(d.getElementById('customer-reference').value, '', 'fields cleared');
+  assert.strictEqual(d.getElementById('rate-con').value, '');
+  assert.strictEqual(d.getElementById('carrier-search').value, '', 'carrier search cleared');
+  assert.strictEqual(d.getElementById('carrier-select').value, '', 'carrier selection cleared');
+  assert.strictEqual((w.fileStore.cust_docs || []).length, 0, 'documents cleared');
+  assert.ok(d.getElementById('card-customer').classList.contains('active'), 'returned to step 1');
+  assert.ok(!d.getElementById('card-review').classList.contains('active'));
+  assert.strictEqual(d.getElementById('submit-btn').disabled, true, 'empty form -> cannot resubmit the same load');
+  assert.match(d.getElementById('post-submit-banner').textContent, /rec_900/, 'confirmation shows the record id');
+});
+
+test('submit shows a document-merge progress message before the network call', () => {
+  const dom = makeB2Dom(() => new Promise(() => {}));  // network never resolves
+  const w = dom.window, d = w.document;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => new Promise(() => {});  // merge pending -> entry message persists
+  w.fileStore = { cust_docs: [_doc(w, 'bol.pdf')], carrier_docs: [] };
+  w.submitLoad();  // not awaited: capture the synchronous entry status
+  assert.match(d.getElementById('submit-status').textContent, /merging|document/i);
 });

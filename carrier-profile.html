@@ -563,6 +563,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 </style>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=2"></script>
 </head>
 <body>
 
@@ -1911,19 +1913,14 @@ function loadCarrierDocs() {
 
 // -- Carrier Document Viewer --
 function openCarrierDoc(token, filename) {
-  var v = document.getElementById('cp-doc-viewer');
-  if (!v) return;
-  var url = BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(token);
-  var fname = String(filename || '');
-  var isImg = /\.(png|jpe?g|gif|webp)$/i.test(fname);
-  v.innerHTML = '<button class="cp-doc-close" onclick="closeCarrierDoc()">Close</button>' +
-    (isImg ? '<img src="' + url + '" alt="' + esc(fname) + '" style="max-width:100%">'
-           : '<iframe src="' + url + '" style="width:100%;height:70vh;border:0"></iframe>');
-  v.style.display = 'block';
+  if (!token || !window.OperFiDocViewer) return;
+  OperFiDocViewer.open({
+    url: BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(token),
+    filename: filename || 'document'
+  });
 }
 function closeCarrierDoc() {
-  var v = document.getElementById('cp-doc-viewer');
-  if (v) { v.style.display = 'none'; v.innerHTML = ''; }
+  if (window.OperFiDocViewer) OperFiDocViewer.close();
 }
 if (typeof window !== 'undefined') {
   window.openCarrierDoc = openCarrierDoc;

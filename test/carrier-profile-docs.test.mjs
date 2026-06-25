@@ -6,10 +6,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const html = fs.readFileSync(path.resolve('carrier-profile.html'), 'utf8');
+const HTML = html; // alias used by the static-source tests
 
 function boot(fetchImpl) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
   dom.window.fetch = fetchImpl;
+  // Provide a stub OperFiDocViewer so openCarrierDoc can delegate to it.
+  const calls = [];
+  dom.window.OperFiDocViewer = {
+    open(opts) { calls.push({ method: 'open', opts }); },
+    close() { calls.push({ method: 'close' }); },
+    _calls: calls,
+  };
   return dom;
 }
 
@@ -49,19 +57,20 @@ test('error state on workdrive error', async () => {
   assert.match(w.document.getElementById('cp-docs-card').textContent, /could not load|error/i);
 });
 
-test('preview opens inline viewer', async () => {
+test('preview delegates to OperFiDocViewer.open', async () => {
   const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
     { type: 'noa', label: 'NOA / LOR', filename: 'NOA-1.pdf', preview_token: 'TOKA' }] }) }));
   const w = dom.window;
   w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
   await w.loadCarrierDocs();
   w.openCarrierDoc('TOKA', 'NOA-1.pdf');
-  const viewer = w.document.getElementById('cp-doc-viewer');
-  assert.ok(viewer && viewer.style.display !== 'none');
-  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKA/);
+  const opened = w.OperFiDocViewer._calls.find(c => c.method === 'open');
+  assert.ok(opened, 'OperFiDocViewer.open should be called');
+  assert.match(opened.opts.url, /carrier-doc-file\?t=TOKA/);
+  assert.strictEqual(opened.opts.filename, 'NOA-1.pdf');
 });
 
-test('closeCarrierDoc hides viewer', async () => {
+test('closeCarrierDoc delegates to OperFiDocViewer.close', async () => {
   const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
     { type: 'noa', label: 'NOA / LOR', filename: 'NOA-1.pdf', preview_token: 'TOKA' }] }) }));
   const w = dom.window;
@@ -69,35 +78,34 @@ test('closeCarrierDoc hides viewer', async () => {
   await w.loadCarrierDocs();
   w.openCarrierDoc('TOKA', 'NOA-1.pdf');
   w.closeCarrierDoc();
-  const viewer = w.document.getElementById('cp-doc-viewer');
-  assert.ok(viewer && viewer.style.display === 'none');
-  assert.strictEqual(viewer.innerHTML, '');
+  const closed = w.OperFiDocViewer._calls.find(c => c.method === 'close');
+  assert.ok(closed, 'OperFiDocViewer.close should be called');
 });
 
-test('preview uses img for image files', async () => {
+test('openCarrierDoc passes filename for image files', async () => {
   const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
     { type: 'coi', label: 'Insurance (COI)', filename: 'COI.png', preview_token: 'TOKB' }] }) }));
   const w = dom.window;
   w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
   await w.loadCarrierDocs();
   w.openCarrierDoc('TOKB', 'COI.png');
-  const viewer = w.document.getElementById('cp-doc-viewer');
-  assert.ok(viewer && viewer.style.display !== 'none');
-  assert.match(viewer.innerHTML, /<img/i);
-  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKB/);
+  const opened = w.OperFiDocViewer._calls.find(c => c.method === 'open');
+  assert.ok(opened, 'OperFiDocViewer.open should be called');
+  assert.match(opened.opts.url, /carrier-doc-file\?t=TOKB/);
+  assert.strictEqual(opened.opts.filename, 'COI.png');
 });
 
-test('preview uses iframe for PDF files', async () => {
+test('openCarrierDoc passes filename for PDF files', async () => {
   const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
     { type: 'noa', label: 'NOA / LOR', filename: 'NOA.pdf', preview_token: 'TOKC' }] }) }));
   const w = dom.window;
   w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
   await w.loadCarrierDocs();
   w.openCarrierDoc('TOKC', 'NOA.pdf');
-  const viewer = w.document.getElementById('cp-doc-viewer');
-  assert.ok(viewer && viewer.style.display !== 'none');
-  assert.match(viewer.innerHTML, /<iframe/i);
-  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKC/);
+  const opened = w.OperFiDocViewer._calls.find(c => c.method === 'open');
+  assert.ok(opened, 'OperFiDocViewer.open should be called');
+  assert.match(opened.opts.url, /carrier-doc-file\?t=TOKC/);
+  assert.strictEqual(opened.opts.filename, 'NOA.pdf');
 });
 
 test('preview button in rendered doc row calls openCarrierDoc', async () => {
@@ -111,9 +119,9 @@ test('preview button in rendered doc row calls openCarrierDoc', async () => {
   const previewBtn = card.querySelector('button.cp-doc-preview');
   assert.ok(previewBtn, 'Preview button should exist with cp-doc-preview class');
   previewBtn.click();
-  const viewer = w.document.getElementById('cp-doc-viewer');
-  assert.ok(viewer && viewer.style.display !== 'none');
-  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKD/);
+  const opened = w.OperFiDocViewer._calls.find(c => c.method === 'open');
+  assert.ok(opened, 'OperFiDocViewer.open should be called after preview button click');
+  assert.match(opened.opts.url, /carrier-doc-file\?t=TOKD/);
 });
 
 test('XSS neutralized: filename with double-quote and single-quote renders safely', async () => {
@@ -137,9 +145,9 @@ test('XSS neutralized: filename with double-quote and single-quote renders safel
   assert.strictEqual(previewBtn.dataset.filename, maliciousFilename,
     'dataset.filename returns the real decoded filename');
   previewBtn.click();
-  const viewer = w.document.getElementById('cp-doc-viewer');
-  assert.ok(viewer && viewer.style.display !== 'none', 'viewer opens despite special chars in filename');
-  assert.match(viewer.innerHTML, /carrier-doc-file\?t=TOKE/);
+  const opened = w.OperFiDocViewer._calls.find(c => c.method === 'open');
+  assert.ok(opened, 'OperFiDocViewer.open should be called despite special chars in filename');
+  assert.match(opened.opts.url, /carrier-doc-file\?t=TOKE/);
 });
 
 test('null filename renders without throwing and does not flip to error state', async () => {
@@ -197,4 +205,16 @@ test('uploadCarrierDoc posts FormData and refreshes on success', async () => {
   assert.strictEqual(up.opts.body.get('doc_type'), 'noa');
   // a refresh fetch to /carrier-docs happened after upload
   assert.ok(calls.filter(c => c.url.includes('/carrier-docs')).length >= 2);
+});
+
+// Static-source tests (no JSDOM runtime needed)
+test('carrier-profile includes the shared doc viewer + pdf.js', () => {
+  assert.match(HTML, /operfi-docviewer\.js/);
+  assert.match(HTML, /pdfjs\/pdf\.min\.js/);
+});
+
+test('openCarrierDoc delegates to OperFiDocViewer.open (no inline iframe build)', () => {
+  assert.match(HTML, /OperFiDocViewer\.open\(/);
+  // the old inline iframe construction is gone from openCarrierDoc
+  assert.doesNotMatch(HTML, /<iframe src="' \+ url/);
 });

@@ -206,7 +206,8 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .uploader:hover { border-color: #e8a020; color: #e8a020; }
 .uploader.drag-over { border-color: #e8a020; background: #fffbf0; color: #e8a020; }
-.uploader.invalid { border-color: #e53935; color: #e53935; }
+.uploader.invalid { border-color: #e53935; color: #e53935; background: #fff5f5; }
+.uploader.valid { border-color: #2e7d32; color: #2e7d32; background: #f4fbf5; }
 .uploader b { color: #666; display: block; margin-bottom: 3px; }
 .uploader input[type=file] { display: none; }
 
@@ -502,6 +503,10 @@ var _pendingDraftId = '';  // set during init when reopening via ?draftId=
 // In-memory file store keyed by input id (read by the merge pipeline below).
 var fileStore = {};
 
+// Tracks whether a slot's required packet is already on the record (reopened draft
+// with has_*_docs) — counts toward the document gate even when fileStore is empty.
+var docsOnFile = { customer: false, carrier: false };
+
 // ── Email / init resolution ─────────────────────────────────────────────────
 function resolveEmail() {
   try {
@@ -705,25 +710,72 @@ function onReady() {
 // ── Stepper navigation (gated) ────────────────────────────────────────────────
 var STEPS = ['customer', 'carrier', 'review'];
 
-// Returns true if all required fields for the given step are filled/valid.
+// Required text/number fields per step, and which ones must parse as a positive rate.
+var _STEP_FIELDS = {
+  customer: ['customer-select', 'customer-reference', 'customer-rate'],
+  carrier:  ['carrier-select', 'carrier-rate', 'carrier-factoring-invoice', 'rate-con']
+};
+var _RATE_FIELDS = { 'customer-rate': true, 'carrier-rate': true };
+
+function _fieldFilled(id) {
+  var el = document.getElementById(id);
+  var v = el ? el.value : '';
+  return _RATE_FIELDS[id] ? Number(v) > 0 : String(v).trim() !== '';
+}
+
+// A step's document gate is satisfied by fresh readable picks OR a packet already
+// on the record (reopened draft). A set containing an unreadable file does NOT count.
+function _docSlotSatisfied(slot) {
+  var inputId = slot === 'customer' ? 'cust_docs' : 'carrier_docs';
+  var files = fileStore[inputId] || [];
+  var freshOk = files.length > 0 && files.every(function (f) { return !f.error; });
+  return freshOk || !!docsOnFile[slot];
+}
+
+// Returns true only if all required fields AND the required document for the step
+// are present. Documents are a hard gate — a load can't advance/submit without them.
 function stepValid(step) {
-  var get = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
-  if (step === 'customer') {
-    return get('customer-select').trim() !== '' &&
-           get('customer-reference').trim() !== '' &&
-           Number(get('customer-rate')) > 0;
-  }
-  if (step === 'carrier') {
-    return get('carrier-select').trim() !== '' &&
-           Number(get('carrier-rate')) > 0 &&
-           get('carrier-factoring-invoice').trim() !== '' &&
-           get('rate-con').trim() !== '';
+  if (step === 'customer' || step === 'carrier') {
+    return _STEP_FIELDS[step].every(_fieldFilled) && _docSlotSatisfied(step);
   }
   if (step === 'review') {
     return stepValid('customer') && stepValid('carrier');
   }
   return false;
 }
+
+// Paint each dropzone green when its document gate is satisfied; clear red. Never
+// ADDS red here (that happens only on an explicit blocked advance — markStepInvalid).
+function updateDocVisuals() {
+  ['customer', 'carrier'].forEach(function (slot) {
+    var map = _DOC_SLOT_DOM[slot]; if (!map) return;
+    var area = document.getElementById(map.area); if (!area) return;
+    if (_docSlotSatisfied(slot)) {
+      area.classList.add('valid');
+      area.classList.remove('invalid');
+    } else {
+      area.classList.remove('valid');
+    }
+  });
+}
+window.updateDocVisuals = updateDocVisuals;
+
+// Flag every missing required field + the dropzone red and reveal the step message.
+function markStepInvalid(step) {
+  if (step !== 'customer' && step !== 'carrier') return;
+  _STEP_FIELDS[step].forEach(function (id) {
+    var el = document.getElementById(id); if (!el) return;
+    el.classList.toggle('invalid', !_fieldFilled(id));
+  });
+  var map = _DOC_SLOT_DOM[step];
+  if (map) {
+    var area = document.getElementById(map.area);
+    if (area) area.classList.toggle('invalid', !_docSlotSatisfied(step));
+  }
+  var err = document.getElementById(step + '-error');
+  if (err) err.classList.add('show');
+}
+window.markStepInvalid = markStepInvalid;
 
 // Enables/disables submit; updates .done classes on hstep indicators.
 function refreshValidity() {
@@ -741,6 +793,18 @@ function refreshValidity() {
                (s === 'review' && custDone && carrDone);
     hs.classList.toggle('done', done);
   });
+
+  // Clear red as the broker fixes things; never add red here. Hide a step's message
+  // once it's fully valid.
+  ['customer', 'carrier'].forEach(function (step) {
+    _STEP_FIELDS[step].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && _fieldFilled(id)) el.classList.remove('invalid');
+    });
+    var err = document.getElementById(step + '-error');
+    if (err && stepValid(step)) err.classList.remove('show');
+  });
+  updateDocVisuals();
 
   // Update rail note
   var railNote = document.getElementById('rail-note');
@@ -774,9 +838,20 @@ function gotoStep(name) {
 }
 
 // Gated navigation — only moves forward if canGoTo passes; backward always allowed.
+// When blocked, jump to the first incomplete step and flag what's missing (red
+// fields + dropzone + message) so the broker sees why they can't advance.
 function goToStep(name) {
   if (canGoTo(name)) {
     gotoStep(name);
+    return;
+  }
+  var order = ['customer', 'carrier'];
+  for (var i = 0; i < order.length; i++) {
+    if (!stepValid(order[i])) {
+      gotoStep(order[i]);
+      markStepInvalid(order[i]);
+      return;
+    }
   }
 }
 
@@ -823,6 +898,7 @@ function onFileChange(inputId, labelId) {
   var input = document.getElementById(inputId);
   return mergeFiles(inputId, input.files).then(function() {
     updateFileLabel(inputId, labelId);
+    if (typeof refreshValidity === 'function') refreshValidity();
   });
 }
 
@@ -844,6 +920,7 @@ function handleDrop(e, inputId, labelId, areaId) {
   if (!e.dataTransfer.files.length) return;
   return mergeFiles(inputId, e.dataTransfer.files).then(function() {
     updateFileLabel(inputId, labelId);
+    if (typeof refreshValidity === 'function') refreshValidity();
   });
 }
 
@@ -1273,6 +1350,9 @@ var _DOC_SLOT_DOM = {
 // Show/hide a green "packet on file" indicator with a Remove link inside a slot's label.
 function _setDocOnFile(slot, present) {
   var map = _DOC_SLOT_DOM[slot]; if (!map) return;
+  if (docsOnFile.hasOwnProperty(slot)) docsOnFile[slot] = !!present;
+  if (typeof updateDocVisuals === 'function') updateDocVisuals();
+  if (typeof refreshValidity === 'function') refreshValidity();
   var label = document.getElementById(map.label); if (!label) return;
   if (present) {
     label.innerHTML = '<span style="color:#2e7d32;font-weight:600">' + slot + ' packet on file ✓</span>' +

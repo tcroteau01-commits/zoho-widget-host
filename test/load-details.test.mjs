@@ -272,7 +272,7 @@ test('deselecting carrier calls OperFiAV.carrierBadge with empty vendor id', asy
 
 // ── B4: Stepper gating + submit-enable logic ──────────────────────────────────
 
-test('submit stays disabled until all required fields valid', () => {
+test('submit stays disabled until all required fields AND documents are present', () => {
   const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
   const w = dom.window, d = w.document;
   assert.strictEqual(d.querySelector('#submit-btn').disabled, true);
@@ -284,7 +284,10 @@ test('submit stays disabled until all required fields valid', () => {
   w.setField('carrier-factoring-invoice', 'F1');
   w.setField('rate-con', 'RC-7');
   w.refreshValidity();
-  assert.strictEqual(d.querySelector('#submit-btn').disabled, false);
+  assert.strictEqual(d.querySelector('#submit-btn').disabled, true, 'fields complete but no docs -> still blocked');
+  w.fileStore = { cust_docs: [_doc(w, 'bol.pdf')], carrier_docs: [_doc(w, 'rc.pdf')] };
+  w.refreshValidity();
+  assert.strictEqual(d.querySelector('#submit-btn').disabled, false, 'fields + both required docs -> enabled');
 });
 
 test('submit re-disables if a required field is cleared', () => {
@@ -292,6 +295,7 @@ test('submit re-disables if a required field is cleared', () => {
   const w = dom.window, d = w.document;
   ['customer-select','customer-reference','customer-rate','carrier-select','carrier-rate','carrier-factoring-invoice','rate-con']
     .forEach(function (id, i) { w.setField(id, id.indexOf('rate')>-1 ? '100' : 'x'); });
+  w.fileStore = { cust_docs: [_doc(w, 'a.pdf')], carrier_docs: [_doc(w, 'b.pdf')] };
   w.refreshValidity();
   assert.strictEqual(d.querySelector('#submit-btn').disabled, false);
   w.setField('carrier-rate', '');
@@ -299,19 +303,24 @@ test('submit re-disables if a required field is cleared', () => {
   assert.strictEqual(d.querySelector('#submit-btn').disabled, true);
 });
 
-test('cannot reach review step until customer+carrier valid', () => {
+test('cannot reach review step until customer+carrier fields AND docs valid', () => {
   const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
   const w = dom.window;
   assert.strictEqual(w.canGoTo('review'), false);
   w.setField('customer-select', 'c9');
   w.setField('customer-reference', 'PO-1');
   w.setField('customer-rate', '2500');
+  w.fileStore = { cust_docs: [], carrier_docs: [] };
+  assert.strictEqual(w.canGoTo('carrier'), false, 'customer fields ok but no customer doc -> cannot advance');
+  w.fileStore.cust_docs = [_doc(w, 'a.pdf')];
   assert.strictEqual(w.canGoTo('carrier'), true);
   assert.strictEqual(w.canGoTo('review'), false);
   w.setField('carrier-select', 'v3');
   w.setField('carrier-rate', '2100');
   w.setField('carrier-factoring-invoice', 'F1');
   w.setField('rate-con', 'RC-7');
+  assert.strictEqual(w.canGoTo('review'), false, 'carrier fields ok but no carrier doc -> cannot reach review');
+  w.fileStore.carrier_docs = [_doc(w, 'b.pdf')];
   assert.strictEqual(w.canGoTo('review'), true);
 });
 
@@ -620,4 +629,70 @@ test('submit blocks and creates NO funding record when a picked file is unreadab
   assert.match(t, /re-?select|select it again|remove/i);
   assert.strictEqual(w.document.getElementById('submit-btn').disabled, false,
     'submit re-enabled so the broker can fix and retry');
+});
+
+// ── Hard gates: required documents per step + red/green feedback ───────────────
+
+function _doc(w, name) {
+  return { name: name, ext: name.split('.').pop().toLowerCase(), blob: new w.Blob(['x']), error: null };
+}
+function _fillCustomer(w) {
+  w.setField('customer-select', 'c9');
+  w.setField('customer-reference', 'PO-1');
+  w.setField('customer-rate', '2500');
+}
+function _fillCarrier(w) {
+  w.setField('carrier-select', 'v3');
+  w.setField('carrier-rate', '2100');
+  w.setField('carrier-factoring-invoice', 'F1');
+  w.setField('rate-con', 'RC-7');
+}
+
+test('stepValid gates each step on its required document, not just the fields', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w); _fillCarrier(w);
+  w.fileStore = { cust_docs: [], carrier_docs: [] };
+  assert.strictEqual(w.stepValid('customer'), false, 'customer fields ok but no customer doc -> invalid');
+  assert.strictEqual(w.stepValid('carrier'), false, 'carrier fields ok but no carrier doc -> invalid');
+  w.fileStore.cust_docs = [_doc(w, 'bol.pdf')];
+  assert.strictEqual(w.stepValid('customer'), true);
+  assert.strictEqual(w.stepValid('carrier'), false, 'still no carrier doc');
+  w.fileStore.carrier_docs = [_doc(w, 'rc.pdf')];
+  assert.strictEqual(w.stepValid('carrier'), true);
+});
+
+test('a doc that failed to read does not satisfy the gate', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w);
+  w.fileStore = { cust_docs: [{ name: 'bad.pdf', ext: 'pdf', blob: null, error: 'x' }], carrier_docs: [] };
+  assert.strictEqual(w.stepValid('customer'), false, 'an unreadable-only doc set is not a satisfied gate');
+});
+
+test('a draft packet already on file satisfies the document gate', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w);
+  w.fileStore = { cust_docs: [], carrier_docs: [] };
+  assert.strictEqual(w.stepValid('customer'), false);
+  w._setDocOnFile('customer', true);  // reopened draft with has_customer_docs
+  assert.strictEqual(w.stepValid('customer'), true, 'an existing on-file packet counts as satisfied');
+});
+
+test('trying to advance without the required doc is blocked and flags the dropzone + message', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w);
+  w.fileStore = { cust_docs: [], carrier_docs: [] };
+  w.goToStep('carrier');
+  assert.ok(!w.document.getElementById('card-carrier').classList.contains('active'), 'did not advance to carrier');
+  assert.ok(w.document.getElementById('cust_docs_area').classList.contains('invalid'), 'dropzone flagged red');
+  assert.ok(w.document.getElementById('customer-error').classList.contains('show'), 'required message shown');
+});
+
+test('updateDocVisuals marks a satisfied dropzone valid (green) and clears invalid', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  const area = w.document.getElementById('cust_docs_area');
+  area.classList.add('invalid');
+  w.fileStore = { cust_docs: [_doc(w, 'bol.pdf')], carrier_docs: [] };
+  w.updateDocVisuals();
+  assert.ok(area.classList.contains('valid'), 'present doc -> green');
+  assert.ok(!area.classList.contains('invalid'), 'invalid flag cleared');
 });

@@ -208,6 +208,16 @@ textarea { resize: vertical; min-height: 90px; }
 .uploader.drag-over { border-color: #e8a020; background: #fffbf0; color: #e8a020; }
 .uploader.invalid { border-color: #e53935; color: #e53935; background: #fff5f5; }
 .uploader.valid { border-color: #2e7d32; color: #2e7d32; background: #f4fbf5; }
+.combo { position: relative; }
+.combo-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
+  background: #fff; border: 1px solid #d6d9e0; border-radius: 8px; margin-top: 4px;
+  max-height: 280px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.combo-opt { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f1f4; }
+.combo-opt:last-child { border-bottom: none; }
+.combo-opt:hover, .combo-opt.active { background: #fff7e9; }
+.combo-opt .co-name { font-weight: 600; color: #222; }
+.combo-opt .co-sub { font-size: 12px; color: #777; margin-top: 1px; }
+.combo-empty { padding: 10px 12px; color: #999; font-size: 13px; }
 .uploader b { color: #666; display: block; margin-bottom: 3px; }
 .uploader input[type=file] { display: none; }
 
@@ -388,8 +398,13 @@ textarea { resize: vertical; min-height: 90px; }
         <div class="card-head"><div class="card-title"><span class="cnum">2</span> Carrier Information</div></div>
 
         <div class="field">
-          <label>Carrier Name / MC # <span class="req">*</span></label>
-          <select id="carrier-select">
+          <label>Carrier Name / MC # / DOT <span class="req">*</span></label>
+          <div class="combo" id="carrier-combo">
+            <input type="text" id="carrier-search" autocomplete="off" placeholder="Search by carrier name, MC #, or DOT…" />
+            <div class="combo-list" id="carrier-list" role="listbox" hidden></div>
+          </div>
+          <!-- Hidden state holder: carries the selected vendor_id and emits change. -->
+          <select id="carrier-select" style="display:none" aria-hidden="true">
             <option value="">Select a carrier…</option>
           </select>
           <div id="carrier-av"></div>
@@ -565,6 +580,9 @@ function loadCarriers() {
       // (safe to call multiple times; browsers ignore duplicate identical listeners
       //  added via addEventListener for named functions)
       sel.addEventListener('change', onCarrierChange);
+      // Reset the search box so a fresh load starts empty.
+      var search = document.getElementById('carrier-search');
+      if (search) search.value = '';
     })
     .catch(function () {
       var e = document.getElementById('carrier-error');
@@ -614,6 +632,72 @@ function onCarrierChange() {
       { vendorId: vid, email: brokerEmail, apiBase: BROKER_API_BASE });
   }
 }
+
+// ── Searchable carrier combobox (match by name, MC, or DOT) ───────────────────
+function _carrierMatch(c, q) {
+  return String(c.carrier_name || '').toLowerCase().indexOf(q) !== -1 ||
+         String(c.mc || '').toLowerCase().indexOf(q) !== -1 ||
+         String(c.dot || '').toLowerCase().indexOf(q) !== -1;
+}
+
+// Render the filtered carrier list (name + MC/DOT per row) and reveal it.
+function renderCarrierResults(query) {
+  var list = document.getElementById('carrier-list');
+  if (!list) return;
+  var carriers = window._carriers || [];
+  var q = String(query || '').trim().toLowerCase();
+  var matches = q ? carriers.filter(function (c) { return _carrierMatch(c, q); }) : carriers;
+  if (!carriers.length) {
+    list.innerHTML = '<div class="combo-empty">No carriers available.</div>';
+  } else if (!matches.length) {
+    list.innerHTML = '<div class="combo-empty">No carriers match that name, MC, or DOT.</div>';
+  } else {
+    list.innerHTML = matches.map(function (c) {
+      var sub = [];
+      if (c.mc) sub.push('MC ' + esc(c.mc));
+      if (c.dot) sub.push('DOT ' + esc(c.dot));
+      return '<div class="combo-opt" data-vid="' + esc(c.vendor_id) + '">' +
+        '<div class="co-name">' + esc(c.carrier_name || '') + '</div>' +
+        (sub.length ? '<div class="co-sub">' + sub.join(' · ') + '</div>' : '') +
+      '</div>';
+    }).join('');
+  }
+  list.hidden = false;
+}
+window.renderCarrierResults = renderCarrierResults;
+
+// Commit a carrier choice: stamp the hidden select (emits change -> onCarrierChange),
+// reflect the name in the search box, and close the list.
+function selectCarrierFromSearch(vendorId) {
+  var carriers = window._carriers || [];
+  var c = carriers.filter(function (x) { return String(x.vendor_id) === String(vendorId); })[0];
+  var sel = document.getElementById('carrier-select');
+  if (sel) {
+    var exists = Array.prototype.some.call(sel.options, function (o) { return o.value === String(vendorId); });
+    if (!exists && c) {
+      var o = document.createElement('option');
+      o.value = c.vendor_id; o.textContent = c.carrier_name || '';
+      sel.appendChild(o);
+    }
+    sel.value = vendorId || '';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  var search = document.getElementById('carrier-search');
+  if (search && c) search.value = c.carrier_name || '';
+  var list = document.getElementById('carrier-list');
+  if (list) list.hidden = true;
+}
+window.selectCarrierFromSearch = selectCarrierFromSearch;
+
+// Mirror the hidden select's current carrier name into the search box (draft reopen).
+function syncCarrierSearchBox() {
+  var sel = document.getElementById('carrier-select');
+  var search = document.getElementById('carrier-search');
+  if (!sel || !search) return;
+  var opt = sel.options[sel.selectedIndex];
+  search.value = (sel.value && opt) ? opt.textContent : '';
+}
+window.syncCarrierSearchBox = syncCarrierSearchBox;
 
 // ── Credit banner ─────────────────────────────────────────────────────────────
 function loadCredit(customerId) {
@@ -1089,6 +1173,33 @@ window.addEventListener('load', function () {
   var carrierSel = document.getElementById('carrier-select');
   if (carrierSel) { carrierSel.addEventListener('change', onCarrierChange); }
 
+  // Searchable carrier combobox: filter on type, pick on click, close on outside click.
+  var carrierSearch = document.getElementById('carrier-search');
+  var carrierList = document.getElementById('carrier-list');
+  if (carrierSearch) {
+    carrierSearch.addEventListener('input', function () {
+      // Editing the box invalidates any prior pick until they choose again.
+      var sel = document.getElementById('carrier-select');
+      if (sel && sel.value) { sel.value = ''; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+      renderCarrierResults(carrierSearch.value);
+    });
+    carrierSearch.addEventListener('focus', function () { renderCarrierResults(carrierSearch.value); });
+  }
+  if (carrierList) {
+    // mousedown (before the input blur) so the pick registers and then closes the list.
+    carrierList.addEventListener('mousedown', function (e) {
+      var opt = e.target && e.target.closest ? e.target.closest('.combo-opt') : null;
+      if (opt && opt.getAttribute('data-vid') !== null) {
+        e.preventDefault();
+        selectCarrierFromSearch(opt.getAttribute('data-vid'));
+      }
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var combo = document.getElementById('carrier-combo');
+    if (combo && !combo.contains(e.target) && carrierList) carrierList.hidden = true;
+  });
+
   // ── Consolidated rate + text field listeners (updateMargin + refreshValidity) ──
   // Customer step fields
   var custRateEl = document.getElementById('customer-rate');
@@ -1308,6 +1419,9 @@ function prefillFromDraft(draft) {
   setVal('carrier-factoring-invoice', pick('carrier_factoring_invoice'));
   setVal('rate-con', pick('load_rate_confirmation_number'));
   setVal('Load_Comments', pick('load_comments'));
+
+  // Reflect the reopened carrier in the search box.
+  if (typeof syncCarrierSearchBox === 'function') syncCarrierSearchBox();
 
   // Re-run dependent UI: customer change (credit), carrier change (terms), margin, validity.
   if (typeof onCustomerChange === 'function') onCustomerChange();

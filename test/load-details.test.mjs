@@ -696,3 +696,57 @@ test('updateDocVisuals marks a satisfied dropzone valid (green) and clears inval
   assert.ok(area.classList.contains('valid'), 'present doc -> green');
   assert.ok(!area.classList.contains('invalid'), 'invalid flag cleared');
 });
+
+// ── Searchable carrier selector (name / MC / DOT) ─────────────────────────────
+
+function makeCarrierDom() {
+  const dom = makeB2Dom((url) => Promise.resolve({ ok: true, json: () => Promise.resolve(
+    String(url).includes('/tms-carriers')
+      ? { carriers: [
+          { vendor_id: 'v3', carrier_name: 'Hauler', mc: '123456', dot: '654321', payment_terms: 'Quickpay 2%' },
+          { vendor_id: 'v7', carrier_name: 'Brennan Trucking', mc: '998877', dot: '112233', payment_terms: 'Net 30' }
+        ] }
+      : { customers: [] }
+  )}));
+  return dom.window;
+}
+
+test('carrier section renders a search input over a hidden select', () => {
+  const d = new JSDOM(HTML).window.document;
+  assert.ok(d.getElementById('carrier-search'), 'missing #carrier-search');
+  assert.ok(d.getElementById('carrier-list'), 'missing #carrier-list results container');
+  assert.ok(d.getElementById('carrier-select'), 'hidden #carrier-select state holder remains');
+});
+
+test('carrier search filters by name, MC, or DOT', async () => {
+  const w = makeCarrierDom();
+  await w.loadCarriers();
+  w.renderCarrierResults('brennan');
+  let rows = [...w.document.querySelectorAll('#carrier-list .combo-opt')];
+  assert.ok(rows.some(r => /Brennan/i.test(r.textContent)), 'name match present');
+  assert.ok(!rows.some(r => /Hauler/.test(r.textContent)), 'non-matches excluded');
+  w.renderCarrierResults('654321');  // Hauler's DOT
+  rows = [...w.document.querySelectorAll('#carrier-list .combo-opt')];
+  assert.ok(rows.some(r => /Hauler/.test(r.textContent)), 'DOT search matches');
+  w.renderCarrierResults('998877');  // Brennan's MC
+  rows = [...w.document.querySelectorAll('#carrier-list .combo-opt')];
+  assert.ok(rows.some(r => /Brennan/i.test(r.textContent)), 'MC search matches');
+});
+
+test('carrier result rows show the carrier MC and DOT', async () => {
+  const w = makeCarrierDom();
+  await w.loadCarriers();
+  w.renderCarrierResults('hauler');
+  const row = w.document.querySelector('#carrier-list .combo-opt');
+  assert.match(row.textContent, /123456/, 'MC shown on the row');
+  assert.match(row.textContent, /654321/, 'DOT shown on the row');
+});
+
+test('selecting a carrier from search sets the value, fills the box, and shows terms', async () => {
+  const w = makeCarrierDom();
+  await w.loadCarriers();
+  w.selectCarrierFromSearch('v3');
+  assert.strictEqual(w.document.getElementById('carrier-select').value, 'v3', 'hidden select carries the id');
+  assert.match(w.document.getElementById('carrier-search').value, /Hauler/, 'search box shows the chosen name');
+  assert.match(w.document.getElementById('terms-readout-value').textContent, /Quickpay 2%/, 'terms populated via onCarrierChange');
+});

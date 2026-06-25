@@ -218,3 +218,7 @@ test('openCarrierDoc delegates to OperFiDocViewer.open (no inline iframe build)'
   // the old inline iframe construction is gone from openCarrierDoc
   assert.doesNotMatch(HTML, /<iframe src="' \+ url/);
 });
+
+test('carrier-profile footer carries the v2026-06-24.1 version stamp', () => {
+  assert.match(HTML, /v2026-06-24\.1/);
+});

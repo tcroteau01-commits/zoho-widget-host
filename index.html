@@ -782,16 +782,27 @@ function goToStep(name) {
 
 // ── File-merge pipeline (PRESERVED from legacy widget) ───────────────────────
 // IDs read here MUST stay in sync with the file inputs: 'cust_docs', 'carrier_docs'.
-function mergeFiles(inputId, newFiles) {
+async function mergeFiles(inputId, newFiles) {
   if (!fileStore[inputId]) fileStore[inputId] = [];
-  Array.from(newFiles).forEach(function(f) {
-    if (!/\.(pdf|jpg|jpeg|png|heic|heif|bmp|webp|gif|svg|tif|tiff|txt|csv|doc|docx)$/i.test(f.name)) return;
+  var incoming = Array.from(newFiles);
+  for (var n = 0; n < incoming.length; n++) {
+    var f = incoming[n];
+    if (!/\.(pdf|jpg|jpeg|png|heic|heif|bmp|webp|gif|svg|tif|tiff|txt|csv|doc|docx)$/i.test(f.name)) continue;
     var exists = fileStore[inputId].some(function(e) { return e.name === f.name && e.size === f.size; });
-    if (!exists) fileStore[inputId].push(f);
-  });
-  var dt = new DataTransfer();
-  fileStore[inputId].forEach(function(f) { dt.items.add(f); });
-  document.getElementById(inputId).files = dt.files;
+    if (exists) continue;
+    var entry = { name: f.name, size: f.size,
+                  ext: f.name.split('.').pop().toLowerCase(), blob: null, error: null };
+    try {
+      // Read the bytes NOW, while the OS file handle is still fresh, and keep a
+      // detached in-memory copy. A later move/rename/cloud-evict of the source
+      // can no longer turn submit-time merge into a NotFoundError.
+      var bytes = await f.arrayBuffer();
+      entry.blob = new Blob([bytes], { type: f.type || 'application/octet-stream' });
+    } catch (e) {
+      entry.error = (e && e.message) || String(e);
+    }
+    fileStore[inputId].push(entry);
+  }
 }
 
 function updateFileLabel(inputId, labelId) {
@@ -799,18 +810,20 @@ function updateFileLabel(inputId, labelId) {
   var lbl = document.getElementById(labelId);
   if (!lbl) return;
   if (!files.length) { lbl.textContent = 'Click or drag files here'; return; }
+  var tag = function(f) { return (f.error ? '⚠️ ' : '') + f.name; };
   if (files.length === 1) {
-    lbl.innerHTML = '📄 ' + files[0].name;
+    lbl.innerHTML = '📄 ' + tag(files[0]);
   } else {
     lbl.innerHTML = '📄 <strong>' + files.length + ' files:</strong> ' +
-      files.map(function(f) { return f.name; }).join(', ');
+      files.map(tag).join(', ');
   }
 }
 
 function onFileChange(inputId, labelId) {
   var input = document.getElementById(inputId);
-  mergeFiles(inputId, input.files);
-  updateFileLabel(inputId, labelId);
+  return mergeFiles(inputId, input.files).then(function() {
+    updateFileLabel(inputId, labelId);
+  });
 }
 
 function handleDragOver(e, areaId) {
@@ -829,45 +842,62 @@ function handleDrop(e, inputId, labelId, areaId) {
   e.stopPropagation();
   document.getElementById(areaId).classList.remove('drag-over');
   if (!e.dataTransfer.files.length) return;
-  mergeFiles(inputId, e.dataTransfer.files);
-  updateFileLabel(inputId, labelId);
+  return mergeFiles(inputId, e.dataTransfer.files).then(function() {
+    updateFileLabel(inputId, labelId);
+  });
 }
 
 // ── PDF Merge (PRESERVED from legacy widget) ─────────────────────────────────
+function _docError(name, detail) {
+  // Surface a broker-facing message and stop the submission. Never bake an error
+  // page into the merged PDF and upload it as a successful submission.
+  var err = new Error('Could not read "' + name + '"' + (detail ? ' (' + detail + ')' : '') + '.');
+  err.docMessage = 'Could not read "' + name + '" — please remove it and select it again, then submit.';
+  return err;
+}
+
 async function mergeFilesToPDF(files) {
+  // Fail loudly if any file could not be read when it was selected.
+  for (var k = 0; k < files.length; k++) {
+    var f0 = files[k];
+    if (!f0 || !f0.blob || f0.error) throw _docError((f0 && f0.name) || 'a document', f0 && f0.error);
+  }
   var merged = await PDFLib.PDFDocument.create();
   for (var i = 0; i < files.length; i++) {
     var file = files[i];
-    var ext = file.name.split('.').pop().toLowerCase();
+    var blob = file.blob;
+    var ext = file.ext || file.name.split('.').pop().toLowerCase();
     try {
       if (ext === 'pdf') {
-        var bytes = await file.arrayBuffer();
+        var bytes = await blob.arrayBuffer();
         var src = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
         var pages = await merged.copyPages(src, src.getPageIndices());
         pages.forEach(function(p) { merged.addPage(p); });
       } else if (ext === 'heic' || ext === 'heif') {
-        var converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+        var converted = await heic2any({ blob: blob, toType: 'image/jpeg', quality: 0.85 });
         if (Array.isArray(converted)) converted = converted[0];
         var dataUrl = await blobToDataUrl(converted);
         await addImagePageToPDF(merged, dataUrl);
       } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'bmp' || ext === 'webp' || ext === 'gif' || ext === 'svg') {
-        var dataUrl = await fileToDataUrl(file);
+        var dataUrl = await fileToDataUrl(blob);
         await addImagePageToPDF(merged, dataUrl);
       } else if (ext === 'tif' || ext === 'tiff') {
-        await addTiffPagesToPDF(merged, file);
+        await addTiffPagesToPDF(merged, blob);
       } else if (ext === 'txt' || ext === 'csv') {
-        var text = await file.text();
+        var text = await blob.text();
         await addTextPageToPDF(merged, text, file.name);
       } else if (ext === 'docx') {
-        var ab = await file.arrayBuffer();
+        var ab = await blob.arrayBuffer();
         var result = await mammoth.extractRawText({ arrayBuffer: ab });
         await addTextPageToPDF(merged, result.value, file.name);
       } else if (ext === 'doc') {
         await addTextPageToPDF(merged, '[.doc format cannot be rendered. File: ' + file.name + ' — please re-save as PDF or DOCX.]', file.name);
       }
     } catch(e) {
+      // A genuine processing failure (corrupt/unsupported content) must also block
+      // the submission instead of shipping a broken PDF as a success.
       console.error('mergeFilesToPDF error on', file.name, e);
-      await addTextPageToPDF(merged, '[Error processing file: ' + file.name + ' — ' + (e.message || e) + ']', file.name);
+      throw _docError(file.name, e && (e.message || e));
     }
   }
   var pdfBytes = await merged.save();
@@ -1080,22 +1110,25 @@ function submitLoad() {
   var btn = document.getElementById('submit-btn');
   if (btn) btn.disabled = true;
   if (statusEl) statusEl.textContent = 'Submitting…';
-  var payload = Object.assign({ email: brokerEmail }, _collectFields());
-  return fetch(BROKER_API_BASE + '/funding-submit', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload) })
-    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-    .then(function (res) {
-      if (!res.ok || !res.j || !res.j.record_id) {
-        if (statusEl) statusEl.textContent = 'Submission failed. Your entries are kept — please try again.';
-        if (btn) btn.disabled = false;
-        return;
-      }
-      var recordId = res.j.record_id;
-      // Success: submit button intentionally stays disabled (set true at entry, not
-      // re-enabled here) so a created funding record can't be double-submitted.
-      // Only the failure paths below re-enable it for retry.
-      return _mergedPdfs().then(function (pdfs) {
+  // Merge the documents client-side FIRST. If a picked file can't be read, fail
+  // loudly here — no funding record is created, so the broker can re-select the
+  // file and retry without leaving an orphan record or a baked-in error PDF.
+  return _mergedPdfs().then(function (pdfs) {
+    var payload = Object.assign({ email: brokerEmail }, _collectFields());
+    return fetch(BROKER_API_BASE + '/funding-submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.j || !res.j.record_id) {
+          if (statusEl) statusEl.textContent = 'Submission failed. Your entries are kept — please try again.';
+          if (btn) btn.disabled = false;
+          return;
+        }
+        var recordId = res.j.record_id;
+        // Success: submit button intentionally stays disabled (set true at entry, not
+        // re-enabled here) so a created funding record can't be double-submitted.
+        // Only the failure paths below re-enable it for retry.
         var ups = [];
         if (pdfs.customer) ups.push(_uploadDoc(recordId, 'Customer_Documents', pdfs.customer, 'customer_docs.pdf'));
         if (pdfs.carrier) ups.push(_uploadDoc(recordId, 'Carrier_Documents', pdfs.carrier, 'carrier_docs.pdf'));
@@ -1106,7 +1139,13 @@ function submitLoad() {
             : 'Load submitted successfully (#' + recordId + ').';
         });
       });
-    })
+  }, function (mergeErr) {
+    // A document couldn't be read/processed — block submission, keep the form, and
+    // tell the broker which file to re-select. No funding record was created.
+    if (statusEl) statusEl.textContent = (mergeErr && mergeErr.docMessage)
+      || 'A document could not be read. Please remove and re-select your files, then try again.';
+    if (btn) btn.disabled = false;
+  })
     .catch(function () {
       if (statusEl) statusEl.textContent = 'Submission failed. Your entries are kept — please try again.';
       if (btn) btn.disabled = false;

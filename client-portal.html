@@ -171,11 +171,23 @@ var BASE_DOCS = [
 //  • Sole Proprietors (DBAs)            → Utility Bill + Social Security Card
 //  • Veterans (discount tier)           → Proof of Service
 // (Intake captures Veteran but not "Law Enforcement" separately — that tier isn't auto-detected.)
-function requiredDocs(application) {
+function requiredDocs(application, owners) {
   application = application || {};
+  owners = owners || [];
   var ft = String(application.Business_Formation_Type || application.formationType || '').toLowerCase();
   var vet = String(application.Veteran_Status || application.veteran || '').toLowerCase();
   var list = BASE_DOCS.slice();
+  // When the owners are known, ask for a Driver's License per owner (replaces the single
+  // "all owners" line) so each owner the underwriter added gets its own upload slot.
+  if (owners.length) {
+    var dlSlots = owners.map(function (o, k) {
+      var nm = ((o.First_Name1 || o.first || '') + ' ' + (o.Last_Name1 || o.last || '')).trim();
+      return { key: 'drivers_license_' + k, label: "Driver's License — " + (nm || ('Owner ' + (k + 1))),
+               type: nm ? ('Drivers License - ' + nm) : ('Drivers License ' + (k + 1)) };
+    });
+    var di = -1; for (var i = 0; i < list.length; i++) { if (list[i].key === 'drivers_license') { di = i; break; } }
+    if (di >= 0) list.splice.apply(list, [di, 1].concat(dlSlots)); else list = list.concat(dlSlots);
+  }
   if (/sole|proprietor|\bdba\b/.test(ft)) {
     list.push({ key: 'utility_bill', label: 'Utility Bill (current address)', type: 'Utility Bill' });
     list.push({ key: 'ssn_card',     label: 'Social Security Card',           type: 'Social Security Card' });
@@ -190,6 +202,8 @@ function requiredDocs(application) {
 
 function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
 function isUploadedStatus(s){ return /^(received|verified|approved|complete|on file)$/i.test(String(s || '').trim()); }
+function isRequestedStatus(s){ return /^(requested|needed|pending)$/i.test(String(s || '').trim()); }
+function slugType(t){ return 'req_' + normType(t).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''); }
 function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'verified') return 3; if (isUploadedStatus(s)) return 2; if (s === 'rejected') return 1; return 0; }
 
 // Join the required checklist to the uploaded Document records → per-line status + any extras.
@@ -218,11 +232,17 @@ function reconcileDocs(required, documents) {
   required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
   var extras = documents.filter(function (d) { return !reqTypes[normType(d.Document_Type || d.type)] && isUploadedStatus(d.Status || d.status); })
     .map(function (d) { return { label: d.Document_Type || d.type || 'Document', status: d.Status || d.status || 'Received', link: d.WorkDrive_Link || d.link || '' }; });
+  // Staff-requested docs that aren't in the base checklist and haven't been uploaded → render as
+  // upload slots so the client can fulfill an underwriter's ad-hoc request.
+  var requested = documents.filter(function (d) {
+    var t = normType(d.Document_Type || d.type);
+    return !reqTypes[t] && !isUploadedStatus(d.Status || d.status) && isRequestedStatus(d.Status || d.status);
+  }).map(function (d) { var ty = d.Document_Type || d.type || 'Document'; return { key: slugType(ty), label: ty, type: ty }; });
   return {
-    checklist: checklist, extras: extras,
-    pendingCount: checklist.filter(function (c) { return !c.uploaded; }).length,
+    checklist: checklist, extras: extras, requested: requested,
+    pendingCount: checklist.filter(function (c) { return !c.uploaded; }).length + requested.length,
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
-    total: checklist.length
+    total: checklist.length + requested.length
   };
 }
 
@@ -268,7 +288,7 @@ function nextStep(stage, pendingCount) {
 
 var OFCP = {
   requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, deriveStage: deriveStage,
-  statusPill: statusPill, nextStep: nextStep, isUploadedStatus: isUploadedStatus,
+  statusPill: statusPill, nextStep: nextStep, isUploadedStatus: isUploadedStatus, isRequestedStatus: isRequestedStatus,
   STEPS: STEPS, BASE_DOCS: BASE_DOCS
 };
 global.OFCP = OFCP;
@@ -277,11 +297,27 @@ global.OFCP = OFCP;
 var DEMO_STATUS = {
   businessName: 'Brennan Eslinger Trucking LLC', status: 'Docs Requested', submittedAt: 'Jun 8, 2026',
   authorityType: 'Carrier', formationType: 'LLC', veteran: 'No',
+  clientMessage: 'Thanks for your application! A couple of follow-ups: your insurance certificate on file lists only one truck — please upload a current COI, and we still need a Driver’s License for each owner. Reach out with any questions.',
+  owners: [
+    { First_Name1: 'Brennan', Last_Name1: 'Eslinger', Title: 'CEO', Ownership_Percent: 40 },
+    { First_Name1: 'Dana', Last_Name1: 'Whitfield', Title: 'CFO', Ownership_Percent: 30 },
+    { First_Name1: 'Marcus', Last_Name1: 'Reyes', Title: 'COO', Ownership_Percent: 30 }
+  ],
+  customers: [
+    { Business_Name: 'Desert Produce Distributors', Website: 'desertproduce.com', Expected_Monthly_Revenue: 14000 },
+    { Business_Name: 'Phoenix Building Supply', Website: 'phxbuildingsupply.com', Expected_Monthly_Revenue: 9000 }
+  ],
+  related: [
+    { Business_Name: 'Eslinger Equipment Leasing LLC', USDOT: '', MC_Number: '', Factoring_Company: '' }
+  ],
   documents: [
     { type: 'Signed Agreement', status: 'Verified', uploadedAt: 'Jun 8' },
     { type: 'NOA', status: 'Received', uploadedAt: 'Jun 8' },
     { type: 'Voided Check', status: 'Received', uploadedAt: 'Jun 8' },
-    { type: 'Drivers License', status: 'Verified', uploadedAt: 'Jun 8' }
+    { type: 'Drivers License - Brennan Eslinger', status: 'Verified', uploadedAt: 'Jun 8' },
+    // staff-requested, not in the base checklist → should surface as upload slots:
+    { type: 'Prior factor aging report', status: 'Requested' },
+    { type: 'Equipment lease agreement', status: 'Requested' }
   ],
   rep: { name: 'Jordan Park', email: 'jordan@operfi.com', phone: '(602) 555-0142' }
 };
@@ -421,7 +457,7 @@ function resetPin() {
 function renderStatus(data, isDemo) {
   STATE.data = data;
   var stage = deriveStage(data);
-  var req = requiredDocs(data);
+  var req = requiredDocs(data, data.owners);
   var rec = reconcileDocs(req, data.documents);
   var pill = statusPill(stage.status);
   var guidance = nextStep(stage, rec.pendingCount);
@@ -451,6 +487,15 @@ function renderStatus(data, isDemo) {
     return '<div class="doc-row">' + left + right + '</div>';
   }).join('');
 
+  // Underwriter-requested documents (not part of the base checklist) → upload slots.
+  var requestedRows = (rec.requested || []).map(function (c) {
+    var left = '<div class="doc-main"><span class="doc-mark needed">○</span><div><div class="doc-label">' + esc(c.label) +
+      '</div><div class="doc-sub">Requested by your underwriter</div></div></div>';
+    var right = '<div class="doc-action"><input type="file" class="doc-file" id="f-' + esc(c.key) + '" accept="application/pdf,image/*" multiple>' +
+      '<button class="btn orange sm js-up" data-key="' + esc(c.key) + '" data-type="' + esc(c.type) + '">Upload</button></div>';
+    return '<div class="doc-row">' + left + right + '</div>';
+  }).join('');
+
   var extrasHtml = rec.extras.length
     ? '<div class="doc-row" style="border-top:1px dashed var(--of-beige-line)"></div>' + rec.extras.map(function (e) {
         return '<div class="doc-row"><div class="doc-main"><span class="doc-mark ok">✓</span><div><div class="doc-label">' + esc(e.label) +
@@ -466,11 +511,40 @@ function renderStatus(data, isDemo) {
       (rep.email ? '<a href="mailto:' + esc(rep.email) + '">' + esc(rep.email) + '</a>' : '') + '</div>'
     : '<div class="muted">Questions? Reply to your OperFi onboarding email and we’ll help.</div>';
 
+  // A message the underwriter typed for the client (shown prominently).
+  var msgHtml = data.clientMessage
+    ? '<div class="card" style="border-left:4px solid var(--of-amber)"><div class="card-title" style="border:none;padding-bottom:4px;margin-bottom:6px">A note from your underwriter</div>' +
+      '<div style="font-size:13.5px;line-height:1.55;white-space:pre-wrap">' + esc(data.clientMessage) + '</div></div>'
+    : '';
+
+  // Read-only records the underwriter has on file, for the client to review (no SSN/DOB).
+  function recRow(label, sub, right) {
+    return '<div class="doc-row"><div class="doc-main"><div><div class="doc-label">' + esc(label) +
+      '</div>' + (sub ? '<div class="doc-sub">' + esc(sub) + '</div>' : '') + '</div></div>' +
+      '<div class="doc-action">' + esc(right || '') + '</div></div>';
+  }
+  function recCard(title, rowsHtml) { return rowsHtml ? '<div class="card"><div class="card-title">' + title + '</div>' + rowsHtml + '</div>' : ''; }
+  var ownersHtml = recCard('Owners on file', (data.owners || []).map(function (o) {
+    var nm = ((o.First_Name1 || '') + ' ' + (o.Last_Name1 || '')).trim() || '—';
+    var pct = (o.Ownership_Percent != null && o.Ownership_Percent !== '') ? o.Ownership_Percent + '%' : '';
+    return recRow(nm, o.Title || '', pct);
+  }).join(''));
+  var clienteleHtml = recCard('Your customers on file', (data.customers || []).map(function (c) {
+    var rev = (c.Expected_Monthly_Revenue != null && c.Expected_Monthly_Revenue !== '') ? '$' + c.Expected_Monthly_Revenue : '';
+    return recRow(c.Business_Name || '—', c.Website || '', rev);
+  }).join(''));
+  var relatedHtml = recCard('Related businesses on file', (data.related || []).map(function (r) {
+    var sub = [r.USDOT ? 'DOT ' + r.USDOT : '', r.MC_Number ? 'MC ' + r.MC_Number : ''].filter(Boolean).join(' · ');
+    return recRow(r.Business_Name || '—', sub, r.Factoring_Company || '');
+  }).join(''));
+
   el('content').innerHTML =
     '<div class="hero"><div><div class="hero-eyebrow">' + esc(data.authorityType || 'Your application') + '</div>' +
       '<div class="hero-name">' + esc(data.businessName || 'Your Application') + '</div>' +
       '<div class="hero-meta">' + (data.submittedAt ? 'Submitted ' + esc(data.submittedAt) : 'Application received') + '</div></div>' +
       '<div><span class="decision-state-pill ' + pill.cls + '">' + esc(pill.label) + '</span></div></div>' +
+
+    msgHtml +
 
     '<div class="card"><div class="card-title">Where it stands</div><div class="stepper">' + stepsHtml + '</div></div>' +
 
@@ -480,8 +554,10 @@ function renderStatus(data, isDemo) {
 
     '<div class="card"><div class="card-title">Your documents <span class="count" id="docCount">' + rec.uploadedCount + ' of ' + rec.total + ' received</span></div>' +
       '<div class="summ">Upload each document below. PDF or photo is fine — you can select multiple files at once for any item. You can come back to this page anytime to add the rest.</div>' +
-      '<div id="docList">' + rows + extrasHtml + '</div>' +
+      '<div id="docList">' + rows + requestedRows + extrasHtml + '</div>' +
       '<div class="toast" id="upToast"></div></div>' +
+
+    ownersHtml + clienteleHtml + relatedHtml +
 
     '<div class="card"><div class="card-title">Need a hand?</div>' + repHtml + '</div>';
 

@@ -135,7 +135,43 @@ tr:last-child td { border-bottom:none; }
 .owner-head .on { font-size:15px; font-weight:800; color:var(--of-charcoal); letter-spacing:-0.2px; margin-top:2px; }
 .owner-head .op { font-size:13px; font-weight:800; color:var(--of-orange); white-space:nowrap; }
 
-@media (max-width:1000px){ .col-main{grid-template-columns:1fr;} .kpi-row{grid-template-columns:1fr 1fr;} }
+/* State filing links block (SoS business search + UCC search/filing for the business state) */
+.sf-block { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px; margin-bottom:12px; background:var(--of-beige-soft); border:1px solid var(--of-beige-line); border-radius:10px; }
+.sf-label { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--of-gray-500); margin-right:2px; }
+.sf-link { font-size:12px; font-weight:700; color:var(--of-blue-text); text-decoration:none; background:#fff; border:1px solid var(--of-beige-line); border-radius:7px; padding:5px 10px; }
+.sf-link:hover { border-color:var(--of-orange); }
+.sf-none { font-size:11.5px; color:var(--of-gray-500); }
+
+/* Add-record forms (underwriter appends owners / clientele / contacts / related businesses) */
+.add-wrap { margin-top:12px; padding-top:12px; border-top:1px dashed var(--of-beige-line); }
+.add-form { margin-top:10px; }
+.add-form .fld { margin-bottom:10px; }
+
+/* Intro dashboard */
+.dash-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--of-charcoal); margin:4px 2px 10px; }
+.dash-section-title .muted { color:var(--of-gray-500); font-weight:700; }
+.dash-stages { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:14px; }
+.stage-card { background:#fff; border:1px solid var(--of-beige-line); border-radius:12px; padding:14px 16px; cursor:pointer; position:relative; overflow:hidden; transition:border-color .12s; }
+.stage-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--of-orange); }
+.stage-card.good::before{background:var(--of-green);} .stage-card.warn::before{background:var(--of-amber);} .stage-card.bad::before{background:var(--of-red);}
+.stage-card:hover { border-color:var(--of-orange); }
+.stage-card.active { border-color:var(--of-orange); box-shadow:0 0 0 2px rgba(232,160,32,0.18); }
+.stage-card .sc-count { font-size:26px; font-weight:800; letter-spacing:-0.5px; line-height:1; color:var(--of-charcoal); }
+.stage-card .sc-label { font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--of-gray-500); font-weight:700; margin-top:6px; }
+.stage-card .sc-hint { font-size:10px; color:var(--of-gray-500); margin-top:4px; }
+.dash-list { background:#fff; border:1px solid var(--of-beige-line); border-radius:12px; padding:4px 0; margin-bottom:14px; }
+.app-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 18px; border-bottom:1px dashed var(--of-beige-line); cursor:pointer; }
+.app-row:last-child { border-bottom:none; }
+.app-row:hover { background:var(--of-beige-soft); }
+.app-row .ar-name { font-weight:700; font-size:13.5px; color:var(--of-charcoal); }
+.app-row .ar-sub { font-size:11.5px; color:var(--of-gray-500); margin-top:2px; }
+.app-row .ar-right { text-align:right; font-size:11px; color:var(--of-gray-500); white-space:nowrap; }
+.app-row.empty { cursor:default; color:var(--of-gray-500); font-size:12.5px; }
+.app-row.empty:hover { background:none; }
+.backbar { margin-bottom:12px; }
+
+@media (max-width:1000px){ .col-main{grid-template-columns:1fr;} .kpi-row{grid-template-columns:1fr 1fr;} .dash-stages{grid-template-columns:repeat(3,1fr);} }
+@media (max-width:640px){ .dash-stages{grid-template-columns:1fr 1fr;} }
 @media (max-width:640px){ .kpi-row,.kv,.flag-grid{grid-template-columns:1fr;} .hero{grid-template-columns:1fr;} }
 </style>
 </head>
@@ -157,6 +193,12 @@ tr:last-child td { border-bottom:none; }
   </div>
 
   <div id="statusMsg" class="status-msg"></div>
+
+  <!-- Intro dashboard: stage counts (click to expand) + recent applications. Shown until an app is opened. -->
+  <div id="dashboard" class="dash"></div>
+
+  <!-- Back to dashboard (shown while an application is open) -->
+  <div id="backBar" class="backbar" style="display:none"><button class="btn ghost sm" id="btnBack">← Back to dashboard</button></div>
 
   <div class="console" id="console">
     <div class="hero">
@@ -206,18 +248,93 @@ tr:last-child td { border-bottom:none; }
         <div class="card">
           <div class="card-title">Owner Details <span class="count" id="ownerCount">—</span></div>
           <div id="ownerDetails"></div>
+          <div class="add-wrap">
+            <button class="btn ghost sm" id="addOwnerToggle">+ Add owner</button>
+            <div class="add-form" id="addOwnerForm" style="display:none">
+              <div class="fld row2"><div><label>First Name</label><input type="text" id="aoFirst"></div><div><label>Last Name</label><input type="text" id="aoLast"></div></div>
+              <div class="fld row2"><div><label>Title</label><input type="text" id="aoTitle"></div><div><label>Ownership %</label><input type="text" id="aoPct"></div></div>
+              <div class="fld row2"><div><label>Birthdate</label><input type="text" id="aoDob" placeholder="MM/DD/YYYY"></div><div><label>SSN</label><input type="text" id="aoSsn"></div></div>
+              <div class="fld row2"><div><label>Phone</label><input type="tel" id="aoPhone"></div><div><label>Email</label><input type="email" id="aoEmail"></div></div>
+              <div class="fld"><label>Address</label><input type="text" id="aoAddr"></div>
+              <button class="btn green sm" id="aoSave">Save owner</button>
+            </div>
+          </div>
         </div>
         <div class="card">
           <div class="card-title">Trusted Contacts <span class="count" id="contactCount">—</span></div>
           <table id="contactTable"></table>
+          <div class="add-wrap">
+            <button class="btn ghost sm" id="addContactToggle">+ Add contact</button>
+            <div class="add-form" id="addContactForm" style="display:none">
+              <div class="fld row2"><div><label>Name</label><input type="text" id="acName"></div><div><label>Title</label><input type="text" id="acTitle"></div></div>
+              <div class="fld row2"><div><label>Phone</label><input type="tel" id="acPhone"></div><div><label>Email</label><input type="email" id="acEmail"></div></div>
+              <button class="btn green sm" id="acSave">Save contact</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Clientele <span class="count" id="clienteleCount">—</span></div>
+          <table id="clienteleList"></table>
+          <div class="add-wrap">
+            <button class="btn ghost sm" id="addClienteleToggle">+ Add customer</button>
+            <div class="add-form" id="addClienteleForm" style="display:none">
+              <div class="fld"><label>Business Name</label><input type="text" id="aclName"></div>
+              <div class="fld row2"><div><label>Website</label><input type="text" id="aclWebsite"></div><div><label>Expected Monthly Revenue</label><input type="text" id="aclRevenue" placeholder="$"></div></div>
+              <button class="btn green sm" id="aclSave">Save customer</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Related Businesses <span class="count" id="relatedCount">—</span></div>
+          <table id="relatedList"></table>
+          <div class="add-wrap">
+            <button class="btn ghost sm" id="addRelatedToggle">+ Add related business</button>
+            <div class="add-form" id="addRelatedForm" style="display:none">
+              <div class="fld"><label>Business Name</label><input type="text" id="arName"></div>
+              <div class="fld row2"><div><label>USDOT</label><input type="text" id="arUsdot"></div><div><label>MC #</label><input type="text" id="arMc"></div></div>
+              <div class="fld"><label>Factoring Company</label><input type="text" id="arFactor"></div>
+              <button class="btn green sm" id="arSave">Save related business</button>
+            </div>
+          </div>
         </div>
         <div class="card">
           <div class="card-title">UCC Research <span class="count">iLien · SOS · Middesk</span></div>
           <table id="uccTable"></table>
+          <div class="add-wrap">
+            <button class="btn ghost sm" id="addUccToggle">+ Add UCC filing</button>
+            <div class="add-form" id="addUccForm" style="display:none">
+              <div class="fld"><label>Secured Party</label><input type="text" id="aucSecured"></div>
+              <div class="fld row2"><div><label>Type</label><input type="text" id="aucType" placeholder="e.g. Factor"></div><div><label>Filed</label><input type="text" id="aucFiled" placeholder="YYYY-MM-DD"></div></div>
+              <div class="fld"><label>Action</label><input type="text" id="aucAction" placeholder="e.g. LOR Required"></div>
+              <button class="btn green sm" id="aucSave">Save UCC filing</button>
+            </div>
+          </div>
         </div>
         <div class="card">
           <div class="card-title">Documents <span class="count" id="docCount">—</span></div>
           <table id="docTable"></table>
+          <div class="add-wrap">
+            <button class="btn ghost sm" id="addDocReqToggle">+ Request document</button>
+            <div class="add-form" id="addDocReqForm" style="display:none">
+              <div class="fld"><label>Document type</label>
+                <select id="rdType">
+                  <option value="">Select a document…</option>
+                  <option>Operating Authority</option>
+                  <option>Insurance Certificate</option>
+                  <option>Voided Check</option>
+                  <option>Drivers License</option>
+                  <option>W-9</option>
+                  <option>Articles of Formation</option>
+                  <option>Proof of Service</option>
+                  <option>Prior factor aging report</option>
+                  <option value="__other">Other (specify below)</option>
+                </select>
+              </div>
+              <div class="fld"><label>Or specify a custom document</label><input type="text" id="rdOther" placeholder="e.g. Equipment lease agreement"></div>
+              <button class="btn green sm" id="rdSave">Request from client</button>
+              <div class="hint" style="font-size:11px;color:var(--of-gray-500);margin-top:6px">Requested documents appear on the client's upload portal as a new item to upload.</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -238,7 +355,8 @@ tr:last-child td { border-bottom:none; }
           <div class="fld"><label>Checklist Status</label>
             <select id="uwChecklist"><option>Not Started</option><option>In Progress</option><option>Complete</option></select>
           </div>
-          <div class="fld"><label>Underwriting Notes</label><textarea id="uwNotes" rows="3"></textarea></div>
+          <div class="fld"><label>Underwriting Notes <span style="color:var(--of-gray-500);font-weight:600;text-transform:none;letter-spacing:0">· internal</span></label><textarea id="uwNotes" rows="3"></textarea></div>
+          <div class="fld"><label>Message to Client <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· shown on portal</span></label><textarea id="uwClientMsg" rows="2" placeholder="e.g. Your insurance certificate expired — please re-upload a current COI."></textarea></div>
           <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
             <button class="btn green block" id="btnApprove">✓ Approve</button>
@@ -297,9 +415,60 @@ var RPT = { application: 'Application_Report', owner: 'Owner_Report', document: 
 // Backend (operfi-broker-api) that returns the automated check results stored at submit time.
 var API_BASE = global.OPERFI_UW_API_BASE || 'https://operfi-broker-api.onrender.com';
 var CHECKS_PATH = '/application-checks'; // GET ?usdot= → { fraud, ownership, ucc, risk, checkedAt }  (confirm with Tom)
+var QUEUE_PATH = '/applications';        // GET → { applications: [{ USDOT, Business_Name, Authority_Type, Application_Status, Submitted_At, Assigned_Underwriter, Buyout_Required, Decision_Date }] }  (confirm with Tom)
+var ADD_PATH = '/uw-add-record';         // POST { application_id, kind:'owner'|'customer'|'contact'|'related', record } → creates the linked child record  (confirm with Tom)
+var DOCREQ_PATH = '/sales-doc-request';  // POST { application_id, document_type, source } → creates a Document (Status='Requested'); shown on the client portal  (confirm with Tom)
 
 // ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
+
+// Dashboard buckets. Each is a predicate over an application (NOT mutually exclusive — e.g. an
+// approved app that needs a buyout counts in both "Approved / Denied" and "Options for Buy-in").
+// 'Options for Buy-in' = applications that must buy out a prior factor (Buyout_Required).
+// 'Past 30 Days' = anything with activity (submit/decision date) in the last 30 days.
+var STAGES = [
+  { key:'review',  label:'Review',             cls:'',     match:function(a){ return ['New','In Review','Underwriting'].indexOf(a.Application_Status) !== -1; } },
+  { key:'docs',    label:'Docs Needed',        cls:'warn', match:function(a){ return a.Application_Status === 'Docs Requested'; } },
+  { key:'decided', label:'Approved / Denied',  cls:'good', match:function(a){ return a.Application_Status === 'Approved' || a.Application_Status === 'Declined'; } },
+  { key:'buyin',   label:'Buy In',             cls:'',     match:function(a){ return !!a.Buyout_Required; } },
+  { key:'recent',  label:'Past 30 Days',       cls:'',     match:function(a, now){ return within30(a, now); } }
+];
+var DAY = 86400000;
+function nowMs(now){ return (now != null) ? now : Date.now(); }
+function appDate(a){ var d = Date.parse((a && (a.Decision_Date || a.Submitted_At || a.submittedAt)) || ''); return isNaN(d) ? null : d; }
+function isDecided(status){ return ['Approved','Declined','Signed','Abandoned'].indexOf(status) !== -1; }
+function within30(a, now){ var d = appDate(a); if (d == null) return false; now = nowMs(now); return d <= now + DAY && (now - d) <= 30 * DAY; }
+// Auto-hide decided apps (Approved/Denied/Signed/Abandoned) once they're older than 30 days;
+// active apps always stay. Drives "once approved or denied, drop from the dashboard."
+function visibleApps(apps, now){
+  return (apps || []).filter(function(a){ return isDecided(a && a.Application_Status) ? within30(a, now) : true; });
+}
+function appsInStage(apps, key, now){
+  var stage = null; for (var i=0;i<STAGES.length;i++){ if (STAGES[i].key===key) stage=STAGES[i]; }
+  return stage ? (apps || []).filter(function(a){ return stage.match(a, now); }) : [];
+}
+function computeStageCounts(apps, now){
+  var c = {}; STAGES.forEach(function(s){ c[s.key] = (apps||[]).filter(function(a){ return s.match(a, now); }).length; });
+  return c;
+}
+// Most-recent first by Submitted_At (parseable date), stable fallback to original order.
+function recentApps(apps, n){
+  var arr=(apps||[]).map(function(a,i){ var t=Date.parse((a && (a.Submitted_At||a.submittedAt)) || ''); return { a:a, t:isNaN(t)?-i:t, i:i }; });
+  arr.sort(function(x,y){ return (y.t-x.t) || (x.i-y.i); });
+  return arr.slice(0, n||8).map(function(o){ return o.a; });
+}
+function stagePill(status){
+  switch (status) {
+    case 'Approved':      return { cls:'g', label:'Approved' };
+    case 'Signed':        return { cls:'g', label:'Signed' };
+    case 'Declined':      return { cls:'r', label:'Denied' };
+    case 'Abandoned':     return { cls:'n', label:'Abandoned' };
+    case 'Docs Requested':return { cls:'a', label:'Docs Needed' };
+    case 'Underwriting':  return { cls:'b', label:'Underwriting' };
+    case 'In Review':     return { cls:'b', label:'In Review' };
+    default:              return { cls:'n', label:status || 'New' };
+  }
+}
 
 // Document checklist — SAME rules as the client document portal (client-portal.html), so the
 // underwriting tool shows the full expected checklist (Received / Verified / Needed) with the
@@ -334,9 +503,11 @@ function docStatus(d){ return Array.isArray(d) ? d[2] : (d && (d.Status || d.sta
 function docUrl(d){ return (Array.isArray(d) ? d[3] : (d && (d.fileUrl || d.link || d.url))) || ''; }
 function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
 function isUploadedStatus(s){ return /^(received|verified|approved|complete|on file)$/i.test(String(s || '').trim()); }
+function isRequestedStatus(s){ return /^(requested|needed|pending)$/i.test(String(s || '').trim()); }
 function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'verified') return 3; if (isUploadedStatus(s)) return 2; if (s === 'rejected') return 1; return 0; }
-// Join the required checklist to the application's Document records → per-line status + view link + extras.
-// `documents` accepts [type,source,status,fileUrl] tuples (live/demo) OR {Document_Type,Status,fileUrl} objects.
+// Join the required checklist to the application's Document records → per-line status + view link +
+// uploaded extras + staff-requested docs (so an ad-hoc document request is visible, not just
+// the base checklist). `documents` accepts [type,source,status,fileUrl] tuples OR objects.
 function reconcileDocs(required, documents) {
   required = required || []; documents = documents || [];
   var byType = {};
@@ -358,11 +529,98 @@ function reconcileDocs(required, documents) {
   var reqTypes = {}; required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
   var extras = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && isUploadedStatus(docStatus(d)); })
     .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received', link: docUrl(d) }; });
+  // Staff-requested docs that aren't in the base checklist and haven't been uploaded yet.
+  var requested = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && !isUploadedStatus(docStatus(d)) && isRequestedStatus(docStatus(d)); })
+    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Requested', link: docUrl(d) }; });
   return {
-    checklist: checklist, extras: extras,
+    checklist: checklist, extras: extras, requested: requested,
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
-    total: checklist.length
+    total: checklist.length + requested.length
   };
+}
+
+// ── State filing links (SoS business search + UCC search/filing) ──────────────
+// Generated from "UCC Filing - ST Logins.xlsx" via tools/extract-state-links.mjs. LINKS ONLY —
+// the spreadsheet's site login credentials are intentionally excluded.
+var STATE_LINKS = {
+  AK: { business:"https://www.commerce.alaska.gov/cbp/main/search/entities", uccSearch:"http://dnr.alaska.gov/ssd/recoff/ucc/search", uccFiling:"https://dnr.alaska.gov/ucc/online/" },
+  AL: { business:"https://arc-sos.state.al.us/CGI/CORPNAME.MBR/INPUT", uccSearch:"https://www.sos.alabama.gov/government-records/ucc-records", uccFiling:"" },
+  AR: { business:"https://www.sos.arkansas.gov/corps/search_all.php", uccSearch:"", uccFiling:"" },
+  AZ: { business:"https://ecorp.azcc.gov/EntitySearch/Index", uccSearch:"https://apps.azsos.gov/apps/ucc/search/", uccFiling:"https://apps.azsos.gov/apps/ucc/" },
+  CA: { business:"https://bizfileonline.sos.ca.gov/search/business", uccSearch:"https://bizfileonline.sos.ca.gov/search/ucc", uccFiling:"https://bizfileonline.sos.ca.gov/forms/ucc" },
+  CO: { business:"https://www.coloradosos.gov/biz/BusinessEntityCriteriaExt.do", uccSearch:"https://www.sos.state.co.us/ucc/pages/home.xhtml", uccFiling:"https://www.sos.state.co.us/ucc/pages/home.xhtml" },
+  CT: { business:"https://service.ct.gov/business/s/onlinebusinesssearch?language=en_US", uccSearch:"https://service.ct.gov/business/s/onlineenquiry?language=en_US", uccFiling:"" },
+  DE: { business:"https://icis.corp.delaware.gov/ecorp/entitysearch/namesearch.aspx", uccSearch:"", uccFiling:"https://icis.corp.delaware.gov/Ecorp/Login.aspx?FilingType=UCC" },
+  FL: { business:"https://search.sunbiz.org/Inquiry/CorporationSearch/ByName", uccSearch:"https://www.floridaucc.com/uccweb/search.aspx", uccFiling:"https://www.floridaucc.com/onlinefiling/Account/Login" },
+  GA: { business:"https://ecorp.sos.ga.gov/BusinessSearch", uccSearch:"https://search.gsccca.org/UCC_Search/search.asp?searchtype=Article9", uccFiling:"https://efile.gsccca.org/LoginPage.aspx" },
+  HI: { business:"https://hbe.ehawaii.gov/documents/search.html?mobile=N&site_preference=normal", uccSearch:"", uccFiling:"" },
+  IA: { business:"https://sos.iowa.gov/search/business/search.aspx", uccSearch:"https://sos.iowa.gov/search/UCCsearch.html?ucc", uccFiling:"https://sos.iowa.gov/file/ucc/" },
+  ID: { business:"https://sosbiz.idaho.gov/search/business", uccSearch:"https://sosbiz.idaho.gov/search/ucc", uccFiling:"https://sosbiz.idaho.gov/forms/ucc" },
+  IL: { business:"https://apps.ilsos.gov/corporatellc/", uccSearch:"https://apps.ilsos.gov/uccsearch/", uccFiling:"https://www.ilsos.gov/departments/business_services/uniform_commercial_code/ucc_instructions.html" },
+  IN: { business:"https://bsd.sos.in.gov/publicbusinesssearch", uccSearch:"https://bsd.sos.in.gov/PublicUCCSearch", uccFiling:"https://inbiz.in.gov/" },
+  KS: { business:"https://www.kansas.gov/bess/flow/main?execution=e1s3", uccSearch:"", uccFiling:"" },
+  KY: { business:"https://web.sos.ky.gov/bussearchnprofile/search.aspx", uccSearch:"https://web.sos.ky.gov/ftucc/", uccFiling:"https://web.sos.ky.gov/ftucc/" },
+  LA: { business:"https://coraweb.sos.la.gov/commercialsearch/commercialsearch.aspx", uccSearch:"https://www.sos.la.gov/BusinessServices/UniformCommercialCode/HowToSearchForFinancingStatements/Pages/default.aspx", uccFiling:"https://uccfilings.sos.la.gov/ucc_home.aspx" },
+  MA: { business:"https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx", uccSearch:"https://corp.sec.state.ma.us/corpweb/UCCSearch/UCCSearch.aspx", uccFiling:"https://corp.sec.state.ma.us/uccfiling/ucc/UccMenu.aspx?FilingMethod=I" },
+  MD: { business:"https://egov.maryland.gov/businessexpress/entitysearch", uccSearch:"https://egov.maryland.gov/SDAT/UCCFiling/UCCPartyNameSearchMainPage.aspx", uccFiling:"https://egov.maryland.gov/SDAT/UCCFiling/ContactInformation.aspx" },
+  ME: { business:"https://apps1.web.maine.gov/nei-sos-icrs/ICRS?MainPage=x", uccSearch:"https://www1.maine.gov/cgi-bin/online/ucc/index.pl", uccFiling:"https://www1.maine.gov/cgi-bin/online/ucc/index.pl" },
+  MI: { business:"https://cofs.lara.state.mi.us/SearchApi/Search/Search", uccSearch:"https://ucc.michigan.gov/ucc-search", uccFiling:"https://ucc.sos.state.mi.us/Account" },
+  MN: { business:"https://mblsportal.sos.state.mn.us/Business/Search", uccSearch:"", uccFiling:"" },
+  MO: { business:"https://bsd.sos.mo.gov/BusinessEntity/BESearch.aspx?SearchType=0", uccSearch:"https://bsd.sos.mo.gov/LoginWelcome.aspx?lobID=0", uccFiling:"https://bsd.sos.mo.gov/LoginWelcome.aspx?lobID=0" },
+  MS: { business:"https://corp.sos.ms.gov/corp/portal/c/page/corpbusinessidsearch/portal.aspx", uccSearch:"https://sos.ms.gov/business-services/ucc-search", uccFiling:"https://business.sos.ms.gov/star/portal/ucc/page/login/portal.aspx" },
+  MT: { business:"https://biz.sosmt.gov/search/business", uccSearch:"", uccFiling:"" },
+  NC: { business:"https://www.sosnc.gov/online_services/search/by_title/_Business_Registration", uccSearch:"https://www.sosnc.gov/divisions/uniform_commercial_code", uccFiling:"https://www.sosnc.gov/online_services/uniform_commercial_code" },
+  ND: { business:"https://firststop.sos.nd.gov/search/business", uccSearch:"https://cis.sos.nd.gov/UCCPublicSearch", uccFiling:"https://cis.sos.nd.gov/UCCPublicSearch" },
+  NE: { business:"https://www.nebraska.gov/sos/corp/corpsearch.cgi?nav=search", uccSearch:"https://www.nebraska.gov/sos/corp/corpsearch.cgi?nav=search", uccFiling:"https://sos.nebraska.gov/business-services/uccefs-search-and-filing-center" },
+  NH: { business:"https://sos.nh.gov/corporation-ucc-securities/corporation/business-name-lookup/", uccSearch:"https://quickstart.sos.nh.gov/online/UCC", uccFiling:"https://quickstart.sos.nh.gov/online/UCC" },
+  NJ: { business:"https://www.njportal.com/DOR/BusinessNameSearch/Search/BusinessName", uccSearch:"https://www.njportal.com/Ucc/Search/CertifiedSearch.aspx", uccFiling:"https://www.njportal.com/Ucc/Ucc1/Ucc1Debtors.aspx" },
+  NM: { business:"https://portal.sos.state.nm.us/BFS/online/corporationbusinesssearch", uccSearch:"https://portal.sos.state.nm.us/bfs/online/uccsearch", uccFiling:"https://portal.sos.state.nm.us/BFS/online/corporationbusinesssearch" },
+  NV: { business:"https://esos.nv.gov/EntitySearch/OnlineEntitySearch", uccSearch:"https://www.nvsilverflume.gov/login", uccFiling:"https://www.nvsilverflume.gov/login" },
+  NY: { business:"https://apps.dos.ny.gov/publicInquiry/", uccSearch:"https://appext20.dos.ny.gov/pls/ucc_public/web_search.main_frame", uccFiling:"https://appext20.dos.ny.gov/pls/efiling_public/ucc_app.eucc.eucc1_frm?pbutton=Reset" },
+  OH: { business:"https://businesssearch.ohiosos.gov/", uccSearch:"https://ucc.ohiosos.gov/search", uccFiling:"https://ucc.ohiosos.gov/" },
+  OK: { business:"https://www.sos.ok.gov/corp/corpinquiryfind.aspx", uccSearch:"https://www.okcc.online/", uccFiling:"https://www.sos.ok.gov/cfs/filing/EFS.aspx" },
+  OR: { business:"https://sos.oregon.gov/business/Pages/find.aspx", uccSearch:"https://secure.sos.state.or.us/ucc/searchHome.action", uccFiling:"https://secure.sos.state.or.us/ucc/efiling/new" },
+  PA: { business:"https://file.dos.pa.gov/search/business", uccSearch:"https://file.dos.pa.gov/search/ucc", uccFiling:"https://hub.business.pa.gov/login" },
+  RI: { business:"https://business.sos.ri.gov/CorpWeb/CorpSearch/CorpSearch.aspx", uccSearch:"https://business.sos.ri.gov/corpweb/uccsearch/uccsearch.aspx", uccFiling:"https://business.sos.ri.gov/uccfiling/ucc/uccmenu.aspx" },
+  SC: { business:"https://businessfilings.sc.gov/BusinessFiling/Entity/Search", uccSearch:"https://ucconline.sc.gov/UCCFiling/UCCMainPage.aspx", uccFiling:"https://ucconline.sc.gov/UCCFiling/UCCMainPage.aspx" },
+  SD: { business:"https://sosenterprise.sd.gov/BusinessServices/Business/FilingSearch.aspx", uccSearch:"https://sdsos.gov/business-services/uniform-commercial-code/uccdefault.aspx", uccFiling:"https://sdsos.gov/business-services/uniform-commercial-code/uccdefault.aspx" },
+  TN: { business:"https://tnbear.tn.gov/Ecommerce/FilingSearch.aspx", uccSearch:"https://tnbear.tn.gov/UCC/Ecommerce/UCCSearch.aspx", uccFiling:"https://tnbear.tn.gov/UCC/Ecommerce/UCCFiling.aspx" },
+  TX: { business:"https://direct.sos.state.tx.us/acct/acct-login.asp", uccSearch:"https://direct.sos.state.tx.us/acct/acct-login.asp", uccFiling:"https://direct.sos.state.tx.us/acct/acct-login.asp" },
+  UT: { business:"https://secure.utah.gov/bes/index.html", uccSearch:"https://ucc.utah.gov/", uccFiling:"https://ucc.utah.gov/" },
+  VA: { business:"https://cis.scc.virginia.gov/EntitySearch/Index", uccSearch:"https://www.scc.virginia.gov/pages/UCC", uccFiling:"https://cis.scc.virginia.gov/UCCOnlineShared/UCCFilingSelect?categoryID=UCC%20Filing" },
+  VT: { business:"https://bizfilings.vermont.gov/online/BusinessInquire", uccSearch:"https://bizfilings.vermont.gov/Online/UccInquire/", uccFiling:"https://bizfilings.vermont.gov/Online/Account?referrer=UCC" },
+  WA: { business:"https://ccfs.sos.wa.gov/", uccSearch:"https://fortress.wa.gov/dol/ucc/search.aspx", uccFiling:"https://fortress.wa.gov/dol/ucc/filer.aspx" },
+  WI: { business:"https://www.wdfi.org/apps/corpsearch/search.aspx", uccSearch:"https://dccs.wdfi.org/", uccFiling:"https://dccs.wdfi.org/" },
+  WV: { business:"https://apps.wv.gov/SOS/BusinessEntitySearch/", uccSearch:"https://apps.wv.gov/sos/ucc/", uccFiling:"https://apps.wv.gov/SOS/UCC/Filing/UCC1" },
+  WY: { business:"https://wyobiz.wyo.gov/Business/FilingSearch.aspx", uccSearch:"https://ucc.wyo.gov/Account/Login.aspx", uccFiling:"https://ucc.wyo.gov/Account/Login.aspx" }
+};
+var STATE_NAME_TO_CODE = { 'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA','colorado':'CO','connecticut':'CT','delaware':'DE','district of columbia':'DC','florida':'FL','georgia':'GA','hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA','kansas':'KS','kentucky':'KY','louisiana':'LA','maine':'ME','maryland':'MD','massachusetts':'MA','michigan':'MI','minnesota':'MN','mississippi':'MS','missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD','tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT','virginia':'VA','washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY' };
+var US_STATE_CODES = (function(){ var s={}; for (var n in STATE_NAME_TO_CODE) s[STATE_NAME_TO_CODE[n]] = true; return s; })();
+// Pull a 2-letter state code from a free-text address ("…City, ST ZIP" or a spelled-out state name).
+function stateFromAddress(addr) {
+  var s = String(addr == null ? '' : addr).trim();
+  if (!s) return '';
+  var m = s.match(/,\s*([A-Za-z]{2})\b\s*(?:\d{5}(?:-\d{4})?)?\s*$/);
+  if (m) { var c = m[1].toUpperCase(); if (US_STATE_CODES[c]) return c; }
+  var low = s.toLowerCase();
+  for (var name in STATE_NAME_TO_CODE) {
+    if (new RegExp('(^|[^a-z])' + name.replace(/ /g, '\\s+') + '([^a-z]|$)').test(low)) return STATE_NAME_TO_CODE[name];
+  }
+  return '';
+}
+function stateLinks(code) { code = String(code || '').toUpperCase(); return STATE_LINKS[code] || null; }
+// "{label} — {ST}" block: up to 3 links (omitting any the state lacks); friendly note otherwise.
+function renderStateFilings(code, labelOverride) {
+  var label = labelOverride || 'State Filings';
+  if (!code) return '<div class="sf-block"><span class="sf-label">' + label + '</span><span class="sf-none">Add a physical address to show state search links.</span></div>';
+  var L = stateLinks(code), parts = [];
+  if (L) {
+    if (L.business)  parts.push('<a class="sf-link" href="' + escHtml(L.business)  + '" target="_blank" rel="noopener">Business Search ↗</a>');
+    if (L.uccSearch) parts.push('<a class="sf-link" href="' + escHtml(L.uccSearch) + '" target="_blank" rel="noopener">UCC Search ↗</a>');
+    if (L.uccFiling) parts.push('<a class="sf-link" href="' + escHtml(L.uccFiling) + '" target="_blank" rel="noopener">UCC Filing ↗</a>');
+  }
+  return '<div class="sf-block"><span class="sf-label">' + label + ' — ' + escHtml(code) + '</span>' +
+    (parts.length ? parts.join('') : '<span class="sf-none">No filing links on file for this state.</span>') + '</div>';
 }
 
 function computeGate(s, ctx) {
@@ -412,6 +670,7 @@ function buildReviewPayload(s, appId) {
     Estimated_Buyout_Date: s.estimatedBuyoutDate || '',
     Checklist_Status1: s.checklistStatus || 'Not Started',
     UW_Notes: s.uwNotes || '',
+    Client_Message: s.clientMessage || '',
     Decision_Date: s.decisionDate || ''
   };
   if (appId != null) p[APPLICATION_LOOKUP] = appId;
@@ -436,8 +695,39 @@ function computeRecommendation(checks) {
   return { risk: risk, verdict: verdict, reasons: reasons };
 }
 
-var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP };
+// Map an underwriter's add-form fields → the real .ds child-record link-names (same as intake).
+// The backend sets the Application lookup; these payloads carry only the record's own fields.
+function buildOwnerRecord(f){ f=f||{}; return { First_Name1:f.first||'', Last_Name1:f.last||'', Title:f.title||'', Ownership_Percent:num(f.pct), Birthdate:f.dob||'', SSN:f.ssn||'', Phone:f.phone||'', Email:f.email||'', Address:f.address||'' }; }
+function buildCustomerRecord(f){ f=f||{}; return { Business_Name:f.name||'', Website:f.website||'', Expected_Monthly_Revenue:num(f.revenue) }; }
+function buildContactRecord(f){ f=f||{}; return { Name:f.name||'', Title:f.title||'', Phone:f.phone||'', Email:f.email||'' }; }
+function buildRelatedRecord(f){ f=f||{}; return { Business_Name:f.name||'', USDOT:num(f.usdot), MC_Number:num(f.mc), Factoring_Company:f.factor||'' }; }
+// UCC filings live on the model's checks (m.ucc) as {securedParty,type,filed,action}.
+function buildUccRecord(f){ f=f||{}; return { securedParty:f.securedParty||'', type:f.type||'', filed:f.filed||'', action:f.action||'' }; }
+function recordHasContent(kind, rec){
+  if (kind==='owner') return !!(rec.First_Name1 || rec.Last_Name1);
+  if (kind==='customer' || kind==='related') return !!rec.Business_Name;
+  if (kind==='contact') return !!rec.Name;
+  if (kind==='ucc') return !!rec.securedParty;
+  return true;
+}
+
+var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
+  STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
+  buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, recordHasContent: recordHasContent,
+  STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks };
 global.OFUW = OFUW;
+
+// ── Demo application queue (dashboard list when not embedded in Creator) ───────
+var DEMO_QUEUE = [
+  { USDOT:'4255019', Business_Name:'Coastal Freight Partners',   Authority_Type:'Broker',  Application_Status:'New',            Submitted_At:'Jun 11, 2026', Assigned_Underwriter:'—' },
+  { USDOT:'4102888', Business_Name:'Granite Peak Logistics',     Authority_Type:'Carrier', Application_Status:'New',            Submitted_At:'Jun 10, 2026', Assigned_Underwriter:'—' },
+  { USDOT:'4366362', Business_Name:'Brennan Eslinger Trucking LLC', Authority_Type:'Carrier', Application_Status:'Underwriting', Submitted_At:'Jun 8, 2026',  Assigned_Underwriter:'M. Reyes', Buyout_Required:true },
+  { USDOT:'3421250', Business_Name:'Princeton Logistics Group LLC', Authority_Type:'Broker',  Application_Status:'In Review',    Submitted_At:'Jun 5, 2026',  Assigned_Underwriter:'D. Okafor' },
+  { USDOT:'3771200', Business_Name:'Sandhill Freight Co',        Authority_Type:'Carrier', Application_Status:'Approved',       Submitted_At:'Jun 3, 2026',  Decision_Date:'Jun 6, 2026',  Assigned_Underwriter:'M. Reyes' },
+  { USDOT:'3998211', Business_Name:'Vega Hauling LLC',           Authority_Type:'Carrier', Application_Status:'Docs Requested', Submitted_At:'Jun 1, 2026',  Assigned_Underwriter:'M. Reyes', Buyout_Required:true },
+  { USDOT:'3884521', Business_Name:'Lone Star Hauling LLC',      Authority_Type:'Carrier', Application_Status:'Declined',       Submitted_At:'May 30, 2026', Decision_Date:'Jun 2, 2026',  Assigned_Underwriter:'D. Okafor' },
+  { USDOT:'3550199', Business_Name:'Cascade Carriers Inc',       Authority_Type:'Carrier', Application_Status:'Signed',         Submitted_At:'May 22, 2026', Decision_Date:'May 24, 2026', Assigned_Underwriter:'D. Okafor' }
+];
 
 // ── Demo data, keyed by USDOT (used when not embedded in Creator) ─────────────
 var DEMO_APPS = {
@@ -451,12 +741,19 @@ var DEMO_APPS = {
     owners: [
       { First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'CEO', Ownership_Percent:40, Owner_Sequence:1, Birthdate:'02/14/1985', SSN:'111-22-3333', Phone:'6025551122', Email:'brennan@eslingerlogistics.com', Address:'456 Cargo Way, Phoenix, AZ', sosRole:'Managing Member' },
       { First_Name1:'Dana', Last_Name1:'Whitfield', Title:'CFO', Ownership_Percent:30, Owner_Sequence:2, Birthdate:'07/09/1979', SSN:'222-33-4444', Phone:'6025553344', Email:'dana@eslingerlogistics.com', Address:'78 Mesa Rd, Phoenix, AZ', sosRole:'Member' },
-      { First_Name1:'Marcus', Last_Name1:'Reyes', Title:'COO', Ownership_Percent:30, Owner_Sequence:3, Birthdate:'11/30/1982', SSN:'333-44-5555', Phone:'6025555566', Email:'marcus@eslingerlogistics.com', Address:'920 Vail St, Tempe, AZ', sosRole:'Member' }
+      { First_Name1:'Marcus', Last_Name1:'Reyes', Title:'COO', Ownership_Percent:30, Owner_Sequence:3, Birthdate:'11/30/1982', SSN:'333-44-5555', Phone:'6025555566', Email:'marcus@eslingerlogistics.com', Address:'920 Vail St, Reno, NV', sosRole:'Member' }
     ],
     contacts: [
       { Name:'Patricia Lowe', Title:'Bookkeeper', Phone:'6025557788', Email:'patricia@eslingerlogistics.com' },
       { Name:'Sam Ortega', Title:'Dispatch Manager', Phone:'6025559900', Email:'sam@eslingerlogistics.com' },
       { Name:'Gail Stoddard', Title:'Controller', Phone:'6025550011', Email:'gail@eslingerlogistics.com' }
+    ],
+    customers: [
+      { Business_Name:'Desert Produce Distributors', Website:'desertproduce.com', Expected_Monthly_Revenue:14000 },
+      { Business_Name:'Phoenix Building Supply', Website:'phxbuildingsupply.com', Expected_Monthly_Revenue:9000 }
+    ],
+    related: [
+      { Business_Name:'Eslinger Equipment Leasing LLC', USDOT:'', MC_Number:'', Factoring_Company:'—' }
     ],
     entity: [
       { label:'Legal entity (FMCSA)', detail:'Brennan Eslinger Trucking LLC · Active', status:'clear' },
@@ -530,14 +827,37 @@ function withTimeout(p, ms) {
 // Reads the Application + owners (name/title/percent only) + documents + Underwriting_Review,
 // plus any PREVIOUSLY-run automated checks (read-only cache GET — opening never triggers a
 // run; the "Run automated review" button does). Returns a model or null.
+// Build a sparse demo model from a queue row (so any dashboard app opens in standalone demo,
+// even those without a full DEMO_APPS entry). Checks show as "pending".
+function demoModelFromQueue(usdot) {
+  var q = null; for (var i=0;i<DEMO_QUEUE.length;i++){ if (String(DEMO_QUEUE[i].USDOT)===String(usdot)) { q=DEMO_QUEUE[i]; break; } }
+  if (!q) return null;
+  return {
+    appId: 'UW-' + usdot, reviewId: null,
+    application: { Business_Name:q.Business_Name, Authority_Type:q.Authority_Type, Factoring_Authority_Selected:q.Authority_Type,
+      USDOT:q.USDOT, MC_Number:'', Assigned_Underwriter:q.Assigned_Underwriter, Application_Status:q.Application_Status, Credit_Issues:['None'] },
+    owners: [], contacts: [], customers: [], related: [], documents: [], entity: [], officers: [], fraud: [], ucc: [],
+    checksReady: false, risk: 'med', checkedAt: '', review: {}, _demo: true
+  };
+}
+
+// Load the application queue for the intro dashboard (list of all applications + their stage).
+function loadApplications() {
+  if (typeof fetch !== 'function') return Promise.resolve(DEMO_QUEUE.slice());
+  return fetch(API_BASE + QUEUE_PATH)
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) { return (j && j.applications) ? j.applications : DEMO_QUEUE.slice(); })
+    .catch(function () { return DEMO_QUEUE.slice(); });
+}
+
 function loadByUSDOT(usdot) {
   usdot = String(usdot || '').trim();
   if (!usdot) return Promise.resolve(null);
-  if (typeof fetch !== 'function') return Promise.resolve(DEMO_APPS[usdot] || null);
+  if (typeof fetch !== 'function') { var dm = DEMO_APPS[usdot]; if (dm) dm._demo = true; return Promise.resolve(dm || demoModelFromQueue(usdot)); }
   return fetch(API_BASE + '/application-by-usdot?usdot=' + encodeURIComponent(usdot))
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
-      if (!j || !j.application) return DEMO_APPS[usdot] || null;
+      if (!j || !j.application) { var d2 = DEMO_APPS[usdot]; if (d2) d2._demo = true; return d2 || null; }
       var a = j.application;
       return readChecks(a.USDOT).then(function (checks) {
         return {
@@ -546,6 +866,8 @@ function loadByUSDOT(usdot) {
           application: a,
           owners: (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, Owner_Sequence:o.Owner_Sequence, Birthdate:o.Birthdate, SSN:o.SSN, Phone:o.Phone, Email:o.Email, Address:o.Address, sosRole:'—' }; }),
           contacts: (j.contacts || []).map(function (c) { return { Name:c.Name, Title:c.Title, Phone:c.Phone, Email:c.Email }; }),
+          customers: (j.customers || []).map(function (c) { return { Business_Name:c.Business_Name, Website:c.Website, Expected_Monthly_Revenue:c.Expected_Monthly_Revenue }; }),
+          related: (j.related || []).map(function (r) { return { Business_Name:r.Business_Name, USDOT:r.USDOT, MC_Number:r.MC_Number, Factoring_Company:r.Factoring_Company }; }),
           documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; }),
           checksReady: !!checks,
           fraud: (checks && checks.fraud) || [],
@@ -558,7 +880,7 @@ function loadByUSDOT(usdot) {
         };
       });
     })
-    .catch(function () { return DEMO_APPS[usdot] || null; });
+    .catch(function () { var d3 = DEMO_APPS[usdot]; if (d3) d3._demo = true; return d3 || demoModelFromQueue(usdot); });
 }
 
 // READ previously-run checks from the backend cache (GET only — never triggers a run). Opening
@@ -614,7 +936,61 @@ if (typeof document !== 'undefined') {
   global.addEventListener('load', function(){ try { boot(); } catch(e){ console.error('init', e); } });
 }
 function $(id){ return document.getElementById(id); }
+function qsa(sel, root){ return Array.prototype.slice.call((root||document).querySelectorAll(sel)); }
 var MODEL = null;
+var QUEUE = [];        // all applications (for the dashboard)
+var openStage = null;  // currently-expanded stage key
+
+// ── Intro dashboard ───────────────────────────────────────────────────────────
+function appRowHtml(a){
+  var p = stagePill(a && a.Application_Status);
+  var sub = [a.Authority_Type, a.USDOT ? 'DOT ' + a.USDOT : '', a.Submitted_At ? 'submitted ' + a.Submitted_At : ''].filter(Boolean).join(' · ');
+  var uw = a.Assigned_Underwriter && a.Assigned_Underwriter !== '—' ? '<div style="margin-top:4px">UW: ' + escHtml(a.Assigned_Underwriter) + '</div>' : '';
+  return '<div class="app-row" data-usdot="' + escHtml(a.USDOT || '') + '">' +
+    '<div><div class="ar-name">' + escHtml(a.Business_Name || '(no name)') + '</div><div class="ar-sub">' + escHtml(sub) + '</div></div>' +
+    '<div class="ar-right"><span class="pill ' + p.cls + '">' + escHtml(p.label) + '</span>' + uw + '</div></div>';
+}
+function wireAppRows(){
+  qsa('#dashboard .app-row[data-usdot]').forEach(function(r){
+    r.addEventListener('click', function(){ var u=r.getAttribute('data-usdot'); if (u){ $('usdotInput').value=u; load(u); } });
+  });
+}
+function renderDashboard(apps){
+  QUEUE = visibleApps(apps || []);   // auto-hide decided apps older than 30 days
+  openStage = null;
+  $('modePill').textContent = LIVE ? 'Live' : 'Demo';
+  $('console').classList.remove('show');
+  $('backBar').style.display = 'none';
+  $('dashboard').style.display = 'block';
+  var counts = computeStageCounts(QUEUE);
+  var cards = STAGES.map(function(s){
+    return '<div class="stage-card ' + s.cls + '" data-stage="' + s.key + '">' +
+      '<div class="sc-count">' + (counts[s.key]||0) + '</div><div class="sc-label">' + escHtml(s.label) + '</div>' +
+      '<div class="sc-hint">click to view</div></div>';
+  }).join('');
+  var recent = recentApps(QUEUE, 8);
+  var recentRows = recent.length ? recent.map(appRowHtml).join('') : '<div class="app-row empty">No applications yet.</div>';
+  $('dashboard').innerHTML =
+    '<div class="dash-section-title">Applications by stage <span class="muted">· ' + QUEUE.length + ' active</span></div>' +
+    '<div class="dash-stages">' + cards + '</div>' +
+    '<div id="stageExpand"></div>' +
+    '<div class="dash-section-title">Most recent applications</div>' +
+    '<div class="dash-list">' + recentRows + '</div>';
+  qsa('#dashboard .stage-card').forEach(function(c){ c.addEventListener('click', function(){ toggleStage(c.getAttribute('data-stage')); }); });
+  wireAppRows();
+}
+function toggleStage(key){
+  if (openStage === key){ openStage=null; $('stageExpand').innerHTML=''; setActiveStage(null); return; }
+  openStage = key;
+  setActiveStage(key);
+  var stage = STAGES.filter(function(s){ return s.key===key; })[0] || { label:key };
+  var apps = appsInStage(QUEUE, key);
+  var rows = apps.length ? apps.map(appRowHtml).join('') : '<div class="app-row empty">No applications in ' + escHtml(stage.label) + '.</div>';
+  $('stageExpand').innerHTML = '<div class="dash-section-title">' + escHtml(stage.label) + ' <span class="muted">· ' + apps.length + '</span></div><div class="dash-list">' + rows + '</div>';
+  wireAppRows();
+}
+function setActiveStage(key){ qsa('#dashboard .stage-card').forEach(function(c){ c.classList.toggle('active', c.getAttribute('data-stage')===key); }); }
+function showDashboard(){ $('dashboard').style.display='block'; $('console').classList.remove('show'); $('backBar').style.display='none'; clearStatus(); }
 
 function readState() {
   return {
@@ -626,6 +1002,7 @@ function readState() {
     fraudNotes: $('uwFraudNotes').value,
     checklistStatus: $('uwChecklist').value,
     uwNotes: $('uwNotes').value,
+    clientMessage: $('uwClientMsg').value,
     decisionDate: $('uwDecisionDate').value,
     approvedCreditLimit: $('uwLimit').value,
     recommendedRate: $('uwRate').value,
@@ -768,12 +1145,17 @@ function renderModel(m) {
   }
   $('ownTable').innerHTML = ot;
 
-  // Owner Details — one section per declared owner with their full submitted information.
+  // Owner Details — state filing links (business state) + one section per declared owner.
   var owners = m.owners || [];
+  var stCode = stateFromAddress(a.Physical_Address || a.loc || a.Mailing_Address);
+  var sfHtml = renderStateFilings(stCode);
   if (owners.length) {
-    $('ownerDetails').innerHTML = owners.map(function (o, i) {
+    $('ownerDetails').innerHTML = sfHtml + owners.map(function (o, i) {
       var name = ((o.First_Name1 || '') + ' ' + (o.Last_Name1 || '')).trim() || '—';
       var pct = (o.Ownership_Percent != null && o.Ownership_Percent !== '') ? o.Ownership_Percent + '%' : '—';
+      // Owner's own state filings (shown whenever the owner has a parseable state).
+      var oSt = stateFromAddress(o.Address);
+      var oFilings = oSt ? renderStateFilings(oSt, 'Owner filings') : '';
       return '<div class="owner-card">' +
         '<div class="owner-head"><div><div class="oseq">Owner ' + (o.Owner_Sequence || i + 1) + '</div><div class="on">' + name + '</div></div><div class="op">' + pct + '</div></div>' +
         '<div class="kv">' +
@@ -784,11 +1166,11 @@ function renderModel(m) {
           kvRow('Phone', o.Phone) +
           kvRow('Email', o.Email) +
           kvRow('Address', o.Address) +
-        '</div></div>';
+        '</div>' + oFilings + '</div>';
     }).join('');
     $('ownerCount').textContent = owners.length + (owners.length === 1 ? ' owner' : ' owners');
   } else {
-    $('ownerDetails').innerHTML = '<div class="flag-empty">' + (m.checksReady === false ? 'No owners loaded for this application yet.' : 'No owners on record.') + '</div>';
+    $('ownerDetails').innerHTML = sfHtml + '<div class="flag-empty">' + (m.checksReady === false ? 'No owners loaded for this application yet.' : 'No owners on record.') + '</div>';
     $('ownerCount').textContent = '—';
   }
 
@@ -805,6 +1187,29 @@ function renderModel(m) {
   $('contactTable').innerHTML = ct;
   $('contactCount').textContent = contacts.length ? contacts.length + (contacts.length === 1 ? ' contact' : ' contacts') : 'none';
 
+  // Clientele (customers the carrier/broker hauls for)
+  var customers = m.customers || [];
+  var clt = '<tr><th>Business</th><th>Website</th><th>Est. Monthly Rev.</th></tr>';
+  if (customers.length) {
+    customers.forEach(function (c) {
+      var rev = (c.Expected_Monthly_Revenue != null && c.Expected_Monthly_Revenue !== '') ? '$' + escHtml(c.Expected_Monthly_Revenue) : '—';
+      clt += '<tr><td><b>' + escHtml(c.Business_Name || '—') + '</b></td><td>' + escHtml(c.Website || '—') + '</td><td>' + rev + '</td></tr>';
+    });
+  } else { clt += '<tr><td colspan="3" style="color:var(--of-gray-500)">No clientele on this application.</td></tr>'; }
+  $('clienteleList').innerHTML = clt;
+  $('clienteleCount').textContent = customers.length ? customers.length + (customers.length === 1 ? ' customer' : ' customers') : 'none';
+
+  // Related businesses (affiliated entities)
+  var related = m.related || [];
+  var rlt = '<tr><th>Business</th><th>USDOT</th><th>MC</th><th>Factoring Co.</th></tr>';
+  if (related.length) {
+    related.forEach(function (rb) {
+      rlt += '<tr><td><b>' + escHtml(rb.Business_Name || '—') + '</b></td><td>' + escHtml(rb.USDOT || '—') + '</td><td>' + escHtml(rb.MC_Number || '—') + '</td><td>' + escHtml(rb.Factoring_Company || '—') + '</td></tr>';
+    });
+  } else { rlt += '<tr><td colspan="4" style="color:var(--of-gray-500)">No related businesses on this application.</td></tr>'; }
+  $('relatedList').innerHTML = rlt;
+  $('relatedCount').textContent = related.length ? related.length + (related.length === 1 ? ' entity' : ' entities') : 'none';
+
   // Documents = the full required checklist (same rules as the client portal), with the
   // client's uploaded Document records matched in by type. Needed items stay visible.
   var docReq = requiredDocs(a);
@@ -817,6 +1222,9 @@ function renderModel(m) {
              : c.rejected ? '<span class="pill r">Rejected</span>'
              : '<span class="pill r">Needed</span>';
     dt += '<tr><td>'+c.label+'</td><td>'+pill+(c.uploaded?viewLink(c.link):'')+'</td></tr>';
+  });
+  (docRec.requested || []).forEach(function(rq){
+    dt += '<tr><td>'+rq.label+' <span style="color:var(--of-gray-500)">· requested</span></td><td><span class="pill a">Requested</span></td></tr>';
   });
   docRec.extras.forEach(function(e){
     dt += '<tr><td>'+e.label+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span>'+viewLink(e.link)+'</td></tr>';
@@ -841,6 +1249,7 @@ function renderModel(m) {
   $('uwFraudNotes').value = r.Fraud_Notes || '';
   $('uwChecklist').value = r.Checklist_Status1 || 'Not Started';
   $('uwNotes').value = r.UW_Notes || '';
+  $('uwClientMsg').value = r.Client_Message || '';
   $('uwDecisionDate').value = r.Decision_Date || '';
   $('uwLimit').value = r.Approved_Credit_Limit || '';
   $('uwRate').value = r.Recommended_Rate || '';
@@ -856,6 +1265,8 @@ function load(usdot) {
   if (!usdot) { showStatus('Enter a USDOT number to open an application.', 'error'); return; }
   showStatus('Opening application for USDOT ' + usdot + '…', 'loading');
   $('usdotBtn').disabled = true;
+  $('dashboard').style.display = 'none';   // leave the dashboard for the single-application console
+  $('backBar').style.display = 'block';
   loadByUSDOT(usdot).then(function(m){
     $('usdotBtn').disabled = false;
     if (!m) { $('console').classList.remove('show'); showStatus('No application found for USDOT ' + usdot + (LIVE ? '.' : ' (demo — try 4366362 or 3421250).'), 'error'); return; }
@@ -894,9 +1305,74 @@ function runReview() {
   });
 }
 
+// ── Underwriter add-record (owners / clientele / contacts / related businesses) ──
+function clearAddForm(formId){ var f=$(formId); if(!f) return; qsa('input,textarea', f).forEach(function(i){ i.value=''; }); f.style.display='none'; }
+function addRecord(kind, record, formId){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  if (!recordHasContent(kind, record)){ var need = (kind==='owner'||kind==='contact') ? 'name' : (kind==='ucc' ? 'secured party' : 'business name'); showStatus('Enter at least a ' + need + ' to add this ' + (kind==='ucc'?'UCC filing':kind) + '.', 'error'); return; }
+  var bucket = { owner:'owners', customer:'customers', contact:'contacts', related:'related', ucc:'ucc' }[kind];
+  if (MODEL._demo || typeof fetch !== 'function'){
+    MODEL[bucket] = MODEL[bucket] || [];
+    if (kind === 'owner') record.Owner_Sequence = MODEL.owners.length + 1;
+    MODEL[bucket].push(record);
+    clearAddForm(formId); renderModel(MODEL);
+    showStatus('✓ Added (demo) — in Creator this writes a linked ' + kind + ' record to the application.', 'success');
+    return;
+  }
+  showStatus('Adding ' + kind + '…', 'loading');
+  fetch(API_BASE + ADD_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, kind: kind, record: record }) })
+    .then(function (r){ return r.json().catch(function(){ return {}; }); })
+    .then(function (j){
+      if (j && j.ok){ clearAddForm(formId); showStatus('✓ ' + kind + ' added.', 'success'); load(MODEL.application.USDOT); }
+      else throw new Error((j && j.detail) || (j && j.error) || ('add failed (' + kind + ')'));
+    })
+    .catch(function (e){ showStatus('Could not add ' + kind + ': ' + (e && e.message ? e.message : e), 'error'); });
+}
+function readOwnerForm(){ return buildOwnerRecord({ first:$('aoFirst').value, last:$('aoLast').value, title:$('aoTitle').value, pct:$('aoPct').value, dob:$('aoDob').value, ssn:$('aoSsn').value, phone:$('aoPhone').value, email:$('aoEmail').value, address:$('aoAddr').value }); }
+function readContactForm(){ return buildContactRecord({ name:$('acName').value, title:$('acTitle').value, phone:$('acPhone').value, email:$('acEmail').value }); }
+function readClienteleForm(){ return buildCustomerRecord({ name:$('aclName').value, website:$('aclWebsite').value, revenue:$('aclRevenue').value }); }
+function readRelatedForm(){ return buildRelatedRecord({ name:$('arName').value, usdot:$('arUsdot').value, mc:$('arMc').value, factor:$('arFactor').value }); }
+function readUccForm(){ return buildUccRecord({ securedParty:$('aucSecured').value, type:$('aucType').value, filed:$('aucFiled').value, action:$('aucAction').value }); }
+// Request a document FROM the client. Creates a Document (Status='Requested') that surfaces on the
+// client's upload portal as a new item to upload. Reuses the /sales-doc-request contract.
+function readDocReq(){ var sel = $('rdType').value, other = ($('rdOther').value || '').trim(); return (sel && sel !== '__other') ? sel : other; }
+function requestDoc(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var dtype = readDocReq();
+  if (!dtype){ showStatus('Choose or enter a document type to request.', 'error'); return; }
+  if (MODEL._demo || typeof fetch !== 'function'){
+    MODEL.documents = MODEL.documents || [];
+    MODEL.documents.push([dtype, 'Underwriting', 'Requested', '']);
+    clearAddForm('addDocReqForm'); $('rdType').value = '';
+    renderModel(MODEL);
+    showStatus('✓ Requested "' + dtype + '" (demo) — the client will see it on their upload portal.', 'success');
+    return;
+  }
+  showStatus('Requesting "' + dtype + '"…', 'loading');
+  fetch(API_BASE + DOCREQ_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, document_type: dtype, source: 'Underwriting' }) })
+    .then(function (r){ return r.json().catch(function(){ return {}; }); })
+    .then(function (j){
+      if (j && j.ok){ clearAddForm('addDocReqForm'); $('rdType').value = ''; showStatus('✓ Requested "' + dtype + '" — added to the client portal.', 'success'); load(MODEL.application.USDOT); }
+      else throw new Error((j && j.detail) || (j && j.error) || 'request failed');
+    })
+    .catch(function (e){ showStatus('Could not request document: ' + (e && e.message ? e.message : e), 'error'); });
+}
+function wireAdd(toggleId, formId, saveId, kind, readFn){
+  var t=$(toggleId), s=$(saveId);
+  if (t) t.addEventListener('click', function(){ var f=$(formId); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
+  if (s) s.addEventListener('click', function(){ addRecord(kind, readFn(), formId); });
+}
+
 function boot() {
   // Wire controls once.
   $('usdotBtn').addEventListener('click', function(){ load($('usdotInput').value); });
+  wireAdd('addOwnerToggle','addOwnerForm','aoSave','owner',readOwnerForm);
+  wireAdd('addContactToggle','addContactForm','acSave','contact',readContactForm);
+  wireAdd('addClienteleToggle','addClienteleForm','aclSave','customer',readClienteleForm);
+  wireAdd('addRelatedToggle','addRelatedForm','arSave','related',readRelatedForm);
+  wireAdd('addUccToggle','addUccForm','aucSave','ucc',readUccForm);
+  if ($('addDocReqToggle')) $('addDocReqToggle').addEventListener('click', function(){ var f=$('addDocReqForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
+  if ($('rdSave')) $('rdSave').addEventListener('click', requestDoc);
   $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
   ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
@@ -904,12 +1380,17 @@ function boot() {
   $('btnApprove').addEventListener('click', function(){ submit('Approved'); });
   $('btnDecline').addEventListener('click', function(){ submit('Denied'); });
   $('btnSave').addEventListener('click', function(){ submit(null); });
+  $('btnBack').addEventListener('click', showDashboard);
 
-  // Open from ?usdot= if present; otherwise (demo) preload a sample so the console isn't empty.
+  // Open directly from ?usdot= if present; otherwise show the intro dashboard (all applications
+  // by stage + recent list). Clicking any application opens it in the review console.
   var param = getQueryParam('usdot');
   if (param) { $('usdotInput').value = param; load(param); }
-  else if (!LIVE) { $('usdotInput').value = '4366362'; load('4366362'); }
-  else { showStatus('Enter a USDOT number above to open an application.', 'loading'); }
+  else {
+    showStatus('Loading applications…', 'loading');
+    loadApplications().then(function(apps){ clearStatus(); renderDashboard(apps); })
+      .catch(function(e){ showStatus('Could not load applications: ' + (e && e.message ? e.message : e), 'error'); });
+  }
 }
 
 function getQueryParam(name){ try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; } }

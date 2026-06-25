@@ -121,6 +121,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .pill.b { background: var(--of-blue-soft); color: var(--of-blue-text); }
 .pill.n { background: var(--of-gray-100); color: var(--of-gray-700); }
 
+/* state filing links block */
+.sf-block { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px; margin-bottom:12px; background:var(--of-beige-soft); border:1px solid var(--of-beige-line); border-radius:10px; }
+.sf-label { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--of-gray-500); margin-right:2px; }
+.sf-link { font-size:12px; font-weight:700; color:var(--of-blue-text); text-decoration:none; background:#fff; border:1px solid var(--of-beige-line); border-radius:7px; padding:5px 10px; }
+.sf-link:hover { border-color:var(--of-orange); }
+.sf-none { font-size:11.5px; color:var(--of-gray-500); }
+
 /* owners list (names only) */
 .owner-names { display: flex; flex-direction: column; }
 .owner-name { font-size: 13.5px; font-weight: 600; color: var(--of-charcoal); padding: 8px 0; border-bottom: 1px dashed var(--of-beige-line); }
@@ -336,11 +343,94 @@ function buildDocRequestPayload(appId, docType) {
   return p;
 }
 
+// ── State filing links (SoS business search + UCC search/filing) ──────────────
+// Generated from "UCC Filing - ST Logins.xlsx" via tools/extract-state-links.mjs. LINKS ONLY —
+// the spreadsheet's site login credentials are intentionally excluded.
+var STATE_LINKS = {
+  AK: { business:"https://www.commerce.alaska.gov/cbp/main/search/entities", uccSearch:"http://dnr.alaska.gov/ssd/recoff/ucc/search", uccFiling:"https://dnr.alaska.gov/ucc/online/" },
+  AL: { business:"https://arc-sos.state.al.us/CGI/CORPNAME.MBR/INPUT", uccSearch:"https://www.sos.alabama.gov/government-records/ucc-records", uccFiling:"" },
+  AR: { business:"https://www.sos.arkansas.gov/corps/search_all.php", uccSearch:"", uccFiling:"" },
+  AZ: { business:"https://ecorp.azcc.gov/EntitySearch/Index", uccSearch:"https://apps.azsos.gov/apps/ucc/search/", uccFiling:"https://apps.azsos.gov/apps/ucc/" },
+  CA: { business:"https://bizfileonline.sos.ca.gov/search/business", uccSearch:"https://bizfileonline.sos.ca.gov/search/ucc", uccFiling:"https://bizfileonline.sos.ca.gov/forms/ucc" },
+  CO: { business:"https://www.coloradosos.gov/biz/BusinessEntityCriteriaExt.do", uccSearch:"https://www.sos.state.co.us/ucc/pages/home.xhtml", uccFiling:"https://www.sos.state.co.us/ucc/pages/home.xhtml" },
+  CT: { business:"https://service.ct.gov/business/s/onlinebusinesssearch?language=en_US", uccSearch:"https://service.ct.gov/business/s/onlineenquiry?language=en_US", uccFiling:"" },
+  DE: { business:"https://icis.corp.delaware.gov/ecorp/entitysearch/namesearch.aspx", uccSearch:"", uccFiling:"https://icis.corp.delaware.gov/Ecorp/Login.aspx?FilingType=UCC" },
+  FL: { business:"https://search.sunbiz.org/Inquiry/CorporationSearch/ByName", uccSearch:"https://www.floridaucc.com/uccweb/search.aspx", uccFiling:"https://www.floridaucc.com/onlinefiling/Account/Login" },
+  GA: { business:"https://ecorp.sos.ga.gov/BusinessSearch", uccSearch:"https://search.gsccca.org/UCC_Search/search.asp?searchtype=Article9", uccFiling:"https://efile.gsccca.org/LoginPage.aspx" },
+  HI: { business:"https://hbe.ehawaii.gov/documents/search.html?mobile=N&site_preference=normal", uccSearch:"", uccFiling:"" },
+  IA: { business:"https://sos.iowa.gov/search/business/search.aspx", uccSearch:"https://sos.iowa.gov/search/UCCsearch.html?ucc", uccFiling:"https://sos.iowa.gov/file/ucc/" },
+  ID: { business:"https://sosbiz.idaho.gov/search/business", uccSearch:"https://sosbiz.idaho.gov/search/ucc", uccFiling:"https://sosbiz.idaho.gov/forms/ucc" },
+  IL: { business:"https://apps.ilsos.gov/corporatellc/", uccSearch:"https://apps.ilsos.gov/uccsearch/", uccFiling:"https://www.ilsos.gov/departments/business_services/uniform_commercial_code/ucc_instructions.html" },
+  IN: { business:"https://bsd.sos.in.gov/publicbusinesssearch", uccSearch:"https://bsd.sos.in.gov/PublicUCCSearch", uccFiling:"https://inbiz.in.gov/" },
+  KS: { business:"https://www.kansas.gov/bess/flow/main?execution=e1s3", uccSearch:"", uccFiling:"" },
+  KY: { business:"https://web.sos.ky.gov/bussearchnprofile/search.aspx", uccSearch:"https://web.sos.ky.gov/ftucc/", uccFiling:"https://web.sos.ky.gov/ftucc/" },
+  LA: { business:"https://coraweb.sos.la.gov/commercialsearch/commercialsearch.aspx", uccSearch:"https://www.sos.la.gov/BusinessServices/UniformCommercialCode/HowToSearchForFinancingStatements/Pages/default.aspx", uccFiling:"https://uccfilings.sos.la.gov/ucc_home.aspx" },
+  MA: { business:"https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx", uccSearch:"https://corp.sec.state.ma.us/corpweb/UCCSearch/UCCSearch.aspx", uccFiling:"https://corp.sec.state.ma.us/uccfiling/ucc/UccMenu.aspx?FilingMethod=I" },
+  MD: { business:"https://egov.maryland.gov/businessexpress/entitysearch", uccSearch:"https://egov.maryland.gov/SDAT/UCCFiling/UCCPartyNameSearchMainPage.aspx", uccFiling:"https://egov.maryland.gov/SDAT/UCCFiling/ContactInformation.aspx" },
+  ME: { business:"https://apps1.web.maine.gov/nei-sos-icrs/ICRS?MainPage=x", uccSearch:"https://www1.maine.gov/cgi-bin/online/ucc/index.pl", uccFiling:"https://www1.maine.gov/cgi-bin/online/ucc/index.pl" },
+  MI: { business:"https://cofs.lara.state.mi.us/SearchApi/Search/Search", uccSearch:"https://ucc.michigan.gov/ucc-search", uccFiling:"https://ucc.sos.state.mi.us/Account" },
+  MN: { business:"https://mblsportal.sos.state.mn.us/Business/Search", uccSearch:"", uccFiling:"" },
+  MO: { business:"https://bsd.sos.mo.gov/BusinessEntity/BESearch.aspx?SearchType=0", uccSearch:"https://bsd.sos.mo.gov/LoginWelcome.aspx?lobID=0", uccFiling:"https://bsd.sos.mo.gov/LoginWelcome.aspx?lobID=0" },
+  MS: { business:"https://corp.sos.ms.gov/corp/portal/c/page/corpbusinessidsearch/portal.aspx", uccSearch:"https://sos.ms.gov/business-services/ucc-search", uccFiling:"https://business.sos.ms.gov/star/portal/ucc/page/login/portal.aspx" },
+  MT: { business:"https://biz.sosmt.gov/search/business", uccSearch:"", uccFiling:"" },
+  NC: { business:"https://www.sosnc.gov/online_services/search/by_title/_Business_Registration", uccSearch:"https://www.sosnc.gov/divisions/uniform_commercial_code", uccFiling:"https://www.sosnc.gov/online_services/uniform_commercial_code" },
+  ND: { business:"https://firststop.sos.nd.gov/search/business", uccSearch:"https://cis.sos.nd.gov/UCCPublicSearch", uccFiling:"https://cis.sos.nd.gov/UCCPublicSearch" },
+  NE: { business:"https://www.nebraska.gov/sos/corp/corpsearch.cgi?nav=search", uccSearch:"https://www.nebraska.gov/sos/corp/corpsearch.cgi?nav=search", uccFiling:"https://sos.nebraska.gov/business-services/uccefs-search-and-filing-center" },
+  NH: { business:"https://sos.nh.gov/corporation-ucc-securities/corporation/business-name-lookup/", uccSearch:"https://quickstart.sos.nh.gov/online/UCC", uccFiling:"https://quickstart.sos.nh.gov/online/UCC" },
+  NJ: { business:"https://www.njportal.com/DOR/BusinessNameSearch/Search/BusinessName", uccSearch:"https://www.njportal.com/Ucc/Search/CertifiedSearch.aspx", uccFiling:"https://www.njportal.com/Ucc/Ucc1/Ucc1Debtors.aspx" },
+  NM: { business:"https://portal.sos.state.nm.us/BFS/online/corporationbusinesssearch", uccSearch:"https://portal.sos.state.nm.us/bfs/online/uccsearch", uccFiling:"https://portal.sos.state.nm.us/BFS/online/corporationbusinesssearch" },
+  NV: { business:"https://esos.nv.gov/EntitySearch/OnlineEntitySearch", uccSearch:"https://www.nvsilverflume.gov/login", uccFiling:"https://www.nvsilverflume.gov/login" },
+  NY: { business:"https://apps.dos.ny.gov/publicInquiry/", uccSearch:"https://appext20.dos.ny.gov/pls/ucc_public/web_search.main_frame", uccFiling:"https://appext20.dos.ny.gov/pls/efiling_public/ucc_app.eucc.eucc1_frm?pbutton=Reset" },
+  OH: { business:"https://businesssearch.ohiosos.gov/", uccSearch:"https://ucc.ohiosos.gov/search", uccFiling:"https://ucc.ohiosos.gov/" },
+  OK: { business:"https://www.sos.ok.gov/corp/corpinquiryfind.aspx", uccSearch:"https://www.okcc.online/", uccFiling:"https://www.sos.ok.gov/cfs/filing/EFS.aspx" },
+  OR: { business:"https://sos.oregon.gov/business/Pages/find.aspx", uccSearch:"https://secure.sos.state.or.us/ucc/searchHome.action", uccFiling:"https://secure.sos.state.or.us/ucc/efiling/new" },
+  PA: { business:"https://file.dos.pa.gov/search/business", uccSearch:"https://file.dos.pa.gov/search/ucc", uccFiling:"https://hub.business.pa.gov/login" },
+  RI: { business:"https://business.sos.ri.gov/CorpWeb/CorpSearch/CorpSearch.aspx", uccSearch:"https://business.sos.ri.gov/corpweb/uccsearch/uccsearch.aspx", uccFiling:"https://business.sos.ri.gov/uccfiling/ucc/uccmenu.aspx" },
+  SC: { business:"https://businessfilings.sc.gov/BusinessFiling/Entity/Search", uccSearch:"https://ucconline.sc.gov/UCCFiling/UCCMainPage.aspx", uccFiling:"https://ucconline.sc.gov/UCCFiling/UCCMainPage.aspx" },
+  SD: { business:"https://sosenterprise.sd.gov/BusinessServices/Business/FilingSearch.aspx", uccSearch:"https://sdsos.gov/business-services/uniform-commercial-code/uccdefault.aspx", uccFiling:"https://sdsos.gov/business-services/uniform-commercial-code/uccdefault.aspx" },
+  TN: { business:"https://tnbear.tn.gov/Ecommerce/FilingSearch.aspx", uccSearch:"https://tnbear.tn.gov/UCC/Ecommerce/UCCSearch.aspx", uccFiling:"https://tnbear.tn.gov/UCC/Ecommerce/UCCFiling.aspx" },
+  TX: { business:"https://direct.sos.state.tx.us/acct/acct-login.asp", uccSearch:"https://direct.sos.state.tx.us/acct/acct-login.asp", uccFiling:"https://direct.sos.state.tx.us/acct/acct-login.asp" },
+  UT: { business:"https://secure.utah.gov/bes/index.html", uccSearch:"https://ucc.utah.gov/", uccFiling:"https://ucc.utah.gov/" },
+  VA: { business:"https://cis.scc.virginia.gov/EntitySearch/Index", uccSearch:"https://www.scc.virginia.gov/pages/UCC", uccFiling:"https://cis.scc.virginia.gov/UCCOnlineShared/UCCFilingSelect?categoryID=UCC%20Filing" },
+  VT: { business:"https://bizfilings.vermont.gov/online/BusinessInquire", uccSearch:"https://bizfilings.vermont.gov/Online/UccInquire/", uccFiling:"https://bizfilings.vermont.gov/Online/Account?referrer=UCC" },
+  WA: { business:"https://ccfs.sos.wa.gov/", uccSearch:"https://fortress.wa.gov/dol/ucc/search.aspx", uccFiling:"https://fortress.wa.gov/dol/ucc/filer.aspx" },
+  WI: { business:"https://www.wdfi.org/apps/corpsearch/search.aspx", uccSearch:"https://dccs.wdfi.org/", uccFiling:"https://dccs.wdfi.org/" },
+  WV: { business:"https://apps.wv.gov/SOS/BusinessEntitySearch/", uccSearch:"https://apps.wv.gov/sos/ucc/", uccFiling:"https://apps.wv.gov/SOS/UCC/Filing/UCC1" },
+  WY: { business:"https://wyobiz.wyo.gov/Business/FilingSearch.aspx", uccSearch:"https://ucc.wyo.gov/Account/Login.aspx", uccFiling:"https://ucc.wyo.gov/Account/Login.aspx" }
+};
+var STATE_NAME_TO_CODE = { 'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA','colorado':'CO','connecticut':'CT','delaware':'DE','district of columbia':'DC','florida':'FL','georgia':'GA','hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA','kansas':'KS','kentucky':'KY','louisiana':'LA','maine':'ME','maryland':'MD','massachusetts':'MA','michigan':'MI','minnesota':'MN','mississippi':'MS','missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD','tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT','virginia':'VA','washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY' };
+var US_STATE_CODES = (function(){ var s={}; for (var n in STATE_NAME_TO_CODE) s[STATE_NAME_TO_CODE[n]] = true; return s; })();
+function stateFromAddress(addr) {
+  var s = String(addr == null ? '' : addr).trim();
+  if (!s) return '';
+  var m = s.match(/,\s*([A-Za-z]{2})\b\s*(?:\d{5}(?:-\d{4})?)?\s*$/);
+  if (m) { var c = m[1].toUpperCase(); if (US_STATE_CODES[c]) return c; }
+  var low = s.toLowerCase();
+  for (var name in STATE_NAME_TO_CODE) {
+    if (new RegExp('(^|[^a-z])' + name.replace(/ /g, '\\s+') + '([^a-z]|$)').test(low)) return STATE_NAME_TO_CODE[name];
+  }
+  return '';
+}
+function stateLinks(code) { code = String(code || '').toUpperCase(); return STATE_LINKS[code] || null; }
+function renderStateFilings(code, labelOverride) {
+  var label = labelOverride || 'State Filings';
+  if (!code) return '<div class="sf-block"><span class="sf-label">' + label + '</span><span class="sf-none">No business address on file.</span></div>';
+  var L = stateLinks(code), parts = [];
+  if (L) {
+    if (L.business)  parts.push('<a class="sf-link" href="' + esc(L.business)  + '" target="_blank" rel="noopener">Business Search ↗</a>');
+    if (L.uccSearch) parts.push('<a class="sf-link" href="' + esc(L.uccSearch) + '" target="_blank" rel="noopener">UCC Search ↗</a>');
+    if (L.uccFiling) parts.push('<a class="sf-link" href="' + esc(L.uccFiling) + '" target="_blank" rel="noopener">UCC Filing ↗</a>');
+  }
+  return '<div class="sf-block"><span class="sf-label">' + label + ' — ' + esc(code) + '</span>' +
+    (parts.length ? parts.join('') : '<span class="sf-none">No filing links on file for this state.</span>') + '</div>';
+}
+
 var OFS = {
   deriveStage: deriveStage, statusPill: statusPill, computeKPIs: computeKPIs,
   pendingDocs: pendingDocs, isPendingDoc: isPendingDoc, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, estTerms: estTerms,
   filterMyPipeline: filterMyPipeline, buildNotePayload: buildNotePayload,
   buildDocRequestPayload: buildDocRequestPayload,
+  STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
   SALES_ATTR: SALES_ATTR, SALES_NOTES_FIELD: SALES_NOTES_FIELD, APPLICATION_LOOKUP: APPLICATION_LOOKUP, STEPS: STEPS
 };
 global.OFS = OFS;
@@ -354,7 +444,7 @@ var DEMO_PIPELINE = [
     owners: [
       { First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'CEO', Ownership_Percent:40, Owner_Sequence:1, Birthdate:'02/14/1985', SSN:'111-22-3333', Phone:'6025551122', Email:'brennan@eslingerlogistics.com', Address:'456 Cargo Way, Phoenix, AZ' },
       { First_Name1:'Dana', Last_Name1:'Whitfield', Title:'CFO', Ownership_Percent:30, Owner_Sequence:2, Birthdate:'07/09/1979', SSN:'222-33-4444', Phone:'6025553344', Email:'dana@eslingerlogistics.com', Address:'78 Mesa Rd, Phoenix, AZ' },
-      { First_Name1:'Marcus', Last_Name1:'Reyes', Title:'COO', Ownership_Percent:30, Owner_Sequence:3, Birthdate:'11/30/1982', SSN:'333-44-5555', Phone:'6025555566', Email:'marcus@eslingerlogistics.com', Address:'920 Vail St, Tempe, AZ' }
+      { First_Name1:'Marcus', Last_Name1:'Reyes', Title:'COO', Ownership_Percent:30, Owner_Sequence:3, Birthdate:'11/30/1982', SSN:'333-44-5555', Phone:'6025555566', Email:'marcus@eslingerlogistics.com', Address:'920 Vail St, Reno, NV' }
     ],
     Sales_Notes: '', UW_Notes: 'Need the Operating Agreement to verify ownership. Everything else looks on track.', UW_When: 'Jun 9, 2:16 PM',
     documents: [['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
@@ -432,7 +522,7 @@ function loadPipeline() {
 // Load the supporting records for one application (documents + UW note).
 function loadDetail(app) {
   if (STATE.mode === 'demo' || typeof fetch !== 'function') {
-    return Promise.resolve({ documents: app.documents || [], owners: app.owners || [], uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', salesNotes: app.Sales_Notes || '' });
+    return Promise.resolve({ documents: app.documents || [], owners: app.owners || [], physicalAddress: app.loc || app.Physical_Address || '', uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', salesNotes: app.Sales_Notes || '' });
   }
   // Reuse /application-by-usdot (returns documents + owners + the latest Underwriting_Review).
   var usdot = String(app.USDOT || '');
@@ -440,12 +530,12 @@ function loadDetail(app) {
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       j = j || {};
-      var rev = j.review || {};
+      var rev = j.review || {}, ap = j.application || {};
       var docs = (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; });
       var owners = (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, Owner_Sequence:o.Owner_Sequence, Birthdate:o.Birthdate, SSN:o.SSN, Phone:o.Phone, Email:o.Email, Address:o.Address }; });
-      return { documents: docs, owners: owners, uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', salesNotes: app[SALES_NOTES_FIELD] || '' };
+      return { documents: docs, owners: owners, physicalAddress: ap.Physical_Address || ap.loc || app.loc || '', uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', salesNotes: app[SALES_NOTES_FIELD] || '' };
     })
-    .catch(function () { return { documents: [], owners: [], uwNotes: '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' }; });
+    .catch(function () { return { documents: [], owners: [], physicalAddress: app.loc || '', uwNotes: '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' }; });
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
@@ -536,16 +626,20 @@ function renderDetail(app, d) {
   }).join('');
   var notesBody = (uwNote + salesNotesHtml) || '<div class="muted" style="font-size:12.5px">No notes yet.</div>';
 
-  // Owners — a simple list of the declared owners' names.
+  // Owners — names, plus each owner's own state filings when it differs from the business state.
   var owners = d.owners || [];
+  var bizState = stateFromAddress(d.physicalAddress || app.loc);
   var ownersInner = owners.length
     ? '<div class="owner-names">' + owners.map(function (o) {
         var name = ((o.First_Name1 || '') + ' ' + (o.Last_Name1 || '')).trim() || '—';
-        return '<div class="owner-name">' + esc(name) + '</div>';
+        var oSt = stateFromAddress(o.Address);
+        var extra = oSt ? renderStateFilings(oSt, 'Owner filings') : '';
+        return '<div class="owner-name">' + esc(name) + '</div>' + extra;
       }).join('') + '</div>'
     : '<div class="muted" style="font-size:12.5px">No owners on record for this application.</div>';
+  var sfHtml = renderStateFilings(bizState);
   var ownerCard = '<div class="card"><div class="card-title">Owners <span class="count">' +
-    (owners.length ? owners.length + (owners.length === 1 ? ' owner' : ' owners') : '—') + '</span></div>' + ownersInner + '</div>';
+    (owners.length ? owners.length + (owners.length === 1 ? ' owner' : ' owners') : '—') + '</span></div>' + sfHtml + ownersInner + '</div>';
 
   el('detail').innerHTML =
     '<div class="hero"><div class="hero-left"><div class="hero-eyebrow">Application #' + esc(app.ID) + ' · ' + esc(app.Authority_Type || '') + '</div>' +

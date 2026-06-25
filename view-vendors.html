@@ -287,6 +287,7 @@ var currentSearch = '';
 var openIndex = -1;
 var vvDocCache = {};   // vendorId -> documents array
 var vvRiskCache = {}; // vendorId -> carrier-profile response
+var vvPanelCtx = null; // { vendorId, isDnu } for the currently-open panel
 var currentLoadId = 0;
 
 // ── Status / payment classification ───────────────────────────────────────
@@ -748,7 +749,7 @@ function renderPanel() {
   }
 
   loadVendorDocs(r.ID, document.getElementById('vv-docs'));
-  loadVendorRedFlags(r, document.getElementById('vv-redflags'));
+  loadVendorRedFlags(r);
 
   var prev = document.getElementById('p-prev');
   var next = document.getElementById('p-next');
@@ -774,7 +775,7 @@ function renderPanel() {
 
 function loadVendorDocs(vendorId, container) {
   if (!container) return;
-  if (vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); return; }
+  if (vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); refreshRedFlags(); return; }
   container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#999;">Loading documents…</div>';
   fetch(BROKER_API_BASE + '/carrier-docs?email=' + encodeURIComponent(brokerEmail) +
         '&vendor_id=' + encodeURIComponent(vendorId))
@@ -785,6 +786,7 @@ function loadVendorDocs(vendorId, container) {
       });
       vvDocCache[vendorId] = docs;
       renderVendorDocs(docs, container);
+      refreshRedFlags();
     })
     .catch(function () {
       container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#a3322b;">Couldn\'t load documents.</div>';
@@ -866,13 +868,28 @@ function renderRedFlags(flags, container) {
   });
 }
 
-function loadVendorRedFlags(rec, container) {
-  if (!container) return;
+// Refresh the red-flag strip from whatever is cached right now.
+// Called after profile or docs arrive to eliminate fabricated reds.
+function refreshRedFlags() {
+  if (!vvPanelCtx) return;
+  var c = document.getElementById('vv-redflags');
+  if (!c) return;
+  var profile = vvRiskCache[vvPanelCtx.vendorId] || null;
+  if (!profile) {
+    // Before the profile loads, only DNU is actually known — don't fabricate the rest.
+    renderRedFlags([{ key: 'dnu', label: 'DNU', level: vvPanelCtx.isDnu ? 'red' : 'ok' }], c);
+    return;
+  }
+  renderRedFlags(deriveRedFlags(profile, vvDocCache[vvPanelCtx.vendorId], vvPanelCtx.isDnu), c);
+}
+
+function loadVendorRedFlags(rec) {
   var isDnu = statusMeta(rec).key === 'dnu';
-  // Render DNU chip instantly from row data; rest fill in after profile fetch.
-  renderRedFlags(deriveRedFlags(null, vvDocCache[rec.ID], isDnu), container);
+  vvPanelCtx = { vendorId: rec.ID, isDnu: isDnu };
+  // Paint DNU-only instantly; docs/profile fill in via refreshRedFlags.
+  refreshRedFlags();
   if (vvRiskCache[rec.ID]) {
-    renderRedFlags(deriveRedFlags(vvRiskCache[rec.ID], vvDocCache[rec.ID], isDnu), container);
+    refreshRedFlags();
     return;
   }
   fetch(BROKER_API_BASE + '/carrier-profile?email=' + encodeURIComponent(brokerEmail) +
@@ -880,9 +897,9 @@ function loadVendorRedFlags(rec, container) {
     .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
     .then(function (profile) {
       vvRiskCache[rec.ID] = profile;
-      renderRedFlags(deriveRedFlags(profile, vvDocCache[rec.ID], isDnu), container);
+      refreshRedFlags();
     })
-    .catch(function () { /* leave the instant DNU-only chips; vetting is non-blocking */ });
+    .catch(function () { /* leave the DNU-only paint; vetting is non-blocking */ });
 }
 
 // Same-origin localStorage bridge - Carrier Profile widget reads this on

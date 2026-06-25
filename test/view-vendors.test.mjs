@@ -367,6 +367,12 @@ test('red-flag chips derive from carrier-profile + docs', async () => {
   w.dispatchEvent(new w.Event('load'));
   await waitForRows(w);
   w.document.querySelector('.row').click();
+  // Immediately after click — before any microtask flushes — only DNU chip is painted.
+  // (Profile and docs fetches are async; nothing has resolved yet.)
+  const stripInstant = w.document.getElementById('vv-redflags');
+  assert.ok(stripInstant.querySelector('.vv-flag'), 'at least one chip rendered instantly');
+  assert.match(stripInstant.textContent, /DNU/, 'DNU chip present in instant paint');
+  assert.doesNotMatch(stripInstant.textContent, /Factor/, 'Factor chip not fabricated before profile loads');
   await new Promise(r => setTimeout(r, 50));
   const strip = w.document.getElementById('vv-redflags').textContent;
   assert.match(strip, /Footprint/);  // VPN -> footprint flag

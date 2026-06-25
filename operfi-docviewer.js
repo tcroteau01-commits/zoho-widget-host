@@ -51,9 +51,12 @@
     bd.querySelector('.opf-dv-zoom-in').addEventListener('click', function () { setScale(state.scale * 1.25); });
     bd.querySelector('.opf-dv-zoom-out').addEventListener('click', function () { setScale(state.scale / 1.25); });
     bd.querySelector('.opf-dv-zoom-fit').addEventListener('click', function () { setScale(1); });
-    doc.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && !bd.classList.contains('hidden')) close();
-    });
+    if (!doc.__opfDvKeyBound) {
+      doc.__opfDvKeyBound = true;
+      doc.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !bd.classList.contains('hidden')) close();
+      });
+    }
     return bd;
   }
 
@@ -61,7 +64,12 @@
 
   function showError(msg) {
     var b = bodyEl();
-    if (b) b.innerHTML = '<div class="opf-dv-error">' + (msg || 'Could not display this document.') + '</div>';
+    if (!b) return;
+    b.innerHTML = '';
+    var e = doc.createElement('div');
+    e.className = 'opf-dv-error';
+    e.textContent = msg || 'Could not display this document.';
+    b.appendChild(e);
   }
 
   function setScale(s) {
@@ -81,7 +89,7 @@
     var u = (url || '').toLowerCase().split('?')[0];
     if (/\.pdf$/.test(u)) return 'pdf';
     if (/\.(png|jpe?g|gif|webp|bmp)$/.test(u)) return 'image';
-    return t.indexOf('pdf') !== -1 ? 'pdf' : 'image';
+    return 'image';
   }
 
   function open(opts) {

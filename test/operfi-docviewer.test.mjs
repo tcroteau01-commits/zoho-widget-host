@@ -77,3 +77,65 @@ test('close hides the backdrop', () => {
   w.OperFiDocViewer.close();
   assert.ok(w.document.querySelector('.opf-dv-backdrop').classList.contains('hidden'));
 });
+
+// A fetch that returns a PDF blob.
+const pdfFetch = () => Promise.resolve({
+  ok: true,
+  blob: () => Promise.resolve({ type: 'application/pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) })
+});
+
+// Stub canvas 2d context (jsdom has no canvas backend) + a fake pdfjsLib.
+function withPdf(window, numPages) {
+  window.HTMLCanvasElement.prototype.getContext = () => ({});
+  let rendered = 0;
+  window.pdfjsLib = {
+    GlobalWorkerOptions: {},
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages,
+        getPage: () => Promise.resolve({
+          getViewport: ({ scale }) => ({ width: 100 * scale, height: 140 * scale }),
+          render: () => { rendered++; return { promise: Promise.resolve() }; }
+        })
+      })
+    })
+  };
+  return () => rendered;
+}
+
+test('PDF doc renders one canvas per page', async () => {
+  const w = mk(pdfFetch);
+  withPdf(w, 3);
+  w.OperFiDocViewer.open({ url: '/x.pdf', filename: 'merged.pdf' });
+  await new Promise(r => setTimeout(r, 60));
+  assert.equal(w.document.querySelectorAll('.opf-dv-body canvas').length, 3);
+  assert.equal(w.document.querySelector('.opf-dv-body iframe'), null, 'never an iframe');
+});
+
+test('page indicator shows the page count', async () => {
+  const w = mk(pdfFetch);
+  withPdf(w, 2);
+  w.OperFiDocViewer.open({ url: '/x.pdf', filename: 'merged.pdf' });
+  await new Promise(r => setTimeout(r, 60));
+  assert.match(w.document.querySelector('.opf-dv-page').textContent, /2/);
+});
+
+test('zoom in re-renders the PDF (more render calls)', async () => {
+  const w = mk(pdfFetch);
+  const count = withPdf(w, 1);
+  w.OperFiDocViewer.open({ url: '/x.pdf', filename: 'merged.pdf' });
+  await new Promise(r => setTimeout(r, 60));
+  const before = count();
+  w.document.querySelector('.opf-dv-zoom-in').click();
+  await new Promise(r => setTimeout(r, 60));
+  assert.ok(count() > before, 'zoom should trigger a re-render');
+});
+
+test('PDF parse failure shows a loud error', async () => {
+  const w = mk(pdfFetch);
+  w.HTMLCanvasElement.prototype.getContext = () => ({});
+  w.pdfjsLib = { GlobalWorkerOptions: {}, getDocument: () => ({ promise: Promise.reject(new Error('bad pdf')) }) };
+  w.OperFiDocViewer.open({ url: '/x.pdf', filename: 'merged.pdf' });
+  await new Promise(r => setTimeout(r, 60));
+  assert.ok(w.document.querySelector('.opf-dv-error'), 'error shown on parse failure');
+});

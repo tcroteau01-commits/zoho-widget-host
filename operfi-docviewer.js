@@ -38,6 +38,7 @@
     bd.innerHTML =
       '<div class="opf-dv-bar">' +
         '<span class="opf-dv-title"></span>' +
+        '<span class="opf-dv-page"></span>' +
         '<button class="opf-dv-zoom-out" title="Zoom out">−</button>' +
         '<button class="opf-dv-zoom-fit" title="Fit width">Fit</button>' +
         '<button class="opf-dv-zoom-in" title="Zoom in">+</button>' +
@@ -127,11 +128,35 @@
     b.appendChild(img);
   }
 
-  // Defined fully in Task 3; placeholder keeps the core testable.
-  function renderPdfBytes(/* arrayBuffer */) {
-    showError('PDF rendering not yet available.');
+  function renderPdfBytes(arrayBuffer) {
+    if (!global.pdfjsLib) { showError('Document viewer failed to load.'); return; }
+    // Copy bytes — PDF.js detaches the buffer, which would break a re-render on zoom.
+    state.pdfBytes = arrayBuffer.slice(0);
+    global.pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise
+      .then(function (pdf) { state.pdf = pdf; renderPdf(pdf); })
+      .catch(function () { showError('Could not display this PDF. Use Download to save it instead.'); });
   }
-  function renderPdf(/* pdf */) {}
+
+  function renderPdf(pdf) {
+    var b = bodyEl();
+    b.innerHTML = '';
+    var pageEl = doc.querySelector('.opf-dv-page');
+    if (pageEl) pageEl.textContent = pdf.numPages + (pdf.numPages === 1 ? ' page' : ' pages');
+    var chain = Promise.resolve();
+    var _loop = function (n) {
+      chain = chain.then(function () {
+        return pdf.getPage(n).then(function (page) {
+          var viewport = page.getViewport({ scale: state.scale });
+          var canvas = doc.createElement('canvas');
+          canvas.width = Math.round(viewport.width);
+          canvas.height = Math.round(viewport.height);
+          b.appendChild(canvas);
+          return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+        });
+      });
+    };
+    for (var n = 1; n <= pdf.numPages; n++) _loop(n);
+  }
 
   function close() {
     var bd = doc.querySelector('.opf-dv-backdrop');

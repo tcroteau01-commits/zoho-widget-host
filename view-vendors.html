@@ -244,7 +244,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <option value="status">Status</option>
       <option value="name_asc">Name (A–Z)</option>
       <option value="name_desc">Name (Z–A)</option>
-      <option value="rel_new">Relationship: Newest</option>
+      <option value="rel_new" selected>Relationship: Newest</option>
       <option value="rel_old">Relationship: Oldest</option>
     </select>
   </div>
@@ -261,7 +261,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div id="footer-count">—</div>
   </div>
 
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-23.1</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-24.1</div>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -270,6 +270,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=2"></script>
 <script>
 (function() {
 'use strict';
@@ -280,9 +282,12 @@ var brokerEmail = '';
 var allRecords = [];
 var filteredRecords = [];
 var currentFilter = 'all';
-var currentSort = 'status';
+var currentSort = 'rel_new';
 var currentSearch = '';
 var openIndex = -1;
+var vvDocCache = {};   // vendorId -> documents array
+var vvRiskCache = {}; // vendorId -> carrier-profile response
+var vvPanelCtx = null; // { vendorId, isDnu } for the currently-open panel
 var currentLoadId = 0;
 
 // ── Status / payment classification ───────────────────────────────────────
@@ -702,10 +707,14 @@ function renderPanel() {
         (addr ? '<div style="margin-top: 14px;">' + addressFieldHtml(addr) + '</div>' : '') +
       '</div>' +
 
-      // Payment — broker-specific vetting badge (pay terms, factor, NOA, DNU)
+      // Carrier Vetting — vetting-framed zone (vetting badge + red flags + docs)
       '<div class="panel-section">' +
-        '<div class="panel-section-title">Payment &amp; Vetting</div>' +
+        '<div class="panel-section-title">Carrier Vetting</div>' +
+        '<div class="vv-vet-note" style="font-size:12px;color:#777;margin:-2px 0 12px;">' +
+          "Review this carrier's documents and flags before you submit.</div>" +
+        '<div id="vv-redflags"></div>' +
         '<div id="vv-carrier-av"></div>' +
+        '<div id="vv-docs" style="margin-top:14px;"></div>' +
       '</div>' +
 
       // Identifiers
@@ -739,6 +748,10 @@ function renderPanel() {
       { vendorId: r.ID, email: brokerEmail, apiBase: BROKER_API_BASE });
   }
 
+  vvPanelCtx = { vendorId: r.ID, isDnu: statusMeta(r).key === 'dnu' };
+  loadVendorDocs(r.ID, document.getElementById('vv-docs'));
+  loadVendorRedFlags(r);
+
   var prev = document.getElementById('p-prev');
   var next = document.getElementById('p-next');
   if (!prev.classList.contains('disabled')) prev.addEventListener('click', function() { navPanel(-1); });
@@ -759,6 +772,135 @@ function renderPanel() {
     stashNoaTarget(r.ID);
     navigateParent('#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
   });
+}
+
+function loadVendorDocs(vendorId, container) {
+  if (!container) return;
+  if (vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); refreshRedFlags(); return; }
+  container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#999;">Loading documents…</div>';
+  fetch(BROKER_API_BASE + '/carrier-docs?email=' + encodeURIComponent(brokerEmail) +
+        '&vendor_id=' + encodeURIComponent(vendorId))
+    .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then(function (data) {
+      var docs = (data.documents || []).slice().sort(function (a, b) {
+        return (b.created_time || 0) - (a.created_time || 0);
+      });
+      vvDocCache[vendorId] = docs;
+      renderVendorDocs(docs, container);
+      refreshRedFlags();
+    })
+    .catch(function () {
+      container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#a3322b;">Couldn\'t load documents.</div>';
+    });
+}
+
+function renderVendorDocs(docs, container) {
+  if (!docs.length) {
+    container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>' +
+      '<div class="vv-doc-state" style="font-size:12px;color:#999;">No documents on file.</div>';
+    return;
+  }
+  container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>';
+  docs.forEach(function (d) {
+    var row = document.createElement('div');
+    row.className = 'vv-doc';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0efe9;cursor:pointer;';
+    var lab = document.createElement('span');
+    lab.style.cssText = 'font-weight:600;font-size:12px;color:#333;';
+    lab.textContent = d.label || d.type || 'Document';
+    var name = document.createElement('span');
+    name.style.cssText = 'font-size:12px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    name.textContent = d.filename || '';
+    row.appendChild(lab); row.appendChild(name);
+    row.addEventListener('click', function () {
+      if (!window.OperFiDocViewer) return;
+      OperFiDocViewer.open({
+        url: BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token),
+        filename: d.filename || (d.type || 'document')
+      });
+    });
+    container.appendChild(row);
+  });
+}
+
+// ── Red-flag vetting chips ────────────────────────────────────────────────
+var VV_FLAG_STYLE = 'display:inline-flex;align-items:center;font-size:11px;font-weight:700;' +
+  'padding:3px 9px;border-radius:999px;border:1px solid;margin:0 6px 6px 0;text-transform:uppercase;letter-spacing:.4px;';
+
+function deriveRedFlags(profile, docs, isDnu) {
+  profile = profile || {}; docs = docs || [];
+  var ipqs = profile.ipqs || {};
+  var risk = (profile.risk && profile.risk.flags) || [];
+  function hasFlag(ids) { return risk.some(function (f) { return ids.indexOf(f.id) !== -1; }); }
+  var types = {}; docs.forEach(function (d) { types[d.type] = true; });
+
+  // Banking: flag if any bad-bank signal present (real ids from risk_model.py: _category_f_banking)
+  var bankBad = hasFlag(['bank_routing_invalid', 'bank_name_mismatch', 'bank_state_mismatch',
+                          'bank_account_shared', 'bank_bad_actor']) || !types.banking;
+  // Factor: driven by risk flags from risk_model.py (factor_not_approved=Critical, factor_pending=Medium)
+  var factorRed  = hasFlag(['factor_not_approved']);
+  var factorWarn = hasFlag(['factor_pending']);
+  // Footprint: IPQS top-level booleans + risk flag ids (vpn_signup, voip_phone confirmed in risk_model.py)
+  var footBad = !!(ipqs.vpn_detected || ipqs.voip_number) || hasFlag(['vpn_signup', 'voip_phone']);
+  var docsMissing = !types.noa || !types.coi || !types.banking;
+
+  return [
+    { key: 'dnu',   label: 'DNU',       level: isDnu ? 'red' : 'ok' },
+    { key: 'bank',  label: 'Bank',      level: bankBad ? 'red' : 'ok' },
+    { key: 'docs',  label: 'Documents', level: docsMissing ? 'red' : 'ok' },
+    { key: 'factor',label: 'Factor',    level: factorRed ? 'red' : (factorWarn ? 'warn' : 'ok') },
+    { key: 'foot',  label: 'Footprint', level: footBad ? 'red' : 'ok' }
+  ];
+}
+
+function renderRedFlags(flags, container) {
+  container.innerHTML = '';
+  var palette = {
+    ok:   'background:#e8f5e9;color:#2e7d32;border-color:#bfe3c2;',
+    warn: 'background:#fff8e1;color:#856404;border-color:#ffe082;',
+    red:  'background:#ffebee;color:#c62828;border-color:#ef9a9a;'
+  };
+  flags.forEach(function (f) {
+    var el = document.createElement('span');
+    el.className = 'vv-flag ' + f.level;
+    el.style.cssText = VV_FLAG_STYLE + palette[f.level];
+    el.textContent = f.label;
+    container.appendChild(el);
+  });
+}
+
+// Refresh the red-flag strip from whatever is cached right now.
+// Called after profile or docs arrive to eliminate fabricated reds.
+function refreshRedFlags() {
+  if (!vvPanelCtx) return;
+  var c = document.getElementById('vv-redflags');
+  if (!c) return;
+  var profile = vvRiskCache[vvPanelCtx.vendorId] || null;
+  if (!profile) {
+    // Before the profile loads, only DNU is actually known — don't fabricate the rest.
+    renderRedFlags([{ key: 'dnu', label: 'DNU', level: vvPanelCtx.isDnu ? 'red' : 'ok' }], c);
+    return;
+  }
+  renderRedFlags(deriveRedFlags(profile, vvDocCache[vvPanelCtx.vendorId], vvPanelCtx.isDnu), c);
+}
+
+function loadVendorRedFlags(rec) {
+  var isDnu = statusMeta(rec).key === 'dnu';
+  vvPanelCtx = { vendorId: rec.ID, isDnu: isDnu };
+  // Paint DNU-only instantly; docs/profile fill in via refreshRedFlags.
+  refreshRedFlags();
+  if (vvRiskCache[rec.ID]) {
+    refreshRedFlags();
+    return;
+  }
+  fetch(BROKER_API_BASE + '/carrier-profile?email=' + encodeURIComponent(brokerEmail) +
+        '&vendor_id=' + encodeURIComponent(rec.ID))
+    .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then(function (profile) {
+      vvRiskCache[rec.ID] = profile;
+      refreshRedFlags();
+    })
+    .catch(function () { /* leave the DNU-only paint; vetting is non-blocking */ });
 }
 
 // Same-origin localStorage bridge - Carrier Profile widget reads this on

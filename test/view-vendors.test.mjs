@@ -202,6 +202,14 @@ test('addressFieldHtml wraps the address in a Maps link; plain when empty', () =
   assert.ok(!/href=/.test(empty), 'no link when empty');
 });
 
+test('default sort state is rel_new (most recent first)', () => {
+  assert.match(HTML, /var currentSort = 'rel_new'/);
+});
+
+test('sort dropdown marks Relationship: Newest as selected', () => {
+  assert.match(HTML, /<option value="rel_new"[^>]*selected/);
+});
+
 // ── Sorting ────────────────────────────────────────────────────────────────
 const SORT_SET = [
   { ID: '1', Vendor_Name: 'Charlie Co',  Vendor_Status: 'Approved', Added_Time: '01-Jan-2024 00:00:00' },
@@ -260,6 +268,7 @@ test('Relationship Oldest first, missing date last', async () => {
 
 test('status sort keeps name A-Z within one status group', async () => {
   const w = await bootSorted(SORT_SET); // all Approved -> tiebreak is name asc
+  setSort(w, 'status');
   assert.deepEqual(rowNames(w), ['alpha co', 'Bravo Co', 'Charlie Co']);
 });
 
@@ -283,4 +292,95 @@ test('changing sort preserves the active search filter', async () => {
   const after = rowNames(w).slice().sort();
   assert.deepEqual(before, ['Apple Logistics', 'Apricot Lines']);
   assert.deepEqual(after, before, 'same records pass the filter regardless of sort');
+});
+
+// ── Carrier Vetting zone: script includes + docs ──────────────────────────────
+
+test('includes the shared doc viewer + pdf.js scripts', () => {
+  assert.match(HTML, /operfi-docviewer\.js/);
+  assert.match(HTML, /pdfjs\/pdf\.min\.js/);
+});
+
+test('panel template has a Carrier Vetting zone with a docs container', () => {
+  assert.match(HTML, /Carrier Vetting/);
+  assert.match(HTML, /vv-docs/);
+  assert.match(HTML, /Review this carrier's documents and flags before you submit/);
+});
+
+test('opening a vendor lazy-loads carrier docs sorted recent-first', async () => {
+  const records = [{ ID: '900', Vendor_Name: 'ACME', Vendor_Status: 'Approved', Email: 'a@b.com' }];
+  const docs = [
+    { type: 'noa', label: 'NOA / LOR', filename: 'NOA-1.pdf', created_time: 100, preview_token: 'tNoa' },
+    { type: 'coi', label: 'Insurance (COI)', filename: 'COI-1.pdf', created_time: 300, preview_token: 'tCoi' }
+  ];
+  const dom = makeDom();
+  const w = dom.window;
+  // Set fetch before the load event fires — ZOHO.init resolves a tick later,
+  // so assigning w.fetch here (same as all other tests) ensures the boot picks it up.
+  w.fetch = (url) => {
+    if (String(url).indexOf('/broker-report') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ records }) });
+    if (String(url).indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: docs, count: 2 }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  let opened = null;
+  w.OperFiDocViewer = { open: (o) => { opened = o; }, close: () => {} };
+  // Boot the app (mirrors the existing harness pattern — dispatchEvent then waitForRows).
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise(r => setTimeout(r, 40));
+  const items = [...w.document.querySelectorAll('#vv-docs .vv-doc')];
+  assert.equal(items.length, 2, 'two doc rows');
+  // recent-first: COI (300) before NOA (100)
+  assert.match(items[0].textContent, /COI/);
+  assert.match(items[1].textContent, /NOA/);
+  // clicking opens the shared viewer with the streamed URL
+  items[0].click();
+  assert.ok(opened && /carrier-doc-file\?t=tCoi/.test(opened.url), 'viewer opened with doc url');
+});
+
+test('red-flag chips derive from carrier-profile + docs', async () => {
+  const records = [{ ID: '901', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', Email: 'r@b.com' }];
+  const profile = {
+    vendor: {},
+    ipqs: { vpn_detected: true, voip_number: false },
+    bank: {},
+    risk: { flags: [
+      { id: 'vpn_signup', category: 'Identity and Signup Fraud', severity: 'High' },
+      { id: 'factor_not_approved', category: 'Payment and Internal', severity: 'Critical' }
+    ] }
+  };
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = (url) => {
+    if (String(url).indexOf('/broker-report') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ records }) });
+    if (String(url).indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [], count: 0 }) });
+    if (String(url).indexOf('/carrier-profile') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(profile) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  // Immediately after click — before any microtask flushes — only DNU chip is painted.
+  // (Profile and docs fetches are async; nothing has resolved yet.)
+  const stripInstant = w.document.getElementById('vv-redflags');
+  assert.ok(stripInstant.querySelector('.vv-flag'), 'at least one chip rendered instantly');
+  assert.match(stripInstant.textContent, /DNU/, 'DNU chip present in instant paint');
+  assert.doesNotMatch(stripInstant.textContent, /Factor/, 'Factor chip not fabricated before profile loads');
+  await new Promise(r => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags').textContent;
+  assert.match(strip, /Footprint/);  // VPN -> footprint flag
+  assert.match(strip, /Factor/);     // factor_not_approved -> factor flag
+  assert.match(strip, /Documents/);  // no docs -> missing-docs flag
+  // a red chip exists
+  assert.ok(w.document.querySelector('#vv-redflags .vv-flag.red'), 'has a red chip');
+  // Factor chip must be red when factor_not_approved flag is present
+  const factorChip = [...w.document.querySelectorAll('#vv-redflags .vv-flag')].find(c => c.textContent === 'Factor');
+  assert.ok(factorChip && factorChip.classList.contains('red'), 'Factor chip must be red when factor_not_approved');
 });

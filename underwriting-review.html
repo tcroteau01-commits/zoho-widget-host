@@ -150,7 +150,7 @@ tr:last-child td { border-bottom:none; }
 /* Intro dashboard */
 .dash-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--of-charcoal); margin:4px 2px 10px; }
 .dash-section-title .muted { color:var(--of-gray-500); font-weight:700; }
-.dash-stages { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:14px; }
+.dash-stages { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:14px; }
 .stage-card { background:#fff; border:1px solid var(--of-beige-line); border-radius:12px; padding:14px 16px; cursor:pointer; position:relative; overflow:hidden; transition:border-color .12s; }
 .stage-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--of-orange); }
 .stage-card.good::before{background:var(--of-green);} .stage-card.warn::before{background:var(--of-amber);} .stage-card.bad::before{background:var(--of-red);}
@@ -415,7 +415,7 @@ var RPT = { application: 'Application_Report', owner: 'Owner_Report', document: 
 // Backend (operfi-broker-api) that returns the automated check results stored at submit time.
 var API_BASE = global.OPERFI_UW_API_BASE || 'https://operfi-broker-api.onrender.com';
 var CHECKS_PATH = '/application-checks'; // GET ?usdot= → { fraud, ownership, ucc, risk, checkedAt }  (confirm with Tom)
-var QUEUE_PATH = '/applications';        // GET → { applications: [{ USDOT, Business_Name, Authority_Type, Application_Status, Submitted_At, Assigned_Underwriter, Buyout_Required, Decision_Date }] }  (confirm with Tom)
+var QUEUE_PATH = '/applications';        // GET → { applications: [{ USDOT, Business_Name, Authority_Type, Application_Status, Submitted_At, Updated_At, Assigned_Underwriter, Buyout_Required, UCC_Issues, Decision_Date }] }  (Updated_At drives the "Stale (30d+)" bucket; confirm with Tom)
 var ADD_PATH = '/uw-add-record';         // POST { application_id, kind:'owner'|'customer'|'contact'|'related', record } → creates the linked child record  (confirm with Tom)
 var DOCREQ_PATH = '/sales-doc-request';  // POST { application_id, document_type, source } → creates a Document (Status='Requested'); shown on the client portal  (confirm with Tom)
 
@@ -425,19 +425,23 @@ function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,''))
 // Dashboard buckets. Each is a predicate over an application (NOT mutually exclusive — e.g. an
 // approved app that needs a buyout counts in both "Approved / Denied" and "Options for Buy-in").
 // 'Options for Buy-in' = applications that must buy out a prior factor (Buyout_Required).
-// 'Past 30 Days' = anything with activity (submit/decision date) in the last 30 days.
+// 'Stale (30d+)' = applications with no update (last-activity date) in over 30 days.
 var STAGES = [
   { key:'review',  label:'Review',             cls:'',     match:function(a){ return ['New','In Review','Underwriting'].indexOf(a.Application_Status) !== -1; } },
   { key:'docs',    label:'Docs Needed',        cls:'warn', match:function(a){ return a.Application_Status === 'Docs Requested'; } },
   { key:'decided', label:'Approved / Denied',  cls:'good', match:function(a){ return a.Application_Status === 'Approved' || a.Application_Status === 'Declined'; } },
   { key:'buyin',   label:'Buy In',             cls:'',     match:function(a){ return !!a.Buyout_Required; } },
-  { key:'recent',  label:'Past 30 Days',       cls:'',     match:function(a, now){ return within30(a, now); } }
+  { key:'ucc',     label:'UCC Issues',         cls:'bad',  match:function(a){ return !!a.UCC_Issues; } },
+  { key:'stale',   label:'Stale (30d+)',       cls:'warn', match:function(a, now){ return staleOver30(a, now); } }
 ];
 var DAY = 86400000;
 function nowMs(now){ return (now != null) ? now : Date.now(); }
-function appDate(a){ var d = Date.parse((a && (a.Decision_Date || a.Submitted_At || a.submittedAt)) || ''); return isNaN(d) ? null : d; }
+// Last-activity date: prefer an explicit update field, else decision/submit date.
+function appDate(a){ var d = Date.parse((a && (a.Updated_At || a.Last_Updated || a.Decision_Date || a.Submitted_At || a.submittedAt)) || ''); return isNaN(d) ? null : d; }
 function isDecided(status){ return ['Approved','Declined','Signed','Abandoned'].indexOf(status) !== -1; }
 function within30(a, now){ var d = appDate(a); if (d == null) return false; now = nowMs(now); return d <= now + DAY && (now - d) <= 30 * DAY; }
+// Not updated in over 30 days (needs follow-up). Apps with no usable date are not flagged.
+function staleOver30(a, now){ var d = appDate(a); if (d == null) return false; return (nowMs(now) - d) > 30 * DAY; }
 // Auto-hide decided apps (Approved/Denied/Signed/Abandoned) once they're older than 30 days;
 // active apps always stay. Drives "once approved or denied, drop from the dashboard."
 function visibleApps(apps, now){
@@ -712,7 +716,7 @@ function recordHasContent(kind, rec){
 }
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
-  STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
+  STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, recordHasContent: recordHasContent,
   STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks };
 global.OFUW = OFUW;
@@ -721,10 +725,11 @@ global.OFUW = OFUW;
 var DEMO_QUEUE = [
   { USDOT:'4255019', Business_Name:'Coastal Freight Partners',   Authority_Type:'Broker',  Application_Status:'New',            Submitted_At:'Jun 11, 2026', Assigned_Underwriter:'—' },
   { USDOT:'4102888', Business_Name:'Granite Peak Logistics',     Authority_Type:'Carrier', Application_Status:'New',            Submitted_At:'Jun 10, 2026', Assigned_Underwriter:'—' },
-  { USDOT:'4366362', Business_Name:'Brennan Eslinger Trucking LLC', Authority_Type:'Carrier', Application_Status:'Underwriting', Submitted_At:'Jun 8, 2026',  Assigned_Underwriter:'M. Reyes', Buyout_Required:true },
+  { USDOT:'4490321', Business_Name:'Redline Carriers LLC',       Authority_Type:'Carrier', Application_Status:'In Review',      Submitted_At:'Apr 28, 2026', Updated_At:'May 2, 2026', Assigned_Underwriter:'D. Okafor' },
+  { USDOT:'4366362', Business_Name:'Brennan Eslinger Trucking LLC', Authority_Type:'Carrier', Application_Status:'Underwriting', Submitted_At:'Jun 8, 2026',  Assigned_Underwriter:'M. Reyes', Buyout_Required:true, UCC_Issues:true },
   { USDOT:'3421250', Business_Name:'Princeton Logistics Group LLC', Authority_Type:'Broker',  Application_Status:'In Review',    Submitted_At:'Jun 5, 2026',  Assigned_Underwriter:'D. Okafor' },
   { USDOT:'3771200', Business_Name:'Sandhill Freight Co',        Authority_Type:'Carrier', Application_Status:'Approved',       Submitted_At:'Jun 3, 2026',  Decision_Date:'Jun 6, 2026',  Assigned_Underwriter:'M. Reyes' },
-  { USDOT:'3998211', Business_Name:'Vega Hauling LLC',           Authority_Type:'Carrier', Application_Status:'Docs Requested', Submitted_At:'Jun 1, 2026',  Assigned_Underwriter:'M. Reyes', Buyout_Required:true },
+  { USDOT:'3998211', Business_Name:'Vega Hauling LLC',           Authority_Type:'Carrier', Application_Status:'Docs Requested', Submitted_At:'Jun 1, 2026',  Assigned_Underwriter:'M. Reyes', Buyout_Required:true, UCC_Issues:true },
   { USDOT:'3884521', Business_Name:'Lone Star Hauling LLC',      Authority_Type:'Carrier', Application_Status:'Declined',       Submitted_At:'May 30, 2026', Decision_Date:'Jun 2, 2026',  Assigned_Underwriter:'D. Okafor' },
   { USDOT:'3550199', Business_Name:'Cascade Carriers Inc',       Authority_Type:'Carrier', Application_Status:'Signed',         Submitted_At:'May 22, 2026', Decision_Date:'May 24, 2026', Assigned_Underwriter:'D. Okafor' }
 ];

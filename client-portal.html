@@ -144,7 +144,6 @@ var API_BASE = global.OPERFI_PORTAL_API_BASE || 'https://operfi-broker-api.onren
 var STATUS_PATH = '/application-status';   // GET ?token=&pin= → curated application + documents
 var UPLOAD_PATH = '/application-upload';   // POST ?token= (multipart doc_type + file + pin)
 var LOOKUP_PATH = '/application-lookup';   // POST {usdot,email} → { link } (recovery)
-var RESET_PIN_PATH = '/portal-reset-pin'; // POST {usdot,email,new_pin} → set a new PIN (forgot-PIN)
 var LOGIN_PATH = '/portal-login';          // POST {usdot,email,pin} → curated status + token (general link, no ?token)
 
 // Client-facing stage labels; each maps to a real Application_Status value.
@@ -351,10 +350,10 @@ function loadStatus(token) {
       }
       if (j.error === 'pin_locked') {
         STATE.pin = '';
-        renderPinPrompt('Too many attempts. Try again in about ' + Math.ceil((j.retryAfter || 900) / 60) + ' minutes, or reset your PIN below.', true);
+        renderPinPrompt('Too many attempts. Try again in about ' + Math.ceil((j.retryAfter || 900) / 60) + ' minutes.', true);
         return;
       }
-      renderPinReset();   // invalid/expired link → re-verify identity + set a PIN to get a fresh gated link
+      renderPinPrompt('Your link expired — enter your USDOT, email, and PIN to continue.');   // re-verify by identity + PIN
     })
     .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
 }
@@ -371,7 +370,7 @@ function portalLogin() {
         if (j.token) STATE.token = j.token;   // reuse the token-gated path for uploads/refresh
         STATE.data = j; renderStatus(j, false); return;
       }
-      if (j.error === 'pin_not_set') { renderPinReset(); return; }   // identity ok but no PIN yet → set one
+      if (j.error === 'pin_not_set') { renderPinPrompt('Enter your USDOT, email, and PIN. Don’t have your PIN? Contact your OperFi rep.'); return; }
       if (j.error === 'verify_invalid') {
         STATE.pin = '';
         var n = j.attemptsLeft;
@@ -380,7 +379,7 @@ function portalLogin() {
       }
       if (j.error === 'pin_locked') {
         STATE.pin = '';
-        renderPinPrompt('Too many attempts. Try again in about ' + Math.ceil((j.retryAfter || 900) / 60) + ' minutes, or reset your PIN below.', true);
+        renderPinPrompt('Too many attempts. Try again in about ' + Math.ceil((j.retryAfter || 900) / 60) + ' minutes.', true);
         return;
       }
       renderPinPrompt('Enter your USDOT, email, and a 4-digit PIN.');
@@ -400,8 +399,8 @@ function renderPinPrompt(msg, locked) {
     '<div class="field"><label>4-digit PIN</label><input id="pinInput" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••"' + dis + '></div>' +
     '<button class="btn orange" id="pinBtn"' + dis + '>Access my documents</button>' +
     (msg ? '<div class="toast err" style="margin-top:8px">' + esc(msg) + '</div>' : '') +
-    '<div style="margin-top:12px"><a href="#" id="forgotPin" class="viewlink">Forgot your PIN?</a></div></div>';
-  var btn = el('pinBtn'), pinEl = el('pinInput'), fp = el('forgotPin');
+    '<div class="muted" style="margin-top:12px;font-size:11.5px">Don’t have your PIN? Contact your OperFi rep.</div></div>';
+  var btn = el('pinBtn'), pinEl = el('pinInput');
   function submit() {
     var u = (el('pinUsdot') && el('pinUsdot').value || '').replace(/\D/g, '');
     var em = (el('pinEmail') && el('pinEmail').value || '').trim();
@@ -413,45 +412,6 @@ function renderPinPrompt(msg, locked) {
   }
   if (btn) btn.addEventListener('click', submit);
   if (pinEl) pinEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
-  if (fp) fp.addEventListener('click', function (e) { e.preventDefault(); renderPinReset(); });
-}
-
-// Forgot-PIN: re-verify by USDOT + applied email, then set a new PIN.
-function renderPinReset() {
-  setBanner('info', 'Verify your details to open your documents.');
-  el('content').innerHTML =
-    '<div class="card"><div class="card-title">Enter your PIN</div>' +
-    '<div class="summ">Enter your USDOT, the email you applied with, and your 4-digit PIN.</div>' +
-    '<div class="field"><label>USDOT</label><input id="rpUsdot" inputmode="numeric" placeholder="e.g. 4366362"></div>' +
-    '<div class="field"><label>Email</label><input id="rpEmail" type="email" placeholder="The email you applied with"></div>' +
-    '<div class="field"><label>4-digit PIN</label><input id="rpPin" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></div>' +
-    '<button class="btn orange" id="rpBtn">Enter PIN</button>' +
-    '<div class="toast" id="rpToast"></div></div>';
-  var btn = el('rpBtn');
-  if (btn) btn.addEventListener('click', resetPin);
-}
-
-function resetPin() {
-  var usdot = (el('rpUsdot') && el('rpUsdot').value || '').replace(/\D/g, '');
-  var email = (el('rpEmail') && el('rpEmail').value || '').trim();
-  var pin = (el('rpPin') && el('rpPin').value || '').replace(/\D/g, '');
-  var t = el('rpToast');
-  function rt(kind, m){ if (t) { t.className = 'toast ' + kind; t.textContent = m; } }
-  if (!usdot || !email || pin.length !== 4) { rt('err', 'Enter your USDOT, email, and a 4-digit PIN.'); return; }
-  if (typeof fetch !== 'function') { rt('err', 'Unavailable in this browser.'); return; }
-  var btn = el('rpBtn'); if (btn) btn.disabled = true;
-  rt('', 'Setting your new PIN…');
-  fetch(API_BASE + RESET_PIN_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usdot: usdot, email: email, new_pin: pin }) })
-    .then(function (r) { return r.json().catch(function () { return {}; }); })
-    .then(function (j) {
-      if (j && j.ok) {
-        rt('ok', 'PIN updated — opening your portal…');
-        STATE.usdot = usdot; STATE.email = email; STATE.pin = pin;
-        if (j.link) { try { STATE.token = new URL(j.link).searchParams.get('token') || STATE.token; } catch (e) {} }
-        loadStatus(STATE.token);
-      } else { if (btn) btn.disabled = false; rt('err', (j && j.error) || 'We couldn’t match that USDOT and email.'); }
-    })
-    .catch(function () { if (btn) btn.disabled = false; rt('err', 'Reset failed — please try again.'); });
 }
 
 function renderStatus(data, isDemo) {
@@ -696,7 +656,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
 // expose for tests
 global.OFCP = OFCP;
-global._OFCP_dom = { getToken: getToken, renderStatus: renderStatus, renderRecovery: renderRecovery, renderPinPrompt: renderPinPrompt, renderPinReset: renderPinReset, portalLogin: portalLogin, boot: boot, DEMO_STATUS: DEMO_STATUS };
+global._OFCP_dom = { getToken: getToken, renderStatus: renderStatus, renderRecovery: renderRecovery, renderPinPrompt: renderPinPrompt, portalLogin: portalLogin, boot: boot, DEMO_STATUS: DEMO_STATUS };
 
 })(typeof window !== 'undefined' ? window : this);
 </script>

@@ -340,3 +340,35 @@ test('opening a vendor lazy-loads carrier docs sorted recent-first', async () =>
   items[0].click();
   assert.ok(opened && /carrier-doc-file\?t=tCoi/.test(opened.url), 'viewer opened with doc url');
 });
+
+test('red-flag chips derive from carrier-profile + docs', async () => {
+  const records = [{ ID: '901', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', Email: 'r@b.com' }];
+  const profile = {
+    vendor: { Factor_Status: 'Not Approved' },
+    ipqs: { vpn_detected: true, voip_number: false },
+    bank: {},
+    risk: { flags: [{ id: 'vpn_signup', category: 'Identity and Signup Fraud', severity: 'High' }] }
+  };
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = (url) => {
+    if (String(url).indexOf('/broker-report') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ records }) });
+    if (String(url).indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [], count: 0 }) });
+    if (String(url).indexOf('/carrier-profile') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(profile) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise(r => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags').textContent;
+  assert.match(strip, /Footprint/);  // VPN -> footprint flag
+  assert.match(strip, /Factor/);     // Not Approved -> factor flag
+  assert.match(strip, /Documents/);  // no docs -> missing-docs flag
+  // a red chip exists
+  assert.ok(w.document.querySelector('#vv-redflags .vv-flag.red'), 'has a red chip');
+});

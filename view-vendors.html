@@ -286,6 +286,7 @@ var currentSort = 'rel_new';
 var currentSearch = '';
 var openIndex = -1;
 var vvDocCache = {};   // vendorId -> documents array
+var vvRiskCache = {}; // vendorId -> carrier-profile response
 var currentLoadId = 0;
 
 // ── Status / payment classification ───────────────────────────────────────
@@ -747,6 +748,7 @@ function renderPanel() {
   }
 
   loadVendorDocs(r.ID, document.getElementById('vv-docs'));
+  loadVendorRedFlags(r, document.getElementById('vv-redflags'));
 
   var prev = document.getElementById('p-prev');
   var next = document.getElementById('p-next');
@@ -816,6 +818,71 @@ function renderVendorDocs(docs, container) {
     });
     container.appendChild(row);
   });
+}
+
+// ── Red-flag vetting chips ────────────────────────────────────────────────
+var VV_FLAG_STYLE = 'display:inline-flex;align-items:center;font-size:11px;font-weight:700;' +
+  'padding:3px 9px;border-radius:999px;border:1px solid;margin:0 6px 6px 0;text-transform:uppercase;letter-spacing:.4px;';
+
+function deriveRedFlags(profile, docs, isDnu) {
+  profile = profile || {}; docs = docs || [];
+  var ipqs = profile.ipqs || {};
+  var risk = (profile.risk && profile.risk.flags) || [];
+  var vendor = profile.vendor || {};
+  function hasFlag(ids) { return risk.some(function (f) { return ids.indexOf(f.id) !== -1; }); }
+  var types = {}; docs.forEach(function (d) { types[d.type] = true; });
+
+  // Banking: flag if any bad-bank signal present (real ids from risk_model.py: _category_f_banking)
+  var bankBad = hasFlag(['bank_routing_invalid', 'bank_name_mismatch', 'bank_state_mismatch',
+                          'bank_account_shared', 'bank_bad_actor']) || !types.banking;
+  var factorRaw = String(vendor.Factor_Status || '').toLowerCase();
+  var factorBad = factorRaw && factorRaw.indexOf('approved') === -1;
+  // Footprint: IPQS top-level booleans + risk flag ids (vpn_signup, voip_phone confirmed in risk_model.py)
+  var footBad = !!(ipqs.vpn_detected || ipqs.voip_number) || hasFlag(['vpn_signup', 'voip_phone']);
+  var docsMissing = !types.noa || !types.coi || !types.banking;
+
+  return [
+    { key: 'dnu',   label: 'DNU',       level: isDnu ? 'red' : 'ok' },
+    { key: 'bank',  label: 'Bank',      level: bankBad ? 'red' : 'ok' },
+    { key: 'docs',  label: 'Documents', level: docsMissing ? 'red' : 'ok' },
+    { key: 'factor',label: 'Factor',    level: factorBad ? 'red' : 'ok' },
+    { key: 'foot',  label: 'Footprint', level: footBad ? 'red' : 'ok' }
+  ];
+}
+
+function renderRedFlags(flags, container) {
+  container.innerHTML = '';
+  var palette = {
+    ok:   'background:#e8f5e9;color:#2e7d32;border-color:#bfe3c2;',
+    warn: 'background:#fff8e1;color:#856404;border-color:#ffe082;',
+    red:  'background:#ffebee;color:#c62828;border-color:#ef9a9a;'
+  };
+  flags.forEach(function (f) {
+    var el = document.createElement('span');
+    el.className = 'vv-flag ' + f.level;
+    el.style.cssText = VV_FLAG_STYLE + palette[f.level];
+    el.textContent = f.label;
+    container.appendChild(el);
+  });
+}
+
+function loadVendorRedFlags(rec, container) {
+  if (!container) return;
+  var isDnu = statusMeta(rec).key === 'dnu';
+  // Render DNU chip instantly from row data; rest fill in after profile fetch.
+  renderRedFlags(deriveRedFlags(null, vvDocCache[rec.ID], isDnu), container);
+  if (vvRiskCache[rec.ID]) {
+    renderRedFlags(deriveRedFlags(vvRiskCache[rec.ID], vvDocCache[rec.ID], isDnu), container);
+    return;
+  }
+  fetch(BROKER_API_BASE + '/carrier-profile?email=' + encodeURIComponent(brokerEmail) +
+        '&vendor_id=' + encodeURIComponent(rec.ID))
+    .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then(function (profile) {
+      vvRiskCache[rec.ID] = profile;
+      renderRedFlags(deriveRedFlags(profile, vvDocCache[rec.ID], isDnu), container);
+    })
+    .catch(function () { /* leave the instant DNU-only chips; vetting is non-blocking */ });
 }
 
 // Same-origin localStorage bridge - Carrier Profile widget reads this on

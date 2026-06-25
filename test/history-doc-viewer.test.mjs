@@ -31,6 +31,15 @@ test('history page has a document viewer modal with a pages container and downlo
   assert.ok(d.getElementById('doc-viewer-download'), 'missing #doc-viewer-download');
 });
 
+test('the viewer is a centered framed modal with an explicit close button and an Esc hint', () => {
+  const d = new JSDOM(HTML).window.document;
+  assert.ok(d.getElementById('doc-viewer-frame'), 'missing framed container #doc-viewer-frame');
+  const close = d.getElementById('doc-viewer-close');
+  assert.ok(close, 'missing close button');
+  assert.match(close.textContent, /close/i, 'close control should read "Close", not a bare glyph');
+  assert.match(d.getElementById('doc-viewer').textContent, /esc/i, 'an Esc-to-close hint should be shown');
+});
+
 test('docsGroupHtml renders a clickable row carrying the record id and slot', () => {
   const w = makeDom();
   const html = w.docsGroupHtml('Customer Documents',

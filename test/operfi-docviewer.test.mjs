@@ -139,3 +139,16 @@ test('PDF parse failure shows a loud error', async () => {
   await new Promise(r => setTimeout(r, 60));
   assert.ok(w.document.querySelector('.opf-dv-error'), 'error shown on parse failure');
 });
+
+test('sets pdf.js workerSrc to the vendored worker when pdfjsLib is present', () => {
+  const w = mk(imgFetch);
+  w.pdfjsLib = { GlobalWorkerOptions: {} };
+  // Re-run the worker-wiring step the library performs lazily on open.
+  w.OperFiDocViewer.open({ url: '/x.png', filename: 'a.png' });
+  assert.match(w.pdfjsLib.GlobalWorkerOptions.workerSrc || '', /pdf\.worker\.min\.js/);
+});
+
+test('vendored pdf.js source check', () => {
+  const src = readFileSync(new URL('../operfi-docviewer.js', import.meta.url), 'utf8');
+  assert.match(src, /pdfjs\/pdf\.worker\.min\.js/);
+});

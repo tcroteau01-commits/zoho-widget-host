@@ -93,9 +93,18 @@
     return 'image';
   }
 
+  var WORKER_SRC = 'https://app.operfi.com/pdfjs/pdf.worker.min.js';
+  function wireWorker() {
+    if (global.pdfjsLib && global.pdfjsLib.GlobalWorkerOptions &&
+        !global.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      global.pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_SRC;
+    }
+  }
+
   function open(opts) {
     opts = opts || {};
     var bd = ensureModal();
+    wireWorker();
     bd.classList.remove('hidden');
     state.scale = 1; state.pdf = null; state.kind = null;
     bd.querySelector('.opf-dv-title').textContent = opts.filename || 'Document';

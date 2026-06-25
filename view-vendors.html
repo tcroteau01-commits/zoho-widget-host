@@ -748,6 +748,7 @@ function renderPanel() {
       { vendorId: r.ID, email: brokerEmail, apiBase: BROKER_API_BASE });
   }
 
+  vvPanelCtx = { vendorId: r.ID, isDnu: statusMeta(r).key === 'dnu' };
   loadVendorDocs(r.ID, document.getElementById('vv-docs'));
   loadVendorRedFlags(r);
 

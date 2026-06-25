@@ -553,3 +553,71 @@ test('removeDraftDoc calls remove-doc and clears the indicator', async () => {
   assert.ok(hit, '/draft-loads/900/remove-doc was called');
   assert.doesNotMatch(w.document.getElementById('cust_docs_label').textContent, /on file/i);
 });
+
+// ── Doc merge hardening: read-on-select + fail-loud (no baked error pages) ─────
+
+test('mergeFiles reads bytes at selection and stores a detached Blob, not the live File handle', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  // A File whose arrayBuffer() works ONCE (at selection) then goes stale and throws,
+  // exactly like a file moved/renamed/cloud-evicted between pick and submit.
+  let reads = 0;
+  const flaky = { name: 'rate_con.pdf', size: 3, type: 'application/pdf',
+    arrayBuffer: () => { reads++; return reads > 1
+      ? Promise.reject(new Error('A requested file or directory could not be found'))
+      : Promise.resolve(new Uint8Array([1, 2, 3]).buffer); } };
+  await w.mergeFiles('cust_docs', [flaky]);
+  const entry = w.fileStore['cust_docs'][0];
+  assert.strictEqual(entry.name, 'rate_con.pdf');
+  assert.strictEqual(entry.error, null, 'selection read succeeded so no error');
+  assert.ok(entry.blob instanceof w.Blob, 'bytes captured into a detached Blob');
+  // The 3 source bytes were copied into the detached Blob at selection time, so
+  // they survive even though the original handle is now stale.
+  assert.strictEqual(entry.blob.size, 3, 'captured bytes detached from the live handle');
+  assert.strictEqual(reads, 1, 'the live File handle is read exactly once, at selection');
+});
+
+test('mergeFiles records a read error when a file cannot be read at selection', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  const broken = { name: 'broken.pdf', size: 5, type: 'application/pdf',
+    arrayBuffer: () => Promise.reject(new Error('boom')) };
+  await w.mergeFiles('cust_docs', [broken]);
+  const entry = w.fileStore['cust_docs'][0];
+  assert.strictEqual(entry.blob, null);
+  assert.match(entry.error, /boom/);
+});
+
+test('mergeFilesToPDF fails loudly on an unreadable file instead of baking an error page', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  await assert.rejects(
+    () => w.mergeFilesToPDF([{ name: 'rate_con.pdf', ext: 'pdf', blob: null, error: 'NotFoundError' }]),
+    (err) => {
+      assert.match(err.message, /rate_con\.pdf/);
+      assert.ok(err.docMessage, 'carries a broker-facing docMessage');
+      return true;
+    });
+});
+
+test('submit blocks and creates NO funding record when a picked file is unreadable', async () => {
+  const seen = [];
+  const dom = makeB2Dom((url, opts) => { seen.push({ url: String(url), opts });
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_X' }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  // Real _mergedPdfs / mergeFilesToPDF — a stale customer doc must abort before any POST.
+  w.fileStore = { cust_docs: [{ name: 'rate_con.pdf', ext: 'pdf', blob: null, error: 'NotFoundError' }],
+                  carrier_docs: [] };
+  await w.submitLoad();
+  assert.strictEqual(seen.filter(s => s.url.includes('/funding-submit')).length, 0,
+    'no funding record created when a doc is unreadable');
+  const t = w.document.getElementById('submit-status').textContent;
+  assert.match(t, /rate_con\.pdf/);
+  assert.match(t, /re-?select|select it again|remove/i);
+  assert.strictEqual(w.document.getElementById('submit-btn').disabled, false,
+    'submit re-enabled so the broker can fix and retry');
+});

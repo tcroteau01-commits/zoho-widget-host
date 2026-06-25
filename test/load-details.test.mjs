@@ -687,6 +687,17 @@ test('trying to advance without the required doc is blocked and flags the dropzo
   assert.ok(w.document.getElementById('customer-error').classList.contains('show'), 'required message shown');
 });
 
+test('a blocked advance flags the visible carrier search box red, not the hidden select', () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillCustomer(w);
+  // carrier fields filled but NO carrier picked and no carrier doc
+  w.setField('carrier-rate', '2100'); w.setField('carrier-factoring-invoice', 'F1'); w.setField('rate-con', 'RC-7');
+  w.fileStore = { cust_docs: [_doc(w, 'a.pdf')], carrier_docs: [] };
+  w.goToStep('review');  // blocked at the carrier step
+  assert.ok(w.document.getElementById('carrier-search').classList.contains('invalid'), 'search box flagged red');
+  assert.ok(!w.document.getElementById('carrier-select').classList.contains('invalid'), 'hidden select is not the flag target');
+});
+
 test('updateDocVisuals marks a satisfied dropzone valid (green) and clears invalid', () => {
   const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
   const area = w.document.getElementById('cust_docs_area');

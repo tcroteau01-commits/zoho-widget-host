@@ -811,6 +811,12 @@ function _fieldFilled(id) {
   return _RATE_FIELDS[id] ? Number(v) > 0 : String(v).trim() !== '';
 }
 
+// The element to paint red for a required field. The carrier field's value lives
+// in a hidden <select>, so flag its visible proxy (the search box) instead.
+function _fieldFlagEl(id) {
+  return document.getElementById(id === 'carrier-select' ? 'carrier-search' : id);
+}
+
 // A step's document gate is satisfied by fresh readable picks OR a packet already
 // on the record (reopened draft). A set containing an unreadable file does NOT count.
 function _docSlotSatisfied(slot) {
@@ -852,7 +858,7 @@ window.updateDocVisuals = updateDocVisuals;
 function markStepInvalid(step) {
   if (step !== 'customer' && step !== 'carrier') return;
   _STEP_FIELDS[step].forEach(function (id) {
-    var el = document.getElementById(id); if (!el) return;
+    var el = _fieldFlagEl(id); if (!el) return;
     el.classList.toggle('invalid', !_fieldFilled(id));
   });
   var map = _DOC_SLOT_DOM[step];
@@ -886,7 +892,7 @@ function refreshValidity() {
   // once it's fully valid.
   ['customer', 'carrier'].forEach(function (step) {
     _STEP_FIELDS[step].forEach(function (id) {
-      var el = document.getElementById(id);
+      var el = _fieldFlagEl(id);
       if (el && _fieldFilled(id)) el.classList.remove('invalid');
     });
     var err = document.getElementById(step + '-error');
@@ -1305,6 +1311,7 @@ function resetFormAfterSubmit(recordId, uploadIssue) {
   });
   fileStore = {};
   docsOnFile = { customer: false, carrier: false };
+  var cl = document.getElementById('carrier-list'); if (cl) cl.hidden = true;
   updateFileLabel('cust_docs', 'cust_docs_label');
   updateFileLabel('carrier_docs', 'carrier_docs_label');
   ['customer', 'carrier'].forEach(function (step) {

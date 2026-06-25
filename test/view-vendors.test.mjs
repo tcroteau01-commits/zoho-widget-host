@@ -293,3 +293,50 @@ test('changing sort preserves the active search filter', async () => {
   assert.deepEqual(before, ['Apple Logistics', 'Apricot Lines']);
   assert.deepEqual(after, before, 'same records pass the filter regardless of sort');
 });
+
+// ── Carrier Vetting zone: script includes + docs ──────────────────────────────
+
+test('includes the shared doc viewer + pdf.js scripts', () => {
+  assert.match(HTML, /operfi-docviewer\.js/);
+  assert.match(HTML, /pdfjs\/pdf\.min\.js/);
+});
+
+test('panel template has a Carrier Vetting zone with a docs container', () => {
+  assert.match(HTML, /Carrier Vetting/);
+  assert.match(HTML, /vv-docs/);
+  assert.match(HTML, /Review this carrier's documents and flags before you submit/);
+});
+
+test('opening a vendor lazy-loads carrier docs sorted recent-first', async () => {
+  const records = [{ ID: '900', Vendor_Name: 'ACME', Vendor_Status: 'Approved', Email: 'a@b.com' }];
+  const docs = [
+    { type: 'noa', label: 'NOA / LOR', filename: 'NOA-1.pdf', created_time: 100, preview_token: 'tNoa' },
+    { type: 'coi', label: 'Insurance (COI)', filename: 'COI-1.pdf', created_time: 300, preview_token: 'tCoi' }
+  ];
+  const dom = makeDom();
+  const w = dom.window;
+  // Set fetch before the load event fires — ZOHO.init resolves a tick later,
+  // so assigning w.fetch here (same as all other tests) ensures the boot picks it up.
+  w.fetch = (url) => {
+    if (String(url).indexOf('/broker-report') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ records }) });
+    if (String(url).indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: docs, count: 2 }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  let opened = null;
+  w.OperFiDocViewer = { open: (o) => { opened = o; }, close: () => {} };
+  // Boot the app (mirrors the existing harness pattern — dispatchEvent then waitForRows).
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise(r => setTimeout(r, 40));
+  const items = [...w.document.querySelectorAll('#vv-docs .vv-doc')];
+  assert.equal(items.length, 2, 'two doc rows');
+  // recent-first: COI (300) before NOA (100)
+  assert.match(items[0].textContent, /COI/);
+  assert.match(items[1].textContent, /NOA/);
+  // clicking opens the shared viewer with the streamed URL
+  items[0].click();
+  assert.ok(opened && /carrier-doc-file\?t=tCoi/.test(opened.url), 'viewer opened with doc url');
+});

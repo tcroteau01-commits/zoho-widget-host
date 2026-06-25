@@ -270,6 +270,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=2"></script>
 <script>
 (function() {
 'use strict';
@@ -283,6 +285,7 @@ var currentFilter = 'all';
 var currentSort = 'rel_new';
 var currentSearch = '';
 var openIndex = -1;
+var vvDocCache = {};   // vendorId -> documents array
 var currentLoadId = 0;
 
 // ── Status / payment classification ───────────────────────────────────────
@@ -702,10 +705,14 @@ function renderPanel() {
         (addr ? '<div style="margin-top: 14px;">' + addressFieldHtml(addr) + '</div>' : '') +
       '</div>' +
 
-      // Payment — broker-specific vetting badge (pay terms, factor, NOA, DNU)
+      // Carrier Vetting — vetting-framed zone (vetting badge + red flags + docs)
       '<div class="panel-section">' +
-        '<div class="panel-section-title">Payment &amp; Vetting</div>' +
+        '<div class="panel-section-title">Carrier Vetting</div>' +
+        '<div class="vv-vet-note" style="font-size:12px;color:#777;margin:-2px 0 12px;">' +
+          "Review this carrier's documents and flags before you submit.</div>" +
+        '<div id="vv-redflags"></div>' +
         '<div id="vv-carrier-av"></div>' +
+        '<div id="vv-docs" style="margin-top:14px;"></div>' +
       '</div>' +
 
       // Identifiers
@@ -739,6 +746,8 @@ function renderPanel() {
       { vendorId: r.ID, email: brokerEmail, apiBase: BROKER_API_BASE });
   }
 
+  loadVendorDocs(r.ID, document.getElementById('vv-docs'));
+
   var prev = document.getElementById('p-prev');
   var next = document.getElementById('p-next');
   if (!prev.classList.contains('disabled')) prev.addEventListener('click', function() { navPanel(-1); });
@@ -758,6 +767,54 @@ function renderPanel() {
   if (noa) noa.addEventListener('click', function() {
     stashNoaTarget(r.ID);
     navigateParent('#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
+  });
+}
+
+function loadVendorDocs(vendorId, container) {
+  if (!container) return;
+  if (vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); return; }
+  container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#999;">Loading documents…</div>';
+  fetch(BROKER_API_BASE + '/carrier-docs?email=' + encodeURIComponent(brokerEmail) +
+        '&vendor_id=' + encodeURIComponent(vendorId))
+    .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then(function (data) {
+      var docs = (data.documents || []).slice().sort(function (a, b) {
+        return (b.created_time || 0) - (a.created_time || 0);
+      });
+      vvDocCache[vendorId] = docs;
+      renderVendorDocs(docs, container);
+    })
+    .catch(function () {
+      container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#a3322b;">Couldn\'t load documents.</div>';
+    });
+}
+
+function renderVendorDocs(docs, container) {
+  if (!docs.length) {
+    container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>' +
+      '<div class="vv-doc-state" style="font-size:12px;color:#999;">No documents on file.</div>';
+    return;
+  }
+  container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>';
+  docs.forEach(function (d) {
+    var row = document.createElement('div');
+    row.className = 'vv-doc';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0efe9;cursor:pointer;';
+    var lab = document.createElement('span');
+    lab.style.cssText = 'font-weight:600;font-size:12px;color:#333;';
+    lab.textContent = d.label || d.type || 'Document';
+    var name = document.createElement('span');
+    name.style.cssText = 'font-size:12px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    name.textContent = d.filename || '';
+    row.appendChild(lab); row.appendChild(name);
+    row.addEventListener('click', function () {
+      if (!window.OperFiDocViewer) return;
+      OperFiDocViewer.open({
+        url: BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token),
+        filename: d.filename || (d.type || 'document')
+      });
+    });
+    container.appendChild(row);
   });
 }
 

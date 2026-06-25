@@ -130,8 +130,6 @@
 
   function renderPdfBytes(arrayBuffer) {
     if (!global.pdfjsLib) { showError('Document viewer failed to load.'); return; }
-    // Copy bytes — PDF.js detaches the buffer, which would break a re-render on zoom.
-    state.pdfBytes = arrayBuffer.slice(0);
     global.pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise
       .then(function (pdf) { state.pdf = pdf; renderPdf(pdf); })
       .catch(function () { showError('Could not display this PDF. Use Download to save it instead.'); });

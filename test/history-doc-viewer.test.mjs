@@ -89,3 +89,25 @@ test('openDocViewer surfaces a fallback when the fetch fails (no silent blank)',
   await w.openDocViewer('rec_9', 'customer', 'customer_docs.pdf');
   assert.match(w.document.getElementById('doc-viewer-pages').textContent, /could not|try again|open in/i);
 });
+
+test('legacy load (docs only in subform) offers a combined doc to view', () => {
+  const w = makeDom();
+  const html = w.docsGroupHtml('Customer Documents', [], 'rec_9', 'customer', true);
+  assert.match(html, /doc-clickable/);
+  assert.match(html, /data-doc-record="rec_9"/);
+  assert.match(html, /data-doc-slot="customer"/);
+  assert.doesNotMatch(html, /No files uploaded/);
+});
+
+test('a load with no file-field docs and no subform shows the empty state', () => {
+  const w = makeDom();
+  const html = w.docsGroupHtml('Customer Documents', [], 'rec_9', 'customer', false);
+  assert.match(html, /No files uploaded/);
+});
+
+test('subformHasFiles is true only for a non-empty subform array', () => {
+  const w = makeDom();
+  assert.equal(w.subformHasFiles([{ ID: 'r1' }]), true);
+  assert.equal(w.subformHasFiles([]), false);
+  assert.equal(w.subformHasFiles(undefined), false);
+});

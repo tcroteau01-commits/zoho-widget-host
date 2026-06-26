@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
@@ -475,14 +475,16 @@ test('deriveVettingFlags: stops sort above checks', () => {
 test('requiredDocs: non-factored requires COI + Banking only', () => {
   const req = vvApi().requiredDocs({ isFactored: false });
   const keys = req.map((r) => r.key);
-  assert.deepEqual(keys.sort(), ['banking', 'coi']);
+  // Array.from brings the JSDOM-realm array into the Node realm so strict
+  // deepEqual's prototype check passes (contents are plain strings).
+  assert.deepEqual(Array.from(keys).sort(), ['banking', 'coi']);
 });
 
 test('requiredDocs: factored also requires NOA/LOR (satisfied by noa OR lor)', () => {
   const req = vvApi().requiredDocs({ isFactored: true });
   const noa = req.find((r) => r.key === 'noa_lor');
   assert.ok(noa, 'NOA/LOR requirement present');
-  assert.deepEqual(noa.match.sort(), ['lor', 'noa']);
+  assert.deepEqual(Array.from(noa.match).sort(), ['lor', 'noa']);
 });
 
 test('vettingSummary: no flags = clean', () => {

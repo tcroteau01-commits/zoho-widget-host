@@ -823,6 +823,60 @@ function renderVendorDocs(docs, container) {
   });
 }
 
+// ── Exception-only, severity-ranked vetting flags (Phase 1) ──────────────
+function deriveVettingFlags(profile, ctx) {
+  profile = profile || {}; ctx = ctx || {};
+  var ipqs = profile.ipqs || {};
+  var risk = (profile.risk && profile.risk.flags) || [];
+  function has(id) { return risk.some(function (f) { return f.id === id; }); }
+  var flags = [];
+
+  // Account / status hard stops
+  if (ctx.isDnu) flags.push({ key: 'dnu', level: 'stop', label: 'Do Not Use',
+    reason: 'This carrier is marked Do Not Use.' });
+  if (ctx.statusKey === 'denied') flags.push({ key: 'denied', level: 'stop', label: 'Denied',
+    reason: 'This carrier was denied.' });
+
+  // Bank
+  if (has('bank_bad_actor')) flags.push({ key: 'bank_bad_actor', level: 'stop',
+    label: 'Bank — linked to flagged vendor',
+    reason: 'Bank account is linked to a vendor flagged for fraud.' });
+  if (has('bank_account_shared')) flags.push({ key: 'bank_account_shared', level: 'stop',
+    label: 'Bank — account shared with another carrier',
+    reason: 'This bank account is in use by another carrier.' });
+  if (has('bank_routing_invalid')) flags.push({ key: 'bank_routing_invalid', level: 'stop',
+    label: 'Bank — routing not valid / not in FedACH',
+    reason: 'Routing number is not a valid FedACH routing number.' });
+  if (has('bank_name_mismatch')) flags.push({ key: 'bank_name_mismatch', level: 'check',
+    label: 'Bank — name mismatch',
+    reason: 'Account-holder name does not match the carrier.' });
+  // bank_state_mismatch intentionally NOT surfaced in Phase 1 (profile-only).
+
+  // Footprint — VOIP/VPN. Either alone = check; both = a single stop.
+  var voip = !!ipqs.voip_number || has('voip_phone');
+  var vpn  = !!ipqs.vpn_detected || has('vpn_signup');
+  if (voip && vpn) flags.push({ key: 'foot_both', level: 'stop', label: 'VOIP + VPN',
+    reason: 'Phone is VOIP and signup was VPN-masked — strong spoofing signal.' });
+  else if (voip) flags.push({ key: 'foot_voip', level: 'check', label: 'VOIP phone',
+    reason: 'Carrier phone is a VOIP number.' });
+  else if (vpn) flags.push({ key: 'foot_vpn', level: 'check', label: 'VPN-masked signup',
+    reason: 'Signup IP was masked by a VPN.' });
+
+  // Factor — only ever denied/pending (exception-only).
+  if (has('factor_not_approved')) flags.push({ key: 'factor_denied', level: 'stop',
+    label: 'Factor denied', reason: 'Factoring company is not approved by OperFi.' });
+  else if (has('factor_pending')) flags.push({ key: 'factor_pending', level: 'check',
+    label: 'Factor pending OperFi approval', reason: 'Factoring company is pending OperFi approval.' });
+
+  // Payment change pending
+  if (ctx.statusKey === 'payment-change') flags.push({ key: 'pay_change', level: 'check',
+    label: 'Payment change pending', reason: 'A payment-info change is pending review.' });
+
+  // Stop above check; stable within level (Node/JSDOM sort is stable).
+  var order = { stop: 0, check: 1 };
+  return flags.slice().sort(function (a, b) { return order[a.level] - order[b.level]; });
+}
+
 // ── Red-flag vetting chips ────────────────────────────────────────────────
 var VV_FLAG_STYLE = 'display:inline-flex;align-items:center;font-size:11px;font-weight:700;' +
   'padding:3px 9px;border-radius:999px;border:1px solid;margin:0 6px 6px 0;text-transform:uppercase;letter-spacing:.4px;';
@@ -1036,6 +1090,11 @@ function exportCsv() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// Exposed for tests (the script runs inside an IIFE under 'use strict').
+window.__vvtest = {
+  deriveVettingFlags: deriveVettingFlags
+};
 
 })();
 </script>

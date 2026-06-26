@@ -384,3 +384,88 @@ test('red-flag chips derive from carrier-profile + docs', async () => {
   const factorChip = [...w.document.querySelectorAll('#vv-redflags .vv-flag')].find(c => c.textContent === 'Factor');
   assert.ok(factorChip && factorChip.classList.contains('red'), 'Factor chip must be red when factor_not_approved');
 });
+
+// ── Pure vetting-flag derivation ───────────────────────────────────────────
+function vvApi() {
+  const dom = new JSDOM(HTML, { runScripts: 'dangerously', pretendToBeVisual: true });
+  const w = dom.window;
+  w.ZOHO = { CREATOR: { UTIL: { getInitParams: () => ({ loginUser: 'b@t.com' }) }, init: () => Promise.resolve() } };
+  w.OperFiAV = { carrierBadge: () => {}, customerCredit: () => {} };
+  // Benign fetch so bootApp's deferred report pull doesn't raise an unhandled rejection.
+  w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [] }) });
+  return w.__vvtest;
+}
+
+function riskProfile(ids, ipqs) {
+  return { risk: { flags: (ids || []).map((id) => ({ id })) }, ipqs: ipqs || {} };
+}
+
+test('deriveVettingFlags: clean carrier yields no flags', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 0);
+});
+
+test('deriveVettingFlags: DNU is a stop', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: true, statusKey: 'dnu', isFactored: false });
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].key, 'dnu');
+  assert.equal(flags[0].level, 'stop');
+});
+
+test('deriveVettingFlags: denied status is a stop', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'denied', isFactored: false });
+  assert.ok(flags.some((f) => f.key === 'denied' && f.level === 'stop'));
+});
+
+test('deriveVettingFlags: bank ids map to correct severities', () => {
+  const api = vvApi();
+  const ctx = { isDnu: false, statusKey: 'approved', isFactored: false };
+  assert.equal(api.deriveVettingFlags(riskProfile(['bank_bad_actor']), ctx)[0].level, 'stop');
+  assert.equal(api.deriveVettingFlags(riskProfile(['bank_account_shared']), ctx)[0].level, 'stop');
+  assert.equal(api.deriveVettingFlags(riskProfile(['bank_routing_invalid']), ctx)[0].level, 'stop');
+  assert.equal(api.deriveVettingFlags(riskProfile(['bank_name_mismatch']), ctx)[0].level, 'check');
+});
+
+test('deriveVettingFlags: bank_state_mismatch is suppressed in Phase 1', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile(['bank_state_mismatch']), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 0);
+});
+
+test('deriveVettingFlags: footprint VOIP-only is one check', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([], { voip_number: true }), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].level, 'check');
+});
+
+test('deriveVettingFlags: footprint VPN-only is one check', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([], { vpn_detected: true }), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].level, 'check');
+});
+
+test('deriveVettingFlags: footprint VOIP+VPN is one stop labeled "VOIP + VPN"', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([], { voip_number: true, vpn_detected: true }), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].level, 'stop');
+  assert.equal(flags[0].label, 'VOIP + VPN');
+});
+
+test('deriveVettingFlags: factor denied=stop, pending=check', () => {
+  const api = vvApi();
+  const ctx = { isDnu: false, statusKey: 'approved', isFactored: true };
+  assert.equal(api.deriveVettingFlags(riskProfile(['factor_not_approved']), ctx)[0].level, 'stop');
+  assert.equal(api.deriveVettingFlags(riskProfile(['factor_pending']), ctx)[0].level, 'check');
+});
+
+test('deriveVettingFlags: payment-change is a check', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'payment-change', isFactored: false });
+  assert.ok(flags.some((f) => f.key === 'pay_change' && f.level === 'check'));
+});
+
+test('deriveVettingFlags: stops sort above checks', () => {
+  const flags = vvApi().deriveVettingFlags(
+    riskProfile(['factor_pending', 'bank_routing_invalid']),
+    { isDnu: false, statusKey: 'approved', isFactored: true });
+  assert.equal(flags[0].level, 'stop');
+  assert.equal(flags[flags.length - 1].level, 'check');
+});

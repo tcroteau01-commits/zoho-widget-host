@@ -575,6 +575,18 @@ test('Factoring Company Change uploads LOR and New NOA sequentially to the right
   assert.ok(byField['NOA_or_LOR_Upload'].order < byField['New_NOA'].order);
 });
 
+test('resetSelectedFiles clears the LOR dropzone state and keeps its LOR label', () => {
+  const { window } = makeWidget();
+  window.selectedLorFile = { name: 'release.pdf' };
+  const z = window.document.getElementById('dropzone-lor');
+  z.classList.add('has-file');
+  z.querySelector('.dropzone-text').textContent = 'release.pdf';
+  window.resetSelectedFiles();
+  assert.equal(window.selectedLorFile, null);
+  assert.equal(z.classList.contains('has-file'), false);
+  assert.match(z.querySelector('.dropzone-text').textContent, /LOR/);
+});
+
 test('Factoring Company Change form exposes an LOR dropzone wired to selectedLorFile', () => {
   const { window } = makeWidget();
   assert.ok(window.document.getElementById('dropzone-lor'), 'dropzone-lor exists');

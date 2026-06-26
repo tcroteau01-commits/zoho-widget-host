@@ -548,11 +548,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 <script>
 function resetSelectedFiles() {
   selectedDocFile = null; selectedNewNoaFile = null; selectedLorFile = null;
-  ['file-main','file-newfactor'].forEach(function(id){ var i = document.getElementById(id); if (i) try { i.value = ''; } catch (_) {} });
-  ['dropzone-main','dropzone-newfactor'].forEach(function(id){
+  ['file-main','file-newfactor','file-lor'].forEach(function(id){ var i = document.getElementById(id); if (i) try { i.value = ''; } catch (_) {} });
+  var DEFAULT_TEXT = { 'dropzone-main': 'Drag NOA here or click to browse',
+                       'dropzone-newfactor': 'Drag NOA here or click to browse',
+                       'dropzone-lor': 'Drag LOR here or click to browse' };
+  Object.keys(DEFAULT_TEXT).forEach(function(id){
     var z = document.getElementById(id); if (!z) return;
     z.classList.remove('has-file');
-    var t = z.querySelector('.dropzone-text'); if (t) t.textContent = 'Drag NOA here or click to browse';
+    var t = z.querySelector('.dropzone-text'); if (t) t.textContent = DEFAULT_TEXT[id];
   });
 }
 function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); if (typeof selectType === 'function' && !selectedType) selectType('NOA Update'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }

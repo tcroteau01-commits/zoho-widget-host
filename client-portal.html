@@ -302,12 +302,19 @@ var DEMO_STATUS = {
     { First_Name1: 'Dana', Last_Name1: 'Whitfield', Title: 'CFO', Ownership_Percent: 30 },
     { First_Name1: 'Marcus', Last_Name1: 'Reyes', Title: 'COO', Ownership_Percent: 30 }
   ],
+  contacts: [
+    { Name: 'Patricia Lowe', Title: 'Bookkeeper', Phone: '6025557788', Email: 'patricia@eslingerlogistics.com' },
+    { Name: 'Sam Ortega', Title: 'Dispatch Manager', Phone: '6025559900', Email: 'sam@eslingerlogistics.com' }
+  ],
   customers: [
     { Business_Name: 'Desert Produce Distributors', Website: 'desertproduce.com', Expected_Monthly_Revenue: 14000 },
     { Business_Name: 'Phoenix Building Supply', Website: 'phxbuildingsupply.com', Expected_Monthly_Revenue: 9000 }
   ],
   related: [
     { Business_Name: 'Eslinger Equipment Leasing LLC', USDOT: '', MC_Number: '', Factoring_Company: '' }
+  ],
+  ucc: [
+    { securedParty: 'TBS Factoring Service', type: 'Factor', filed: '2024-11-02', action: 'LOR Required' }
   ],
   documents: [
     { type: 'Signed Agreement', status: 'Verified', uploadedAt: 'Jun 8' },
@@ -489,6 +496,10 @@ function renderStatus(data, isDemo) {
     var pct = (o.Ownership_Percent != null && o.Ownership_Percent !== '') ? o.Ownership_Percent + '%' : '';
     return recRow(nm, o.Title || '', pct);
   }).join(''));
+  var contactsHtml = recCard('Trusted contacts on file', (data.contacts || []).map(function (c) {
+    var sub = [c.Title, c.Email].filter(Boolean).join(' · ');
+    return recRow(c.Name || '—', sub, c.Phone || '');
+  }).join(''));
   var clienteleHtml = recCard('Your customers on file', (data.customers || []).map(function (c) {
     var rev = (c.Expected_Monthly_Revenue != null && c.Expected_Monthly_Revenue !== '') ? '$' + c.Expected_Monthly_Revenue : '';
     return recRow(c.Business_Name || '—', c.Website || '', rev);
@@ -496,6 +507,10 @@ function renderStatus(data, isDemo) {
   var relatedHtml = recCard('Related businesses on file', (data.related || []).map(function (r) {
     var sub = [r.USDOT ? 'DOT ' + r.USDOT : '', r.MC_Number ? 'MC ' + r.MC_Number : ''].filter(Boolean).join(' · ');
     return recRow(r.Business_Name || '—', sub, r.Factoring_Company || '');
+  }).join(''));
+  var uccHtml = recCard('UCC filings on file', (data.ucc || []).map(function (u) {
+    var sub = [u.type, u.filed].filter(Boolean).join(' · ');
+    return recRow(u.securedParty || '—', sub, u.action || '');
   }).join(''));
 
   el('content').innerHTML =
@@ -517,7 +532,7 @@ function renderStatus(data, isDemo) {
       '<div id="docList">' + rows + requestedRows + extrasHtml + '</div>' +
       '<div class="toast" id="upToast"></div></div>' +
 
-    ownersHtml + clienteleHtml + relatedHtml +
+    ownersHtml + contactsHtml + clienteleHtml + relatedHtml + uccHtml +
 
     '<div class="card"><div class="card-title">Need a hand?</div>' + repHtml + '</div>';
 

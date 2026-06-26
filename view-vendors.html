@@ -877,6 +877,31 @@ function deriveVettingFlags(profile, ctx) {
   return flags.slice().sort(function (a, b) { return order[a.level] - order[b.level]; });
 }
 
+// ── Required documents ────────────────────────────────────────────────────
+function requiredDocs(ctx) {
+  ctx = ctx || {};
+  var req = [
+    { key: 'coi',     label: 'Insurance (COI)', match: ['coi'] },
+    { key: 'banking', label: 'Banking (Voided Check / Bank Info)', match: ['banking'] }
+  ];
+  if (ctx.isFactored) req.push({ key: 'noa_lor', label: 'NOA or LOR', match: ['noa', 'lor'] });
+  return req;
+}
+
+// ── Vetting summary ──────────────────────────────────────────────────────
+function vettingSummary(flags) {
+  flags = flags || [];
+  if (!flags.length) {
+    return { level: 'clean', text: 'Looks clean — no vetting flags. Review the full profile before you submit.' };
+  }
+  var stops = flags.filter(function (f) { return f.level === 'stop'; }).length;
+  var n = flags.length;
+  if (stops) {
+    return { level: 'stop', text: n + ' issue' + (n > 1 ? 's' : '') + ' to review — at least one is a hard stop.' };
+  }
+  return { level: 'check', text: n + ' thing' + (n > 1 ? 's' : '') + ' to check.' };
+}
+
 // ── Red-flag vetting chips ────────────────────────────────────────────────
 var VV_FLAG_STYLE = 'display:inline-flex;align-items:center;font-size:11px;font-weight:700;' +
   'padding:3px 9px;border-radius:999px;border:1px solid;margin:0 6px 6px 0;text-transform:uppercase;letter-spacing:.4px;';
@@ -1093,7 +1118,9 @@ function exportCsv() {
 
 // Exposed for tests (the script runs inside an IIFE under 'use strict').
 window.__vvtest = {
-  deriveVettingFlags: deriveVettingFlags
+  deriveVettingFlags: deriveVettingFlags,
+  requiredDocs: requiredDocs,
+  vettingSummary: vettingSummary
 };
 
 })();

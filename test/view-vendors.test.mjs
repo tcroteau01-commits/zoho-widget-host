@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
@@ -468,4 +468,37 @@ test('deriveVettingFlags: stops sort above checks', () => {
     { isDnu: false, statusKey: 'approved', isFactored: true });
   assert.equal(flags[0].level, 'stop');
   assert.equal(flags[flags.length - 1].level, 'check');
+});
+
+// ── Required docs and vetting summary ──────────────────────────────────────
+
+test('requiredDocs: non-factored requires COI + Banking only', () => {
+  const req = vvApi().requiredDocs({ isFactored: false });
+  const keys = req.map((r) => r.key);
+  assert.deepEqual(keys.sort(), ['banking', 'coi']);
+});
+
+test('requiredDocs: factored also requires NOA/LOR (satisfied by noa OR lor)', () => {
+  const req = vvApi().requiredDocs({ isFactored: true });
+  const noa = req.find((r) => r.key === 'noa_lor');
+  assert.ok(noa, 'NOA/LOR requirement present');
+  assert.deepEqual(noa.match.sort(), ['lor', 'noa']);
+});
+
+test('vettingSummary: no flags = clean', () => {
+  const s = vvApi().vettingSummary([]);
+  assert.equal(s.level, 'clean');
+  assert.match(s.text, /Looks clean/);
+});
+
+test('vettingSummary: any stop = stop level', () => {
+  const s = vvApi().vettingSummary([{ level: 'stop' }, { level: 'check' }]);
+  assert.equal(s.level, 'stop');
+  assert.match(s.text, /hard stop/);
+});
+
+test('vettingSummary: only checks = check level', () => {
+  const s = vvApi().vettingSummary([{ level: 'check' }, { level: 'check' }]);
+  assert.equal(s.level, 'check');
+  assert.match(s.text, /to check/);
 });

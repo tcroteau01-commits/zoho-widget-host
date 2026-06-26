@@ -1302,8 +1302,8 @@ function renderPanel() {
       // Documents
       '<div class="panel-section">' +
         '<div class="panel-section-title">Documents</div>' +
-        docsGroupHtml('Customer Documents', collectFiles(r.Customer_Documents), r.ID, 'customer') +
-        docsGroupHtml('Carrier Documents',  collectFiles(r.Carrier_Documents), r.ID, 'carrier') +
+        docsGroupHtml('Customer Documents', collectFiles(r.Customer_Documents), r.ID, 'customer', subformHasFiles(r.Customer_Docs_Upload1)) +
+        docsGroupHtml('Carrier Documents',  collectFiles(r.Carrier_Documents), r.ID, 'carrier', subformHasFiles(r.Carrier_Docs_Upload1)) +
       '</div>' +
 
       // Timeline
@@ -1335,9 +1335,32 @@ function field(label, val) {
     '<div class="field-val' + (has ? '' : ' empty') + '">' + (has ? esc(String(val)) : '—') + '</div></div>';
 }
 
-function docsGroupHtml(label, files, recordId, slot) {
+// Legacy native-form loads stored docs in the subforms (Customer_Docs_Upload1 /
+// Carrier_Docs_Upload1) rather than the merged file field. Detect their presence so
+// we can still offer a combined view.
+function subformHasFiles(subform) {
+  return Array.isArray(subform) && subform.length > 0;
+}
+window.subformHasFiles = subformHasFiles;
+
+function docsGroupHtml(label, files, recordId, slot, legacy) {
   var html = '<div class="doc-group"><div class="doc-group-label">' + esc(label) + '</div>';
-  if (!files.length) {
+  if (!files.length && legacy) {
+    // Legacy load: the original uploads live in the subform. Offer one combined
+    // doc that the backend merges on view -- same UX as a current load.
+    var lf = (slot === 'carrier' ? 'Carrier documents.pdf' : 'Customer documents.pdf');
+    html += '<div class="docs-list">' +
+      '<div class="doc-item clickable doc-clickable" role="button" tabindex="0"' +
+        ' data-doc-record="' + esc(recordId) + '" data-doc-slot="' + esc(slot) + '"' +
+        ' data-doc-name="' + esc(lf) + '">' +
+        '<div class="doc-icon">PDF</div>' +
+        '<div class="doc-info">' +
+          '<div class="doc-name">' + esc(lf) + '</div>' +
+          '<div class="doc-meta">View or download</div>' +
+        '</div>' +
+        '<div class="doc-open" aria-hidden="true">⤢</div>' +
+      '</div></div>';
+  } else if (!files.length) {
     html += '<div class="doc-empty">No files uploaded.</div>';
   } else {
     html += '<div class="docs-list">';

@@ -362,7 +362,7 @@ test('panel paints clean summary and no flag rows for a clean carrier', async ()
   await new Promise((r) => setTimeout(r, 50));
   const strip = w.document.getElementById('vv-redflags');
   assert.match(strip.textContent, /Looks clean/);
-  assert.equal(strip.querySelectorAll('.vv-flag').length, 0);
+  assert.equal(strip.querySelectorAll('.vvp-flag').length, 0);
 });
 
 test('panel paints a stop row with its reason for a routing-invalid carrier', async () => {
@@ -375,7 +375,7 @@ test('panel paints a stop row with its reason for a routing-invalid carrier', as
   w.document.querySelector('.row').click();
   await new Promise((r) => setTimeout(r, 50));
   const strip = w.document.getElementById('vv-redflags');
-  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1);
+  assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1);
   assert.match(strip.textContent, /not a valid FedACH/);
 });
 
@@ -415,8 +415,8 @@ test('vetting pane derives present-only flags from carrier-profile', async () =>
   assert.match(strip.textContent, /VPN/, 'VPN-only footprint -> a check row');
   assert.match(strip.textContent, /Factor denied/, 'factor_not_approved -> Factor denied row');
   assert.doesNotMatch(strip.textContent, /Documents/, 'document completeness is no longer a flag');
-  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1, 'factor-denied is the lone stop');
-  assert.equal(strip.querySelectorAll('.vv-flag.check').length, 1, 'VPN is the lone check');
+  assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1, 'factor-denied is the lone stop');
+  assert.equal(strip.querySelectorAll('.vvp-flag.check').length, 1, 'VPN is the lone check');
 });
 
 // ── Pure vetting-flag derivation ───────────────────────────────────────────
@@ -665,6 +665,32 @@ test('DNU carrier with failed profile fetch still shows its stop row', async () 
   w.document.querySelector('.row').click();
   await new Promise((r) => setTimeout(r, 80));
   const strip = w.document.getElementById('vv-redflags');
-  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1, 'DNU stop row must be present');
+  assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1, 'DNU stop row must be present');
   assert.match(strip.textContent, /Do Not Use/, 'DNU reason must appear');
+});
+
+test('vetting pane: summary banner has icon + sub; flag cards have pills', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '7001', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [{ id: 'bank_routing_invalid' }, { id: 'voip_phone' }] }, ipqs: {} }, []);
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  // summary banner
+  const banner = strip.querySelector('.vvp-summary');
+  assert.ok(banner, 'summary banner present');
+  assert.ok(banner.querySelector('.vvp-ic'), 'banner has an icon');
+  assert.ok(banner.querySelector('.vvp-txt small'), 'banner has a sub-line');
+  // flag cards with pills
+  const cards = strip.querySelectorAll('.vvp-flag');
+  assert.equal(cards.length, 2, 'one card per flag');
+  const stopCard = strip.querySelector('.vvp-flag.stop');
+  assert.ok(stopCard, 'has a stop card');
+  assert.match(stopCard.querySelector('.vvp-fsev').textContent, /Stop/);
+  assert.ok(strip.querySelector('.vvp-flag.check .vvp-fsev'), 'check card has a pill');
+  assert.match(stopCard.querySelector('.vvp-freason').textContent, /FedACH/);
 });

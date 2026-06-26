@@ -210,6 +210,44 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   input, select, textarea, .search input { font-size: 16px; }
 }
 </style>
+<style>
+/* ── VET1.1 vetting-pane parity (mockup View-Vendors-Vetting-Redesign-Mock.html) ── */
+.vvp-summary { display:flex; align-items:center; gap:12px; padding:13px 15px; border-radius:11px; font-weight:600; }
+.vvp-summary .vvp-ic { font-size:18px; line-height:1; }
+.vvp-summary .vvp-txt { font-size:13.5px; }
+.vvp-summary .vvp-txt small { display:block; font-weight:500; font-size:11.5px; opacity:.8; margin-top:2px; }
+.vvp-summary.clean { background:#eef7ef; color:#1f6321; border:1px solid #cfe7d1; }
+.vvp-summary.check { background:#fff6e6; color:#8a5a00; border:1px solid #f0dcae; }
+.vvp-summary.stop  { background:#fdeceb; color:#a3211b; border:1px solid #f3c4c1; }
+.vvp-flags { display:flex; flex-direction:column; gap:8px; margin-top:13px; }
+.vvp-flag { display:flex; gap:11px; padding:11px 13px; border-radius:10px; border:1px solid; align-items:flex-start; }
+.vvp-flag .vvp-fic { font-size:15px; line-height:1.2; margin-top:1px; }
+.vvp-flag .vvp-fmain { flex:1; min-width:0; }
+.vvp-flag .vvp-flabel { font-size:13px; font-weight:700; }
+.vvp-flag .vvp-freason { font-size:11.5px; margin-top:2px; line-height:1.4; }
+.vvp-flag .vvp-fsev { font-size:9.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; padding:2px 7px; border-radius:999px; align-self:center; white-space:nowrap; }
+.vvp-flag.stop  { background:#fdeceb; border-color:#f3c4c1; color:#8e1f1a; }
+.vvp-flag.stop .vvp-freason { color:#b4534d; }
+.vvp-flag.stop .vvp-fsev { background:#f6cfcc; color:#8e1f1a; }
+.vvp-flag.check { background:#fff6e6; border-color:#f0dcae; color:#7a5200; }
+.vvp-flag.check .vvp-freason { color:#99713a; }
+.vvp-flag.check .vvp-fsev { background:#f3e3b8; color:#7a5200; }
+.vvp-sec-title { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:#9a9a93; margin-bottom:11px; display:flex; align-items:center; gap:8px; }
+.vvp-sec-title .vvp-ct { background:#efeee8; color:#777; border-radius:999px; font-size:10px; padding:1px 7px; }
+.vvp-docs { display:flex; flex-direction:column; gap:7px; }
+.vvp-doc { display:flex; align-items:center; gap:11px; padding:11px 13px; border:1px solid #ebe9e1; border-radius:10px; background:#fcfbf8; }
+.vvp-doc .vvp-dic { width:30px; height:30px; border-radius:7px; background:#eef1f4; display:flex; align-items:center; justify-content:center; font-size:14px; color:#56606b; flex-shrink:0; }
+.vvp-doc .vvp-dmain { flex:1; min-width:0; }
+.vvp-doc .vvp-dlabel { font-size:12.5px; font-weight:700; color:#2c2c2c; }
+.vvp-doc .vvp-dfile { font-size:11px; color:#9a9a93; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vvp-doc .vvp-dnote { font-size:11px; color:#99713a; margin-top:2px; }
+.vvp-dbtn { border:1px solid #d6d3c8; background:#fff; border-radius:7px; font-size:11px; font-weight:700; padding:7px 11px; cursor:pointer; color:#444; font-family:inherit; white-space:nowrap; transition:all .12s; }
+.vvp-dbtn:hover { border-color:#23262b; color:#23262b; }
+.vvp-doc.recommended { border-style:dashed; background:#fff; }
+.vvp-doc.recommended .vvp-dlabel { color:#8a5a00; }
+.vvp-doc.recommended .vvp-dic { background:#fff3df; color:#b86e00; }
+.vvp-rec-head { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#8a5a00; margin:10px 0 6px; }
+</style>
 </head>
 <body>
 
@@ -954,12 +992,8 @@ function vettingSummary(flags, profileMissing) {
 }
 
 // ── Exception-only vetting pane ───────────────────────────────────────────
-var VV_SUMMARY_STYLE = {
-  clean: 'background:#e8f5e9;color:#2e7d32;border:1px solid #bfe3c2;',
-  check: 'background:#fff8e1;color:#856404;border:1px solid #ffe082;',
-  stop:  'background:#ffebee;color:#c62828;border:1px solid #ef9a9a;'
-};
-var VV_ROW_DOT = { stop: '#c62828', check: '#b8860b' };
+var VV_FLAG_ICON = { stop: '⛔', check: '⚠' };
+var VV_FLAG_SEV  = { stop: 'Stop', check: 'Check' };
 
 function renderVettingPane(profile, ctx, container, profileMissing) {
   container.innerHTML = '';
@@ -967,28 +1001,28 @@ function renderVettingPane(profile, ctx, container, profileMissing) {
   var summary = vettingSummary(flags, profileMissing);
 
   var sum = document.createElement('div');
-  sum.className = 'vv-vet-summary ' + summary.level;
-  sum.style.cssText = 'font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:10px;' + VV_SUMMARY_STYLE[summary.level];
-  sum.textContent = summary.text + (summary.sub ? ' — ' + summary.sub : '');
+  sum.className = 'vvp-summary ' + summary.level;
+  var sic = document.createElement('div'); sic.className = 'vvp-ic'; sic.textContent = summary.ic;
+  var stx = document.createElement('div'); stx.className = 'vvp-txt'; stx.textContent = summary.text;
+  var ssub = document.createElement('small'); ssub.textContent = summary.sub; stx.appendChild(ssub);
+  sum.appendChild(sic); sum.appendChild(stx);
   container.appendChild(sum);
 
+  if (!flags.length) return;
+  var wrap = document.createElement('div'); wrap.className = 'vvp-flags';
   flags.forEach(function (f) {
-    var row = document.createElement('div');
-    row.className = 'vv-flag ' + f.level;
-    row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid #f0efe9;';
-    var dot = document.createElement('span');
-    dot.style.cssText = 'flex:0 0 auto;width:8px;height:8px;border-radius:50%;margin-top:5px;background:' + VV_ROW_DOT[f.level] + ';';
-    var body = document.createElement('div');
-    var lab = document.createElement('div');
-    lab.style.cssText = 'font-size:12px;font-weight:700;color:#333;';
-    lab.textContent = f.label;
-    var why = document.createElement('div');
-    why.style.cssText = 'font-size:11px;color:#777;margin-top:1px;';
-    why.textContent = f.reason;
-    body.appendChild(lab); body.appendChild(why);
-    row.appendChild(dot); row.appendChild(body);
-    container.appendChild(row);
+    var card = document.createElement('div');
+    card.className = 'vvp-flag ' + f.level;
+    var fic = document.createElement('div'); fic.className = 'vvp-fic'; fic.textContent = VV_FLAG_ICON[f.level] || '';
+    var main = document.createElement('div'); main.className = 'vvp-fmain';
+    var lab = document.createElement('div'); lab.className = 'vvp-flabel'; lab.textContent = f.label;
+    var why = document.createElement('div'); why.className = 'vvp-freason'; why.textContent = f.reason;
+    main.appendChild(lab); main.appendChild(why);
+    var sev = document.createElement('div'); sev.className = 'vvp-fsev'; sev.textContent = VV_FLAG_SEV[f.level] || '';
+    card.appendChild(fic); card.appendChild(main); card.appendChild(sev);
+    wrap.appendChild(card);
   });
+  container.appendChild(wrap);
 }
 
 // Repaint the vetting pane from whatever is cached right now.

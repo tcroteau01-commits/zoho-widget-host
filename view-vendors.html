@@ -850,57 +850,78 @@ function refreshVendorVetting(vendorId) {
   if (rec && String(rec.ID) === String(vendorId)) loadVendorRedFlags(rec, true);
 }
 
+var VV_DOC_ICON = { agreement: '📄', onboarding: '📋', banking: '🏦', coi: '🛡️', noa: '🧾', lor: '🧾', other: '📎' };
+
 function renderVendorDocs(docs, container) {
   docs = docs || [];
-  container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>';
+  container.innerHTML = '';
 
-  if (!docs.length) {
-    var empty = document.createElement('div');
-    empty.className = 'vv-doc-state';
-    empty.style.cssText = 'font-size:12px;color:#999;';
-    empty.textContent = 'No documents on file.';
-    container.appendChild(empty);
-  }
+  var title = document.createElement('div');
+  title.className = 'vvp-sec-title';
+  title.appendChild(document.createTextNode('Documents'));
+  var ct = document.createElement('span');
+  ct.className = 'vvp-ct';
+  ct.textContent = docs.length + ' on file';
+  title.appendChild(ct);
+  container.appendChild(title);
+
+  var list = document.createElement('div');
+  list.className = 'vvp-docs';
+  container.appendChild(list);
 
   docs.forEach(function (d) {
     var row = document.createElement('div');
-    row.className = 'vv-doc';
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0efe9;cursor:pointer;';
-    var lab = document.createElement('span');
-    lab.style.cssText = 'font-weight:600;font-size:12px;color:#333;';
+    row.className = 'vvp-doc';
+    var dic = document.createElement('div'); dic.className = 'vvp-dic';
+    dic.textContent = VV_DOC_ICON[d.type] || '📎';
+    var main = document.createElement('div'); main.className = 'vvp-dmain';
+    var lab = document.createElement('div'); lab.className = 'vvp-dlabel';
     lab.textContent = d.label || d.type || 'Document';
-    var name = document.createElement('span');
-    name.style.cssText = 'font-size:12px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    name.textContent = d.filename || '';
-    row.appendChild(lab); row.appendChild(name);
-    row.addEventListener('click', function () {
+    var file = document.createElement('div'); file.className = 'vvp-dfile';
+    file.textContent = d.filename || '';
+    main.appendChild(lab); main.appendChild(file);
+    var btn = document.createElement('button'); btn.className = 'vvp-dbtn'; btn.textContent = 'View';
+    btn.addEventListener('click', function () {
       if (!window.OperFiDocViewer) return;
       OperFiDocViewer.open({
         url: BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token),
         filename: d.filename || (d.type || 'document')
       });
     });
-    container.appendChild(row);
+    row.appendChild(dic); row.appendChild(main); row.appendChild(btn);
+    list.appendChild(row);
   });
 
-  // Needed rows: required types with no satisfying doc on file.
+  // Recommended (not on file) — advisory only, never blocking.
   var present = {};
   docs.forEach(function (d) { present[d.type] = true; });
   var ctx = vvPanelCtx || {};
-  recommendedDocs(ctx).forEach(function (req) {
-    var satisfied = req.match.some(function (k) { return present[k]; });
-    if (satisfied) return;
-    var row = document.createElement('div');
-    row.className = 'vv-doc-needed';
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px dashed #d8b04a;color:#8a6d1a;font-size:12px;';
-    var tag = document.createElement('span');
-    tag.style.cssText = 'font-weight:700;';
-    tag.textContent = 'Needed:';
-    var lab = document.createElement('span');
-    lab.textContent = req.label;
-    row.appendChild(tag); row.appendChild(lab);
-    container.appendChild(row);
+  var missing = recommendedDocs(ctx).filter(function (r) {
+    return !r.match.some(function (k) { return present[k]; });
   });
+  if (missing.length) {
+    var head = document.createElement('div');
+    head.className = 'vvp-rec-head';
+    head.textContent = 'Recommended — not on file';
+    container.appendChild(head);
+    var recList = document.createElement('div');
+    recList.className = 'vvp-docs';
+    container.appendChild(recList);
+    missing.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'vvp-doc recommended';
+      var dic = document.createElement('div'); dic.className = 'vvp-dic';
+      dic.textContent = VV_DOC_ICON[r.match[0]] || '📎';
+      var main = document.createElement('div'); main.className = 'vvp-dmain';
+      var lab = document.createElement('div'); lab.className = 'vvp-dlabel';
+      lab.textContent = r.label;
+      var note = document.createElement('div'); note.className = 'vvp-dnote';
+      note.textContent = 'You may already have it in your TMS — keeping a copy here is recommended.';
+      main.appendChild(lab); main.appendChild(note);
+      row.appendChild(dic); row.appendChild(main);
+      recList.appendChild(row);
+    });
+  }
 }
 
 // ── Exception-only, severity-ranked vetting flags (Phase 1) ──────────────

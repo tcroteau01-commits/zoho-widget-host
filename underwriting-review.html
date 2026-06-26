@@ -676,6 +676,10 @@ function buildReviewPayload(s, appId) {
     UW_Notes: s.uwNotes || '',
     Client_Message: s.clientMessage || '',
     Manual_UCC: JSON.stringify(s.manualUcc || []),
+    Manual_Owners: JSON.stringify(s.manualOwners || []),
+    Manual_Contacts: JSON.stringify(s.manualContacts || []),
+    Manual_Customers: JSON.stringify(s.manualCustomers || []),
+    Manual_Related: JSON.stringify(s.manualRelated || []),
     Decision_Date: s.decisionDate || ''
   };
   if (appId != null) p[APPLICATION_LOOKUP] = appId;
@@ -1010,6 +1014,10 @@ function readState() {
     uwNotes: $('uwNotes').value,
     clientMessage: $('uwClientMsg').value,
     manualUcc: (MODEL && MODEL.manualUcc) || [],
+    manualOwners: (MODEL && MODEL.manualOwners) || [],
+    manualContacts: (MODEL && MODEL.manualContacts) || [],
+    manualCustomers: (MODEL && MODEL.manualCustomers) || [],
+    manualRelated: (MODEL && MODEL.manualRelated) || [],
     decisionDate: $('uwDecisionDate').value,
     approvedCreditLimit: $('uwLimit').value,
     recommendedRate: $('uwRate').value,
@@ -1057,6 +1065,16 @@ function kvRow(k,v){ return '<div class="row"><div class="k">'+k+'</div><div cla
 function renderModel(m) {
   MODEL = m;
   var a = m.application;
+  // Underwriter-added records (owners/contacts/customers/related/UCC) persist on the review as
+  // JSON (Manual_*). Parse once per loaded application and PRESERVE across in-place re-renders so a
+  // just-added row isn't wiped before persistManual() saves it. A fresh load() passes a new model
+  // object (no manual* set) → re-parses from the saved review.
+  var _rv = m.review || {};
+  MODEL.manualOwners    = MODEL.manualOwners    || parseJsonList(_rv.Manual_Owners);
+  MODEL.manualContacts  = MODEL.manualContacts  || parseJsonList(_rv.Manual_Contacts);
+  MODEL.manualCustomers = MODEL.manualCustomers || parseJsonList(_rv.Manual_Customers);
+  MODEL.manualRelated   = MODEL.manualRelated   || parseJsonList(_rv.Manual_Related);
+  MODEL.manualUcc       = MODEL.manualUcc       || parseJsonList(_rv.Manual_UCC);
   $('console').classList.add('show');
   $('modePill').textContent = LIVE ? 'Live' : 'Demo';
   $('uwName').textContent = a.Assigned_Underwriter || 'Underwriter';
@@ -1152,70 +1170,96 @@ function renderModel(m) {
   }
   $('ownTable').innerHTML = ot;
 
-  // Owner Details — state filing links (business state) + one section per declared owner.
-  var owners = m.owners || [];
+  // Owner Details — state filing links (business state) + one section per owner. Declared owners
+  // render first; underwriter-added owners follow, tagged "· added" with a remove (✕) control.
+  var owners = m.owners || [], manOwn = MODEL.manualOwners || [];
   var stCode = stateFromAddress(a.Physical_Address || a.loc || a.Mailing_Address);
   var sfHtml = renderStateFilings(stCode);
-  if (owners.length) {
-    $('ownerDetails').innerHTML = sfHtml + owners.map(function (o, i) {
-      var name = ((o.First_Name1 || '') + ' ' + (o.Last_Name1 || '')).trim() || '—';
-      var pct = (o.Ownership_Percent != null && o.Ownership_Percent !== '') ? o.Ownership_Percent + '%' : '—';
-      // Owner's own state filings (shown whenever the owner has a parseable state).
-      var oSt = stateFromAddress(o.Address);
-      var oFilings = oSt ? renderStateFilings(oSt, 'Owner filings') : '';
-      return '<div class="owner-card">' +
-        '<div class="owner-head"><div><div class="oseq">Owner ' + (o.Owner_Sequence || i + 1) + '</div><div class="on">' + name + '</div></div><div class="op">' + pct + '</div></div>' +
-        '<div class="kv">' +
-          kvRow('Title', o.Title) +
-          kvRow('Ownership %', pct === '—' ? '' : pct) +
-          kvRow('Birthdate', o.Birthdate) +
-          kvRow('SSN', maskSSN(o.SSN)) +
-          kvRow('Phone', o.Phone) +
-          kvRow('Email', o.Email) +
-          kvRow('Address', o.Address) +
-        '</div>' + oFilings + '</div>';
-    }).join('');
-    $('ownerCount').textContent = owners.length + (owners.length === 1 ? ' owner' : ' owners');
+  function ownerCardHtml(o, seq, isManual, mi) {
+    var name = ((o.First_Name1 || '') + ' ' + (o.Last_Name1 || '')).trim() || '—';
+    var pct = (o.Ownership_Percent != null && o.Ownership_Percent !== '') ? o.Ownership_Percent + '%' : '—';
+    var oSt = stateFromAddress(o.Address);
+    var oFilings = oSt ? renderStateFilings(oSt, 'Owner filings') : '';
+    var tag = isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '';
+    var del = isManual ? ' <button class="btn ghost sm js-own-del" data-i="' + mi + '" title="Remove">✕</button>' : '';
+    return '<div class="owner-card">' +
+      '<div class="owner-head"><div><div class="oseq">Owner ' + seq + tag + '</div><div class="on">' + escHtml(name) + '</div></div><div class="op">' + pct + del + '</div></div>' +
+      '<div class="kv">' +
+        kvRow('Title', escHtml(o.Title)) +
+        kvRow('Ownership %', pct === '—' ? '' : pct) +
+        kvRow('Birthdate', escHtml(o.Birthdate)) +
+        kvRow('SSN', maskSSN(o.SSN)) +
+        kvRow('Phone', escHtml(o.Phone)) +
+        kvRow('Email', escHtml(o.Email)) +
+        kvRow('Address', escHtml(o.Address)) +
+      '</div>' + oFilings + '</div>';
+  }
+  if (owners.length || manOwn.length) {
+    var ownHtml = sfHtml;
+    owners.forEach(function (o, i) { ownHtml += ownerCardHtml(o, o.Owner_Sequence || i + 1, false); });
+    manOwn.forEach(function (o, mi) { ownHtml += ownerCardHtml(o, owners.length + mi + 1, true, mi); });
+    $('ownerDetails').innerHTML = ownHtml;
+    var ownTot = owners.length + manOwn.length;
+    $('ownerCount').textContent = ownTot + (ownTot === 1 ? ' owner' : ' owners');
   } else {
     $('ownerDetails').innerHTML = sfHtml + '<div class="flag-empty">' + (m.checksReady === false ? 'No owners loaded for this application yet.' : 'No owners on record.') + '</div>';
     $('ownerCount').textContent = '—';
   }
+  qsa('#ownerDetails .js-own-del').forEach(function (b) { b.addEventListener('click', function () { removeManual('manualOwners', parseInt(b.getAttribute('data-i'), 10), 'Owner removed.'); }); });
 
   // Trusted Contacts — people the prospect authorized to speak to their account.
-  var contacts = m.contacts || [];
-  var ct = '<tr><th>Name</th><th>Title</th><th>Phone</th><th>Email</th></tr>';
-  if (contacts.length) {
-    contacts.forEach(function (c) {
-      ct += '<tr><td><b>' + (c.Name || '—') + '</b></td><td>' + (c.Title || '—') + '</td><td>' + (c.Phone || '—') + '</td><td>' + (c.Email || '—') + '</td></tr>';
-    });
+  var contacts = m.contacts || [], manCon = MODEL.manualContacts || [];
+  var ct = '<tr><th>Name</th><th>Title</th><th>Phone</th><th>Email</th><th></th></tr>';
+  function contactRow(c, isManual, mi) {
+    var tag = isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '';
+    var del = isManual ? '<button class="btn ghost sm js-con-del" data-i="' + mi + '" title="Remove">✕</button>' : '';
+    return '<tr><td><b>' + escHtml(c.Name || '—') + '</b>' + tag + '</td><td>' + escHtml(c.Title || '—') + '</td><td>' + escHtml(c.Phone || '—') + '</td><td>' + escHtml(c.Email || '—') + '</td><td style="text-align:right">' + del + '</td></tr>';
+  }
+  if (contacts.length || manCon.length) {
+    contacts.forEach(function (c) { ct += contactRow(c, false); });
+    manCon.forEach(function (c, mi) { ct += contactRow(c, true, mi); });
   } else {
-    ct += '<tr><td colspan="4" style="color:var(--of-gray-500)">No trusted contacts on this application.</td></tr>';
+    ct += '<tr><td colspan="5" style="color:var(--of-gray-500)">No trusted contacts on this application.</td></tr>';
   }
   $('contactTable').innerHTML = ct;
-  $('contactCount').textContent = contacts.length ? contacts.length + (contacts.length === 1 ? ' contact' : ' contacts') : 'none';
+  var conTot = contacts.length + manCon.length;
+  $('contactCount').textContent = conTot ? conTot + (conTot === 1 ? ' contact' : ' contacts') : 'none';
+  qsa('#contactTable .js-con-del').forEach(function (b) { b.addEventListener('click', function () { removeManual('manualContacts', parseInt(b.getAttribute('data-i'), 10), 'Contact removed.'); }); });
 
   // Clientele (customers the carrier/broker hauls for)
-  var customers = m.customers || [];
-  var clt = '<tr><th>Business</th><th>Website</th><th>Est. Monthly Rev.</th></tr>';
-  if (customers.length) {
-    customers.forEach(function (c) {
-      var rev = (c.Expected_Monthly_Revenue != null && c.Expected_Monthly_Revenue !== '') ? '$' + escHtml(c.Expected_Monthly_Revenue) : '—';
-      clt += '<tr><td><b>' + escHtml(c.Business_Name || '—') + '</b></td><td>' + escHtml(c.Website || '—') + '</td><td>' + rev + '</td></tr>';
-    });
-  } else { clt += '<tr><td colspan="3" style="color:var(--of-gray-500)">No clientele on this application.</td></tr>'; }
+  var customers = m.customers || [], manCus = MODEL.manualCustomers || [];
+  var clt = '<tr><th>Business</th><th>Website</th><th>Est. Monthly Rev.</th><th></th></tr>';
+  function custRow(c, isManual, mi) {
+    var rev = (c.Expected_Monthly_Revenue != null && c.Expected_Monthly_Revenue !== '') ? '$' + escHtml(c.Expected_Monthly_Revenue) : '—';
+    var tag = isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '';
+    var del = isManual ? '<button class="btn ghost sm js-cus-del" data-i="' + mi + '" title="Remove">✕</button>' : '';
+    return '<tr><td><b>' + escHtml(c.Business_Name || '—') + '</b>' + tag + '</td><td>' + escHtml(c.Website || '—') + '</td><td>' + rev + '</td><td style="text-align:right">' + del + '</td></tr>';
+  }
+  if (customers.length || manCus.length) {
+    customers.forEach(function (c) { clt += custRow(c, false); });
+    manCus.forEach(function (c, mi) { clt += custRow(c, true, mi); });
+  } else { clt += '<tr><td colspan="4" style="color:var(--of-gray-500)">No clientele on this application.</td></tr>'; }
   $('clienteleList').innerHTML = clt;
-  $('clienteleCount').textContent = customers.length ? customers.length + (customers.length === 1 ? ' customer' : ' customers') : 'none';
+  var cusTot = customers.length + manCus.length;
+  $('clienteleCount').textContent = cusTot ? cusTot + (cusTot === 1 ? ' customer' : ' customers') : 'none';
+  qsa('#clienteleList .js-cus-del').forEach(function (b) { b.addEventListener('click', function () { removeManual('manualCustomers', parseInt(b.getAttribute('data-i'), 10), 'Customer removed.'); }); });
 
   // Related businesses (affiliated entities)
-  var related = m.related || [];
-  var rlt = '<tr><th>Business</th><th>USDOT</th><th>MC</th><th>Factoring Co.</th></tr>';
-  if (related.length) {
-    related.forEach(function (rb) {
-      rlt += '<tr><td><b>' + escHtml(rb.Business_Name || '—') + '</b></td><td>' + escHtml(rb.USDOT || '—') + '</td><td>' + escHtml(rb.MC_Number || '—') + '</td><td>' + escHtml(rb.Factoring_Company || '—') + '</td></tr>';
-    });
-  } else { rlt += '<tr><td colspan="4" style="color:var(--of-gray-500)">No related businesses on this application.</td></tr>'; }
+  var related = m.related || [], manRel = MODEL.manualRelated || [];
+  var rlt = '<tr><th>Business</th><th>USDOT</th><th>MC</th><th>Factoring Co.</th><th></th></tr>';
+  function relRow(rb, isManual, mi) {
+    var tag = isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '';
+    var del = isManual ? '<button class="btn ghost sm js-rel-del" data-i="' + mi + '" title="Remove">✕</button>' : '';
+    return '<tr><td><b>' + escHtml(rb.Business_Name || '—') + '</b>' + tag + '</td><td>' + escHtml(rb.USDOT || '—') + '</td><td>' + escHtml(rb.MC_Number || '—') + '</td><td>' + escHtml(rb.Factoring_Company || '—') + '</td><td style="text-align:right">' + del + '</td></tr>';
+  }
+  if (related.length || manRel.length) {
+    related.forEach(function (rb) { rlt += relRow(rb, false); });
+    manRel.forEach(function (rb, mi) { rlt += relRow(rb, true, mi); });
+  } else { rlt += '<tr><td colspan="5" style="color:var(--of-gray-500)">No related businesses on this application.</td></tr>'; }
   $('relatedList').innerHTML = rlt;
-  $('relatedCount').textContent = related.length ? related.length + (related.length === 1 ? ' entity' : ' entities') : 'none';
+  var relTot = related.length + manRel.length;
+  $('relatedCount').textContent = relTot ? relTot + (relTot === 1 ? ' entity' : ' entities') : 'none';
+  qsa('#relatedList .js-rel-del').forEach(function (b) { b.addEventListener('click', function () { removeManual('manualRelated', parseInt(b.getAttribute('data-i'), 10), 'Related business removed.'); }); });
 
   // Documents = the full required checklist (same rules as the client portal), with the
   // client's uploaded Document records matched in by type. Needed items stay visible.
@@ -1240,8 +1284,7 @@ function renderModel(m) {
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';
   $('kDocs').textContent = docRec.uploadedCount + ' / ' + docRec.total;
   $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
-  // UCC: automated check results + underwriter-added manual filings (persisted on the review).
-  MODEL.manualUcc = parseManualUcc((m.review || {}).Manual_UCC);
+  // UCC: automated check results + underwriter-added manual filings (parsed in the early block).
   renderUcc(m);
 
   var r = m.review || {};
@@ -1310,36 +1353,36 @@ function runReview() {
 }
 
 // ── Underwriter add-record (owners / clientele / contacts / related businesses) ──
+// These ride on the Underwriting_Review as JSON (Manual_*) and save via the same /uw-review-save
+// route the UCC button uses — the only add path proven to persist. (The old /uw-add-record route
+// that created live child records was never built on the backend, so those buttons used to fail.)
+var MANUAL_BUCKET = { owner:'manualOwners', customer:'manualCustomers', contact:'manualContacts', related:'manualRelated', ucc:'manualUcc' };
+var KIND_LABEL = { owner:'Owner', customer:'Customer', contact:'Contact', related:'Related business', ucc:'UCC filing' };
 function clearAddForm(formId){ var f=$(formId); if(!f) return; qsa('input,textarea', f).forEach(function(i){ i.value=''; }); f.style.display='none'; }
 function addRecord(kind, record, formId){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
-  if (!recordHasContent(kind, record)){ var need = (kind==='owner'||kind==='contact') ? 'name' : (kind==='ucc' ? 'secured party' : 'business name'); showStatus('Enter at least a ' + need + ' to add this ' + (kind==='ucc'?'UCC filing':kind) + '.', 'error'); return; }
-  var bucket = { owner:'owners', customer:'customers', contact:'contacts', related:'related', ucc:'ucc' }[kind];
-  if (MODEL._demo || typeof fetch !== 'function'){
-    MODEL[bucket] = MODEL[bucket] || [];
-    if (kind === 'owner') record.Owner_Sequence = MODEL.owners.length + 1;
-    MODEL[bucket].push(record);
-    clearAddForm(formId); renderModel(MODEL);
-    showStatus('✓ Added (demo) — in Creator this writes a linked ' + kind + ' record to the application.', 'success');
-    return;
-  }
-  showStatus('Adding ' + kind + '…', 'loading');
-  fetch(API_BASE + ADD_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, kind: kind, record: record }) })
-    .then(function (r){ return r.json().catch(function(){ return {}; }); })
-    .then(function (j){
-      if (j && j.ok){ clearAddForm(formId); showStatus('✓ ' + kind + ' added.', 'success'); load(MODEL.application.USDOT); }
-      else throw new Error((j && j.detail) || (j && j.error) || ('add failed (' + kind + ')'));
-    })
-    .catch(function (e){ showStatus('Could not add ' + kind + ': ' + (e && e.message ? e.message : e), 'error'); });
+  if (!recordHasContent(kind, record)){ var need = (kind==='owner'||kind==='contact') ? 'name' : (kind==='ucc' ? 'secured party' : 'business name'); showStatus('Enter at least a ' + need + ' to add this ' + (KIND_LABEL[kind] || kind).toLowerCase() + '.', 'error'); return; }
+  var bucket = MANUAL_BUCKET[kind];
+  MODEL[bucket] = (MODEL[bucket] || []).concat([record]);
+  clearAddForm(formId);
+  renderModel(MODEL);
+  persistManual('✓ ' + (KIND_LABEL[kind] || kind) + ' added.');
+}
+// Remove an underwriter-added record from any Manual_* bucket and re-persist the review.
+function removeManual(bucket, i, okMsg){
+  if (!MODEL || !MODEL[bucket]) return;
+  MODEL[bucket].splice(i, 1);
+  renderModel(MODEL);
+  persistManual(okMsg || 'Removed.');
 }
 function readOwnerForm(){ return buildOwnerRecord({ first:$('aoFirst').value, last:$('aoLast').value, title:$('aoTitle').value, pct:$('aoPct').value, dob:$('aoDob').value, ssn:$('aoSsn').value, phone:$('aoPhone').value, email:$('aoEmail').value, address:$('aoAddr').value }); }
 function readContactForm(){ return buildContactRecord({ name:$('acName').value, title:$('acTitle').value, phone:$('acPhone').value, email:$('acEmail').value }); }
 function readClienteleForm(){ return buildCustomerRecord({ name:$('aclName').value, website:$('aclWebsite').value, revenue:$('aclRevenue').value }); }
 function readRelatedForm(){ return buildRelatedRecord({ name:$('arName').value, usdot:$('arUsdot').value, mc:$('arMc').value, factor:$('arFactor').value }); }
 function readUccForm(){ return buildUccRecord({ securedParty:$('aucSecured').value, type:$('aucType').value, filed:$('aucFiled').value, action:$('aucAction').value }); }
-// Manual UCC filings are stored on Underwriting_Review.Manual_UCC (JSON), NOT as a child record —
-// automated UCC results come from the checks cache, so a hand-added filing rides with the review.
-function parseManualUcc(s){ if (!s) return []; if (Array.isArray(s)) return s; try { var a = JSON.parse(s); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+// Underwriter-added records (Manual_Owners/Contacts/Customers/Related/UCC) are stored as JSON on
+// the Underwriting_Review, NOT as live child records — so a hand-added row rides with the review.
+function parseJsonList(s){ if (!s) return []; if (Array.isArray(s)) return s; try { var a = JSON.parse(s); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
 function renderUcc(m){
   var auto = m.ucc || [], manual = (MODEL && MODEL.manualUcc) || [];
   $('kUcc').textContent = auto.length + manual.length;
@@ -1363,24 +1406,25 @@ function addUcc(){
   MODEL.manualUcc = (MODEL.manualUcc || []).concat([rec]);
   clearAddForm('addUccForm');
   renderUcc(MODEL);
-  persistUcc('✓ UCC filing added.');
+  persistManual('✓ UCC filing added.');
 }
 function removeManualUcc(i){
   if (!MODEL || !MODEL.manualUcc) return;
   MODEL.manualUcc.splice(i, 1);
   renderUcc(MODEL);
-  persistUcc('UCC filing removed.');
+  persistManual('UCC filing removed.');
 }
-// Persist the manual-UCC list by saving the Underwriting_Review (Manual_UCC rides in the payload
-// via readState → buildReviewPayload). Reuses the existing review-save endpoint — no new route.
-function persistUcc(okMsg){
+// Persist every underwriter-added record (owners/contacts/customers/related/UCC) by saving the
+// Underwriting_Review — the Manual_* arrays ride in the payload via readState → buildReviewPayload.
+// Reuses the existing /uw-review-save route; no per-type endpoint needed.
+function persistManual(okMsg){
   if (MODEL._demo || typeof fetch !== 'function'){ showStatus(okMsg + ' (demo — saved on the review in Creator).', 'success'); return; }
   showStatus('Saving…', 'loading');
   var payload = buildReviewPayload(readState(), MODEL.appId);
   saveReview(payload, MODEL.reviewId).then(function(res){
     if (res && res.review_id) MODEL.reviewId = res.review_id;
     showStatus(okMsg, 'success');
-  }).catch(function(e){ showStatus('Could not save UCC filing: ' + (e && e.message ? e.message : e), 'error'); });
+  }).catch(function(e){ showStatus('Could not save: ' + (e && e.message ? e.message : e), 'error'); });
 }
 // Request a document FROM the client. Creates a Document (Status='Requested') that surfaces on the
 // client's upload portal as a new item to upload. Reuses the /sales-doc-request contract.

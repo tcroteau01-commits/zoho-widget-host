@@ -530,3 +530,15 @@ test('submitNoa Factoring Company Change requires the New NOA file specifically'
   assert.match(window.document.getElementById('noa-submit-feedback').textContent, /attach the NOA/i);
   assert.equal(addCalls.length, 0);
 });
+
+test('Factoring Company Change form exposes an LOR dropzone wired to selectedLorFile', () => {
+  const { window } = makeWidget();
+  assert.ok(window.document.getElementById('dropzone-lor'), 'dropzone-lor exists');
+  assert.ok(window.document.getElementById('file-lor'), 'file-lor input exists');
+  window.wireForm();
+  const input = window.document.getElementById('file-lor');
+  const f = { name: 'release.pdf' };
+  Object.defineProperty(input, 'files', { value: [f], configurable: true });
+  input.onchange();
+  assert.equal(window.selectedLorFile, f);
+});

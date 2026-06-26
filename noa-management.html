@@ -466,6 +466,15 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
               </select>
             </div>
             <div class="field">
+              <label class="field-label">Letter of Release (LOR) <span class="req">*</span></label>
+              <div class="dropzone" id="dropzone-lor">
+                <div class="dropzone-icon">&#128206;</div>
+                <div class="dropzone-text">Drag LOR here or click to browse</div>
+                <div class="dropzone-sub">Release from the current factor. PDF, DOC, or image.</div>
+              </div>
+              <input type="file" id="file-lor" class="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+            </div>
+            <div class="field">
               <label class="field-label">New NOA Document <span class="req">*</span></label>
               <div class="dropzone" id="dropzone-newfactor">
                 <div class="dropzone-icon">&#128206;</div>
@@ -538,7 +547,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 <script>
 function resetSelectedFiles() {
-  selectedDocFile = null; selectedNewNoaFile = null;
+  selectedDocFile = null; selectedNewNoaFile = null; selectedLorFile = null;
   ['file-main','file-newfactor'].forEach(function(id){ var i = document.getElementById(id); if (i) try { i.value = ''; } catch (_) {} });
   ['dropzone-main','dropzone-newfactor'].forEach(function(id){
     var z = document.getElementById(id); if (!z) return;
@@ -853,6 +862,7 @@ var selectedFactoringId = null;
 var selectedNewFactoringId = null;
 var selectedDocFile = null;
 var selectedNewNoaFile = null;
+var selectedLorFile = null;
 
 function applyGating(p) {
   var gated = document.querySelector('.type-card.gated-card');
@@ -1073,6 +1083,7 @@ function wireForm() {
   // Wire dropzones
   wireDropzone('dropzone-main', 'file-main', function (f) { selectedDocFile = f; });
   wireDropzone('dropzone-newfactor', 'file-newfactor', function (f) { selectedNewNoaFile = f; });
+  wireDropzone('dropzone-lor', 'file-lor', function (f) { selectedLorFile = f; });
   // Wire submit button
   var submitBtn = document.getElementById('noa-submit-btn');
   if (submitBtn) { submitBtn.onclick = submitNoa; }

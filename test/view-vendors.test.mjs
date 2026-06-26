@@ -341,8 +341,46 @@ test('opening a vendor lazy-loads carrier docs sorted recent-first', async () =>
   assert.ok(opened && /carrier-doc-file\?t=tCoi/.test(opened.url), 'viewer opened with doc url');
 });
 
-test('red-flag chips derive from carrier-profile + docs', async () => {
-  const records = [{ ID: '901', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', Email: 'r@b.com' }];
+function makeVetFetch(records, profile, docs) {
+  return (url) => {
+    if (url.indexOf('/carrier-profile') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(profile) });
+    if (url.indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: docs || [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records }) });
+  };
+}
+
+test('panel paints clean summary and no flag rows for a clean carrier', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '1001', Vendor_Name: 'CLEAN LLC', Vendor_Status: 'Approved', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, []);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.match(strip.textContent, /Looks clean/);
+  assert.equal(strip.querySelectorAll('.vv-flag').length, 0);
+});
+
+test('panel paints a stop row with its reason for a routing-invalid carrier', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '1002', Vendor_Name: 'RISKY LLC', Vendor_Status: 'Approved', MC: '3', USDOT: '4', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [{ id: 'bank_routing_invalid' }] }, ipqs: {} }, []);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1);
+  assert.match(strip.textContent, /not a valid FedACH/);
+});
+
+test('vetting pane derives present-only flags from carrier-profile', async () => {
+  const records = [{ ID: '901', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', Email: 'r@b.com', Factoring_Company: 'ACME' }];
   const profile = {
     vendor: {},
     ipqs: { vpn_detected: true, voip_number: false },
@@ -367,20 +405,263 @@ test('red-flag chips derive from carrier-profile + docs', async () => {
   w.dispatchEvent(new w.Event('load'));
   await waitForRows(w);
   w.document.querySelector('.row').click();
-  // Immediately after click — before any microtask flushes — only DNU chip is painted.
-  // (Profile and docs fetches are async; nothing has resolved yet.)
+  // Instant paint: carrier is Approved + not DNU, so before the profile loads there
+  // are no derivable flags — the summary reads clean and no flag row is fabricated.
   const stripInstant = w.document.getElementById('vv-redflags');
-  assert.ok(stripInstant.querySelector('.vv-flag'), 'at least one chip rendered instantly');
-  assert.match(stripInstant.textContent, /DNU/, 'DNU chip present in instant paint');
-  assert.doesNotMatch(stripInstant.textContent, /Factor/, 'Factor chip not fabricated before profile loads');
+  assert.match(stripInstant.textContent, /Looks clean/, 'clean summary before profile loads');
+  assert.doesNotMatch(stripInstant.textContent, /Factor/, 'Factor not fabricated before profile loads');
   await new Promise(r => setTimeout(r, 50));
-  const strip = w.document.getElementById('vv-redflags').textContent;
-  assert.match(strip, /Footprint/);  // VPN -> footprint flag
-  assert.match(strip, /Factor/);     // factor_not_approved -> factor flag
-  assert.match(strip, /Documents/);  // no docs -> missing-docs flag
-  // a red chip exists
-  assert.ok(w.document.querySelector('#vv-redflags .vv-flag.red'), 'has a red chip');
-  // Factor chip must be red when factor_not_approved flag is present
-  const factorChip = [...w.document.querySelectorAll('#vv-redflags .vv-flag')].find(c => c.textContent === 'Factor');
-  assert.ok(factorChip && factorChip.classList.contains('red'), 'Factor chip must be red when factor_not_approved');
+  const strip = w.document.getElementById('vv-redflags');
+  assert.match(strip.textContent, /VPN/, 'VPN-only footprint -> a check row');
+  assert.match(strip.textContent, /Factor denied/, 'factor_not_approved -> Factor denied row');
+  assert.doesNotMatch(strip.textContent, /Documents/, 'document completeness is no longer a flag');
+  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1, 'factor-denied is the lone stop');
+  assert.equal(strip.querySelectorAll('.vv-flag.check').length, 1, 'VPN is the lone check');
+});
+
+// ── Pure vetting-flag derivation ───────────────────────────────────────────
+function vvApi() {
+  const dom = new JSDOM(HTML, { runScripts: 'dangerously', pretendToBeVisual: true });
+  const w = dom.window;
+  w.ZOHO = { CREATOR: { UTIL: { getInitParams: () => ({ loginUser: 'b@t.com' }) }, init: () => Promise.resolve() } };
+  w.OperFiAV = { carrierBadge: () => {}, customerCredit: () => {} };
+  // Benign fetch so bootApp's deferred report pull doesn't raise an unhandled rejection.
+  w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [] }) });
+  return w.__vvtest;
+}
+
+function riskProfile(ids, ipqs) {
+  return { risk: { flags: (ids || []).map((id) => ({ id })) }, ipqs: ipqs || {} };
+}
+
+test('deriveVettingFlags: clean carrier yields no flags', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 0);
+});
+
+test('deriveVettingFlags: DNU is a stop', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: true, statusKey: 'dnu', isFactored: false });
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].key, 'dnu');
+  assert.equal(flags[0].level, 'stop');
+});
+
+test('deriveVettingFlags: denied status is a stop', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'denied', isFactored: false });
+  assert.ok(flags.some((f) => f.key === 'denied' && f.level === 'stop'));
+});
+
+test('deriveVettingFlags: bank ids map to correct severities', () => {
+  const api = vvApi();
+  const ctx = { isDnu: false, statusKey: 'approved', isFactored: false };
+  assert.equal(api.deriveVettingFlags(riskProfile(['bank_bad_actor']), ctx)[0].level, 'stop');
+  assert.equal(api.deriveVettingFlags(riskProfile(['bank_account_shared']), ctx)[0].level, 'stop');
+  assert.equal(api.deriveVettingFlags(riskProfile(['bank_routing_invalid']), ctx)[0].level, 'stop');
+  assert.equal(api.deriveVettingFlags(riskProfile(['bank_name_mismatch']), ctx)[0].level, 'check');
+});
+
+test('deriveVettingFlags: bank_state_mismatch is suppressed in Phase 1', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile(['bank_state_mismatch']), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 0);
+});
+
+test('deriveVettingFlags: footprint VOIP-only is one check', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([], { voip_number: true }), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].level, 'check');
+});
+
+test('deriveVettingFlags: footprint VPN-only is one check', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([], { vpn_detected: true }), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].level, 'check');
+});
+
+test('deriveVettingFlags: footprint VOIP+VPN is one stop labeled "VOIP + VPN"', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([], { voip_number: true, vpn_detected: true }), { isDnu: false, statusKey: 'approved', isFactored: false });
+  assert.equal(flags.length, 1);
+  assert.equal(flags[0].level, 'stop');
+  assert.equal(flags[0].label, 'VOIP + VPN');
+});
+
+test('deriveVettingFlags: factor denied=stop, pending=check', () => {
+  const api = vvApi();
+  const ctx = { isDnu: false, statusKey: 'approved', isFactored: true };
+  assert.equal(api.deriveVettingFlags(riskProfile(['factor_not_approved']), ctx)[0].level, 'stop');
+  assert.equal(api.deriveVettingFlags(riskProfile(['factor_pending']), ctx)[0].level, 'check');
+});
+
+test('deriveVettingFlags: payment-change is a check', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'payment-change', isFactored: false });
+  assert.ok(flags.some((f) => f.key === 'pay_change' && f.level === 'check'));
+});
+
+test('deriveVettingFlags: stops sort above checks', () => {
+  const flags = vvApi().deriveVettingFlags(
+    riskProfile(['factor_pending', 'bank_routing_invalid']),
+    { isDnu: false, statusKey: 'approved', isFactored: true });
+  assert.equal(flags[0].level, 'stop');
+  assert.equal(flags[flags.length - 1].level, 'check');
+});
+
+// ── Required docs and vetting summary ──────────────────────────────────────
+
+test('requiredDocs: non-factored requires COI + Banking only', () => {
+  const req = vvApi().requiredDocs({ isFactored: false });
+  const keys = req.map((r) => r.key);
+  // Array.from brings the JSDOM-realm array into the Node realm so strict
+  // deepEqual's prototype check passes (contents are plain strings).
+  assert.deepEqual(Array.from(keys).sort(), ['banking', 'coi']);
+});
+
+test('requiredDocs: factored also requires NOA/LOR (satisfied by noa OR lor)', () => {
+  const req = vvApi().requiredDocs({ isFactored: true });
+  const noa = req.find((r) => r.key === 'noa_lor');
+  assert.ok(noa, 'NOA/LOR requirement present');
+  assert.deepEqual(Array.from(noa.match).sort(), ['lor', 'noa']);
+});
+
+test('vettingSummary: no flags = clean', () => {
+  const s = vvApi().vettingSummary([]);
+  assert.equal(s.level, 'clean');
+  assert.match(s.text, /Looks clean/);
+});
+
+test('vettingSummary: any stop = stop level', () => {
+  const s = vvApi().vettingSummary([{ level: 'stop' }, { level: 'check' }]);
+  assert.equal(s.level, 'stop');
+  assert.match(s.text, /hard stop/);
+});
+
+test('vettingSummary: only checks = check level', () => {
+  const s = vvApi().vettingSummary([{ level: 'check' }, { level: 'check' }]);
+  assert.equal(s.level, 'check');
+  assert.match(s.text, /to check/);
+});
+
+// ── vettingSummary: profile-missing degradation ───────────────────────────
+
+test('vettingSummary([], false) is clean (backward-compat explicit false)', () => {
+  const s = vvApi().vettingSummary([], false);
+  assert.equal(s.level, 'clean');
+  assert.match(s.text, /Looks clean/);
+});
+
+test('vettingSummary([], true) is NOT clean and mentions Refresh', () => {
+  const s = vvApi().vettingSummary([], true);
+  assert.notEqual(s.level, 'clean', 'level must not be clean when profile errored');
+  assert.match(s.text, /Refresh/, 'text must prompt user to retry via Refresh');
+});
+
+test('vettingSummary with a stop flag still returns stop even when profileMissing', () => {
+  // Known ctx-derived flags (DNU) must win — they are real even with no profile.
+  const s = vvApi().vettingSummary([{ level: 'stop' }], true);
+  assert.equal(s.level, 'stop');
+});
+
+test('docs section shows "Needed" rows for missing required docs (factored)', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '1003', Vendor_Name: 'FACTORED LLC', Vendor_Status: 'Approved', MC: '5', USDOT: '6', Factoring_Company: 'ACME FACTORS' };
+  // Only a COI on file; banking + NOA/LOR missing.
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [{ type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const docs = w.document.getElementById('vv-docs');
+  const needed = Array.from(docs.querySelectorAll('.vv-doc-needed')).map((e) => e.textContent);
+  assert.ok(needed.some((t) => /Banking/.test(t)), 'banking needed');
+  assert.ok(needed.some((t) => /NOA or LOR/.test(t)), 'NOA/LOR needed');
+  assert.ok(!needed.some((t) => /COI/.test(t)), 'COI present, not needed');
+});
+
+test('docs section: non-factored carrier never shows NOA/LOR as needed', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '1004', Vendor_Name: 'QUICKPAY LLC', Vendor_Status: 'Approved', MC: '7', USDOT: '8', Factoring_Company: '' };
+  // COI only — Banking is missing so there IS one Needed row, but NOA/LOR must never appear.
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }
+  ]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const docs = w.document.getElementById('vv-docs');
+  const needed = Array.from(docs.querySelectorAll('.vv-doc-needed')).map((e) => e.textContent);
+  // (a) exactly one Needed row (Banking is missing)
+  assert.equal(needed.length, 1, 'exactly one Needed row');
+  // (b) it is the Banking row
+  assert.ok(/Banking/.test(needed[0]), 'the Needed row is Banking');
+  // (c) NOA/LOR is never demanded for a non-factored carrier
+  assert.ok(!needed.some((t) => /NOA/.test(t)), 'NOA/LOR never needed for non-factored carrier');
+});
+
+test('Refresh button re-fetches profile and docs with refresh=1', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const seen = [];
+  const rec = { ID: '1005', Vendor_Name: 'REFRESH LLC', Vendor_Status: 'Approved', MC: '9', USDOT: '10', Factoring_Company: '' };
+  w.fetch = (url) => {
+    seen.push(url);
+    if (url.indexOf('/carrier-profile') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ risk: { flags: [] }, ipqs: {} }) });
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [rec] }) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  w.document.getElementById('vv-refresh').click();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(seen.some((u) => u.indexOf('/carrier-profile') !== -1 && u.indexOf('refresh=1') !== -1), 'profile refreshed');
+  assert.ok(seen.some((u) => u.indexOf('/carrier-docs') !== -1 && u.indexOf('refresh=1') !== -1), 'docs refreshed');
+});
+
+test('static: Refresh control markup present', () => {
+  assert.match(HTML, /id="vv-refresh"/);
+});
+
+// ── Profile-fetch failure: honest degradation ─────────────────────────────
+
+test('vetting pane shows degraded message (not clean) when carrier-profile fetch rejects', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '2001', Vendor_Name: 'ERRCARRIER LLC', Vendor_Status: 'Approved', MC: '20', USDOT: '21', Factoring_Company: '' };
+  w.fetch = (url) => {
+    if (String(url).indexOf('/carrier-profile') !== -1)
+      return Promise.reject(new Error('network failure'));
+    if (String(url).indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [rec] }) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 80));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.doesNotMatch(strip.textContent, /Looks clean/, 'must not claim clean after a failed fetch');
+  assert.match(strip.textContent, /Refresh/, 'must prompt user to retry via Refresh');
+});
+
+test('DNU carrier with failed profile fetch still shows its stop row', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  // DO_NOT_USE is a ctx-derived fact — it must show as a stop even when the profile never loads.
+  const rec = { ID: '2002', Vendor_Name: 'DNU CARRIER', Vendor_Status: 'Approved', MC: '22', USDOT: '23', DO_NOT_USE: true, Factoring_Company: '' };
+  w.fetch = (url) => {
+    if (String(url).indexOf('/carrier-profile') !== -1)
+      return Promise.reject(new Error('network failure'));
+    if (String(url).indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [rec] }) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 80));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1, 'DNU stop row must be present');
+  assert.match(strip.textContent, /Do Not Use/, 'DNU reason must appear');
 });

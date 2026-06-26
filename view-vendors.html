@@ -287,7 +287,7 @@ var currentSearch = '';
 var openIndex = -1;
 var vvDocCache = {};   // vendorId -> documents array
 var vvRiskCache = {}; // vendorId -> carrier-profile response
-var vvPanelCtx = null; // { vendorId, isDnu } for the currently-open panel
+var vvPanelCtx = null; // { vendorId, isDnu, statusKey, isFactored } for the currently-open panel
 var currentLoadId = 0;
 
 // ── Status / payment classification ───────────────────────────────────────
@@ -709,7 +709,10 @@ function renderPanel() {
 
       // Carrier Vetting — vetting-framed zone (vetting badge + red flags + docs)
       '<div class="panel-section">' +
-        '<div class="panel-section-title">Carrier Vetting</div>' +
+        '<div class="panel-section-title" style="display:flex;align-items:center;justify-content:space-between;">' +
+          '<span>Carrier Vetting</span>' +
+          '<button id="vv-refresh" class="btn" style="font-size:11px;padding:2px 8px;" title="Re-check this carrier">↻ Refresh</button>' +
+        '</div>' +
         '<div class="vv-vet-note" style="font-size:12px;color:#777;margin:-2px 0 12px;">' +
           "Review this carrier's documents and flags before you submit.</div>" +
         '<div id="vv-redflags"></div>' +
@@ -748,7 +751,12 @@ function renderPanel() {
       { vendorId: r.ID, email: brokerEmail, apiBase: BROKER_API_BASE });
   }
 
-  vvPanelCtx = { vendorId: r.ID, isDnu: statusMeta(r).key === 'dnu' };
+  vvPanelCtx = {
+    vendorId: r.ID,
+    isDnu: statusMeta(r).key === 'dnu',
+    statusKey: statusMeta(r).key,
+    isFactored: !!(r.Factoring_Company || '').trim()
+  };
   loadVendorDocs(r.ID, document.getElementById('vv-docs'));
   loadVendorRedFlags(r);
 
@@ -772,14 +780,16 @@ function renderPanel() {
     stashNoaTarget(r.ID);
     navigateParent('#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
   });
+  var refreshBtn = document.getElementById('vv-refresh');
+  if (refreshBtn) refreshBtn.addEventListener('click', function () { refreshVendorVetting(r.ID); });
 }
 
-function loadVendorDocs(vendorId, container) {
+function loadVendorDocs(vendorId, container, force) {
   if (!container) return;
-  if (vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); refreshRedFlags(); return; }
+  if (!force && vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); refreshVettingPane(); return; }
   container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#999;">Loading documents…</div>';
   fetch(BROKER_API_BASE + '/carrier-docs?email=' + encodeURIComponent(brokerEmail) +
-        '&vendor_id=' + encodeURIComponent(vendorId))
+        '&vendor_id=' + encodeURIComponent(vendorId) + (force ? '&refresh=1' : ''))
     .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
     .then(function (data) {
       var docs = (data.documents || []).slice().sort(function (a, b) {
@@ -787,20 +797,33 @@ function loadVendorDocs(vendorId, container) {
       });
       vvDocCache[vendorId] = docs;
       renderVendorDocs(docs, container);
-      refreshRedFlags();
+      refreshVettingPane();
     })
     .catch(function () {
       container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#a3322b;">Couldn\'t load documents.</div>';
     });
 }
 
+function refreshVendorVetting(vendorId) {
+  delete vvRiskCache[vendorId];
+  delete vvDocCache[vendorId];
+  var rec = filteredRecords[openIndex];
+  loadVendorDocs(vendorId, document.getElementById('vv-docs'), true);
+  if (rec && String(rec.ID) === String(vendorId)) loadVendorRedFlags(rec, true);
+}
+
 function renderVendorDocs(docs, container) {
-  if (!docs.length) {
-    container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>' +
-      '<div class="vv-doc-state" style="font-size:12px;color:#999;">No documents on file.</div>';
-    return;
-  }
+  docs = docs || [];
   container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>';
+
+  if (!docs.length) {
+    var empty = document.createElement('div');
+    empty.className = 'vv-doc-state';
+    empty.style.cssText = 'font-size:12px;color:#999;';
+    empty.textContent = 'No documents on file.';
+    container.appendChild(empty);
+  }
+
   docs.forEach(function (d) {
     var row = document.createElement('div');
     row.className = 'vv-doc';
@@ -821,86 +844,183 @@ function renderVendorDocs(docs, container) {
     });
     container.appendChild(row);
   });
-}
 
-// ── Red-flag vetting chips ────────────────────────────────────────────────
-var VV_FLAG_STYLE = 'display:inline-flex;align-items:center;font-size:11px;font-weight:700;' +
-  'padding:3px 9px;border-radius:999px;border:1px solid;margin:0 6px 6px 0;text-transform:uppercase;letter-spacing:.4px;';
-
-function deriveRedFlags(profile, docs, isDnu) {
-  profile = profile || {}; docs = docs || [];
-  var ipqs = profile.ipqs || {};
-  var risk = (profile.risk && profile.risk.flags) || [];
-  function hasFlag(ids) { return risk.some(function (f) { return ids.indexOf(f.id) !== -1; }); }
-  var types = {}; docs.forEach(function (d) { types[d.type] = true; });
-
-  // Banking: flag if any bad-bank signal present (real ids from risk_model.py: _category_f_banking)
-  var bankBad = hasFlag(['bank_routing_invalid', 'bank_name_mismatch', 'bank_state_mismatch',
-                          'bank_account_shared', 'bank_bad_actor']) || !types.banking;
-  // Factor: driven by risk flags from risk_model.py (factor_not_approved=Critical, factor_pending=Medium)
-  var factorRed  = hasFlag(['factor_not_approved']);
-  var factorWarn = hasFlag(['factor_pending']);
-  // Footprint: IPQS top-level booleans + risk flag ids (vpn_signup, voip_phone confirmed in risk_model.py)
-  var footBad = !!(ipqs.vpn_detected || ipqs.voip_number) || hasFlag(['vpn_signup', 'voip_phone']);
-  var docsMissing = !types.noa || !types.coi || !types.banking;
-
-  return [
-    { key: 'dnu',   label: 'DNU',       level: isDnu ? 'red' : 'ok' },
-    { key: 'bank',  label: 'Bank',      level: bankBad ? 'red' : 'ok' },
-    { key: 'docs',  label: 'Documents', level: docsMissing ? 'red' : 'ok' },
-    { key: 'factor',label: 'Factor',    level: factorRed ? 'red' : (factorWarn ? 'warn' : 'ok') },
-    { key: 'foot',  label: 'Footprint', level: footBad ? 'red' : 'ok' }
-  ];
-}
-
-function renderRedFlags(flags, container) {
-  container.innerHTML = '';
-  var palette = {
-    ok:   'background:#e8f5e9;color:#2e7d32;border-color:#bfe3c2;',
-    warn: 'background:#fff8e1;color:#856404;border-color:#ffe082;',
-    red:  'background:#ffebee;color:#c62828;border-color:#ef9a9a;'
-  };
-  flags.forEach(function (f) {
-    var el = document.createElement('span');
-    el.className = 'vv-flag ' + f.level;
-    el.style.cssText = VV_FLAG_STYLE + palette[f.level];
-    el.textContent = f.label;
-    container.appendChild(el);
+  // Needed rows: required types with no satisfying doc on file.
+  var present = {};
+  docs.forEach(function (d) { present[d.type] = true; });
+  var ctx = vvPanelCtx || {};
+  requiredDocs(ctx).forEach(function (req) {
+    var satisfied = req.match.some(function (k) { return present[k]; });
+    if (satisfied) return;
+    var row = document.createElement('div');
+    row.className = 'vv-doc-needed';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px dashed #d8b04a;color:#8a6d1a;font-size:12px;';
+    var tag = document.createElement('span');
+    tag.style.cssText = 'font-weight:700;';
+    tag.textContent = 'Needed:';
+    var lab = document.createElement('span');
+    lab.textContent = req.label;
+    row.appendChild(tag); row.appendChild(lab);
+    container.appendChild(row);
   });
 }
 
-// Refresh the red-flag strip from whatever is cached right now.
-// Called after profile or docs arrive to eliminate fabricated reds.
-function refreshRedFlags() {
+// ── Exception-only, severity-ranked vetting flags (Phase 1) ──────────────
+function deriveVettingFlags(profile, ctx) {
+  profile = profile || {}; ctx = ctx || {};
+  var ipqs = profile.ipqs || {};
+  var risk = (profile.risk && profile.risk.flags) || [];
+  function has(id) { return risk.some(function (f) { return f.id === id; }); }
+  var flags = [];
+
+  // Account / status hard stops
+  if (ctx.isDnu) flags.push({ key: 'dnu', level: 'stop', label: 'Do Not Use',
+    reason: 'This carrier is marked Do Not Use.' });
+  if (ctx.statusKey === 'denied') flags.push({ key: 'denied', level: 'stop', label: 'Denied',
+    reason: 'This carrier was denied.' });
+
+  // Bank
+  if (has('bank_bad_actor')) flags.push({ key: 'bank_bad_actor', level: 'stop',
+    label: 'Bank — linked to flagged vendor',
+    reason: 'Bank account is linked to a vendor flagged for fraud.' });
+  if (has('bank_account_shared')) flags.push({ key: 'bank_account_shared', level: 'stop',
+    label: 'Bank — account shared with another carrier',
+    reason: 'This bank account is in use by another carrier.' });
+  if (has('bank_routing_invalid')) flags.push({ key: 'bank_routing_invalid', level: 'stop',
+    label: 'Bank — routing not valid / not in FedACH',
+    reason: 'Routing number is not a valid FedACH routing number.' });
+  if (has('bank_name_mismatch')) flags.push({ key: 'bank_name_mismatch', level: 'check',
+    label: 'Bank — name mismatch',
+    reason: 'Account-holder name does not match the carrier.' });
+  // bank_state_mismatch intentionally NOT surfaced in Phase 1 (profile-only).
+
+  // Footprint — VOIP/VPN. Either alone = check; both = a single stop.
+  var voip = !!ipqs.voip_number || has('voip_phone');
+  var vpn  = !!ipqs.vpn_detected || has('vpn_signup');
+  if (voip && vpn) flags.push({ key: 'foot_both', level: 'stop', label: 'VOIP + VPN',
+    reason: 'Phone is VOIP and signup was VPN-masked — strong spoofing signal.' });
+  else if (voip) flags.push({ key: 'foot_voip', level: 'check', label: 'VOIP phone',
+    reason: 'Carrier phone is a VOIP number.' });
+  else if (vpn) flags.push({ key: 'foot_vpn', level: 'check', label: 'VPN-masked signup',
+    reason: 'Signup IP was masked by a VPN.' });
+
+  // Factor — only ever denied/pending (exception-only).
+  if (has('factor_not_approved')) flags.push({ key: 'factor_denied', level: 'stop',
+    label: 'Factor denied', reason: 'Factoring company is not approved by OperFi.' });
+  else if (has('factor_pending')) flags.push({ key: 'factor_pending', level: 'check',
+    label: 'Factor pending OperFi approval', reason: 'Factoring company is pending OperFi approval.' });
+
+  // Payment change pending
+  if (ctx.statusKey === 'payment-change') flags.push({ key: 'pay_change', level: 'check',
+    label: 'Payment change pending', reason: 'A payment-info change is pending review.' });
+
+  // Stop above check; stable within level (Node/JSDOM sort is stable).
+  var order = { stop: 0, check: 1 };
+  return flags.slice().sort(function (a, b) { return order[a.level] - order[b.level]; });
+}
+
+// ── Required documents ────────────────────────────────────────────────────
+function requiredDocs(ctx) {
+  ctx = ctx || {};
+  var req = [
+    { key: 'coi',     label: 'Insurance (COI)', match: ['coi'] },
+    { key: 'banking', label: 'Banking (Voided Check / Bank Info)', match: ['banking'] }
+  ];
+  if (ctx.isFactored) req.push({ key: 'noa_lor', label: 'NOA or LOR', match: ['noa', 'lor'] });
+  return req;
+}
+
+// ── Vetting summary ──────────────────────────────────────────────────────
+function vettingSummary(flags, profileMissing) {
+  flags = flags || [];
+  if (!flags.length) {
+    if (profileMissing) {
+      return { level: 'check', text: "Couldn't check this carrier — tap Refresh to retry." };
+    }
+    return { level: 'clean', text: 'Looks clean — no vetting flags. Review the full profile before you submit.' };
+  }
+  var stops = flags.filter(function (f) { return f.level === 'stop'; }).length;
+  var n = flags.length;
+  if (stops) {
+    return { level: 'stop', text: n + ' issue' + (n > 1 ? 's' : '') + ' to review — at least one is a hard stop.' };
+  }
+  return { level: 'check', text: n + ' thing' + (n > 1 ? 's' : '') + ' to check.' };
+}
+
+// ── Exception-only vetting pane ───────────────────────────────────────────
+var VV_SUMMARY_STYLE = {
+  clean: 'background:#e8f5e9;color:#2e7d32;border:1px solid #bfe3c2;',
+  check: 'background:#fff8e1;color:#856404;border:1px solid #ffe082;',
+  stop:  'background:#ffebee;color:#c62828;border:1px solid #ef9a9a;'
+};
+var VV_ROW_DOT = { stop: '#c62828', check: '#b8860b' };
+
+function renderVettingPane(profile, ctx, container, profileMissing) {
+  container.innerHTML = '';
+  var flags = deriveVettingFlags(profile, ctx);
+  var summary = vettingSummary(flags, profileMissing);
+
+  var sum = document.createElement('div');
+  sum.className = 'vv-vet-summary ' + summary.level;
+  sum.style.cssText = 'font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:10px;' + VV_SUMMARY_STYLE[summary.level];
+  sum.textContent = summary.text;
+  container.appendChild(sum);
+
+  flags.forEach(function (f) {
+    var row = document.createElement('div');
+    row.className = 'vv-flag ' + f.level;
+    row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid #f0efe9;';
+    var dot = document.createElement('span');
+    dot.style.cssText = 'flex:0 0 auto;width:8px;height:8px;border-radius:50%;margin-top:5px;background:' + VV_ROW_DOT[f.level] + ';';
+    var body = document.createElement('div');
+    var lab = document.createElement('div');
+    lab.style.cssText = 'font-size:12px;font-weight:700;color:#333;';
+    lab.textContent = f.label;
+    var why = document.createElement('div');
+    why.style.cssText = 'font-size:11px;color:#777;margin-top:1px;';
+    why.textContent = f.reason;
+    body.appendChild(lab); body.appendChild(why);
+    row.appendChild(dot); row.appendChild(body);
+    container.appendChild(row);
+  });
+}
+
+// Repaint the vetting pane from whatever is cached right now.
+// Called after profile arrives; DNU/status are known from row data immediately.
+function refreshVettingPane() {
   if (!vvPanelCtx) return;
   var c = document.getElementById('vv-redflags');
   if (!c) return;
   var profile = vvRiskCache[vvPanelCtx.vendorId] || null;
+  var profileMissing = !profile && !!vvPanelCtx.profileError;
   if (!profile) {
-    // Before the profile loads, only DNU is actually known — don't fabricate the rest.
-    renderRedFlags([{ key: 'dnu', label: 'DNU', level: vvPanelCtx.isDnu ? 'red' : 'ok' }], c);
+    // Before the profile loads, only DNU/status are known — derive from those alone.
+    renderVettingPane({ risk: { flags: [] }, ipqs: {} }, vvPanelCtx, c, profileMissing);
     return;
   }
-  renderRedFlags(deriveRedFlags(profile, vvDocCache[vvPanelCtx.vendorId], vvPanelCtx.isDnu), c);
+  renderVettingPane(profile, vvPanelCtx, c, false);
 }
 
-function loadVendorRedFlags(rec) {
-  var isDnu = statusMeta(rec).key === 'dnu';
-  vvPanelCtx = { vendorId: rec.ID, isDnu: isDnu };
-  // Paint DNU-only instantly; docs/profile fill in via refreshRedFlags.
-  refreshRedFlags();
-  if (vvRiskCache[rec.ID]) {
-    refreshRedFlags();
-    return;
-  }
+function loadVendorRedFlags(rec, force) {
+  vvPanelCtx = {
+    vendorId: rec.ID,
+    isDnu: statusMeta(rec).key === 'dnu',
+    statusKey: statusMeta(rec).key,
+    isFactored: !!(rec.Factoring_Company || '').trim(),
+    profileError: false
+  };
+  refreshVettingPane();
+  if (!force && vvRiskCache[rec.ID]) { refreshVettingPane(); return; }
   fetch(BROKER_API_BASE + '/carrier-profile?email=' + encodeURIComponent(brokerEmail) +
-        '&vendor_id=' + encodeURIComponent(rec.ID))
+        '&vendor_id=' + encodeURIComponent(rec.ID) + (force ? '&refresh=1' : ''))
     .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
-    .then(function (profile) {
-      vvRiskCache[rec.ID] = profile;
-      refreshRedFlags();
-    })
-    .catch(function () { /* leave the DNU-only paint; vetting is non-blocking */ });
+    .then(function (profile) { vvRiskCache[rec.ID] = profile; refreshVettingPane(); })
+    .catch(function () {
+      if (vvPanelCtx && vvPanelCtx.vendorId === rec.ID) {
+        vvPanelCtx.profileError = true;
+        refreshVettingPane();
+      }
+    });
 }
 
 // Same-origin localStorage bridge - Carrier Profile widget reads this on
@@ -1036,6 +1156,13 @@ function exportCsv() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// Exposed for tests (the script runs inside an IIFE under 'use strict').
+window.__vvtest = {
+  deriveVettingFlags: deriveVettingFlags,
+  requiredDocs: requiredDocs,
+  vettingSummary: vettingSummary
+};
 
 })();
 </script>

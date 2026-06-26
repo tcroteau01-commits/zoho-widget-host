@@ -524,11 +524,55 @@ test('submitNoa Factoring Company Change requires the New NOA file specifically'
   window.statusPayload = { carriers: [] };
   window.selectedType = 'Factoring Company Change';
   window.selectedVendorId = '1001';
-  window.selectedDocFile = { name: 'wrong-slot.pdf' };  // main slot set, but FC Change needs the new-factor slot
+  window.selectedLorFile = { name: 'release.pdf' };   // LOR present, so the NOA check is what blocks
   window.selectedNewNoaFile = null;
   await window.submitNoa();
-  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /attach the NOA/i);
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /attach the (New )?NOA/i);
   assert.equal(addCalls.length, 0);
+});
+
+test('Factoring Company Change requires the LOR as well as the New NOA', async () => {
+  const { window, addCalls } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'Factoring Company Change';
+  window.selectedVendorId = '1001';
+  window.selectedNewNoaFile = { name: 'newnoa.pdf' };
+  window.selectedLorFile = null;
+  await window.submitNoa();
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /LOR/i);
+  assert.equal(addCalls.length, 0);
+});
+
+test('Factoring Company Change uploads LOR and New NOA sequentially to the right fields', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  const posts = [];
+  let resolveCount = 0;
+  window.fetch = (url, opts) => {
+    if (typeof url === 'string' && url.indexOf('/upload-doc') !== -1) {
+      const fd = opts.body;
+      posts.push({ field: fd.get('field_name'), name: (fd.get('file') || {}).name,
+                   order: ++resolveCount });
+      return Promise.resolve({ json: () => Promise.resolve({ code: 3000 }) });
+    }
+    if (typeof url === 'string' && url.indexOf('/noa-submit') !== -1) {
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+    }
+    return Promise.resolve({ json: () => Promise.resolve({}) });
+  };
+  window.selectedType = 'Factoring Company Change';
+  window.selectedVendorId = '1001';
+  window.selectedNewFactoringId = 'f2';
+  window.selectedLorFile = new window.File(['x'], 'release.pdf');
+  window.selectedNewNoaFile = new window.File(['x'], 'newnoa.pdf');
+  await window.submitNoa();
+  const byField = {};
+  posts.forEach(p => { byField[p.field] = p; });
+  assert.equal(byField['NOA_or_LOR_Upload'].name, 'release.pdf');
+  assert.equal(byField['New_NOA'].name, 'newnoa.pdf');
+  // sequential: LOR completes before New NOA starts (LOR order < NOA order)
+  assert.ok(byField['NOA_or_LOR_Upload'].order < byField['New_NOA'].order);
 });
 
 test('Factoring Company Change form exposes an LOR dropzone wired to selectedLorFile', () => {

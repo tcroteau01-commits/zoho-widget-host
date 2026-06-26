@@ -968,10 +968,7 @@ function buildNoaPayload() {
   return d;   // NO FV_Client_ID / DOT / Carrier_Name — engine derives those.
 }
 
-function uploadNoaDoc(recordId) {
-  var file = (selectedType === 'Factoring Company Change') ? selectedNewNoaFile : selectedDocFile;
-  var field = (selectedType === 'Factoring Company Change') ? 'New_NOA' : 'NOA_or_LOR_Upload';
-  if (!recordId || !file) return Promise.resolve();
+function _postDoc(recordId, file, field) {
   var fd = new FormData();
   fd.append('record_id', recordId);
   fd.append('field_name', field);
@@ -980,6 +977,21 @@ function uploadNoaDoc(recordId) {
   return fetch(BROKER_API_BASE + '/upload-doc', { method: 'POST', body: fd })
     .then(function (r) { return r.json(); })
     .catch(function () { return null; });
+}
+
+function uploadNoaDoc(recordId) {
+  if (!recordId) return Promise.resolve();
+  var jobs = [];
+  if (selectedType === 'Factoring Company Change') {
+    // Sequential, LOR first: Creator file-field writes drop under a parallel lock.
+    if (selectedLorFile) jobs.push([selectedLorFile, 'NOA_or_LOR_Upload']);
+    if (selectedNewNoaFile) jobs.push([selectedNewNoaFile, 'New_NOA']);
+  } else if (selectedDocFile) {
+    jobs.push([selectedDocFile, 'NOA_or_LOR_Upload']);
+  }
+  return jobs.reduce(function (chain, job) {
+    return chain.then(function () { return _postDoc(recordId, job[0], job[1]); });
+  }, Promise.resolve());
 }
 
 function runEngine(recordId) {
@@ -996,11 +1008,22 @@ function submitNoa() {
   if (!selectedType) { if (fb) fb.textContent = 'Pick an update type.'; return; }
   // Document required for every type (the form's NOA_or_LOR_Upload is no longer
   // form-mandatory, since the file uploads after the API create; enforce it here).
-  var docFile = (selectedType === 'Factoring Company Change') ? selectedNewNoaFile : selectedDocFile;
-  if (!docFile) {
-    var docLabel = (selectedType === 'LOR Update') ? 'LOR' : 'NOA';
-    if (fb) fb.textContent = 'Please attach the ' + docLabel + ' document before submitting.';
-    return;
+  if (selectedType === 'Factoring Company Change') {
+    if (!selectedLorFile) {
+      if (fb) fb.textContent = 'Please attach the LOR (release from the current factor) before submitting.';
+      return;
+    }
+    if (!selectedNewNoaFile) {
+      if (fb) fb.textContent = 'Please attach the New NOA document before submitting.';
+      return;
+    }
+  } else {
+    var docFile = selectedDocFile;
+    if (!docFile) {
+      var docLabel = (selectedType === 'LOR Update') ? 'LOR' : 'NOA';
+      if (fb) fb.textContent = 'Please attach the ' + docLabel + ' document before submitting.';
+      return;
+    }
   }
   var btn = document.getElementById('noa-submit-btn');
   var fail = function (msg) {

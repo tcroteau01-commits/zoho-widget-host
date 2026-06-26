@@ -560,9 +560,9 @@ test('docs section: non-factored carrier never shows NOA/LOR as needed', async (
   const dom = makeDom();
   const w = dom.window;
   const rec = { ID: '1004', Vendor_Name: 'QUICKPAY LLC', Vendor_Status: 'Approved', MC: '7', USDOT: '8', Factoring_Company: '' };
+  // COI only — Banking is missing so there IS one Needed row, but NOA/LOR must never appear.
   w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [
-    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' },
-    { type: 'banking', label: 'Banking', filename: 'vc.pdf', preview_token: 't2' }
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }
   ]);
   w.dispatchEvent(new w.Event('load'));
   await waitForRows(w);
@@ -570,5 +570,35 @@ test('docs section: non-factored carrier never shows NOA/LOR as needed', async (
   await new Promise((r) => setTimeout(r, 50));
   const docs = w.document.getElementById('vv-docs');
   const needed = Array.from(docs.querySelectorAll('.vv-doc-needed')).map((e) => e.textContent);
-  assert.equal(needed.length, 0);
+  // (a) exactly one Needed row (Banking is missing)
+  assert.equal(needed.length, 1, 'exactly one Needed row');
+  // (b) it is the Banking row
+  assert.ok(/Banking/.test(needed[0]), 'the Needed row is Banking');
+  // (c) NOA/LOR is never demanded for a non-factored carrier
+  assert.ok(!needed.some((t) => /NOA/.test(t)), 'NOA/LOR never needed for non-factored carrier');
+});
+
+test('Refresh button re-fetches profile and docs with refresh=1', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const seen = [];
+  const rec = { ID: '1005', Vendor_Name: 'REFRESH LLC', Vendor_Status: 'Approved', MC: '9', USDOT: '10', Factoring_Company: '' };
+  w.fetch = (url) => {
+    seen.push(url);
+    if (url.indexOf('/carrier-profile') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ risk: { flags: [] }, ipqs: {} }) });
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [rec] }) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  w.document.getElementById('vv-refresh').click();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(seen.some((u) => u.indexOf('/carrier-profile') !== -1 && u.indexOf('refresh=1') !== -1), 'profile refreshed');
+  assert.ok(seen.some((u) => u.indexOf('/carrier-docs') !== -1 && u.indexOf('refresh=1') !== -1), 'docs refreshed');
+});
+
+test('static: Refresh control markup present', () => {
+  assert.match(HTML, /id="vv-refresh"/);
 });

@@ -709,7 +709,10 @@ function renderPanel() {
 
       // Carrier Vetting — vetting-framed zone (vetting badge + red flags + docs)
       '<div class="panel-section">' +
-        '<div class="panel-section-title">Carrier Vetting</div>' +
+        '<div class="panel-section-title" style="display:flex;align-items:center;justify-content:space-between;">' +
+          '<span>Carrier Vetting</span>' +
+          '<button id="vv-refresh" class="btn" style="font-size:11px;padding:2px 8px;" title="Re-check this carrier">↻ Refresh</button>' +
+        '</div>' +
         '<div class="vv-vet-note" style="font-size:12px;color:#777;margin:-2px 0 12px;">' +
           "Review this carrier's documents and flags before you submit.</div>" +
         '<div id="vv-redflags"></div>' +
@@ -777,14 +780,16 @@ function renderPanel() {
     stashNoaTarget(r.ID);
     navigateParent('#Page:NOA_Management?Vendor_ID=' + encodeURIComponent(r.ID) + '&action=submit');
   });
+  var refreshBtn = document.getElementById('vv-refresh');
+  if (refreshBtn) refreshBtn.addEventListener('click', function () { refreshVendorVetting(r.ID); });
 }
 
-function loadVendorDocs(vendorId, container) {
+function loadVendorDocs(vendorId, container, force) {
   if (!container) return;
-  if (vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); refreshVettingPane(); return; }
+  if (!force && vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); refreshVettingPane(); return; }
   container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#999;">Loading documents…</div>';
   fetch(BROKER_API_BASE + '/carrier-docs?email=' + encodeURIComponent(brokerEmail) +
-        '&vendor_id=' + encodeURIComponent(vendorId))
+        '&vendor_id=' + encodeURIComponent(vendorId) + (force ? '&refresh=1' : ''))
     .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
     .then(function (data) {
       var docs = (data.documents || []).slice().sort(function (a, b) {
@@ -797,6 +802,14 @@ function loadVendorDocs(vendorId, container) {
     .catch(function () {
       container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#a3322b;">Couldn\'t load documents.</div>';
     });
+}
+
+function refreshVendorVetting(vendorId) {
+  delete vvRiskCache[vendorId];
+  delete vvDocCache[vendorId];
+  var rec = filteredRecords[openIndex];
+  loadVendorDocs(vendorId, document.getElementById('vv-docs'), true);
+  if (rec && String(rec.ID) === String(vendorId)) loadVendorRedFlags(rec, true);
 }
 
 function renderVendorDocs(docs, container) {

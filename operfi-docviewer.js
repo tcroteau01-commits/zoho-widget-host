@@ -25,7 +25,8 @@
       '.opf-dv-body img{max-width:100%;height:auto}' +
       '.opf-dv-body canvas{max-width:100%;box-shadow:0 1px 8px rgba(0,0,0,.4);background:#fff}' +
       '.opf-dv-error{color:#fde2e2;background:#3a2222;border:1px solid #6b3a3a;border-radius:8px;padding:18px 22px;font:600 14px system-ui;max-width:520px;text-align:center}' +
-      '.opf-dv-loading{color:#aeb4bd;font:600 14px system-ui;padding:40px}';
+      '.opf-dv-loading{color:#aeb4bd;font:600 14px system-ui;padding:40px}' +
+      '.opf-dv-pagefail{color:#cbb89a;background:#332b22;border:1px dashed #6b5a3a;border-radius:8px;padding:14px 18px;font:600 12px system-ui;text-align:center}';
     doc.head.appendChild(s);
   }
 
@@ -93,7 +94,10 @@
     return 'image';
   }
 
-  var WORKER_SRC = 'https://app.operfi.com/pdfjs/pdf.worker.min.js';
+  var PDFJS_BASE = 'https://app.operfi.com/pdfjs/';
+  var WORKER_SRC = PDFJS_BASE + 'pdf.worker.min.js';
+  var STANDARD_FONT_URL = PDFJS_BASE + 'standard_fonts/';
+  var CMAP_URL = PDFJS_BASE + 'cmaps/';
   function wireWorker() {
     if (global.pdfjsLib && global.pdfjsLib.GlobalWorkerOptions &&
         !global.pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -142,7 +146,12 @@
 
   function renderPdfBytes(arrayBuffer, myToken) {
     if (!global.pdfjsLib) { showError('Document viewer failed to load.'); return; }
-    global.pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise
+    global.pdfjsLib.getDocument({
+      data: arrayBuffer.slice(0),
+      standardFontDataUrl: STANDARD_FONT_URL,
+      cMapUrl: CMAP_URL,
+      cMapPacked: true
+    }).promise
       .then(function (pdf) {
         if (myToken !== state.loadToken) return; // superseded
         state.pdf = pdf;
@@ -160,6 +169,7 @@
     var pageEl = doc.querySelector('.opf-dv-page');
     if (pageEl) pageEl.textContent = pdf.numPages + (pdf.numPages === 1 ? ' page' : ' pages');
     var chain = Promise.resolve();
+    var rendered = 0, failed = 0;
     var _loop = function (n) {
       chain = chain.then(function () {
         if (myToken !== state.loadToken) return; // superseded — stop appending pages
@@ -170,11 +180,27 @@
           canvas.width = Math.round(viewport.width);
           canvas.height = Math.round(viewport.height);
           b.appendChild(canvas);
-          return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
-        });
+          return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise
+            .then(function () { rendered++; })
+            .catch(function () {
+              // One bad page (e.g. an unsupported image codec) must not blank the rest.
+              failed++;
+              if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+              var ph = doc.createElement('div');
+              ph.className = 'opf-dv-pagefail';
+              ph.textContent = 'Page ' + n + ' could not be displayed.';
+              b.appendChild(ph);
+            });
+        }).catch(function () { failed++; /* getPage failed for this page */ });
       });
     };
     for (var n = 1; n <= pdf.numPages; n++) _loop(n);
+    chain.then(function () {
+      if (myToken !== state.loadToken) return;
+      if (rendered === 0 && pdf.numPages > 0) {
+        showError('Could not display this PDF. Use Download to save it instead.');
+      }
+    });
   }
 
   function close() {

@@ -150,7 +150,9 @@ test('sets pdf.js workerSrc to the vendored worker when pdfjsLib is present', ()
 
 test('vendored pdf.js source check', () => {
   const src = readFileSync(new URL('../operfi-docviewer.js', import.meta.url), 'utf8');
-  assert.match(src, /pdfjs\/pdf\.worker\.min\.js/);
+  // worker is self-hosted under the pdfjs/ dir (now built from PDFJS_BASE + the filename)
+  assert.match(src, /pdfjs\//, 'references the self-hosted pdfjs base');
+  assert.match(src, /pdf\.worker\.min\.js/, 'references the vendored worker file');
 });
 
 test('load-token guard: second open() supersedes first — only second doc renders', async () => {
@@ -209,4 +211,70 @@ test('load-token guard: second open() supersedes first — only second doc rende
   const canvases = w.document.querySelectorAll('.opf-dv-body canvas');
   assert.equal(canvases.length, 1, 'only PDF B\'s single canvas should be in the body');
   assert.equal(w.document.querySelector('.opf-dv-title').textContent, 'B.pdf', 'title reflects PDF B');
+});
+
+// ── Standard-font / cMap support (fixes blank standard-14-font PDFs, e.g. signed agreements) ──
+
+test('getDocument is configured with standardFontDataUrl + cMapUrl + cMapPacked', async () => {
+  const w = mk(pdfFetch);
+  w.HTMLCanvasElement.prototype.getContext = () => ({});
+  let opts = null;
+  w.pdfjsLib = {
+    GlobalWorkerOptions: {},
+    getDocument: (o) => { opts = o; return { promise: Promise.resolve({
+      numPages: 1,
+      getPage: () => Promise.resolve({
+        getViewport: ({ scale }) => ({ width: 100 * scale, height: 140 * scale }),
+        render: () => ({ promise: Promise.resolve() })
+      })
+    }) }; }
+  };
+  w.OperFiDocViewer.open({ url: '/x.pdf', filename: 'agreement.pdf' });
+  await new Promise(r => setTimeout(r, 60));
+  assert.ok(opts, 'getDocument was called with an options object');
+  assert.match(opts.standardFontDataUrl || '', /standard_fonts\//, 'standardFontDataUrl points at hosted fonts');
+  assert.match(opts.cMapUrl || '', /cmaps\//, 'cMapUrl points at hosted cmaps');
+  assert.equal(opts.cMapPacked, true, 'cMapPacked is true for the packed .bcmap files');
+});
+
+// A pdfjsLib stub where each page's render() outcome is decided by failFn(pageNumber).
+function withPdfPages(window, numPages, failFn) {
+  window.HTMLCanvasElement.prototype.getContext = () => ({});
+  var seen = 0;
+  window.pdfjsLib = {
+    GlobalWorkerOptions: {},
+    getDocument: () => ({ promise: Promise.resolve({
+      numPages: numPages,
+      getPage: () => { seen++; var n = seen; return Promise.resolve({
+        getViewport: ({ scale }) => ({ width: 100 * scale, height: 140 * scale }),
+        render: () => ({ promise: failFn(n) ? Promise.reject(new Error('render fail page ' + n)) : Promise.resolve() })
+      }); }
+    }) })
+  };
+}
+
+test('a page whose render rejects does not blank the other pages (per-page isolation)', async () => {
+  const w = mk(pdfFetch);
+  withPdfPages(w, 3, function (n) { return n === 1; }); // only page 1 fails
+  w.OperFiDocViewer.open({ url: '/x.pdf', filename: 'a.pdf' });
+  await new Promise(r => setTimeout(r, 90));
+  assert.equal(w.document.querySelectorAll('.opf-dv-body canvas').length, 2, 'the two good pages still render');
+  assert.equal(w.document.querySelector('.opf-dv-error'), null, 'a partial failure is not a global error');
+  assert.ok(w.document.querySelector('.opf-dv-pagefail'), 'the failed page leaves a visible placeholder, not a silent blank');
+});
+
+test('if every page fails to render, the viewer fails loud (no silent blank)', async () => {
+  const w = mk(pdfFetch);
+  withPdfPages(w, 2, function () { return true; }); // all pages fail
+  w.OperFiDocViewer.open({ url: '/x.pdf', filename: 'a.pdf' });
+  await new Promise(r => setTimeout(r, 90));
+  assert.ok(w.document.querySelector('.opf-dv-error'), 'all-pages-failed shows the loud error panel');
+});
+
+test('viewer references hosted standard_fonts + cmaps and the assets are vendored', () => {
+  const src = readFileSync(new URL('../operfi-docviewer.js', import.meta.url), 'utf8');
+  assert.match(src, /standard_fonts\//, 'references the standard_fonts dir');
+  assert.match(src, /cmaps\//, 'references the cmaps dir');
+  const foxit = readFileSync(new URL('../pdfjs/standard_fonts/FoxitDingbats.pfb', import.meta.url));
+  assert.ok(foxit.length > 0, 'FoxitDingbats.pfb is vendored (the exact file the failing PDF needed)');
 });

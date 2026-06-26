@@ -1298,6 +1298,42 @@ function _uploadDoc(recordId, fieldName, blob, filename) {
   fd.append('report_name', 'All_Funding_Portals');
   fd.append('file', blob, filename);
   return fetch(BROKER_API_BASE + '/upload-doc', { method: 'POST', body: fd })
+    .then(function (r) {
+      if (!r.ok) return false;
+      // Creator returns HTTP 200 even when it rejects the write (row-lock
+      // collision, validation, etc.); only code 3000 is a real success. Read the
+      // body so a silent failure surfaces the warning banner instead of a false OK.
+      return r.json().then(function (j) { return !!(j && j.code === 3000); })
+        .catch(function () { return false; });
+    }).catch(function () { return false; });
+}
+
+// Upload the doc PDFs one at a time. Two parallel writes to the same Creator
+// record collide on its row lock and one is silently dropped (the original bug
+// that lost customer docs); sequential uploads avoid that. Returns the count of
+// failed uploads.
+function _uploadDocsSequential(recordId, pdfs) {
+  var failed = 0;
+  var chain = Promise.resolve();
+  if (pdfs.customer) chain = chain.then(function () {
+    return _uploadDoc(recordId, 'Customer_Documents', pdfs.customer, 'customer_docs.pdf')
+      .then(function (ok) { if (!ok) failed++; });
+  });
+  if (pdfs.carrier) chain = chain.then(function () {
+    return _uploadDoc(recordId, 'Carrier_Documents', pdfs.carrier, 'carrier_docs.pdf')
+      .then(function (ok) { if (!ok) failed++; });
+  });
+  return chain.then(function () { return failed; });
+}
+
+// Promote the record from "Pending Docs" to "Processing" once its docs are
+// uploaded. This is the deliberate signal the Triumph audit Flow fires on, so the
+// record always has its documents before the audit reads it. Best-effort: we always
+// finalize (even on a failed upload) so the load still proceeds into FV's pipeline.
+function _finalizeFunding(recordId) {
+  return fetch(BROKER_API_BASE + '/funding-finalize', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: brokerEmail, record_id: recordId }) })
     .then(function (r) { return r.ok; }).catch(function () { return false; });
 }
 
@@ -1372,15 +1408,16 @@ function submitLoad() {
         // Success: submit button intentionally stays disabled (set true at entry, not
         // re-enabled here) so a created funding record can't be double-submitted.
         // Only the failure paths below re-enable it for retry.
-        var ups = [];
-        if (pdfs.customer) ups.push(_uploadDoc(recordId, 'Customer_Documents', pdfs.customer, 'customer_docs.pdf'));
-        if (pdfs.carrier) ups.push(_uploadDoc(recordId, 'Carrier_Documents', pdfs.carrier, 'carrier_docs.pdf'));
-        if (ups.length) setStatus('Uploading documents…');
-        return Promise.all(ups).then(function (results) {
-          var failed = results.filter(function (ok) { return !ok; }).length;
-          // Clear the form back to step 1 and confirm up top — prevents resubmitting
-          // the same load now that the record exists.
-          resetFormAfterSubmit(recordId, failed > 0);
+        if (pdfs.customer || pdfs.carrier) setStatus('Uploading documents…');
+        return _uploadDocsSequential(recordId, pdfs).then(function (failed) {
+          // Flip the record to "Processing" so the audit Flow fires with the docs
+          // present. Always finalize so the load enters FV's pipeline even if an
+          // upload failed; the banner warns about any failure.
+          return _finalizeFunding(recordId).then(function () {
+            // Clear the form back to step 1 and confirm up top — prevents resubmitting
+            // the same load now that the record exists.
+            resetFormAfterSubmit(recordId, failed > 0);
+          });
         });
       });
   }, function (mergeErr) {

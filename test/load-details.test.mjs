@@ -395,6 +395,61 @@ test('submit is blocked from firing twice concurrently', async () => {
   assert.strictEqual(submitCalls, 1);
 });
 
+// ── B5b: sequential uploads + Creator code check + audit finalize ─────────────
+
+test('submit uploads documents sequentially, never two writes to the record at once', async () => {
+  let inFlight = 0, maxConcurrent = 0;
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_900', warnings: [] }) });
+    if (String(url).includes('/upload-doc')) {
+      inFlight++; maxConcurrent = Math.max(maxConcurrent, inFlight);
+      return new Promise(res => setTimeout(() => { inFlight--; res({ ok: true, json: () => Promise.resolve({ code: 3000 }) }); }, 5));
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });  // finalize
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: new w.Blob(['y']) });
+  await w.submitLoad();
+  assert.strictEqual(maxConcurrent, 1, 'two uploads overlapped -> Creator row-lock drop risk');
+});
+
+test('submit calls /funding-finalize with the record id after the uploads', async () => {
+  let finalizeBody = null;
+  const dom = makeB2Dom((url, opts) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_901', warnings: [] }) });
+    if (String(url).includes('/funding-finalize')) { finalizeBody = JSON.parse(opts.body);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, status: 'Processing' }) }); }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: new w.Blob(['y']) });
+  await w.submitLoad();
+  assert.ok(finalizeBody, '/funding-finalize was not called');
+  assert.strictEqual(finalizeBody.record_id, 'rec_901');
+  assert.strictEqual(finalizeBody.email, 'b@x.com');
+});
+
+test('an upload returning HTTP 200 with a non-3000 Creator code is treated as failed', async () => {
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_902', warnings: [] }) });
+    if (String(url).includes('/upload-doc'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3105, message: 'record locked' }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });  // finalize ok
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: null });
+  await w.submitLoad();
+  const t = w.document.getElementById('post-submit-banner').textContent;
+  assert.match(t, /rec_902/);
+  assert.match(t, /upload/i);
+});
+
 // ── Task 22: Save-as-Draft manual feeder + draft reopen ───────────────────────
 
 test('there is a Save as Draft button next to Submit', () => {

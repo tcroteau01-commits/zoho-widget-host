@@ -504,39 +504,48 @@ test('deriveVettingFlags: stops sort above checks', () => {
   assert.equal(flags[flags.length - 1].level, 'check');
 });
 
-// ── Required docs and vetting summary ──────────────────────────────────────
+// ── Recommended docs and vetting summary ───────────────────────────────────
 
-test('requiredDocs: non-factored requires COI + Banking only', () => {
-  const req = vvApi().requiredDocs({ isFactored: false });
-  const keys = req.map((r) => r.key);
-  // Array.from brings the JSDOM-realm array into the Node realm so strict
-  // deepEqual's prototype check passes (contents are plain strings).
+test('recommendedDocs: non-factored = COI + Banking (no NOA/LOR)', () => {
+  const rec = vvApi().recommendedDocs({ isFactored: false });
+  const keys = rec.map((r) => r.key);
   assert.deepEqual(Array.from(keys).sort(), ['banking', 'coi']);
 });
 
-test('requiredDocs: factored also requires NOA/LOR (satisfied by noa OR lor)', () => {
-  const req = vvApi().requiredDocs({ isFactored: true });
-  const noa = req.find((r) => r.key === 'noa_lor');
-  assert.ok(noa, 'NOA/LOR requirement present');
+test('recommendedDocs: factored = COI + NOA/LOR (no Banking)', () => {
+  const rec = vvApi().recommendedDocs({ isFactored: true });
+  const keys = rec.map((r) => r.key);
+  assert.deepEqual(Array.from(keys).sort(), ['coi', 'noa_lor']);
+  const noa = rec.find((r) => r.key === 'noa_lor');
   assert.deepEqual(Array.from(noa.match).sort(), ['lor', 'noa']);
 });
 
-test('vettingSummary: no flags = clean', () => {
+test('vettingSummary: clean has check icon-free clean level + sub', () => {
   const s = vvApi().vettingSummary([]);
   assert.equal(s.level, 'clean');
+  assert.equal(s.ic, '✓');
   assert.match(s.text, /Looks clean/);
+  assert.match(s.sub, /Review the full profile/);
 });
 
-test('vettingSummary: any stop = stop level', () => {
+test('vettingSummary: any stop = stop level, ⛔, hard-stop sub', () => {
   const s = vvApi().vettingSummary([{ level: 'stop' }, { level: 'check' }]);
   assert.equal(s.level, 'stop');
-  assert.match(s.text, /hard stop/);
+  assert.equal(s.ic, '⛔');
+  assert.match(s.sub, /hard stop/);
 });
 
-test('vettingSummary: only checks = check level', () => {
-  const s = vvApi().vettingSummary([{ level: 'check' }, { level: 'check' }]);
+test('vettingSummary: only checks = check level, ⚠', () => {
+  const s = vvApi().vettingSummary([{ level: 'check' }]);
   assert.equal(s.level, 'check');
+  assert.equal(s.ic, '⚠');
   assert.match(s.text, /to check/);
+});
+
+test('vettingSummary: profileMissing = non-clean degraded with Refresh', () => {
+  const s = vvApi().vettingSummary([], true);
+  assert.notEqual(s.level, 'clean');
+  assert.match(s.sub + s.text, /Refresh/);
 });
 
 // ── vettingSummary: profile-missing degradation ───────────────────────────
@@ -547,23 +556,17 @@ test('vettingSummary([], false) is clean (backward-compat explicit false)', () =
   assert.match(s.text, /Looks clean/);
 });
 
-test('vettingSummary([], true) is NOT clean and mentions Refresh', () => {
-  const s = vvApi().vettingSummary([], true);
-  assert.notEqual(s.level, 'clean', 'level must not be clean when profile errored');
-  assert.match(s.text, /Refresh/, 'text must prompt user to retry via Refresh');
-});
-
 test('vettingSummary with a stop flag still returns stop even when profileMissing', () => {
   // Known ctx-derived flags (DNU) must win — they are real even with no profile.
   const s = vvApi().vettingSummary([{ level: 'stop' }], true);
   assert.equal(s.level, 'stop');
 });
 
-test('docs section shows "Needed" rows for missing required docs (factored)', async () => {
+test('docs section shows "Needed" rows for missing recommended docs (factored)', async () => {
   const dom = makeDom();
   const w = dom.window;
   const rec = { ID: '1003', Vendor_Name: 'FACTORED LLC', Vendor_Status: 'Approved', MC: '5', USDOT: '6', Factoring_Company: 'ACME FACTORS' };
-  // Only a COI on file; banking + NOA/LOR missing.
+  // Only a COI on file; NOA/LOR missing. Banking is NOT recommended for a factored carrier.
   w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [{ type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }]);
   w.dispatchEvent(new w.Event('load'));
   await waitForRows(w);
@@ -571,8 +574,8 @@ test('docs section shows "Needed" rows for missing required docs (factored)', as
   await new Promise((r) => setTimeout(r, 50));
   const docs = w.document.getElementById('vv-docs');
   const needed = Array.from(docs.querySelectorAll('.vv-doc-needed')).map((e) => e.textContent);
-  assert.ok(needed.some((t) => /Banking/.test(t)), 'banking needed');
   assert.ok(needed.some((t) => /NOA or LOR/.test(t)), 'NOA/LOR needed');
+  assert.ok(!needed.some((t) => /Banking/.test(t)), 'banking NOT needed for factored carrier');
   assert.ok(!needed.some((t) => /COI/.test(t)), 'COI present, not needed');
 });
 

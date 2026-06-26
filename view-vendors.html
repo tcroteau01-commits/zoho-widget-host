@@ -849,7 +849,7 @@ function renderVendorDocs(docs, container) {
   var present = {};
   docs.forEach(function (d) { present[d.type] = true; });
   var ctx = vvPanelCtx || {};
-  requiredDocs(ctx).forEach(function (req) {
+  recommendedDocs(ctx).forEach(function (req) {
     var satisfied = req.match.some(function (k) { return present[k]; });
     if (satisfied) return;
     var row = document.createElement('div');
@@ -919,15 +919,18 @@ function deriveVettingFlags(profile, ctx) {
   return flags.slice().sort(function (a, b) { return order[a.level] - order[b.level]; });
 }
 
-// ── Required documents ────────────────────────────────────────────────────
-function requiredDocs(ctx) {
+// ── Recommended documents (advisory, never required/blocking) ──────────────
+// COI is recommended on every carrier. The payment doc pairs with factoring:
+// factored -> NOA/LOR (either noa or lor); not factored -> Banking.
+function recommendedDocs(ctx) {
   ctx = ctx || {};
-  var req = [
-    { key: 'coi',     label: 'Insurance (COI)', match: ['coi'] },
-    { key: 'banking', label: 'Banking (Voided Check / Bank Info)', match: ['banking'] }
-  ];
-  if (ctx.isFactored) req.push({ key: 'noa_lor', label: 'NOA or LOR', match: ['noa', 'lor'] });
-  return req;
+  var rec = [{ key: 'coi', label: 'Insurance (COI)', match: ['coi'] }];
+  if (ctx.isFactored) {
+    rec.push({ key: 'noa_lor', label: 'NOA or LOR', match: ['noa', 'lor'] });
+  } else {
+    rec.push({ key: 'banking', label: 'Banking (Voided Check / Bank Info)', match: ['banking'] });
+  }
+  return rec;
 }
 
 // ── Vetting summary ──────────────────────────────────────────────────────
@@ -935,16 +938,19 @@ function vettingSummary(flags, profileMissing) {
   flags = flags || [];
   if (!flags.length) {
     if (profileMissing) {
-      return { level: 'check', text: "Couldn't check this carrier — tap Refresh to retry." };
+      return { level: 'check', ic: '⚠', text: "Couldn't check this carrier", sub: 'Tap Refresh to retry.' };
     }
-    return { level: 'clean', text: 'Looks clean — no vetting flags. Review the full profile before you submit.' };
+    return { level: 'clean', ic: '✓', text: 'Looks clean',
+             sub: 'No vetting flags. Review the full profile before you submit.' };
   }
   var stops = flags.filter(function (f) { return f.level === 'stop'; }).length;
   var n = flags.length;
   if (stops) {
-    return { level: 'stop', text: n + ' issue' + (n > 1 ? 's' : '') + ' to review — at least one is a hard stop.' };
+    return { level: 'stop', ic: '⛔', text: n + ' issue' + (n > 1 ? 's' : '') + ' to review',
+             sub: 'At least one is a hard stop. Open the full profile before booking.' };
   }
-  return { level: 'check', text: n + ' thing' + (n > 1 ? 's' : '') + ' to check.' };
+  return { level: 'check', ic: '⚠', text: n + ' thing' + (n > 1 ? 's' : '') + ' to check',
+           sub: 'No hard stops, but review before you submit.' };
 }
 
 // ── Exception-only vetting pane ───────────────────────────────────────────
@@ -963,7 +969,7 @@ function renderVettingPane(profile, ctx, container, profileMissing) {
   var sum = document.createElement('div');
   sum.className = 'vv-vet-summary ' + summary.level;
   sum.style.cssText = 'font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:10px;' + VV_SUMMARY_STYLE[summary.level];
-  sum.textContent = summary.text;
+  sum.textContent = summary.text + (summary.sub ? ' — ' + summary.sub : '');
   container.appendChild(sum);
 
   flags.forEach(function (f) {
@@ -1160,7 +1166,7 @@ function exportCsv() {
 // Exposed for tests (the script runs inside an IIFE under 'use strict').
 window.__vvtest = {
   deriveVettingFlags: deriveVettingFlags,
-  requiredDocs: requiredDocs,
+  recommendedDocs: recommendedDocs,
   vettingSummary: vettingSummary
 };
 

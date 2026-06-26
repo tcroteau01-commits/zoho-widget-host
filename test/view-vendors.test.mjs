@@ -539,6 +539,26 @@ test('vettingSummary: only checks = check level', () => {
   assert.match(s.text, /to check/);
 });
 
+// ── vettingSummary: profile-missing degradation ───────────────────────────
+
+test('vettingSummary([], false) is clean (backward-compat explicit false)', () => {
+  const s = vvApi().vettingSummary([], false);
+  assert.equal(s.level, 'clean');
+  assert.match(s.text, /Looks clean/);
+});
+
+test('vettingSummary([], true) is NOT clean and mentions Refresh', () => {
+  const s = vvApi().vettingSummary([], true);
+  assert.notEqual(s.level, 'clean', 'level must not be clean when profile errored');
+  assert.match(s.text, /Refresh/, 'text must prompt user to retry via Refresh');
+});
+
+test('vettingSummary with a stop flag still returns stop even when profileMissing', () => {
+  // Known ctx-derived flags (DNU) must win — they are real even with no profile.
+  const s = vvApi().vettingSummary([{ level: 'stop' }], true);
+  assert.equal(s.level, 'stop');
+});
+
 test('docs section shows "Needed" rows for missing required docs (factored)', async () => {
   const dom = makeDom();
   const w = dom.window;
@@ -601,4 +621,47 @@ test('Refresh button re-fetches profile and docs with refresh=1', async () => {
 
 test('static: Refresh control markup present', () => {
   assert.match(HTML, /id="vv-refresh"/);
+});
+
+// ── Profile-fetch failure: honest degradation ─────────────────────────────
+
+test('vetting pane shows degraded message (not clean) when carrier-profile fetch rejects', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '2001', Vendor_Name: 'ERRCARRIER LLC', Vendor_Status: 'Approved', MC: '20', USDOT: '21', Factoring_Company: '' };
+  w.fetch = (url) => {
+    if (String(url).indexOf('/carrier-profile') !== -1)
+      return Promise.reject(new Error('network failure'));
+    if (String(url).indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [rec] }) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 80));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.doesNotMatch(strip.textContent, /Looks clean/, 'must not claim clean after a failed fetch');
+  assert.match(strip.textContent, /Refresh/, 'must prompt user to retry via Refresh');
+});
+
+test('DNU carrier with failed profile fetch still shows its stop row', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  // DO_NOT_USE is a ctx-derived fact — it must show as a stop even when the profile never loads.
+  const rec = { ID: '2002', Vendor_Name: 'DNU CARRIER', Vendor_Status: 'Approved', MC: '22', USDOT: '23', DO_NOT_USE: true, Factoring_Company: '' };
+  w.fetch = (url) => {
+    if (String(url).indexOf('/carrier-profile') !== -1)
+      return Promise.reject(new Error('network failure'));
+    if (String(url).indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [rec] }) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 80));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1, 'DNU stop row must be present');
+  assert.match(strip.textContent, /Do Not Use/, 'DNU reason must appear');
 });

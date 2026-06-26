@@ -931,9 +931,12 @@ function requiredDocs(ctx) {
 }
 
 // ── Vetting summary ──────────────────────────────────────────────────────
-function vettingSummary(flags) {
+function vettingSummary(flags, profileMissing) {
   flags = flags || [];
   if (!flags.length) {
+    if (profileMissing) {
+      return { level: 'check', text: "Couldn't check this carrier — tap Refresh to retry." };
+    }
     return { level: 'clean', text: 'Looks clean — no vetting flags. Review the full profile before you submit.' };
   }
   var stops = flags.filter(function (f) { return f.level === 'stop'; }).length;
@@ -952,10 +955,10 @@ var VV_SUMMARY_STYLE = {
 };
 var VV_ROW_DOT = { stop: '#c62828', check: '#b8860b' };
 
-function renderVettingPane(profile, ctx, container) {
+function renderVettingPane(profile, ctx, container, profileMissing) {
   container.innerHTML = '';
   var flags = deriveVettingFlags(profile, ctx);
-  var summary = vettingSummary(flags);
+  var summary = vettingSummary(flags, profileMissing);
 
   var sum = document.createElement('div');
   sum.className = 'vv-vet-summary ' + summary.level;
@@ -989,12 +992,13 @@ function refreshVettingPane() {
   var c = document.getElementById('vv-redflags');
   if (!c) return;
   var profile = vvRiskCache[vvPanelCtx.vendorId] || null;
+  var profileMissing = !profile && !!vvPanelCtx.profileError;
   if (!profile) {
     // Before the profile loads, only DNU/status are known — derive from those alone.
-    renderVettingPane({ risk: { flags: [] }, ipqs: {} }, vvPanelCtx, c);
+    renderVettingPane({ risk: { flags: [] }, ipqs: {} }, vvPanelCtx, c, profileMissing);
     return;
   }
-  renderVettingPane(profile, vvPanelCtx, c);
+  renderVettingPane(profile, vvPanelCtx, c, false);
 }
 
 function loadVendorRedFlags(rec, force) {
@@ -1002,7 +1006,8 @@ function loadVendorRedFlags(rec, force) {
     vendorId: rec.ID,
     isDnu: statusMeta(rec).key === 'dnu',
     statusKey: statusMeta(rec).key,
-    isFactored: !!(rec.Factoring_Company || '').trim()
+    isFactored: !!(rec.Factoring_Company || '').trim(),
+    profileError: false
   };
   refreshVettingPane();
   if (!force && vvRiskCache[rec.ID]) { refreshVettingPane(); return; }
@@ -1010,7 +1015,12 @@ function loadVendorRedFlags(rec, force) {
         '&vendor_id=' + encodeURIComponent(rec.ID) + (force ? '&refresh=1' : ''))
     .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
     .then(function (profile) { vvRiskCache[rec.ID] = profile; refreshVettingPane(); })
-    .catch(function () { /* leave the status-only paint; vetting is non-blocking */ });
+    .catch(function () {
+      if (vvPanelCtx && vvPanelCtx.vendorId === rec.ID) {
+        vvPanelCtx.profileError = true;
+        refreshVettingPane();
+      }
+    });
 }
 
 // Same-origin localStorage bridge - Carrier Profile widget reads this on

@@ -331,13 +331,13 @@ test('opening a vendor lazy-loads carrier docs sorted recent-first', async () =>
   await waitForRows(w);
   w.document.querySelector('.row').click();
   await new Promise(r => setTimeout(r, 40));
-  const items = [...w.document.querySelectorAll('#vv-docs .vv-doc')];
+  const items = [...w.document.querySelectorAll('#vv-docs .vvp-doc:not(.recommended)')];
   assert.equal(items.length, 2, 'two doc rows');
   // recent-first: COI (300) before NOA (100)
   assert.match(items[0].textContent, /COI/);
   assert.match(items[1].textContent, /NOA/);
-  // clicking opens the shared viewer with the streamed URL
-  items[0].click();
+  // clicking the View button opens the shared viewer with the streamed URL
+  items[0].querySelector('.vvp-dbtn').click();
   assert.ok(opened && /carrier-doc-file\?t=tCoi/.test(opened.url), 'viewer opened with doc url');
 });
 
@@ -362,7 +362,7 @@ test('panel paints clean summary and no flag rows for a clean carrier', async ()
   await new Promise((r) => setTimeout(r, 50));
   const strip = w.document.getElementById('vv-redflags');
   assert.match(strip.textContent, /Looks clean/);
-  assert.equal(strip.querySelectorAll('.vv-flag').length, 0);
+  assert.equal(strip.querySelectorAll('.vvp-flag').length, 0);
 });
 
 test('panel paints a stop row with its reason for a routing-invalid carrier', async () => {
@@ -375,7 +375,7 @@ test('panel paints a stop row with its reason for a routing-invalid carrier', as
   w.document.querySelector('.row').click();
   await new Promise((r) => setTimeout(r, 50));
   const strip = w.document.getElementById('vv-redflags');
-  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1);
+  assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1);
   assert.match(strip.textContent, /not a valid FedACH/);
 });
 
@@ -415,8 +415,8 @@ test('vetting pane derives present-only flags from carrier-profile', async () =>
   assert.match(strip.textContent, /VPN/, 'VPN-only footprint -> a check row');
   assert.match(strip.textContent, /Factor denied/, 'factor_not_approved -> Factor denied row');
   assert.doesNotMatch(strip.textContent, /Documents/, 'document completeness is no longer a flag');
-  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1, 'factor-denied is the lone stop');
-  assert.equal(strip.querySelectorAll('.vv-flag.check').length, 1, 'VPN is the lone check');
+  assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1, 'factor-denied is the lone stop');
+  assert.equal(strip.querySelectorAll('.vvp-flag.check').length, 1, 'VPN is the lone check');
 });
 
 // ── Pure vetting-flag derivation ───────────────────────────────────────────
@@ -504,39 +504,48 @@ test('deriveVettingFlags: stops sort above checks', () => {
   assert.equal(flags[flags.length - 1].level, 'check');
 });
 
-// ── Required docs and vetting summary ──────────────────────────────────────
+// ── Recommended docs and vetting summary ───────────────────────────────────
 
-test('requiredDocs: non-factored requires COI + Banking only', () => {
-  const req = vvApi().requiredDocs({ isFactored: false });
-  const keys = req.map((r) => r.key);
-  // Array.from brings the JSDOM-realm array into the Node realm so strict
-  // deepEqual's prototype check passes (contents are plain strings).
+test('recommendedDocs: non-factored = COI + Banking (no NOA/LOR)', () => {
+  const rec = vvApi().recommendedDocs({ isFactored: false });
+  const keys = rec.map((r) => r.key);
   assert.deepEqual(Array.from(keys).sort(), ['banking', 'coi']);
 });
 
-test('requiredDocs: factored also requires NOA/LOR (satisfied by noa OR lor)', () => {
-  const req = vvApi().requiredDocs({ isFactored: true });
-  const noa = req.find((r) => r.key === 'noa_lor');
-  assert.ok(noa, 'NOA/LOR requirement present');
+test('recommendedDocs: factored = COI + NOA/LOR (no Banking)', () => {
+  const rec = vvApi().recommendedDocs({ isFactored: true });
+  const keys = rec.map((r) => r.key);
+  assert.deepEqual(Array.from(keys).sort(), ['coi', 'noa_lor']);
+  const noa = rec.find((r) => r.key === 'noa_lor');
   assert.deepEqual(Array.from(noa.match).sort(), ['lor', 'noa']);
 });
 
-test('vettingSummary: no flags = clean', () => {
+test('vettingSummary: clean has check icon-free clean level + sub', () => {
   const s = vvApi().vettingSummary([]);
   assert.equal(s.level, 'clean');
+  assert.equal(s.ic, '✓');
   assert.match(s.text, /Looks clean/);
+  assert.match(s.sub, /Review the full profile/);
 });
 
-test('vettingSummary: any stop = stop level', () => {
+test('vettingSummary: any stop = stop level, ⛔, hard-stop sub', () => {
   const s = vvApi().vettingSummary([{ level: 'stop' }, { level: 'check' }]);
   assert.equal(s.level, 'stop');
-  assert.match(s.text, /hard stop/);
+  assert.equal(s.ic, '⛔');
+  assert.match(s.sub, /hard stop/);
 });
 
-test('vettingSummary: only checks = check level', () => {
-  const s = vvApi().vettingSummary([{ level: 'check' }, { level: 'check' }]);
+test('vettingSummary: only checks = check level, ⚠', () => {
+  const s = vvApi().vettingSummary([{ level: 'check' }]);
   assert.equal(s.level, 'check');
+  assert.equal(s.ic, '⚠');
   assert.match(s.text, /to check/);
+});
+
+test('vettingSummary: profileMissing = non-clean degraded with Refresh', () => {
+  const s = vvApi().vettingSummary([], true);
+  assert.notEqual(s.level, 'clean');
+  assert.match(s.sub + s.text, /Refresh/);
 });
 
 // ── vettingSummary: profile-missing degradation ───────────────────────────
@@ -547,55 +556,51 @@ test('vettingSummary([], false) is clean (backward-compat explicit false)', () =
   assert.match(s.text, /Looks clean/);
 });
 
-test('vettingSummary([], true) is NOT clean and mentions Refresh', () => {
-  const s = vvApi().vettingSummary([], true);
-  assert.notEqual(s.level, 'clean', 'level must not be clean when profile errored');
-  assert.match(s.text, /Refresh/, 'text must prompt user to retry via Refresh');
-});
-
 test('vettingSummary with a stop flag still returns stop even when profileMissing', () => {
   // Known ctx-derived flags (DNU) must win — they are real even with no profile.
   const s = vvApi().vettingSummary([{ level: 'stop' }], true);
   assert.equal(s.level, 'stop');
 });
 
-test('docs section shows "Needed" rows for missing required docs (factored)', async () => {
+test('docs section shows advisory recommended rows for missing docs (factored)', async () => {
   const dom = makeDom();
   const w = dom.window;
   const rec = { ID: '1003', Vendor_Name: 'FACTORED LLC', Vendor_Status: 'Approved', MC: '5', USDOT: '6', Factoring_Company: 'ACME FACTORS' };
-  // Only a COI on file; banking + NOA/LOR missing.
+  // Only a COI on file; NOA/LOR missing. Banking is NOT recommended for a factored carrier.
   w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [{ type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }]);
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
   w.dispatchEvent(new w.Event('load'));
   await waitForRows(w);
   w.document.querySelector('.row').click();
   await new Promise((r) => setTimeout(r, 50));
   const docs = w.document.getElementById('vv-docs');
-  const needed = Array.from(docs.querySelectorAll('.vv-doc-needed')).map((e) => e.textContent);
-  assert.ok(needed.some((t) => /Banking/.test(t)), 'banking needed');
-  assert.ok(needed.some((t) => /NOA or LOR/.test(t)), 'NOA/LOR needed');
-  assert.ok(!needed.some((t) => /COI/.test(t)), 'COI present, not needed');
+  const recommended = Array.from(docs.querySelectorAll('.vvp-doc.recommended')).map((e) => e.textContent);
+  assert.ok(recommended.some((t) => /NOA or LOR/.test(t)), 'NOA/LOR recommended (factored)');
+  assert.ok(!recommended.some((t) => /Banking/.test(t)), 'banking NOT recommended for factored carrier');
+  assert.ok(!recommended.some((t) => /COI/.test(t)), 'COI present, not recommended');
 });
 
-test('docs section: non-factored carrier never shows NOA/LOR as needed', async () => {
+test('docs section: non-factored carrier never shows NOA/LOR as recommended', async () => {
   const dom = makeDom();
   const w = dom.window;
   const rec = { ID: '1004', Vendor_Name: 'QUICKPAY LLC', Vendor_Status: 'Approved', MC: '7', USDOT: '8', Factoring_Company: '' };
-  // COI only — Banking is missing so there IS one Needed row, but NOA/LOR must never appear.
+  // COI only — Banking is missing so there IS one recommended row, but NOA/LOR must never appear.
   w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [
     { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }
   ]);
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
   w.dispatchEvent(new w.Event('load'));
   await waitForRows(w);
   w.document.querySelector('.row').click();
   await new Promise((r) => setTimeout(r, 50));
   const docs = w.document.getElementById('vv-docs');
-  const needed = Array.from(docs.querySelectorAll('.vv-doc-needed')).map((e) => e.textContent);
-  // (a) exactly one Needed row (Banking is missing)
-  assert.equal(needed.length, 1, 'exactly one Needed row');
+  const recommended = Array.from(docs.querySelectorAll('.vvp-doc.recommended')).map((e) => e.textContent);
+  // (a) exactly one recommended row (Banking is missing)
+  assert.equal(recommended.length, 1, 'exactly one recommended row');
   // (b) it is the Banking row
-  assert.ok(/Banking/.test(needed[0]), 'the Needed row is Banking');
-  // (c) NOA/LOR is never demanded for a non-factored carrier
-  assert.ok(!needed.some((t) => /NOA/.test(t)), 'NOA/LOR never needed for non-factored carrier');
+  assert.ok(/Banking/.test(recommended[0]), 'the recommended row is Banking');
+  // (c) NOA/LOR is never recommended for a non-factored carrier
+  assert.ok(!recommended.some((t) => /NOA/.test(t)), 'NOA/LOR never recommended for non-factored carrier');
 });
 
 test('Refresh button re-fetches profile and docs with refresh=1', async () => {
@@ -662,6 +667,96 @@ test('DNU carrier with failed profile fetch still shows its stop row', async () 
   w.document.querySelector('.row').click();
   await new Promise((r) => setTimeout(r, 80));
   const strip = w.document.getElementById('vv-redflags');
-  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1, 'DNU stop row must be present');
+  assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1, 'DNU stop row must be present');
   assert.match(strip.textContent, /Do Not Use/, 'DNU reason must appear');
+});
+
+test('vetting pane: summary banner has icon + sub; flag cards have pills', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '7001', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [{ id: 'bank_routing_invalid' }, { id: 'voip_phone' }] }, ipqs: {} }, []);
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  // summary banner
+  const banner = strip.querySelector('.vvp-summary');
+  assert.ok(banner, 'summary banner present');
+  assert.ok(banner.querySelector('.vvp-ic'), 'banner has an icon');
+  assert.ok(banner.querySelector('.vvp-txt small'), 'banner has a sub-line');
+  // flag cards with pills
+  const cards = strip.querySelectorAll('.vvp-flag');
+  assert.equal(cards.length, 2, 'one card per flag');
+  const stopCard = strip.querySelector('.vvp-flag.stop');
+  assert.ok(stopCard, 'has a stop card');
+  assert.match(stopCard.querySelector('.vvp-fsev').textContent, /Stop/);
+  assert.ok(strip.querySelector('.vvp-flag.check .vvp-fsev'), 'check card has a pill');
+  assert.match(stopCard.querySelector('.vvp-freason').textContent, /FedACH/);
+});
+
+// ── Task 3: Document cards — icons, "N on file" count, View buttons, advisory recommended rows ──
+
+test('docs: count badge + per-doc View button + file icon', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '7100', Vendor_Name: 'HASDOCS', Vendor_Status: 'Approved', MC: '1', USDOT: '2', Factoring_Company: '' };
+  const docs = [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' },
+    { type: 'banking', label: 'Banking', filename: 'vc.pdf', preview_token: 't2' }
+  ];
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, docs);
+  let opened = null;
+  w.OperFiDocViewer = { open: (o) => { opened = o; }, close: () => {} };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const box = w.document.getElementById('vv-docs');
+  assert.match(box.querySelector('.vvp-ct').textContent, /2 on file/);
+  const cards = box.querySelectorAll('.vvp-doc:not(.recommended)');
+  assert.equal(cards.length, 2);
+  assert.ok(cards[0].querySelector('.vvp-dic').textContent.length > 0, 'has an icon glyph');
+  const viewBtn = cards[0].querySelector('.vvp-dbtn');
+  assert.match(viewBtn.textContent, /View/);
+  viewBtn.click();
+  assert.ok(opened && /t1/.test(opened.url), 'View opens the viewer for that doc');
+});
+
+test('docs: factored carrier missing NOA shows a soft recommended row (non-blocking), not banking', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '7101', Vendor_Name: 'FACT', Vendor_Status: 'Approved', MC: '1', USDOT: '2', Factoring_Company: 'ACME' };
+  // only COI on file
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [{ type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }]);
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const box = w.document.getElementById('vv-docs');
+  const recRows = Array.from(box.querySelectorAll('.vvp-doc.recommended')).map((e) => e.textContent);
+  assert.ok(recRows.some((t) => /NOA or LOR/.test(t)), 'NOA/LOR recommended (factored)');
+  assert.ok(!recRows.some((t) => /Banking/.test(t)), 'Banking NOT recommended for a factored carrier');
+  assert.match(box.querySelector('.vvp-rec-head').textContent, /Recommended/);
+  // non-blocking: no recommended row contains "Needed" or "required"
+  assert.ok(!recRows.some((t) => /Needed|required/i.test(t)), 'advisory wording, not a gate');
+});
+
+test('docs: non-factored missing banking recommends banking, never NOA/LOR', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '7102', Vendor_Name: 'QP', Vendor_Status: 'Approved', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [{ type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }]);
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const box = w.document.getElementById('vv-docs');
+  const recRows = Array.from(box.querySelectorAll('.vvp-doc.recommended')).map((e) => e.textContent);
+  assert.ok(recRows.some((t) => /Banking/.test(t)), 'Banking recommended (non-factored)');
+  assert.ok(!recRows.some((t) => /NOA/.test(t)), 'NOA/LOR never recommended for non-factored');
 });

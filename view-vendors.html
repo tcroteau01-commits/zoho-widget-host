@@ -210,6 +210,44 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   input, select, textarea, .search input { font-size: 16px; }
 }
 </style>
+<style>
+/* ── VET1.1 vetting-pane parity (mockup View-Vendors-Vetting-Redesign-Mock.html) ── */
+.vvp-summary { display:flex; align-items:center; gap:12px; padding:13px 15px; border-radius:11px; font-weight:600; }
+.vvp-summary .vvp-ic { font-size:18px; line-height:1; }
+.vvp-summary .vvp-txt { font-size:13.5px; }
+.vvp-summary .vvp-txt small { display:block; font-weight:500; font-size:11.5px; opacity:.8; margin-top:2px; }
+.vvp-summary.clean { background:#eef7ef; color:#1f6321; border:1px solid #cfe7d1; }
+.vvp-summary.check { background:#fff6e6; color:#8a5a00; border:1px solid #f0dcae; }
+.vvp-summary.stop  { background:#fdeceb; color:#a3211b; border:1px solid #f3c4c1; }
+.vvp-flags { display:flex; flex-direction:column; gap:8px; margin-top:13px; }
+.vvp-flag { display:flex; gap:11px; padding:11px 13px; border-radius:10px; border:1px solid; align-items:flex-start; }
+.vvp-flag .vvp-fic { font-size:15px; line-height:1.2; margin-top:1px; }
+.vvp-flag .vvp-fmain { flex:1; min-width:0; }
+.vvp-flag .vvp-flabel { font-size:13px; font-weight:700; }
+.vvp-flag .vvp-freason { font-size:11.5px; margin-top:2px; line-height:1.4; }
+.vvp-flag .vvp-fsev { font-size:9.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; padding:2px 7px; border-radius:999px; align-self:center; white-space:nowrap; }
+.vvp-flag.stop  { background:#fdeceb; border-color:#f3c4c1; color:#8e1f1a; }
+.vvp-flag.stop .vvp-freason { color:#b4534d; }
+.vvp-flag.stop .vvp-fsev { background:#f6cfcc; color:#8e1f1a; }
+.vvp-flag.check { background:#fff6e6; border-color:#f0dcae; color:#7a5200; }
+.vvp-flag.check .vvp-freason { color:#99713a; }
+.vvp-flag.check .vvp-fsev { background:#f3e3b8; color:#7a5200; }
+.vvp-sec-title { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:#9a9a93; margin-bottom:11px; display:flex; align-items:center; gap:8px; }
+.vvp-sec-title .vvp-ct { background:#efeee8; color:#777; border-radius:999px; font-size:10px; padding:1px 7px; }
+.vvp-docs { display:flex; flex-direction:column; gap:7px; }
+.vvp-doc { display:flex; align-items:center; gap:11px; padding:11px 13px; border:1px solid #ebe9e1; border-radius:10px; background:#fcfbf8; }
+.vvp-doc .vvp-dic { width:30px; height:30px; border-radius:7px; background:#eef1f4; display:flex; align-items:center; justify-content:center; font-size:14px; color:#56606b; flex-shrink:0; }
+.vvp-doc .vvp-dmain { flex:1; min-width:0; }
+.vvp-doc .vvp-dlabel { font-size:12.5px; font-weight:700; color:#2c2c2c; }
+.vvp-doc .vvp-dfile { font-size:11px; color:#9a9a93; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vvp-doc .vvp-dnote { font-size:11px; color:#99713a; margin-top:2px; }
+.vvp-dbtn { border:1px solid #d6d3c8; background:#fff; border-radius:7px; font-size:11px; font-weight:700; padding:7px 11px; cursor:pointer; color:#444; font-family:inherit; white-space:nowrap; transition:all .12s; }
+.vvp-dbtn:hover { border-color:#23262b; color:#23262b; }
+.vvp-doc.recommended { border-style:dashed; background:#fff; }
+.vvp-doc.recommended .vvp-dlabel { color:#8a5a00; }
+.vvp-doc.recommended .vvp-dic { background:#fff3df; color:#b86e00; }
+.vvp-rec-head { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#8a5a00; margin:10px 0 6px; }
+</style>
 </head>
 <body>
 
@@ -812,57 +850,78 @@ function refreshVendorVetting(vendorId) {
   if (rec && String(rec.ID) === String(vendorId)) loadVendorRedFlags(rec, true);
 }
 
+var VV_DOC_ICON = { agreement: '📄', onboarding: '📋', banking: '🏦', coi: '🛡️', noa: '🧾', lor: '🧾', other: '📎' };
+
 function renderVendorDocs(docs, container) {
   docs = docs || [];
-  container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>';
+  container.innerHTML = '';
 
-  if (!docs.length) {
-    var empty = document.createElement('div');
-    empty.className = 'vv-doc-state';
-    empty.style.cssText = 'font-size:12px;color:#999;';
-    empty.textContent = 'No documents on file.';
-    container.appendChild(empty);
-  }
+  var title = document.createElement('div');
+  title.className = 'vvp-sec-title';
+  title.appendChild(document.createTextNode('Documents'));
+  var ct = document.createElement('span');
+  ct.className = 'vvp-ct';
+  ct.textContent = docs.length + ' on file';
+  title.appendChild(ct);
+  container.appendChild(title);
+
+  var list = document.createElement('div');
+  list.className = 'vvp-docs';
+  container.appendChild(list);
 
   docs.forEach(function (d) {
     var row = document.createElement('div');
-    row.className = 'vv-doc';
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0efe9;cursor:pointer;';
-    var lab = document.createElement('span');
-    lab.style.cssText = 'font-weight:600;font-size:12px;color:#333;';
+    row.className = 'vvp-doc';
+    var dic = document.createElement('div'); dic.className = 'vvp-dic';
+    dic.textContent = VV_DOC_ICON[d.type] || '📎';
+    var main = document.createElement('div'); main.className = 'vvp-dmain';
+    var lab = document.createElement('div'); lab.className = 'vvp-dlabel';
     lab.textContent = d.label || d.type || 'Document';
-    var name = document.createElement('span');
-    name.style.cssText = 'font-size:12px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    name.textContent = d.filename || '';
-    row.appendChild(lab); row.appendChild(name);
-    row.addEventListener('click', function () {
+    var file = document.createElement('div'); file.className = 'vvp-dfile';
+    file.textContent = d.filename || '';
+    main.appendChild(lab); main.appendChild(file);
+    var btn = document.createElement('button'); btn.className = 'vvp-dbtn'; btn.textContent = 'View';
+    btn.addEventListener('click', function () {
       if (!window.OperFiDocViewer) return;
       OperFiDocViewer.open({
         url: BROKER_API_BASE + '/carrier-doc-file?t=' + encodeURIComponent(d.preview_token),
         filename: d.filename || (d.type || 'document')
       });
     });
-    container.appendChild(row);
+    row.appendChild(dic); row.appendChild(main); row.appendChild(btn);
+    list.appendChild(row);
   });
 
-  // Needed rows: required types with no satisfying doc on file.
+  // Recommended (not on file) — advisory only, never blocking.
   var present = {};
   docs.forEach(function (d) { present[d.type] = true; });
   var ctx = vvPanelCtx || {};
-  requiredDocs(ctx).forEach(function (req) {
-    var satisfied = req.match.some(function (k) { return present[k]; });
-    if (satisfied) return;
-    var row = document.createElement('div');
-    row.className = 'vv-doc-needed';
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px dashed #d8b04a;color:#8a6d1a;font-size:12px;';
-    var tag = document.createElement('span');
-    tag.style.cssText = 'font-weight:700;';
-    tag.textContent = 'Needed:';
-    var lab = document.createElement('span');
-    lab.textContent = req.label;
-    row.appendChild(tag); row.appendChild(lab);
-    container.appendChild(row);
+  var missing = recommendedDocs(ctx).filter(function (r) {
+    return !r.match.some(function (k) { return present[k]; });
   });
+  if (missing.length) {
+    var head = document.createElement('div');
+    head.className = 'vvp-rec-head';
+    head.textContent = 'Recommended (not on file)';
+    container.appendChild(head);
+    var recList = document.createElement('div');
+    recList.className = 'vvp-docs';
+    container.appendChild(recList);
+    missing.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'vvp-doc recommended';
+      var dic = document.createElement('div'); dic.className = 'vvp-dic';
+      dic.textContent = VV_DOC_ICON[r.match[0]] || '📎';
+      var main = document.createElement('div'); main.className = 'vvp-dmain';
+      var lab = document.createElement('div'); lab.className = 'vvp-dlabel';
+      lab.textContent = r.label;
+      var note = document.createElement('div'); note.className = 'vvp-dnote';
+      note.textContent = 'You may already have it in your TMS. Keeping a copy here is recommended.';
+      main.appendChild(lab); main.appendChild(note);
+      row.appendChild(dic); row.appendChild(main);
+      recList.appendChild(row);
+    });
+  }
 }
 
 // ── Exception-only, severity-ranked vetting flags (Phase 1) ──────────────
@@ -881,16 +940,16 @@ function deriveVettingFlags(profile, ctx) {
 
   // Bank
   if (has('bank_bad_actor')) flags.push({ key: 'bank_bad_actor', level: 'stop',
-    label: 'Bank — linked to flagged vendor',
+    label: 'Bank: linked to flagged vendor',
     reason: 'Bank account is linked to a vendor flagged for fraud.' });
   if (has('bank_account_shared')) flags.push({ key: 'bank_account_shared', level: 'stop',
-    label: 'Bank — account shared with another carrier',
+    label: 'Bank: account shared with another carrier',
     reason: 'This bank account is in use by another carrier.' });
   if (has('bank_routing_invalid')) flags.push({ key: 'bank_routing_invalid', level: 'stop',
-    label: 'Bank — routing not valid / not in FedACH',
+    label: 'Bank: routing not valid / not in FedACH',
     reason: 'Routing number is not a valid FedACH routing number.' });
   if (has('bank_name_mismatch')) flags.push({ key: 'bank_name_mismatch', level: 'check',
-    label: 'Bank — name mismatch',
+    label: 'Bank: name mismatch',
     reason: 'Account-holder name does not match the carrier.' });
   // bank_state_mismatch intentionally NOT surfaced in Phase 1 (profile-only).
 
@@ -898,7 +957,7 @@ function deriveVettingFlags(profile, ctx) {
   var voip = !!ipqs.voip_number || has('voip_phone');
   var vpn  = !!ipqs.vpn_detected || has('vpn_signup');
   if (voip && vpn) flags.push({ key: 'foot_both', level: 'stop', label: 'VOIP + VPN',
-    reason: 'Phone is VOIP and signup was VPN-masked — strong spoofing signal.' });
+    reason: 'Phone is VOIP and signup was VPN-masked, a strong spoofing signal.' });
   else if (voip) flags.push({ key: 'foot_voip', level: 'check', label: 'VOIP phone',
     reason: 'Carrier phone is a VOIP number.' });
   else if (vpn) flags.push({ key: 'foot_vpn', level: 'check', label: 'VPN-masked signup',
@@ -919,15 +978,18 @@ function deriveVettingFlags(profile, ctx) {
   return flags.slice().sort(function (a, b) { return order[a.level] - order[b.level]; });
 }
 
-// ── Required documents ────────────────────────────────────────────────────
-function requiredDocs(ctx) {
+// ── Recommended documents (advisory, never required/blocking) ──────────────
+// COI is recommended on every carrier. The payment doc pairs with factoring:
+// factored -> NOA/LOR (either noa or lor); not factored -> Banking.
+function recommendedDocs(ctx) {
   ctx = ctx || {};
-  var req = [
-    { key: 'coi',     label: 'Insurance (COI)', match: ['coi'] },
-    { key: 'banking', label: 'Banking (Voided Check / Bank Info)', match: ['banking'] }
-  ];
-  if (ctx.isFactored) req.push({ key: 'noa_lor', label: 'NOA or LOR', match: ['noa', 'lor'] });
-  return req;
+  var rec = [{ key: 'coi', label: 'Insurance (COI)', match: ['coi'] }];
+  if (ctx.isFactored) {
+    rec.push({ key: 'noa_lor', label: 'NOA or LOR', match: ['noa', 'lor'] });
+  } else {
+    rec.push({ key: 'banking', label: 'Banking (Voided Check / Bank Info)', match: ['banking'] });
+  }
+  return rec;
 }
 
 // ── Vetting summary ──────────────────────────────────────────────────────
@@ -935,25 +997,24 @@ function vettingSummary(flags, profileMissing) {
   flags = flags || [];
   if (!flags.length) {
     if (profileMissing) {
-      return { level: 'check', text: "Couldn't check this carrier — tap Refresh to retry." };
+      return { level: 'check', ic: '⚠', text: "Couldn't check this carrier", sub: 'Tap Refresh to retry.' };
     }
-    return { level: 'clean', text: 'Looks clean — no vetting flags. Review the full profile before you submit.' };
+    return { level: 'clean', ic: '✓', text: 'Looks clean',
+             sub: 'No vetting flags. Review the full profile before you submit.' };
   }
   var stops = flags.filter(function (f) { return f.level === 'stop'; }).length;
   var n = flags.length;
   if (stops) {
-    return { level: 'stop', text: n + ' issue' + (n > 1 ? 's' : '') + ' to review — at least one is a hard stop.' };
+    return { level: 'stop', ic: '⛔', text: n + ' issue' + (n > 1 ? 's' : '') + ' to review',
+             sub: 'At least one is a hard stop. Open the full profile before booking.' };
   }
-  return { level: 'check', text: n + ' thing' + (n > 1 ? 's' : '') + ' to check.' };
+  return { level: 'check', ic: '⚠', text: n + ' thing' + (n > 1 ? 's' : '') + ' to check',
+           sub: 'No hard stops, but review before you submit.' };
 }
 
 // ── Exception-only vetting pane ───────────────────────────────────────────
-var VV_SUMMARY_STYLE = {
-  clean: 'background:#e8f5e9;color:#2e7d32;border:1px solid #bfe3c2;',
-  check: 'background:#fff8e1;color:#856404;border:1px solid #ffe082;',
-  stop:  'background:#ffebee;color:#c62828;border:1px solid #ef9a9a;'
-};
-var VV_ROW_DOT = { stop: '#c62828', check: '#b8860b' };
+var VV_FLAG_ICON = { stop: '⛔', check: '⚠' };
+var VV_FLAG_SEV  = { stop: 'Stop', check: 'Check' };
 
 function renderVettingPane(profile, ctx, container, profileMissing) {
   container.innerHTML = '';
@@ -961,28 +1022,28 @@ function renderVettingPane(profile, ctx, container, profileMissing) {
   var summary = vettingSummary(flags, profileMissing);
 
   var sum = document.createElement('div');
-  sum.className = 'vv-vet-summary ' + summary.level;
-  sum.style.cssText = 'font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:10px;' + VV_SUMMARY_STYLE[summary.level];
-  sum.textContent = summary.text;
+  sum.className = 'vvp-summary ' + summary.level;
+  var sic = document.createElement('div'); sic.className = 'vvp-ic'; sic.textContent = summary.ic;
+  var stx = document.createElement('div'); stx.className = 'vvp-txt'; stx.textContent = summary.text;
+  var ssub = document.createElement('small'); ssub.textContent = summary.sub; stx.appendChild(ssub);
+  sum.appendChild(sic); sum.appendChild(stx);
   container.appendChild(sum);
 
+  if (!flags.length) return;
+  var wrap = document.createElement('div'); wrap.className = 'vvp-flags';
   flags.forEach(function (f) {
-    var row = document.createElement('div');
-    row.className = 'vv-flag ' + f.level;
-    row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid #f0efe9;';
-    var dot = document.createElement('span');
-    dot.style.cssText = 'flex:0 0 auto;width:8px;height:8px;border-radius:50%;margin-top:5px;background:' + VV_ROW_DOT[f.level] + ';';
-    var body = document.createElement('div');
-    var lab = document.createElement('div');
-    lab.style.cssText = 'font-size:12px;font-weight:700;color:#333;';
-    lab.textContent = f.label;
-    var why = document.createElement('div');
-    why.style.cssText = 'font-size:11px;color:#777;margin-top:1px;';
-    why.textContent = f.reason;
-    body.appendChild(lab); body.appendChild(why);
-    row.appendChild(dot); row.appendChild(body);
-    container.appendChild(row);
+    var card = document.createElement('div');
+    card.className = 'vvp-flag ' + f.level;
+    var fic = document.createElement('div'); fic.className = 'vvp-fic'; fic.textContent = VV_FLAG_ICON[f.level] || '';
+    var main = document.createElement('div'); main.className = 'vvp-fmain';
+    var lab = document.createElement('div'); lab.className = 'vvp-flabel'; lab.textContent = f.label;
+    var why = document.createElement('div'); why.className = 'vvp-freason'; why.textContent = f.reason;
+    main.appendChild(lab); main.appendChild(why);
+    var sev = document.createElement('div'); sev.className = 'vvp-fsev'; sev.textContent = VV_FLAG_SEV[f.level] || '';
+    card.appendChild(fic); card.appendChild(main); card.appendChild(sev);
+    wrap.appendChild(card);
   });
+  container.appendChild(wrap);
 }
 
 // Repaint the vetting pane from whatever is cached right now.
@@ -1160,7 +1221,7 @@ function exportCsv() {
 // Exposed for tests (the script runs inside an IIFE under 'use strict').
 window.__vvtest = {
   deriveVettingFlags: deriveVettingFlags,
-  requiredDocs: requiredDocs,
+  recommendedDocs: recommendedDocs,
   vettingSummary: vettingSummary
 };
 

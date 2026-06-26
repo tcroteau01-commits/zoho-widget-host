@@ -6,6 +6,8 @@
 <title>NOA / LOR Management</title>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=3"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
@@ -464,6 +466,15 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
               </select>
             </div>
             <div class="field">
+              <label class="field-label">Letter of Release (LOR) <span class="req">*</span></label>
+              <div class="dropzone" id="dropzone-lor">
+                <div class="dropzone-icon">&#128206;</div>
+                <div class="dropzone-text">Drag LOR here or click to browse</div>
+                <div class="dropzone-sub">Release from the current factor. PDF, DOC, or image.</div>
+              </div>
+              <input type="file" id="file-lor" class="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+            </div>
+            <div class="field">
               <label class="field-label">New NOA Document <span class="req">*</span></label>
               <div class="dropzone" id="dropzone-newfactor">
                 <div class="dropzone-icon">&#128206;</div>
@@ -536,12 +547,15 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 <script>
 function resetSelectedFiles() {
-  selectedDocFile = null; selectedNewNoaFile = null;
-  ['file-main','file-newfactor'].forEach(function(id){ var i = document.getElementById(id); if (i) try { i.value = ''; } catch (_) {} });
-  ['dropzone-main','dropzone-newfactor'].forEach(function(id){
+  selectedDocFile = null; selectedNewNoaFile = null; selectedLorFile = null;
+  ['file-main','file-newfactor','file-lor'].forEach(function(id){ var i = document.getElementById(id); if (i) try { i.value = ''; } catch (_) {} });
+  var DEFAULT_TEXT = { 'dropzone-main': 'Drag NOA here or click to browse',
+                       'dropzone-newfactor': 'Drag NOA here or click to browse',
+                       'dropzone-lor': 'Drag LOR here or click to browse' };
+  Object.keys(DEFAULT_TEXT).forEach(function(id){
     var z = document.getElementById(id); if (!z) return;
     z.classList.remove('has-file');
-    var t = z.querySelector('.dropzone-text'); if (t) t.textContent = 'Drag NOA here or click to browse';
+    var t = z.querySelector('.dropzone-text'); if (t) t.textContent = DEFAULT_TEXT[id];
   });
 }
 function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); if (typeof selectType === 'function' && !selectedType) selectType('NOA Update'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
@@ -620,15 +634,6 @@ var ATTENTION = { noa_needed: 1, bank_doc: 1, bank_info: 1, review: 1 };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
-// Raw-anchor links don't go through the impersonate.js fetch wrapper, so when an
-// OperFi admin is acting-as a client we must append &impersonate= ourselves.
-function _impersonateSuffix(){
-  try {
-    var t = (window.OPERFI_IMP && window.OPERFI_IMP.target && window.OPERFI_IMP.target()) || '';
-    return t ? '&impersonate=' + encodeURIComponent(t) : '';
-  } catch (e) { return ''; }
-}
-
 function _linkedLabel(s) {
   if (!s) return '';
   var m = String(s).match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
@@ -681,13 +686,15 @@ function renderCarrierRows(list) {
   tbody.innerHTML = list.map(function(c){
     var chip = CHIP[c.status] || ['neutral', c.status || ''];
     var attn = ATTENTION[c.status] ? ' class="attention"' : '';
-    // The doc link is a raw <a href>, so it bypasses the impersonate.js fetch
-    // wrapper. Append the impersonate target by hand or an admin acting-as a
-    // client hits /noa-doc as themselves and gets a 403 Forbidden on the doc.
-    var doc = (c.doc_on_file && c.doc_on_file.has_doc)
-      ? '<a class="doc-link" href="' + BROKER_API_BASE + '/noa-doc?email=' + encodeURIComponent(brokerEmail) +
-        '&record_id=' + encodeURIComponent(c.doc_on_file.record_id) + _impersonateSuffix() + '" target="_blank">' +
-        esc((c.doc_on_file.type||'').indexOf('LOR')>=0?'LOR':'NOA') + ' ↗</a>'
+    // One in-app-viewer link per doc on the record (factoring changes have an
+    // LOR + a NOA). The viewer fetches through the impersonate.js wrapper, so the
+    // impersonate target is appended automatically — do NOT add it here.
+    var docList = (c.doc_on_file && c.doc_on_file.docs) || [];
+    var doc = docList.length
+      ? docList.map(function (d, i) {
+          return '<a class="doc-link" href="#" data-vendor="' + esc(c.vendor_id) +
+            '" data-doc="' + i + '">' + esc(d.label || 'Doc') + ' ↗</a>';
+        }).join(' ')
       : '<span class="doc-none">none</span>';
     return '<tr' + attn + '>' +
       '<td><div class="carrier-name">' + esc(c.carrier_name) + '</div>' +
@@ -702,6 +709,24 @@ function renderCarrierRows(list) {
   }).join('');
   Array.prototype.forEach.call(tbody.querySelectorAll('button[data-vendor]'), function(b){
     b.onclick = function(){ if (typeof openSubmitFor === 'function') openSubmitFor(b.getAttribute('data-vendor')); };
+  });
+  Array.prototype.forEach.call(tbody.querySelectorAll('a.doc-link[data-doc]'), function (a) {
+    a.onclick = function (e) {
+      e.preventDefault();
+      if (!window.OperFiDocViewer) return;
+      var vid = a.getAttribute('data-vendor');
+      var c = null;
+      for (var i = 0; i < list.length; i++) if (String(list[i].vendor_id) === vid) { c = list[i]; break; }
+      var dof = c && c.doc_on_file;
+      var d = dof && dof.docs && dof.docs[parseInt(a.getAttribute('data-doc'), 10)];
+      if (!dof || !d) return;
+      OperFiDocViewer.open({
+        url: BROKER_API_BASE + '/noa-doc?email=' + encodeURIComponent(brokerEmail) +
+             '&record_id=' + encodeURIComponent(dof.record_id) +
+             '&field=' + encodeURIComponent(d.field),
+        filename: d.filename || (d.label + ' document')
+      });
+    };
   });
 }
 
@@ -840,6 +865,7 @@ var selectedFactoringId = null;
 var selectedNewFactoringId = null;
 var selectedDocFile = null;
 var selectedNewNoaFile = null;
+var selectedLorFile = null;
 
 function applyGating(p) {
   var gated = document.querySelector('.type-card.gated-card');
@@ -945,10 +971,7 @@ function buildNoaPayload() {
   return d;   // NO FV_Client_ID / DOT / Carrier_Name — engine derives those.
 }
 
-function uploadNoaDoc(recordId) {
-  var file = (selectedType === 'Factoring Company Change') ? selectedNewNoaFile : selectedDocFile;
-  var field = (selectedType === 'Factoring Company Change') ? 'New_NOA' : 'NOA_or_LOR_Upload';
-  if (!recordId || !file) return Promise.resolve();
+function _postDoc(recordId, file, field) {
   var fd = new FormData();
   fd.append('record_id', recordId);
   fd.append('field_name', field);
@@ -957,6 +980,21 @@ function uploadNoaDoc(recordId) {
   return fetch(BROKER_API_BASE + '/upload-doc', { method: 'POST', body: fd })
     .then(function (r) { return r.json(); })
     .catch(function () { return null; });
+}
+
+function uploadNoaDoc(recordId) {
+  if (!recordId) return Promise.resolve();
+  var jobs = [];
+  if (selectedType === 'Factoring Company Change') {
+    // Sequential, LOR first: Creator file-field writes drop under a parallel lock.
+    if (selectedLorFile) jobs.push([selectedLorFile, 'NOA_or_LOR_Upload']);
+    if (selectedNewNoaFile) jobs.push([selectedNewNoaFile, 'New_NOA']);
+  } else if (selectedDocFile) {
+    jobs.push([selectedDocFile, 'NOA_or_LOR_Upload']);
+  }
+  return jobs.reduce(function (chain, job) {
+    return chain.then(function () { return _postDoc(recordId, job[0], job[1]); });
+  }, Promise.resolve());
 }
 
 function runEngine(recordId) {
@@ -973,11 +1011,22 @@ function submitNoa() {
   if (!selectedType) { if (fb) fb.textContent = 'Pick an update type.'; return; }
   // Document required for every type (the form's NOA_or_LOR_Upload is no longer
   // form-mandatory, since the file uploads after the API create; enforce it here).
-  var docFile = (selectedType === 'Factoring Company Change') ? selectedNewNoaFile : selectedDocFile;
-  if (!docFile) {
-    var docLabel = (selectedType === 'LOR Update') ? 'LOR' : 'NOA';
-    if (fb) fb.textContent = 'Please attach the ' + docLabel + ' document before submitting.';
-    return;
+  if (selectedType === 'Factoring Company Change') {
+    if (!selectedLorFile) {
+      if (fb) fb.textContent = 'Please attach the LOR (release from the current factor) before submitting.';
+      return;
+    }
+    if (!selectedNewNoaFile) {
+      if (fb) fb.textContent = 'Please attach the New NOA document before submitting.';
+      return;
+    }
+  } else {
+    var docFile = selectedDocFile;
+    if (!docFile) {
+      var docLabel = (selectedType === 'LOR Update') ? 'LOR' : 'NOA';
+      if (fb) fb.textContent = 'Please attach the ' + docLabel + ' document before submitting.';
+      return;
+    }
   }
   var btn = document.getElementById('noa-submit-btn');
   var fail = function (msg) {
@@ -1060,6 +1109,7 @@ function wireForm() {
   // Wire dropzones
   wireDropzone('dropzone-main', 'file-main', function (f) { selectedDocFile = f; });
   wireDropzone('dropzone-newfactor', 'file-newfactor', function (f) { selectedNewNoaFile = f; });
+  wireDropzone('dropzone-lor', 'file-lor', function (f) { selectedLorFile = f; });
   // Wire submit button
   var submitBtn = document.getElementById('noa-submit-btn');
   if (submitBtn) { submitBtn.onclick = submitNoa; }

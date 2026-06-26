@@ -9,7 +9,8 @@ const STATUS = { allow_add_carrier: false, total_carriers: 2, carriers: [
   { vendor_id: '1001', carrier_name: 'ROADWAY EXPRESS', mc: '89765', dot: '897123',
     factoring_company: 'Triumph', pay_term: 'Factoring Company',
     submission_type: 'NOA Update', submitted_at: '10-May-2026 09:00:00',
-    doc_on_file: { record_id: 'n1', type: 'NOA Update', has_doc: true }, status: 'verified' },
+    doc_on_file: { record_id: 'n1', type: 'NOA Update', has_doc: true,
+      docs: [{ field: 'NOA_or_LOR_Upload', label: 'NOA', filename: 'n1.pdf' }] }, status: 'verified' },
   { vendor_id: '1002', carrier_name: 'MIDWEST HAUL', mc: '774120', dot: '2891044',
     factoring_company: '', pay_term: 'Factoring Company',
     submission_type: 'LOR Update', submitted_at: '12-May-2026 09:00:00',
@@ -44,26 +45,31 @@ test('renderStatusList renders a row per carrier with status chip and doc link',
   assert.ok(rows[0].querySelector('.doc-link'));
 });
 
-test('doc link carries the impersonate target so an admin acting-as-client is not Forbidden', () => {
+test('doc cell renders one viewer link per doc and opens the shared viewer with the right field', () => {
   const { window } = makeWidget();
   window.brokerEmail = 'admin@operfi.com';
-  window.OPERFI_IMP = { target: () => 'client@missions.com' };
-  window.renderStatusList(STATUS);
-  const link = window.document.querySelector('.doc-link');
-  assert.ok(link);
-  const href = link.getAttribute('href');
-  assert.match(href, /email=admin%40operfi\.com/);
-  assert.match(href, /impersonate=client%40missions\.com/);
-});
-
-test('doc link omits impersonate when not acting as a client', () => {
-  const { window } = makeWidget();
-  window.brokerEmail = 'client@op.com';
-  window.OPERFI_IMP = { target: () => '' };
-  window.renderStatusList(STATUS);
-  const link = window.document.querySelector('.doc-link');
-  assert.ok(link);
-  assert.doesNotMatch(link.getAttribute('href'), /impersonate=/);
+  const opened = [];
+  window.OperFiDocViewer = { open: (o) => opened.push(o) };
+  const TWO = { allow_add_carrier: false, total_carriers: 1, carriers: [
+    { vendor_id: '1', carrier_name: 'FC CHANGE CO', mc: '1', dot: '1',
+      factoring_company: 'New Factor', pay_term: 'Factoring Company',
+      submission_type: 'Factoring Company Change', submitted_at: '10-May-2026 09:00:00',
+      status: 'pending',
+      doc_on_file: { record_id: 'r9', type: 'Factoring Company Change', has_doc: true, docs: [
+        { field: 'NOA_or_LOR_Upload', label: 'LOR', filename: 'release.pdf' },
+        { field: 'New_NOA', label: 'NOA', filename: 'newnoa.pdf' },
+      ] } },
+  ]};
+  window.renderStatusList(TWO);
+  const links = window.document.querySelectorAll('#view-list .tbl tbody tr .doc-link');
+  assert.equal(links.length, 2);
+  assert.equal(links[0].textContent.replace(/[^A-Z]/g, ''), 'LOR');
+  assert.equal(links[1].textContent.replace(/[^A-Z]/g, ''), 'NOA');
+  links[0].click();
+  assert.equal(opened.length, 1);
+  assert.match(opened[0].url, /record_id=r9/);
+  assert.match(opened[0].url, /field=NOA_or_LOR_Upload/);
+  assert.doesNotMatch(opened[0].url, /impersonate=/); // viewer's fetch wrapper adds it
 });
 
 test('initial table shows a loading placeholder, not hardcoded carrier rows', () => {
@@ -232,8 +238,8 @@ test('renderStatusList sets KPIs from data and shows the truncation banner', () 
   const { window } = makeWidget();
   const p = { allow_add_carrier: false, total_carriers: 207, truncated: true, carriers: [
     { vendor_id: '1', carrier_name: 'A', mc: '1', dot: '1', factoring_company: 'X', pay_term: 'Factoring Company', submission_type: 'NOA Update', submitted_at: '01-May-2026 08:00:00', doc_on_file: null, status: 'verifying' },
-    { vendor_id: '2', carrier_name: 'B', mc: '2', dot: '2', factoring_company: 'Y', pay_term: 'Quick Pay', submission_type: 'NOA Update', submitted_at: '02-May-2026 08:00:00', doc_on_file: {record_id:'n',type:'NOA Update',has_doc:true}, status: 'verified' },
-    { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', factoring_company: '', pay_term: 'Quick Pay - LOR', submission_type: 'LOR Update', submitted_at: '03-May-2026 08:00:00', doc_on_file: {record_id:'n2',type:'LOR Update',has_doc:true}, status: 'verifying' },
+    { vendor_id: '2', carrier_name: 'B', mc: '2', dot: '2', factoring_company: 'Y', pay_term: 'Quick Pay', submission_type: 'NOA Update', submitted_at: '02-May-2026 08:00:00', doc_on_file: {record_id:'n',type:'NOA Update',has_doc:true,docs:[{field:'NOA_or_LOR_Upload',label:'NOA',filename:'n.pdf'}]}, status: 'verified' },
+    { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', factoring_company: '', pay_term: 'Quick Pay - LOR', submission_type: 'LOR Update', submitted_at: '03-May-2026 08:00:00', doc_on_file: {record_id:'n2',type:'LOR Update',has_doc:true,docs:[{field:'NOA_or_LOR_Upload',label:'LOR',filename:'n2.pdf'}]}, status: 'verifying' },
   ]};
   window.renderStatusList(p);
   assert.equal(window.document.getElementById('kpi-attention').textContent, '0');    // needs-attention count
@@ -518,9 +524,77 @@ test('submitNoa Factoring Company Change requires the New NOA file specifically'
   window.statusPayload = { carriers: [] };
   window.selectedType = 'Factoring Company Change';
   window.selectedVendorId = '1001';
-  window.selectedDocFile = { name: 'wrong-slot.pdf' };  // main slot set, but FC Change needs the new-factor slot
+  window.selectedLorFile = { name: 'release.pdf' };   // LOR present, so the NOA check is what blocks
   window.selectedNewNoaFile = null;
   await window.submitNoa();
-  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /attach the NOA/i);
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /attach the (New )?NOA/i);
   assert.equal(addCalls.length, 0);
+});
+
+test('Factoring Company Change requires the LOR as well as the New NOA', async () => {
+  const { window, addCalls } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'Factoring Company Change';
+  window.selectedVendorId = '1001';
+  window.selectedNewNoaFile = { name: 'newnoa.pdf' };
+  window.selectedLorFile = null;
+  await window.submitNoa();
+  assert.match(window.document.getElementById('noa-submit-feedback').textContent, /LOR/i);
+  assert.equal(addCalls.length, 0);
+});
+
+test('Factoring Company Change uploads LOR and New NOA sequentially to the right fields', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  const posts = [];
+  let resolveCount = 0;
+  window.fetch = (url, opts) => {
+    if (typeof url === 'string' && url.indexOf('/upload-doc') !== -1) {
+      const fd = opts.body;
+      posts.push({ field: fd.get('field_name'), name: (fd.get('file') || {}).name,
+                   order: ++resolveCount });
+      return Promise.resolve({ json: () => Promise.resolve({ code: 3000 }) });
+    }
+    if (typeof url === 'string' && url.indexOf('/noa-submit') !== -1) {
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+    }
+    return Promise.resolve({ json: () => Promise.resolve({}) });
+  };
+  window.selectedType = 'Factoring Company Change';
+  window.selectedVendorId = '1001';
+  window.selectedNewFactoringId = 'f2';
+  window.selectedLorFile = new window.File(['x'], 'release.pdf');
+  window.selectedNewNoaFile = new window.File(['x'], 'newnoa.pdf');
+  await window.submitNoa();
+  const byField = {};
+  posts.forEach(p => { byField[p.field] = p; });
+  assert.equal(byField['NOA_or_LOR_Upload'].name, 'release.pdf');
+  assert.equal(byField['New_NOA'].name, 'newnoa.pdf');
+  // sequential: LOR completes before New NOA starts (LOR order < NOA order)
+  assert.ok(byField['NOA_or_LOR_Upload'].order < byField['New_NOA'].order);
+});
+
+test('resetSelectedFiles clears the LOR dropzone state and keeps its LOR label', () => {
+  const { window } = makeWidget();
+  window.selectedLorFile = { name: 'release.pdf' };
+  const z = window.document.getElementById('dropzone-lor');
+  z.classList.add('has-file');
+  z.querySelector('.dropzone-text').textContent = 'release.pdf';
+  window.resetSelectedFiles();
+  assert.equal(window.selectedLorFile, null);
+  assert.equal(z.classList.contains('has-file'), false);
+  assert.match(z.querySelector('.dropzone-text').textContent, /LOR/);
+});
+
+test('Factoring Company Change form exposes an LOR dropzone wired to selectedLorFile', () => {
+  const { window } = makeWidget();
+  assert.ok(window.document.getElementById('dropzone-lor'), 'dropzone-lor exists');
+  assert.ok(window.document.getElementById('file-lor'), 'file-lor input exists');
+  window.wireForm();
+  const input = window.document.getElementById('file-lor');
+  const f = { name: 'release.pdf' };
+  Object.defineProperty(input, 'files', { value: [f], configurable: true });
+  input.onchange();
+  assert.equal(window.selectedLorFile, f);
 });

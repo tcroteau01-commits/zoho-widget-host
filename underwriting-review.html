@@ -675,6 +675,7 @@ function buildReviewPayload(s, appId) {
     Checklist_Status1: s.checklistStatus || 'Not Started',
     UW_Notes: s.uwNotes || '',
     Client_Message: s.clientMessage || '',
+    Manual_UCC: JSON.stringify(s.manualUcc || []),
     Decision_Date: s.decisionDate || ''
   };
   if (appId != null) p[APPLICATION_LOOKUP] = appId;
@@ -1008,6 +1009,7 @@ function readState() {
     checklistStatus: $('uwChecklist').value,
     uwNotes: $('uwNotes').value,
     clientMessage: $('uwClientMsg').value,
+    manualUcc: (MODEL && MODEL.manualUcc) || [],
     decisionDate: $('uwDecisionDate').value,
     approvedCreditLimit: $('uwLimit').value,
     recommendedRate: $('uwRate').value,
@@ -1238,12 +1240,9 @@ function renderModel(m) {
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';
   $('kDocs').textContent = docRec.uploadedCount + ' / ' + docRec.total;
   $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
-  $('kUcc').textContent = (m.ucc||[]).length;
-  // UCC research table
-  var ut = '<tr><th>Secured Party</th><th>Type</th><th>Filed</th><th>Action</th></tr>';
-  if ((m.ucc||[]).length) { m.ucc.forEach(function(u){ ut += '<tr><td>'+(u.securedParty||'—')+'</td><td>'+(u.type||'—')+'</td><td>'+(u.filed||'—')+'</td><td><span class="pill r">'+(u.action||'—')+'</span></td></tr>'; }); }
-  else { ut += '<tr><td colspan="4" style="color:var(--of-gray-500)">'+(m.checksReady===false?'UCC search pending.':'No prior UCC filings found.')+'</td></tr>'; }
-  $('uccTable').innerHTML = ut;
+  // UCC: automated check results + underwriter-added manual filings (persisted on the review).
+  MODEL.manualUcc = parseManualUcc((m.review || {}).Manual_UCC);
+  renderUcc(m);
 
   var r = m.review || {};
   $('uwDecision').value = r.Decision2 || 'Pending';
@@ -1338,6 +1337,51 @@ function readContactForm(){ return buildContactRecord({ name:$('acName').value, 
 function readClienteleForm(){ return buildCustomerRecord({ name:$('aclName').value, website:$('aclWebsite').value, revenue:$('aclRevenue').value }); }
 function readRelatedForm(){ return buildRelatedRecord({ name:$('arName').value, usdot:$('arUsdot').value, mc:$('arMc').value, factor:$('arFactor').value }); }
 function readUccForm(){ return buildUccRecord({ securedParty:$('aucSecured').value, type:$('aucType').value, filed:$('aucFiled').value, action:$('aucAction').value }); }
+// Manual UCC filings are stored on Underwriting_Review.Manual_UCC (JSON), NOT as a child record —
+// automated UCC results come from the checks cache, so a hand-added filing rides with the review.
+function parseManualUcc(s){ if (!s) return []; if (Array.isArray(s)) return s; try { var a = JSON.parse(s); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function renderUcc(m){
+  var auto = m.ucc || [], manual = (MODEL && MODEL.manualUcc) || [];
+  $('kUcc').textContent = auto.length + manual.length;
+  function row(u, isManual, i){
+    return '<tr><td>' + escHtml(u.securedParty || '—') + (isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '') +
+      '</td><td>' + escHtml(u.type || '—') + '</td><td>' + escHtml(u.filed || '—') + '</td>' +
+      '<td><span class="pill r">' + escHtml(u.action || '—') + '</span></td>' +
+      '<td style="text-align:right">' + (isManual ? '<button class="btn ghost sm js-ucc-del" data-i="' + i + '" title="Remove">✕</button>' : '') + '</td></tr>';
+  }
+  var ut = '<tr><th>Secured Party</th><th>Type</th><th>Filed</th><th>Action</th><th></th></tr>';
+  auto.forEach(function(u){ ut += row(u, false); });
+  manual.forEach(function(u, i){ ut += row(u, true, i); });
+  if (!auto.length && !manual.length) ut += '<tr><td colspan="5" style="color:var(--of-gray-500)">' + (m.checksReady === false ? 'UCC search pending.' : 'No prior UCC filings found.') + '</td></tr>';
+  $('uccTable').innerHTML = ut;
+  qsa('#uccTable .js-ucc-del').forEach(function(b){ b.addEventListener('click', function(){ removeManualUcc(parseInt(b.getAttribute('data-i'), 10)); }); });
+}
+function addUcc(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var rec = readUccForm();
+  if (!recordHasContent('ucc', rec)){ showStatus('Enter at least a secured party to add this UCC filing.', 'error'); return; }
+  MODEL.manualUcc = (MODEL.manualUcc || []).concat([rec]);
+  clearAddForm('addUccForm');
+  renderUcc(MODEL);
+  persistUcc('✓ UCC filing added.');
+}
+function removeManualUcc(i){
+  if (!MODEL || !MODEL.manualUcc) return;
+  MODEL.manualUcc.splice(i, 1);
+  renderUcc(MODEL);
+  persistUcc('UCC filing removed.');
+}
+// Persist the manual-UCC list by saving the Underwriting_Review (Manual_UCC rides in the payload
+// via readState → buildReviewPayload). Reuses the existing review-save endpoint — no new route.
+function persistUcc(okMsg){
+  if (MODEL._demo || typeof fetch !== 'function'){ showStatus(okMsg + ' (demo — saved on the review in Creator).', 'success'); return; }
+  showStatus('Saving…', 'loading');
+  var payload = buildReviewPayload(readState(), MODEL.appId);
+  saveReview(payload, MODEL.reviewId).then(function(res){
+    if (res && res.review_id) MODEL.reviewId = res.review_id;
+    showStatus(okMsg, 'success');
+  }).catch(function(e){ showStatus('Could not save UCC filing: ' + (e && e.message ? e.message : e), 'error'); });
+}
 // Request a document FROM the client. Creates a Document (Status='Requested') that surfaces on the
 // client's upload portal as a new item to upload. Reuses the /sales-doc-request contract.
 function readDocReq(){ var sel = $('rdType').value, other = ($('rdOther').value || '').trim(); return (sel && sel !== '__other') ? sel : other; }
@@ -1375,7 +1419,8 @@ function boot() {
   wireAdd('addContactToggle','addContactForm','acSave','contact',readContactForm);
   wireAdd('addClienteleToggle','addClienteleForm','aclSave','customer',readClienteleForm);
   wireAdd('addRelatedToggle','addRelatedForm','arSave','related',readRelatedForm);
-  wireAdd('addUccToggle','addUccForm','aucSave','ucc',readUccForm);
+  if ($('addUccToggle')) $('addUccToggle').addEventListener('click', function(){ var f=$('addUccForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
+  if ($('aucSave')) $('aucSave').addEventListener('click', addUcc);
   if ($('addDocReqToggle')) $('addDocReqToggle').addEventListener('click', function(){ var f=$('addDocReqForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
   if ($('rdSave')) $('rdSave').addEventListener('click', requestDoc);
   $('btnRunReview').addEventListener('click', runReview);

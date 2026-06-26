@@ -748,7 +748,12 @@ function renderPanel() {
       { vendorId: r.ID, email: brokerEmail, apiBase: BROKER_API_BASE });
   }
 
-  vvPanelCtx = { vendorId: r.ID, isDnu: statusMeta(r).key === 'dnu' };
+  vvPanelCtx = {
+    vendorId: r.ID,
+    isDnu: statusMeta(r).key === 'dnu',
+    statusKey: statusMeta(r).key,
+    isFactored: !!(r.Factoring_Company || '').trim()
+  };
   loadVendorDocs(r.ID, document.getElementById('vv-docs'));
   loadVendorRedFlags(r);
 
@@ -776,7 +781,7 @@ function renderPanel() {
 
 function loadVendorDocs(vendorId, container) {
   if (!container) return;
-  if (vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); refreshRedFlags(); return; }
+  if (vvDocCache[vendorId]) { renderVendorDocs(vvDocCache[vendorId], container); refreshVettingPane(); return; }
   container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#999;">Loading documents…</div>';
   fetch(BROKER_API_BASE + '/carrier-docs?email=' + encodeURIComponent(brokerEmail) +
         '&vendor_id=' + encodeURIComponent(vendorId))
@@ -787,7 +792,7 @@ function loadVendorDocs(vendorId, container) {
       });
       vvDocCache[vendorId] = docs;
       renderVendorDocs(docs, container);
-      refreshRedFlags();
+      refreshVettingPane();
     })
     .catch(function () {
       container.innerHTML = '<div class="vv-doc-state" style="font-size:12px;color:#a3322b;">Couldn\'t load documents.</div>';
@@ -902,84 +907,73 @@ function vettingSummary(flags) {
   return { level: 'check', text: n + ' thing' + (n > 1 ? 's' : '') + ' to check.' };
 }
 
-// ── Red-flag vetting chips ────────────────────────────────────────────────
-var VV_FLAG_STYLE = 'display:inline-flex;align-items:center;font-size:11px;font-weight:700;' +
-  'padding:3px 9px;border-radius:999px;border:1px solid;margin:0 6px 6px 0;text-transform:uppercase;letter-spacing:.4px;';
+// ── Exception-only vetting pane ───────────────────────────────────────────
+var VV_SUMMARY_STYLE = {
+  clean: 'background:#e8f5e9;color:#2e7d32;border:1px solid #bfe3c2;',
+  check: 'background:#fff8e1;color:#856404;border:1px solid #ffe082;',
+  stop:  'background:#ffebee;color:#c62828;border:1px solid #ef9a9a;'
+};
+var VV_ROW_DOT = { stop: '#c62828', check: '#b8860b' };
 
-function deriveRedFlags(profile, docs, isDnu) {
-  profile = profile || {}; docs = docs || [];
-  var ipqs = profile.ipqs || {};
-  var risk = (profile.risk && profile.risk.flags) || [];
-  function hasFlag(ids) { return risk.some(function (f) { return ids.indexOf(f.id) !== -1; }); }
-  var types = {}; docs.forEach(function (d) { types[d.type] = true; });
-
-  // Banking: flag if any bad-bank signal present (real ids from risk_model.py: _category_f_banking)
-  var bankBad = hasFlag(['bank_routing_invalid', 'bank_name_mismatch', 'bank_state_mismatch',
-                          'bank_account_shared', 'bank_bad_actor']) || !types.banking;
-  // Factor: driven by risk flags from risk_model.py (factor_not_approved=Critical, factor_pending=Medium)
-  var factorRed  = hasFlag(['factor_not_approved']);
-  var factorWarn = hasFlag(['factor_pending']);
-  // Footprint: IPQS top-level booleans + risk flag ids (vpn_signup, voip_phone confirmed in risk_model.py)
-  var footBad = !!(ipqs.vpn_detected || ipqs.voip_number) || hasFlag(['vpn_signup', 'voip_phone']);
-  var docsMissing = !types.noa || !types.coi || !types.banking;
-
-  return [
-    { key: 'dnu',   label: 'DNU',       level: isDnu ? 'red' : 'ok' },
-    { key: 'bank',  label: 'Bank',      level: bankBad ? 'red' : 'ok' },
-    { key: 'docs',  label: 'Documents', level: docsMissing ? 'red' : 'ok' },
-    { key: 'factor',label: 'Factor',    level: factorRed ? 'red' : (factorWarn ? 'warn' : 'ok') },
-    { key: 'foot',  label: 'Footprint', level: footBad ? 'red' : 'ok' }
-  ];
-}
-
-function renderRedFlags(flags, container) {
+function renderVettingPane(profile, ctx, container) {
   container.innerHTML = '';
-  var palette = {
-    ok:   'background:#e8f5e9;color:#2e7d32;border-color:#bfe3c2;',
-    warn: 'background:#fff8e1;color:#856404;border-color:#ffe082;',
-    red:  'background:#ffebee;color:#c62828;border-color:#ef9a9a;'
-  };
+  var flags = deriveVettingFlags(profile, ctx);
+  var summary = vettingSummary(flags);
+
+  var sum = document.createElement('div');
+  sum.className = 'vv-vet-summary ' + summary.level;
+  sum.style.cssText = 'font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:10px;' + VV_SUMMARY_STYLE[summary.level];
+  sum.textContent = summary.text;
+  container.appendChild(sum);
+
   flags.forEach(function (f) {
-    var el = document.createElement('span');
-    el.className = 'vv-flag ' + f.level;
-    el.style.cssText = VV_FLAG_STYLE + palette[f.level];
-    el.textContent = f.label;
-    container.appendChild(el);
+    var row = document.createElement('div');
+    row.className = 'vv-flag ' + f.level;
+    row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid #f0efe9;';
+    var dot = document.createElement('span');
+    dot.style.cssText = 'flex:0 0 auto;width:8px;height:8px;border-radius:50%;margin-top:5px;background:' + VV_ROW_DOT[f.level] + ';';
+    var body = document.createElement('div');
+    var lab = document.createElement('div');
+    lab.style.cssText = 'font-size:12px;font-weight:700;color:#333;';
+    lab.textContent = f.label;
+    var why = document.createElement('div');
+    why.style.cssText = 'font-size:11px;color:#777;margin-top:1px;';
+    why.textContent = f.reason;
+    body.appendChild(lab); body.appendChild(why);
+    row.appendChild(dot); row.appendChild(body);
+    container.appendChild(row);
   });
 }
 
-// Refresh the red-flag strip from whatever is cached right now.
-// Called after profile or docs arrive to eliminate fabricated reds.
-function refreshRedFlags() {
+// Repaint the vetting pane from whatever is cached right now.
+// Called after profile arrives; DNU/status are known from row data immediately.
+function refreshVettingPane() {
   if (!vvPanelCtx) return;
   var c = document.getElementById('vv-redflags');
   if (!c) return;
   var profile = vvRiskCache[vvPanelCtx.vendorId] || null;
   if (!profile) {
-    // Before the profile loads, only DNU is actually known — don't fabricate the rest.
-    renderRedFlags([{ key: 'dnu', label: 'DNU', level: vvPanelCtx.isDnu ? 'red' : 'ok' }], c);
+    // Before the profile loads, only DNU/status are known — derive from those alone.
+    renderVettingPane({ risk: { flags: [] }, ipqs: {} }, vvPanelCtx, c);
     return;
   }
-  renderRedFlags(deriveRedFlags(profile, vvDocCache[vvPanelCtx.vendorId], vvPanelCtx.isDnu), c);
+  renderVettingPane(profile, vvPanelCtx, c);
 }
 
-function loadVendorRedFlags(rec) {
-  var isDnu = statusMeta(rec).key === 'dnu';
-  vvPanelCtx = { vendorId: rec.ID, isDnu: isDnu };
-  // Paint DNU-only instantly; docs/profile fill in via refreshRedFlags.
-  refreshRedFlags();
-  if (vvRiskCache[rec.ID]) {
-    refreshRedFlags();
-    return;
-  }
+function loadVendorRedFlags(rec, force) {
+  vvPanelCtx = {
+    vendorId: rec.ID,
+    isDnu: statusMeta(rec).key === 'dnu',
+    statusKey: statusMeta(rec).key,
+    isFactored: !!(rec.Factoring_Company || '').trim()
+  };
+  refreshVettingPane();
+  if (!force && vvRiskCache[rec.ID]) { refreshVettingPane(); return; }
   fetch(BROKER_API_BASE + '/carrier-profile?email=' + encodeURIComponent(brokerEmail) +
-        '&vendor_id=' + encodeURIComponent(rec.ID))
+        '&vendor_id=' + encodeURIComponent(rec.ID) + (force ? '&refresh=1' : ''))
     .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
-    .then(function (profile) {
-      vvRiskCache[rec.ID] = profile;
-      refreshRedFlags();
-    })
-    .catch(function () { /* leave the DNU-only paint; vetting is non-blocking */ });
+    .then(function (profile) { vvRiskCache[rec.ID] = profile; refreshVettingPane(); })
+    .catch(function () { /* leave the status-only paint; vetting is non-blocking */ });
 }
 
 // Same-origin localStorage bridge - Carrier Profile widget reads this on

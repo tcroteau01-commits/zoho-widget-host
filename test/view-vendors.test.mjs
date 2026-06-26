@@ -341,8 +341,46 @@ test('opening a vendor lazy-loads carrier docs sorted recent-first', async () =>
   assert.ok(opened && /carrier-doc-file\?t=tCoi/.test(opened.url), 'viewer opened with doc url');
 });
 
-test('red-flag chips derive from carrier-profile + docs', async () => {
-  const records = [{ ID: '901', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', Email: 'r@b.com' }];
+function makeVetFetch(records, profile, docs) {
+  return (url) => {
+    if (url.indexOf('/carrier-profile') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(profile) });
+    if (url.indexOf('/carrier-docs') !== -1)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: docs || [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records }) });
+  };
+}
+
+test('panel paints clean summary and no flag rows for a clean carrier', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '1001', Vendor_Name: 'CLEAN LLC', Vendor_Status: 'Approved', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, []);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.match(strip.textContent, /Looks clean/);
+  assert.equal(strip.querySelectorAll('.vv-flag').length, 0);
+});
+
+test('panel paints a stop row with its reason for a routing-invalid carrier', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '1002', Vendor_Name: 'RISKY LLC', Vendor_Status: 'Approved', MC: '3', USDOT: '4', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [{ id: 'bank_routing_invalid' }] }, ipqs: {} }, []);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1);
+  assert.match(strip.textContent, /not a valid FedACH/);
+});
+
+test('vetting pane derives present-only flags from carrier-profile', async () => {
+  const records = [{ ID: '901', Vendor_Name: 'RISKY', Vendor_Status: 'Approved', Email: 'r@b.com', Factoring_Company: 'ACME' }];
   const profile = {
     vendor: {},
     ipqs: { vpn_detected: true, voip_number: false },
@@ -367,22 +405,18 @@ test('red-flag chips derive from carrier-profile + docs', async () => {
   w.dispatchEvent(new w.Event('load'));
   await waitForRows(w);
   w.document.querySelector('.row').click();
-  // Immediately after click — before any microtask flushes — only DNU chip is painted.
-  // (Profile and docs fetches are async; nothing has resolved yet.)
+  // Instant paint: carrier is Approved + not DNU, so before the profile loads there
+  // are no derivable flags — the summary reads clean and no flag row is fabricated.
   const stripInstant = w.document.getElementById('vv-redflags');
-  assert.ok(stripInstant.querySelector('.vv-flag'), 'at least one chip rendered instantly');
-  assert.match(stripInstant.textContent, /DNU/, 'DNU chip present in instant paint');
-  assert.doesNotMatch(stripInstant.textContent, /Factor/, 'Factor chip not fabricated before profile loads');
+  assert.match(stripInstant.textContent, /Looks clean/, 'clean summary before profile loads');
+  assert.doesNotMatch(stripInstant.textContent, /Factor/, 'Factor not fabricated before profile loads');
   await new Promise(r => setTimeout(r, 50));
-  const strip = w.document.getElementById('vv-redflags').textContent;
-  assert.match(strip, /Footprint/);  // VPN -> footprint flag
-  assert.match(strip, /Factor/);     // factor_not_approved -> factor flag
-  assert.match(strip, /Documents/);  // no docs -> missing-docs flag
-  // a red chip exists
-  assert.ok(w.document.querySelector('#vv-redflags .vv-flag.red'), 'has a red chip');
-  // Factor chip must be red when factor_not_approved flag is present
-  const factorChip = [...w.document.querySelectorAll('#vv-redflags .vv-flag')].find(c => c.textContent === 'Factor');
-  assert.ok(factorChip && factorChip.classList.contains('red'), 'Factor chip must be red when factor_not_approved');
+  const strip = w.document.getElementById('vv-redflags');
+  assert.match(strip.textContent, /VPN/, 'VPN-only footprint -> a check row');
+  assert.match(strip.textContent, /Factor denied/, 'factor_not_approved -> Factor denied row');
+  assert.doesNotMatch(strip.textContent, /Documents/, 'document completeness is no longer a flag');
+  assert.equal(strip.querySelectorAll('.vv-flag.stop').length, 1, 'factor-denied is the lone stop');
+  assert.equal(strip.querySelectorAll('.vv-flag.check').length, 1, 'VPN is the lone check');
 });
 
 // ── Pure vetting-flag derivation ───────────────────────────────────────────

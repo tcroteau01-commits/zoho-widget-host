@@ -800,12 +800,17 @@ function loadVendorDocs(vendorId, container) {
 }
 
 function renderVendorDocs(docs, container) {
-  if (!docs.length) {
-    container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>' +
-      '<div class="vv-doc-state" style="font-size:12px;color:#999;">No documents on file.</div>';
-    return;
-  }
+  docs = docs || [];
   container.innerHTML = '<div class="vv-doc-title" style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Documents</div>';
+
+  if (!docs.length) {
+    var empty = document.createElement('div');
+    empty.className = 'vv-doc-state';
+    empty.style.cssText = 'font-size:12px;color:#999;';
+    empty.textContent = 'No documents on file.';
+    container.appendChild(empty);
+  }
+
   docs.forEach(function (d) {
     var row = document.createElement('div');
     row.className = 'vv-doc';
@@ -824,6 +829,25 @@ function renderVendorDocs(docs, container) {
         filename: d.filename || (d.type || 'document')
       });
     });
+    container.appendChild(row);
+  });
+
+  // Needed rows: required types with no satisfying doc on file.
+  var present = {};
+  docs.forEach(function (d) { present[d.type] = true; });
+  var ctx = vvPanelCtx || {};
+  requiredDocs(ctx).forEach(function (req) {
+    var satisfied = req.match.some(function (k) { return present[k]; });
+    if (satisfied) return;
+    var row = document.createElement('div');
+    row.className = 'vv-doc-needed';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px dashed #d8b04a;color:#8a6d1a;font-size:12px;';
+    var tag = document.createElement('span');
+    tag.style.cssText = 'font-weight:700;';
+    tag.textContent = 'Needed:';
+    var lab = document.createElement('span');
+    lab.textContent = req.label;
+    row.appendChild(tag); row.appendChild(lab);
     container.appendChild(row);
   });
 }

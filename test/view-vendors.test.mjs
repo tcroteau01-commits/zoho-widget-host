@@ -538,3 +538,37 @@ test('vettingSummary: only checks = check level', () => {
   assert.equal(s.level, 'check');
   assert.match(s.text, /to check/);
 });
+
+test('docs section shows "Needed" rows for missing required docs (factored)', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '1003', Vendor_Name: 'FACTORED LLC', Vendor_Status: 'Approved', MC: '5', USDOT: '6', Factoring_Company: 'ACME FACTORS' };
+  // Only a COI on file; banking + NOA/LOR missing.
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [{ type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' }]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const docs = w.document.getElementById('vv-docs');
+  const needed = Array.from(docs.querySelectorAll('.vv-doc-needed')).map((e) => e.textContent);
+  assert.ok(needed.some((t) => /Banking/.test(t)), 'banking needed');
+  assert.ok(needed.some((t) => /NOA or LOR/.test(t)), 'NOA/LOR needed');
+  assert.ok(!needed.some((t) => /COI/.test(t)), 'COI present, not needed');
+});
+
+test('docs section: non-factored carrier never shows NOA/LOR as needed', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '1004', Vendor_Name: 'QUICKPAY LLC', Vendor_Status: 'Approved', MC: '7', USDOT: '8', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 't1' },
+    { type: 'banking', label: 'Banking', filename: 'vc.pdf', preview_token: 't2' }
+  ]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const docs = w.document.getElementById('vv-docs');
+  const needed = Array.from(docs.querySelectorAll('.vv-doc-needed')).map((e) => e.textContent);
+  assert.equal(needed.length, 0);
+});

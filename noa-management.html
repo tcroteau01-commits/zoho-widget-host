@@ -620,6 +620,15 @@ var ATTENTION = { noa_needed: 1, bank_doc: 1, bank_info: 1, review: 1 };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
+// Raw-anchor links don't go through the impersonate.js fetch wrapper, so when an
+// OperFi admin is acting-as a client we must append &impersonate= ourselves.
+function _impersonateSuffix(){
+  try {
+    var t = (window.OPERFI_IMP && window.OPERFI_IMP.target && window.OPERFI_IMP.target()) || '';
+    return t ? '&impersonate=' + encodeURIComponent(t) : '';
+  } catch (e) { return ''; }
+}
+
 function _linkedLabel(s) {
   if (!s) return '';
   var m = String(s).match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
@@ -672,9 +681,12 @@ function renderCarrierRows(list) {
   tbody.innerHTML = list.map(function(c){
     var chip = CHIP[c.status] || ['neutral', c.status || ''];
     var attn = ATTENTION[c.status] ? ' class="attention"' : '';
+    // The doc link is a raw <a href>, so it bypasses the impersonate.js fetch
+    // wrapper. Append the impersonate target by hand or an admin acting-as a
+    // client hits /noa-doc as themselves and gets a 403 Forbidden on the doc.
     var doc = (c.doc_on_file && c.doc_on_file.has_doc)
       ? '<a class="doc-link" href="' + BROKER_API_BASE + '/noa-doc?email=' + encodeURIComponent(brokerEmail) +
-        '&record_id=' + encodeURIComponent(c.doc_on_file.record_id) + '" target="_blank">' +
+        '&record_id=' + encodeURIComponent(c.doc_on_file.record_id) + _impersonateSuffix() + '" target="_blank">' +
         esc((c.doc_on_file.type||'').indexOf('LOR')>=0?'LOR':'NOA') + ' ↗</a>'
       : '<span class="doc-none">none</span>';
     return '<tr' + attn + '>' +

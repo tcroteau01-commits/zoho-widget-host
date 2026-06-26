@@ -44,6 +44,28 @@ test('renderStatusList renders a row per carrier with status chip and doc link',
   assert.ok(rows[0].querySelector('.doc-link'));
 });
 
+test('doc link carries the impersonate target so an admin acting-as-client is not Forbidden', () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'admin@operfi.com';
+  window.OPERFI_IMP = { target: () => 'client@missions.com' };
+  window.renderStatusList(STATUS);
+  const link = window.document.querySelector('.doc-link');
+  assert.ok(link);
+  const href = link.getAttribute('href');
+  assert.match(href, /email=admin%40operfi\.com/);
+  assert.match(href, /impersonate=client%40missions\.com/);
+});
+
+test('doc link omits impersonate when not acting as a client', () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'client@op.com';
+  window.OPERFI_IMP = { target: () => '' };
+  window.renderStatusList(STATUS);
+  const link = window.document.querySelector('.doc-link');
+  assert.ok(link);
+  assert.doesNotMatch(link.getAttribute('href'), /impersonate=/);
+});
+
 test('initial table shows a loading placeholder, not hardcoded carrier rows', () => {
   const { window } = makeWidget();
   const rows = window.document.querySelectorAll('#view-list .tbl tbody tr');

@@ -6,6 +6,8 @@
 <title>NOA / LOR Management</title>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=3"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #333; min-height: 100vh; }
@@ -620,15 +622,6 @@ var ATTENTION = { noa_needed: 1, bank_doc: 1, bank_info: 1, review: 1 };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
-// Raw-anchor links don't go through the impersonate.js fetch wrapper, so when an
-// OperFi admin is acting-as a client we must append &impersonate= ourselves.
-function _impersonateSuffix(){
-  try {
-    var t = (window.OPERFI_IMP && window.OPERFI_IMP.target && window.OPERFI_IMP.target()) || '';
-    return t ? '&impersonate=' + encodeURIComponent(t) : '';
-  } catch (e) { return ''; }
-}
-
 function _linkedLabel(s) {
   if (!s) return '';
   var m = String(s).match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
@@ -681,13 +674,15 @@ function renderCarrierRows(list) {
   tbody.innerHTML = list.map(function(c){
     var chip = CHIP[c.status] || ['neutral', c.status || ''];
     var attn = ATTENTION[c.status] ? ' class="attention"' : '';
-    // The doc link is a raw <a href>, so it bypasses the impersonate.js fetch
-    // wrapper. Append the impersonate target by hand or an admin acting-as a
-    // client hits /noa-doc as themselves and gets a 403 Forbidden on the doc.
-    var doc = (c.doc_on_file && c.doc_on_file.has_doc)
-      ? '<a class="doc-link" href="' + BROKER_API_BASE + '/noa-doc?email=' + encodeURIComponent(brokerEmail) +
-        '&record_id=' + encodeURIComponent(c.doc_on_file.record_id) + _impersonateSuffix() + '" target="_blank">' +
-        esc((c.doc_on_file.type||'').indexOf('LOR')>=0?'LOR':'NOA') + ' ↗</a>'
+    // One in-app-viewer link per doc on the record (factoring changes have an
+    // LOR + a NOA). The viewer fetches through the impersonate.js wrapper, so the
+    // impersonate target is appended automatically — do NOT add it here.
+    var docList = (c.doc_on_file && c.doc_on_file.docs) || [];
+    var doc = docList.length
+      ? docList.map(function (d, i) {
+          return '<a class="doc-link" href="#" data-vendor="' + esc(c.vendor_id) +
+            '" data-doc="' + i + '">' + esc(d.label || 'Doc') + ' ↗</a>';
+        }).join(' ')
       : '<span class="doc-none">none</span>';
     return '<tr' + attn + '>' +
       '<td><div class="carrier-name">' + esc(c.carrier_name) + '</div>' +
@@ -702,6 +697,24 @@ function renderCarrierRows(list) {
   }).join('');
   Array.prototype.forEach.call(tbody.querySelectorAll('button[data-vendor]'), function(b){
     b.onclick = function(){ if (typeof openSubmitFor === 'function') openSubmitFor(b.getAttribute('data-vendor')); };
+  });
+  Array.prototype.forEach.call(tbody.querySelectorAll('a.doc-link[data-doc]'), function (a) {
+    a.onclick = function (e) {
+      e.preventDefault();
+      if (!window.OperFiDocViewer) return;
+      var vid = a.getAttribute('data-vendor');
+      var c = null;
+      for (var i = 0; i < list.length; i++) if (String(list[i].vendor_id) === vid) { c = list[i]; break; }
+      var dof = c && c.doc_on_file;
+      var d = dof && dof.docs && dof.docs[parseInt(a.getAttribute('data-doc'), 10)];
+      if (!dof || !d) return;
+      OperFiDocViewer.open({
+        url: BROKER_API_BASE + '/noa-doc?email=' + encodeURIComponent(brokerEmail) +
+             '&record_id=' + encodeURIComponent(dof.record_id) +
+             '&field=' + encodeURIComponent(d.field),
+        filename: d.filename || (d.label + ' document')
+      });
+    };
   });
 }
 

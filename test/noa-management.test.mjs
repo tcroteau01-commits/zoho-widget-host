@@ -9,7 +9,8 @@ const STATUS = { allow_add_carrier: false, total_carriers: 2, carriers: [
   { vendor_id: '1001', carrier_name: 'ROADWAY EXPRESS', mc: '89765', dot: '897123',
     factoring_company: 'Triumph', pay_term: 'Factoring Company',
     submission_type: 'NOA Update', submitted_at: '10-May-2026 09:00:00',
-    doc_on_file: { record_id: 'n1', type: 'NOA Update', has_doc: true }, status: 'verified' },
+    doc_on_file: { record_id: 'n1', type: 'NOA Update', has_doc: true,
+      docs: [{ field: 'NOA_or_LOR_Upload', label: 'NOA', filename: 'n1.pdf' }] }, status: 'verified' },
   { vendor_id: '1002', carrier_name: 'MIDWEST HAUL', mc: '774120', dot: '2891044',
     factoring_company: '', pay_term: 'Factoring Company',
     submission_type: 'LOR Update', submitted_at: '12-May-2026 09:00:00',
@@ -44,26 +45,31 @@ test('renderStatusList renders a row per carrier with status chip and doc link',
   assert.ok(rows[0].querySelector('.doc-link'));
 });
 
-test('doc link carries the impersonate target so an admin acting-as-client is not Forbidden', () => {
+test('doc cell renders one viewer link per doc and opens the shared viewer with the right field', () => {
   const { window } = makeWidget();
   window.brokerEmail = 'admin@operfi.com';
-  window.OPERFI_IMP = { target: () => 'client@missions.com' };
-  window.renderStatusList(STATUS);
-  const link = window.document.querySelector('.doc-link');
-  assert.ok(link);
-  const href = link.getAttribute('href');
-  assert.match(href, /email=admin%40operfi\.com/);
-  assert.match(href, /impersonate=client%40missions\.com/);
-});
-
-test('doc link omits impersonate when not acting as a client', () => {
-  const { window } = makeWidget();
-  window.brokerEmail = 'client@op.com';
-  window.OPERFI_IMP = { target: () => '' };
-  window.renderStatusList(STATUS);
-  const link = window.document.querySelector('.doc-link');
-  assert.ok(link);
-  assert.doesNotMatch(link.getAttribute('href'), /impersonate=/);
+  const opened = [];
+  window.OperFiDocViewer = { open: (o) => opened.push(o) };
+  const TWO = { allow_add_carrier: false, total_carriers: 1, carriers: [
+    { vendor_id: '1', carrier_name: 'FC CHANGE CO', mc: '1', dot: '1',
+      factoring_company: 'New Factor', pay_term: 'Factoring Company',
+      submission_type: 'Factoring Company Change', submitted_at: '10-May-2026 09:00:00',
+      status: 'pending',
+      doc_on_file: { record_id: 'r9', type: 'Factoring Company Change', has_doc: true, docs: [
+        { field: 'NOA_or_LOR_Upload', label: 'LOR', filename: 'release.pdf' },
+        { field: 'New_NOA', label: 'NOA', filename: 'newnoa.pdf' },
+      ] } },
+  ]};
+  window.renderStatusList(TWO);
+  const links = window.document.querySelectorAll('#view-list .tbl tbody tr .doc-link');
+  assert.equal(links.length, 2);
+  assert.equal(links[0].textContent.replace(/[^A-Z]/g, ''), 'LOR');
+  assert.equal(links[1].textContent.replace(/[^A-Z]/g, ''), 'NOA');
+  links[0].click();
+  assert.equal(opened.length, 1);
+  assert.match(opened[0].url, /record_id=r9/);
+  assert.match(opened[0].url, /field=NOA_or_LOR_Upload/);
+  assert.doesNotMatch(opened[0].url, /impersonate=/); // viewer's fetch wrapper adds it
 });
 
 test('initial table shows a loading placeholder, not hardcoded carrier rows', () => {
@@ -232,8 +238,8 @@ test('renderStatusList sets KPIs from data and shows the truncation banner', () 
   const { window } = makeWidget();
   const p = { allow_add_carrier: false, total_carriers: 207, truncated: true, carriers: [
     { vendor_id: '1', carrier_name: 'A', mc: '1', dot: '1', factoring_company: 'X', pay_term: 'Factoring Company', submission_type: 'NOA Update', submitted_at: '01-May-2026 08:00:00', doc_on_file: null, status: 'verifying' },
-    { vendor_id: '2', carrier_name: 'B', mc: '2', dot: '2', factoring_company: 'Y', pay_term: 'Quick Pay', submission_type: 'NOA Update', submitted_at: '02-May-2026 08:00:00', doc_on_file: {record_id:'n',type:'NOA Update',has_doc:true}, status: 'verified' },
-    { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', factoring_company: '', pay_term: 'Quick Pay - LOR', submission_type: 'LOR Update', submitted_at: '03-May-2026 08:00:00', doc_on_file: {record_id:'n2',type:'LOR Update',has_doc:true}, status: 'verifying' },
+    { vendor_id: '2', carrier_name: 'B', mc: '2', dot: '2', factoring_company: 'Y', pay_term: 'Quick Pay', submission_type: 'NOA Update', submitted_at: '02-May-2026 08:00:00', doc_on_file: {record_id:'n',type:'NOA Update',has_doc:true,docs:[{field:'NOA_or_LOR_Upload',label:'NOA',filename:'n.pdf'}]}, status: 'verified' },
+    { vendor_id: '3', carrier_name: 'C', mc: '3', dot: '3', factoring_company: '', pay_term: 'Quick Pay - LOR', submission_type: 'LOR Update', submitted_at: '03-May-2026 08:00:00', doc_on_file: {record_id:'n2',type:'LOR Update',has_doc:true,docs:[{field:'NOA_or_LOR_Upload',label:'LOR',filename:'n2.pdf'}]}, status: 'verifying' },
   ]};
   window.renderStatusList(p);
   assert.equal(window.document.getElementById('kpi-attention').textContent, '0');    // needs-attention count

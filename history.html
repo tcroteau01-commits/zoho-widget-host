@@ -416,29 +416,6 @@ html, body {
 .doc-open { margin-left: auto; color: #999; font-size: 16px; }
 .doc-item.clickable:hover .doc-open { color: #e8a020; }
 
-/* In-app document viewer — centered framed modal over a dimmed backdrop */
-.doc-viewer { position: fixed; inset: 0; z-index: 1000; background: rgba(20,20,22,.72);
-  display: flex; align-items: center; justify-content: center; padding: 28px; }
-.dv-frame { width: min(860px, 94vw); height: min(88vh, 1000px); background: #f4f4f6;
-  border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
-  box-shadow: 0 24px 60px rgba(0,0,0,.45); }
-.dv-bar { display: flex; align-items: center; gap: 12px; padding: 11px 14px; background: #23242a; color: #fff; }
-.dv-title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dv-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
-.dv-btn { background: #3a3b42; color: #fff; border: none; border-radius: 6px; padding: 7px 14px;
-  font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1; }
-.dv-btn:hover { background: #4a4b53; }
-.dv-close { background: #c0392b; }
-.dv-close:hover { background: #d4493b; }
-.dv-pages { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column;
-  align-items: center; gap: 14px; }
-.dv-pages canvas { max-width: 100%; box-shadow: 0 2px 12px rgba(0,0,0,.25); background: #fff; }
-.dv-foot { padding: 8px 14px; background: #ececef; color: #777; font-size: 11.5px; text-align: center;
-  border-top: 1px solid #e0e0e4; }
-.dv-kbd { display: inline-block; padding: 1px 6px; border: 1px solid #c4c4cc; border-radius: 4px;
-  background: #fff; font-family: ui-monospace, monospace; font-size: 11px; color: #444; }
-.dv-loading, .dv-error { color: #555; font-size: 14px; margin-top: 40px; text-align: center; }
-.dv-error a { color: #c47a0a; }
 
 .timeline { display: flex; flex-direction: column; gap: 0; position: relative; }
 .timeline::before { content: ''; position: absolute; left: 9px; top: 8px; bottom: 8px; width: 2px; background: #e6e3da; }
@@ -589,22 +566,9 @@ html, body {
 <div class="scrim" id="scrim"></div>
 <aside class="panel" id="panel"></aside>
 
-<!-- In-app document viewer (PDF.js, renders any merged doc to canvas) -->
-<div class="doc-viewer" id="doc-viewer" style="display:none" aria-hidden="true">
-  <div class="dv-frame" id="doc-viewer-frame">
-    <div class="dv-bar">
-      <span class="dv-title" id="doc-viewer-title">Document</span>
-      <span class="dv-actions">
-        <a class="dv-btn" id="doc-viewer-download" download>Download</a>
-        <button class="dv-btn dv-close" id="doc-viewer-close" type="button" aria-label="Close">Close ✕</button>
-      </span>
-    </div>
-    <div class="dv-pages" id="doc-viewer-pages"></div>
-    <div class="dv-foot">Press <span class="dv-kbd">Esc</span> or click outside to close</div>
-  </div>
-</div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=3"></script>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script>
@@ -814,12 +778,6 @@ function bindGlobalUI() {
   // Panel close + keyboard
   document.getElementById('scrim').addEventListener('click', closePanel);
   document.addEventListener('keydown', function(e) {
-    // Document viewer takes the keyboard while it's open.
-    var dv = document.getElementById('doc-viewer');
-    if (dv && dv.style.display !== 'none') {
-      if (e.key === 'Escape') closeDocViewer();
-      return;
-    }
     if (!document.getElementById('panel').classList.contains('show')) return;
     if (e.key === 'Escape') closePanel();
     else if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navPanel(1); }
@@ -832,11 +790,6 @@ function bindGlobalUI() {
     if (row) openDocViewer(row.getAttribute('data-doc-record'),
                            row.getAttribute('data-doc-slot'),
                            row.getAttribute('data-doc-name'));
-  });
-  // Viewer close: the ✕ button and a click on the dark backdrop.
-  document.getElementById('doc-viewer-close').addEventListener('click', closeDocViewer);
-  document.getElementById('doc-viewer').addEventListener('click', function(e) {
-    if (e.target === this) closeDocViewer();
   });
 }
 
@@ -1568,74 +1521,19 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
-// Exposed for tests (the script runs inside an IIFE under 'use strict').
-// ── In-app document viewer (PDF.js) ───────────────────────────────────────
-function closeDocViewer() {
-  var modal = document.getElementById('doc-viewer');
-  if (!modal) return;
-  modal.style.display = 'none';
-  modal.setAttribute('aria-hidden', 'true');
-  var pages = document.getElementById('doc-viewer-pages');
-  if (pages) pages.innerHTML = '';
-}
-
-function _renderPdfInto(buf, container) {
-  container.innerHTML = '';
-  if (!window.pdfjsLib) { container.innerHTML = '<div class="dv-error">Viewer failed to load. Please use Download.</div>'; return; }
-  if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  }
-  return pdfjsLib.getDocument({ data: buf }).promise.then(function(pdf) {
-    var chain = Promise.resolve();
-    for (var n = 1; n <= pdf.numPages; n++) {
-      (function(pageNum) {
-        chain = chain.then(function() {
-          return pdf.getPage(pageNum).then(function(page) {
-            var viewport = page.getViewport({ scale: 1.5 });
-            var canvas = document.createElement('canvas');
-            canvas.width = viewport.width; canvas.height = viewport.height;
-            container.appendChild(canvas);
-            return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
-          });
-        });
-      })(n);
-    }
-    return chain;
-  });
-}
-
-// Open the merged customer/carrier PDF for a submission in an in-app canvas viewer.
+// Open the merged customer/carrier PDF for a submission via the shared viewer.
 function openDocViewer(recordId, slot, name) {
-  var modal = document.getElementById('doc-viewer');
-  var pages = document.getElementById('doc-viewer-pages');
-  var titleEl = document.getElementById('doc-viewer-title');
-  var dl = document.getElementById('doc-viewer-download');
-  if (!modal || !pages) return Promise.resolve();
-  titleEl.textContent = name || (slot === 'carrier' ? 'Carrier Documents' : 'Customer Documents');
-  pages.innerHTML = '<div class="dv-loading">Loading…</div>';
-  modal.style.display = 'flex';
-  modal.setAttribute('aria-hidden', 'false');
+  if (!window.OperFiDocViewer) return;
   var url = BROKER_API_BASE + '/funding-doc?email=' + encodeURIComponent(brokerEmail) +
             '&record_id=' + encodeURIComponent(recordId) + '&slot=' + encodeURIComponent(slot);
-  if (dl) { dl.removeAttribute('href'); dl.setAttribute('download', slot + '_docs_' + recordId + '.pdf'); }
-  return fetch(url)
-    .then(function(res) { if (!res.ok) throw new Error(res.status); return res.arrayBuffer(); })
-    .then(function(buf) {
-      if (dl) {
-        try { dl.href = URL.createObjectURL(new Blob([buf], { type: 'application/pdf' })); }
-        catch (e) { dl.href = url; }
-      }
-      return _renderPdfInto(buf, pages);
-    })
-    .catch(function() {
-      pages.innerHTML = '<div class="dv-error">Could not load this document. ' +
-        '<a href="' + esc(url) + '" target="_blank" rel="noopener">Open in a new tab</a> or try again.</div>';
-    });
+  OperFiDocViewer.open({
+    url: url,
+    filename: name || (slot === 'carrier' ? 'Carrier Documents' : 'Customer Documents')
+  });
 }
 
 window.docsGroupHtml = docsGroupHtml;
 window.openDocViewer = openDocViewer;
-window.closeDocViewer = closeDocViewer;
 window.statusMeta = statusMeta;
 window.isDraft = isDraft;
 window.rowHtml = rowHtml;

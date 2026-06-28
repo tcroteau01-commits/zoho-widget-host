@@ -21,7 +21,7 @@ function boot(fetchImpl) {
   return dom;
 }
 
-test('renders grouped docs with preview + download links', async () => {
+test('renders doc cards with View + Download and a count chip', async () => {
   const dom = boot(async () => ({
     ok: true,
     json: async () => ({ count: 2, documents: [
@@ -33,12 +33,18 @@ test('renders grouped docs with preview + download links', async () => {
   w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
   await w.loadCarrierDocs();
   const card = w.document.getElementById('cp-docs-card');
+  // labels present on cards
   assert.match(card.textContent, /NOA \/ LOR/);
   assert.match(card.textContent, /Insurance \(COI\)/);
-  // a download/preview link carries the token
+  // card container + View button + Download link present
+  assert.ok(card.querySelector('.cp-doccard'), 'renders cp-doccard');
+  const view = card.querySelector('button.cp-dbtn.cp-doc-preview[data-token="TOKA"]');
+  assert.ok(view, 'View button carries token');
+  assert.strictEqual(view.textContent, 'View');
   assert.match(card.innerHTML, /carrier-doc-file\?t=TOKA/);
-  // the Download link passes the filename so the server names + extensions the file
   assert.match(card.innerHTML, /name=NOA-1\.pdf/);
+  // count chip
+  assert.strictEqual(w.document.getElementById('cp-docs-count').textContent, '2 on file');
 });
 
 test('empty state when no documents', async () => {

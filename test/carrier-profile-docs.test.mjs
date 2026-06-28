@@ -237,9 +237,8 @@ test('recommended section: non-factored carrier recommends COI + Banking', async
   await w.loadCarrierDocs();
   const card = w.document.getElementById('cp-docs-card');
   assert.match(card.textContent, /Recommended \(not on file\)/);
-  assert.match(card.textContent, /Insurance \(COI\)/);
-  assert.match(card.textContent, /Banking/);
-  assert.ok(!/NOA or LOR/.test(card.textContent), 'no NOA/LOR for non-factored');
+  const recLabels = [...card.querySelectorAll('.cp-doccard.cp-rec .cp-dlabel')].map(e => e.textContent).sort();
+  assert.deepStrictEqual(recLabels, ['Banking (Voided Check / Bank Info)', 'Insurance (COI)']);
   // folder-exists-empty still shows the upload control
   assert.ok(w.document.getElementById('cp-up-file'), 'upload control present');
 });
@@ -251,9 +250,8 @@ test('recommended section: factored carrier recommends COI + NOA/LOR', async () 
   w.cpFactored = true;
   await w.loadCarrierDocs();
   const card = w.document.getElementById('cp-docs-card');
-  assert.match(card.textContent, /NOA or LOR/);
-  assert.match(card.textContent, /Insurance \(COI\)/);
-  assert.ok(!/Banking/.test(card.textContent), 'no Banking for factored');
+  const recLabels = [...card.querySelectorAll('.cp-doccard.cp-rec .cp-dlabel')].map(e => e.textContent).sort();
+  assert.deepStrictEqual(recLabels, ['Insurance (COI)', 'NOA or LOR']);
 });
 
 test('recommended item is suppressed when a matching type is already on file', async () => {
@@ -264,10 +262,8 @@ test('recommended item is suppressed when a matching type is already on file', a
   w.cpFactored = false;
   await w.loadCarrierDocs();
   const card = w.document.getElementById('cp-docs-card');
-  const idx = card.textContent.indexOf('Recommended (not on file)');
-  assert.ok(idx > -1, 'recommended section shown');
-  const recPortion = card.textContent.slice(idx);
+  const recLabels = [...card.querySelectorAll('.cp-doccard.cp-rec .cp-dlabel')].map(e => e.textContent);
   // COI is on file, so it must NOT be re-recommended; Banking still is.
-  assert.match(recPortion, /Banking/);
-  assert.ok(!recPortion.includes('Insurance (COI)'), 'COI not re-recommended (already on file)');
+  assert.ok(recLabels.includes('Banking (Voided Check / Bank Info)'), 'Banking recommended');
+  assert.ok(!recLabels.includes('Insurance (COI)'), 'COI not re-recommended (already on file)');
 });

@@ -1837,7 +1837,7 @@ function _bindCarrierDocsListener() {
 }
 
 function carrierUploadHtml() {
-  var opts = [['noa','NOA'],['lor','LOR'],['coi','COI'],['banking','Bank Info'],
+  var opts = [['noa','NOA'],['lor','LOR'],['coi','Insurance (COI)'],['banking','Banking'],
               ['bca','Broker-Carrier Agreement'],['dl',"Driver's License"],['other','Other']];
   var sel = '<select id="cp-up-type" class="cp-up-type">' +
     opts.map(function (o) { return '<option value="' + o[0] + '">' + esc(o[1]) + '</option>'; }).join('') + '</select>';

@@ -228,3 +228,46 @@ test('openCarrierDoc delegates to OperFiDocViewer.open (no inline iframe build)'
 test('carrier-profile footer carries the v2026-06-24.1 version stamp', () => {
   assert.match(HTML, /v2026-06-24\.1/);
 });
+
+test('recommended section: non-factored carrier recommends COI + Banking', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 0, documents: [] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.cpFactored = false;
+  await w.loadCarrierDocs();
+  const card = w.document.getElementById('cp-docs-card');
+  assert.match(card.textContent, /Recommended \(not on file\)/);
+  assert.match(card.textContent, /Insurance \(COI\)/);
+  assert.match(card.textContent, /Banking/);
+  assert.ok(!/NOA or LOR/.test(card.textContent), 'no NOA/LOR for non-factored');
+  // folder-exists-empty still shows the upload control
+  assert.ok(w.document.getElementById('cp-up-file'), 'upload control present');
+});
+
+test('recommended section: factored carrier recommends COI + NOA/LOR', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 0, documents: [] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.cpFactored = true;
+  await w.loadCarrierDocs();
+  const card = w.document.getElementById('cp-docs-card');
+  assert.match(card.textContent, /NOA or LOR/);
+  assert.match(card.textContent, /Insurance \(COI\)/);
+  assert.ok(!/Banking/.test(card.textContent), 'no Banking for factored');
+});
+
+test('recommended item is suppressed when a matching type is already on file', async () => {
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 1, documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'COI-1.pdf', preview_token: 'T' }] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.cpFactored = false;
+  await w.loadCarrierDocs();
+  const card = w.document.getElementById('cp-docs-card');
+  const idx = card.textContent.indexOf('Recommended (not on file)');
+  assert.ok(idx > -1, 'recommended section shown');
+  const recPortion = card.textContent.slice(idx);
+  // COI is on file, so it must NOT be re-recommended; Banking still is.
+  assert.match(recPortion, /Banking/);
+  assert.ok(!recPortion.includes('Insurance (COI)'), 'COI not re-recommended (already on file)');
+});

@@ -1025,6 +1025,7 @@ function renderProfile(p) {
     .then(function(p){ if (p && p.carriers && p.carriers[0]) renderNoaCard(p.carriers[0]); })
     .catch(function(){});
   // Non-blocking carrier documents card
+  cpFactored = !!((((p.vendor || {}).Factoring_Company) || '').toString().trim());
   loadCarrierDocs();
 }
 
@@ -1821,6 +1822,7 @@ function wireDecisionCapture(p){
 }
 
 // ── Carrier Documents (WorkDrive) ──────────────────────────────────────────
+var cpFactored = false;
 var _cpDocsListenerBound = false;
 function _bindCarrierDocsListener() {
   if (_cpDocsListenerBound) return;
@@ -1835,7 +1837,7 @@ function _bindCarrierDocsListener() {
 }
 
 function carrierUploadHtml() {
-  var opts = [['noa','NOA'],['lor','LOR'],['coi','Insurance (COI)'],['banking','Banking'],
+  var opts = [['noa','NOA'],['lor','LOR'],['coi','COI'],['banking','Bank Info'],
               ['bca','Broker-Carrier Agreement'],['dl',"Driver's License"],['other','Other']];
   var sel = '<select id="cp-up-type" class="cp-up-type">' +
     opts.map(function (o) { return '<option value="' + o[0] + '">' + esc(o[1]) + '</option>'; }).join('') + '</select>';
@@ -1846,6 +1848,13 @@ function carrierUploadHtml() {
 }
 
 var CP_DOC_ICON = { agreement: '📄', onboarding: '📋', banking: '🏦', coi: '🛡️', noa: '🧾', lor: '🧾', other: '📎' };
+
+function cpRecommendedDocs() {
+  var rec = [{ key: 'coi', label: 'Insurance (COI)', match: ['coi'] }];
+  if (cpFactored) rec.push({ key: 'noa_lor', label: 'NOA or LOR', match: ['noa', 'lor'] });
+  else rec.push({ key: 'banking', label: 'Banking (Voided Check / Bank Info)', match: ['banking'] });
+  return rec;
+}
 
 function renderCarrierDocs(data) {
   var body = document.getElementById('cp-docs-body');
@@ -1876,6 +1885,23 @@ function renderCarrierDocs(data) {
         '<div class="cp-dacts">' +
         '<button class="cp-dbtn cp-doc-preview" data-token="' + esc(token) + '" data-filename="' + fname + '">View</button>' +
         '<a class="cp-doc-link" href="' + esc(dlUrl) + '" download>Download</a>' +
+        '</div></div>';
+    });
+    html += '</div>';
+  }
+  var present = {};
+  docs.forEach(function (d) { present[d.type] = true; });
+  var missing = cpRecommendedDocs().filter(function (r) {
+    return !r.match.some(function (k) { return present[k]; });
+  });
+  if (missing.length) {
+    html += '<div class="cp-rec-head">Recommended (not on file)</div><div class="cp-doccards">';
+    missing.forEach(function (r) {
+      var icon = CP_DOC_ICON[r.match[0]] || '📎';
+      html += '<div class="cp-doccard cp-rec">' +
+        '<div class="cp-dic">' + icon + '</div>' +
+        '<div class="cp-dmain"><div class="cp-dlabel">' + esc(r.label) + '</div>' +
+        '<div class="cp-dnote">You may already have it in your TMS. Keeping a copy here is recommended.</div>' +
         '</div></div>';
     });
     html += '</div>';

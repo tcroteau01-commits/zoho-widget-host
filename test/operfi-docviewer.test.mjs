@@ -278,3 +278,21 @@ test('viewer references hosted standard_fonts + cmaps and the assets are vendore
   const foxit = readFileSync(new URL('../pdfjs/standard_fonts/FoxitDingbats.pfb', import.meta.url));
   assert.ok(foxit.length > 0, 'FoxitDingbats.pfb is vendored (the exact file the failing PDF needed)');
 });
+
+test('the modal is a centered framed card with a footer Esc hint', () => {
+  const w = mk(imgFetch);
+  w.OperFiDocViewer.open({ url: '/x', filename: 'COI-1.png' });
+  const frame = w.document.querySelector('.opf-dv-frame');
+  assert.ok(frame, 'a .opf-dv-frame wrapper must exist');
+  assert.ok(frame.querySelector('.opf-dv-bar'), 'bar is inside the frame');
+  assert.ok(frame.querySelector('.opf-dv-body'), 'body is inside the frame');
+  const foot = w.document.querySelector('.opf-dv-foot');
+  assert.ok(foot, 'a .opf-dv-foot footer must exist');
+  assert.match(foot.textContent, /esc/i, 'footer shows an Esc-to-close hint');
+});
+
+test('the close control reads "Close" (not a bare glyph)', () => {
+  const w = mk(imgFetch);
+  w.OperFiDocViewer.open({ url: '/x', filename: 'COI-1.png' });
+  assert.match(w.document.querySelector('.opf-dv-close').textContent, /close/i);
+});

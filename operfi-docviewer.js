@@ -15,8 +15,9 @@
     var s = doc.createElement('style');
     s.id = STYLE_ID;
     s.textContent =
-      '.opf-dv-backdrop{position:fixed;inset:0;background:rgba(20,22,26,.82);z-index:2147483000;display:flex;flex-direction:column}' +
+      '.opf-dv-backdrop{position:fixed;inset:0;background:rgba(20,20,22,.72);z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:28px}' +
       '.opf-dv-backdrop.hidden{display:none}' +
+      '.opf-dv-frame{width:min(880px,94vw);height:min(88vh,1000px);background:#f4f4f6;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.45)}' +
       '.opf-dv-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#1c1f24;color:#f3f4f6;font:600 13px system-ui,sans-serif}' +
       '.opf-dv-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       '.opf-dv-bar button,.opf-dv-bar a{background:#2c3038;color:#f3f4f6;border:1px solid #3a3f48;border-radius:6px;padding:5px 10px;font:600 13px system-ui;cursor:pointer;text-decoration:none}' +
@@ -26,6 +27,9 @@
       '.opf-dv-body canvas{max-width:100%;box-shadow:0 1px 8px rgba(0,0,0,.4);background:#fff}' +
       '.opf-dv-error{color:#fde2e2;background:#3a2222;border:1px solid #6b3a3a;border-radius:8px;padding:18px 22px;font:600 14px system-ui;max-width:520px;text-align:center}' +
       '.opf-dv-loading{color:#aeb4bd;font:600 14px system-ui;padding:40px}' +
+      '.opf-dv-foot{padding:8px 14px;background:#ececef;color:#777;font:600 11.5px system-ui,sans-serif;text-align:center;border-top:1px solid #e0e0e4;flex-shrink:0}' +
+      '.opf-dv-kbd{display:inline-block;padding:1px 6px;border:1px solid #c4c4cc;border-radius:4px;background:#fff;font:600 11px ui-monospace,monospace;color:#444}' +
+      '.opf-dv-close{background:#c0392b;border-color:#c0392b}' +
       '.opf-dv-pagefail{color:#cbb89a;background:#332b22;border:1px dashed #6b5a3a;border-radius:8px;padding:14px 18px;font:600 12px system-ui;text-align:center}';
     doc.head.appendChild(s);
   }
@@ -37,16 +41,19 @@
     bd = doc.createElement('div');
     bd.className = 'opf-dv-backdrop hidden';
     bd.innerHTML =
-      '<div class="opf-dv-bar">' +
-        '<span class="opf-dv-title"></span>' +
-        '<span class="opf-dv-page"></span>' +
-        '<button class="opf-dv-zoom-out" title="Zoom out">−</button>' +
-        '<button class="opf-dv-zoom-fit" title="Fit width">Fit</button>' +
-        '<button class="opf-dv-zoom-in" title="Zoom in">+</button>' +
-        '<a class="opf-dv-download" download>Download</a>' +
-        '<button class="opf-dv-close" title="Close (Esc)">✕</button>' +
-      '</div>' +
-      '<div class="opf-dv-body"></div>';
+      '<div class="opf-dv-frame">' +
+        '<div class="opf-dv-bar">' +
+          '<span class="opf-dv-title"></span>' +
+          '<span class="opf-dv-page"></span>' +
+          '<button class="opf-dv-zoom-out" title="Zoom out">−</button>' +
+          '<button class="opf-dv-zoom-fit" title="Fit width">Fit</button>' +
+          '<button class="opf-dv-zoom-in" title="Zoom in">+</button>' +
+          '<a class="opf-dv-download" download>Download</a>' +
+          '<button class="opf-dv-close" title="Close (Esc)">Close ✕</button>' +
+        '</div>' +
+        '<div class="opf-dv-body"></div>' +
+        '<div class="opf-dv-foot">Press <span class="opf-dv-kbd">Esc</span> or click outside to close</div>' +
+      '</div>';
     doc.body.appendChild(bd);
     bd.querySelector('.opf-dv-close').addEventListener('click', close);
     bd.addEventListener('mousedown', function (e) { if (e.target === bd) close(); });

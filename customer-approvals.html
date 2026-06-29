@@ -766,6 +766,7 @@ function renderList() {
       var recId = btn.dataset.recid;
       if (action === 'boost') navigateParent('#Form:Credit_Boost_Request' + (recId ? '?Company_Name_ID=' + encodeURIComponent(recId) : ''));
       else if (action === 'resubmit') navigateParent('#Page:Credit_Check');
+      else if (action === 'send-credit-app') openSendCreditApp(btn.dataset.recid, btn.dataset.email || '', btn.dataset.site || '');
     });
   });
 }
@@ -805,6 +806,14 @@ function rowHtml(r, idx) {
     actionCell = '<span class="row-action-placeholder">Awaiting OperFi review</span>';
   } else if (s.key === 'expired') {
     actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
+  }
+
+  if (['pending-app','awaiting','approved','app-sent','denied'].indexOf(s.key) !== -1) {
+    var sendLabel = (s.key === 'app-sent') ? 'Resend Credit App' : 'Send Credit Application';
+    var emailAttr = esc(r.Email || '');
+    var siteAttr = esc((r.Company_Website && (r.Company_Website.value || r.Company_Website.url)) || r.Company_Website || '');
+    actionCell += '<button class="row-action" data-action="send-credit-app" data-recid="' + esc(recId) +
+                  '" data-email="' + emailAttr + '" data-site="' + siteAttr + '">' + sendLabel + '</button>';
   }
 
   // See-all (admin/credit) prepends a Client column; widen the row grid by one column.
@@ -1402,6 +1411,83 @@ function esc(s) {
     return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
   });
 }
+
+// ── Email fraud guardrail ─────────────────────────────────────────────────
+var FREE_MAIL = ['gmail.com','yahoo.com','outlook.com','hotmail.com','aol.com','icloud.com','live.com','msn.com','protonmail.com','ymail.com'];
+function _emailDomain(e) { var m = String(e || '').toLowerCase().match(/@([^@\s]+)$/); return m ? m[1] : ''; }
+function _siteDomain(u) {
+  var s = String(u || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
+  return s.split('/')[0].split('?')[0].trim();
+}
+function _baseDomain(d) { var p = d.split('.'); return p.length >= 2 ? p.slice(-2).join('.') : d; }
+function creditAppEmailWarning(email, companyWebsite) {
+  var d = _emailDomain(email);
+  if (!d) return '';
+  if (FREE_MAIL.indexOf(d) !== -1) return 'This is a personal/free email address — only proceed if you are sure it is the right contact.';
+  var site = _siteDomain(companyWebsite);
+  if (site && _baseDomain(d) !== _baseDomain(site))
+    return 'This email domain does not match the company website — double-check before sending.';
+  return '';
+}
+if (typeof window !== 'undefined') { window.creditAppEmailWarning = creditAppEmailWarning; }
+
+// ── Send Credit Application ───────────────────────────────────────────────
+function openSendCreditApp(recId, email, site) {
+  var existing = document.getElementById('sca-modal'); if (existing) existing.remove();
+  var warn = creditAppEmailWarning(email, site);
+  var overlay = document.createElement('div');
+  overlay.id = 'sca-modal';
+  overlay.setAttribute('style', 'position:fixed;inset:0;background:rgba(16,24,40,.5);z-index:100000;display:flex;align-items:center;justify-content:center;');
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:10px;max-width:440px;width:90%;padding:22px;font:14px Inter,system-ui,sans-serif;">' +
+      '<div style="font-weight:700;font-size:16px;margin-bottom:6px;">Send Credit Application</div>' +
+      '<div style="color:#667085;margin-bottom:14px;">We will email the customer a link to your credit application.</div>' +
+      '<label style="font-size:12px;color:#475467;">Customer email</label>' +
+      '<input id="sca-email" type="email" value="' + esc(email) + '" style="width:100%;padding:9px 10px;border:1px solid #d0d5dd;border-radius:7px;margin:4px 0 6px;">' +
+      '<div id="sca-warn" style="color:#b54708;font-size:12px;min-height:16px;">' + esc(warn) + '</div>' +
+      '<div id="sca-msg" style="color:#b42318;font-size:13px;min-height:16px;"></div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">' +
+        '<button id="sca-cancel" class="row-action" style="background:#fff;">Cancel</button>' +
+        '<button id="sca-send" class="row-action" style="background:var(--of-orange,#f97316);color:#fff;">Send</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  var input = overlay.querySelector('#sca-email');
+  input.addEventListener('input', function () { overlay.querySelector('#sca-warn').textContent = creditAppEmailWarning(input.value, site); });
+  overlay.querySelector('#sca-cancel').onclick = function () { overlay.remove(); };
+  overlay.querySelector('#sca-send').onclick = function () {
+    var to = (input.value || '').trim();
+    if (!to) { overlay.querySelector('#sca-msg').textContent = 'Enter a customer email.'; return; }
+    var sendBtn = overlay.querySelector('#sca-send'); sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
+    sendCreditApp({ ID: recId }, to).then(function (r) {
+      if (r && r.ok) { overlay.remove(); markCreditAppSent(recId, to); }
+      else { overlay.querySelector('#sca-msg').textContent = (r && (r.detail || r.error)) || 'Send failed.'; sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+    }).catch(function (e) { overlay.querySelector('#sca-msg').textContent = (e && e.message) || 'Network error.'; sendBtn.disabled = false; sendBtn.textContent = 'Send'; });
+  };
+}
+
+function sendCreditApp(rec, toEmail) {
+  var senderEmail = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  return fetch(BROKER_API_BASE + '/credit-send-app', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: senderEmail, submission_id: rec.ID, customer_email: toEmail })
+  }).then(function (r) { return r.json().catch(function () { return {}; }); });
+}
+
+function markCreditAppSent(recId, toEmail) {
+  for (var i = 0; i < allRecords.length; i++) {
+    if (allRecords[i] && allRecords[i].ID === recId) {
+      allRecords[i].Credit_Decision = 'Credit App Sent - Awaiting Customer';
+      allRecords[i].Credit_App_Sent_To = toEmail;
+      break;
+    }
+  }
+  if (typeof renderKpis === 'function') renderKpis();
+  if (typeof buildChips === 'function') buildChips();
+  if (typeof applyFilters === 'function') applyFilters();
+}
+
+if (typeof window !== 'undefined') { window.sendCreditApp = sendCreditApp; window.rowHtml = rowHtml; }
 
 // ── CSV export ────────────────────────────────────────────────────────────
 function exportCsv() {

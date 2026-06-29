@@ -115,6 +115,39 @@ test('deleteDraftRow does nothing when the confirm is cancelled', () => {
   assert.equal(calls.filter(c => c.opts && c.opts.method === 'DELETE').length, 0);
 });
 
+test('rowHtml surfaces the Load # alongside the customer Ref# for at-a-glance scanning', () => {
+  const w = makeDom();
+  const html = w.rowHtml({ ID: '950', Purchase_Status: 'Processing',
+    Customer_Reference_Number: 'PO-77', Load_Rate_Confirmation_Number: '9150',
+    Customer_Rate: '2000', Carrier_Rate: '1700' }, 0);
+  assert.match(html, /Ref#\s*PO-77/);   // customer ref stays
+  assert.match(html, /Load#\s*9150/);   // load number now visible without expanding
+});
+
+test('rowHtml shows an em dash for a missing Load # rather than "undefined"', () => {
+  const w = makeDom();
+  const html = w.rowHtml({ ID: '951', Purchase_Status: 'Processing',
+    Customer_Reference_Number: 'PO-9', Customer_Rate: '2000', Carrier_Rate: '1700' }, 0);
+  assert.match(html, /Load#\s*—/);
+  assert.doesNotMatch(html, /Load#\s*undefined/);
+});
+
+test('rowHtml shows the carrier payment terms incl. factoring company in the list row', () => {
+  const w = makeDom();
+  const html = w.rowHtml({ ID: '952', Purchase_Status: 'Processing',
+    Customer_Reference_Number: 'PO-1', Load_Rate_Confirmation_Number: '9150',
+    Payment_Terms: 'Factoring Company - OPERATION FINANCE INC.',
+    Customer_Rate: '2000', Carrier_Rate: '1700' }, 0);
+  assert.match(html, /Factoring Company - OPERATION FINANCE INC\./);
+});
+
+test('rowHtml omits the payment-terms line when none is on the record', () => {
+  const w = makeDom();
+  const html = w.rowHtml({ ID: '953', Purchase_Status: 'Processing',
+    Customer_Reference_Number: 'PO-2', Customer_Rate: '2000', Carrier_Rate: '1700' }, 0);
+  assert.doesNotMatch(html, /undefined/);
+});
+
 test('rowHtml for a non-draft load keeps the chevron, no edit control', () => {
   const w = makeDom();
   const html = w.rowHtml(PURCHASED, 1);

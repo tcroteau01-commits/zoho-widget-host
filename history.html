@@ -1091,6 +1091,7 @@ function rowHtml(r, idx) {
   var s = statusMeta(r);
   var carrier = displayCarrier(r);
   var carrierSub = carrierSubLine(r);
+  var payTerms = r.Payment_Terms || '';   // composed server-side: "Factoring Company - <factor>"
   var custRate = parseMoney(r.Customer_Rate);
   var carrRate = parseMoney(r.Carrier_Rate);
   var marginPct = custRate > 0 ? ((custRate - carrRate) / custRate * 100) : 0;
@@ -1114,11 +1115,13 @@ function rowHtml(r, idx) {
         '<div class="cell-label">Customer</div>' +
         '<div class="cell-val">' + esc(displayCustomer(r)) + '</div>' +
         '<div class="cell-sub">Ref# ' + esc(r.Customer_Reference_Number || '—') + '</div>' +
+        '<div class="cell-sub">Load# ' + esc(r.Load_Rate_Confirmation_Number || '—') + '</div>' +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Carrier</div>' +
         '<div class="cell-val">' + esc(carrier) + '</div>' +
         (carrierSub ? '<div class="cell-sub">' + esc(carrierSub) + '</div>' : '') +
+        (payTerms ? '<div class="cell-sub">' + esc(payTerms) + '</div>' : '') +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Customer Rate</div>' +
@@ -1207,6 +1210,8 @@ function renderPanel() {
         '<span>Submitted ' + (added ? fmtDateTime(added) : '—') + '</span>' +
         '<span class="dot">·</span>' +
         '<span class="ref">Ref# ' + esc(r.Customer_Reference_Number || '—') + '</span>' +
+        '<span class="dot">·</span>' +
+        '<span class="ref">Load# ' + esc(r.Load_Rate_Confirmation_Number || '—') + '</span>' +
       '</div>' +
       '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
     '</div>' +

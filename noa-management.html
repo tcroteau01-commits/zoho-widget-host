@@ -531,7 +531,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div class="track">
       <div class="track-icon">&#9989;</div>
       <div class="track-title">Update Received</div>
-      <div class="track-sub">Your NOA Update for <b>ROADWAY EXPRESS LOGISTICS</b> has been recorded and the document filed. The OperFi team has been notified to verify and apply the payment change.</div>
+      <div class="track-sub">Your <span id="track-type">NOA Update</span> for <b id="track-carrier">this carrier</b> has been recorded and the document filed. The OperFi team has been notified to verify and apply the payment change.</div>
       <div class="track-steps">
         <div class="track-step"><div class="track-dot done">&#10003;</div><div class="track-step-label">Submitted</div></div>
         <div class="track-step"><div class="track-dot now">2</div><div class="track-step-label">OperFi Verifying</div></div>
@@ -560,7 +560,11 @@ function resetSelectedFiles() {
 }
 function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); if (typeof selectType === 'function' && !selectedType) selectType('NOA Update'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
 function showList()  { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-list').classList.remove('hidden'); window.scrollTo(0,0); }
-function showTrack() { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.remove('hidden'); window.scrollTo(0,0); }
+function showTrack() {
+  var c = document.getElementById('track-carrier'); if (c && selectedCarrierName) c.textContent = selectedCarrierName;
+  var t = document.getElementById('track-type'); if (t && selectedType) t.textContent = selectedType;
+  document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.remove('hidden'); window.scrollTo(0,0);
+}
 </script>
 
 <script>
@@ -867,6 +871,7 @@ var selectedDocFile = null;
 var selectedNewNoaFile = null;
 var selectedLorFile = null;
 var selectedPayTerm = null;   // carrier's current pay term, captured from the on-file panel
+var selectedCarrierName = '';  // selected carrier's name, for the confirmation screen
 
 function applyGating(p) {
   var gated = document.querySelector('.type-card.gated-card');
@@ -877,6 +882,7 @@ function applyGating(p) {
 
 function showOnFile(carrier) {
   if (carrier && carrier.pay_term) selectedPayTerm = carrier.pay_term;
+  if (carrier && carrier.carrier_name) selectedCarrierName = carrier.carrier_name;
   var panel = document.getElementById('noa-onfile');
   var grid = panel ? panel.querySelector('.onfile-grid') : null;
   if (!panel || !grid || !carrier) return;

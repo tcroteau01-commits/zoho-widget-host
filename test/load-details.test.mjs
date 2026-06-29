@@ -817,6 +817,53 @@ test('selecting a carrier from search sets the value, fills the box, and shows t
   assert.match(w.document.getElementById('terms-readout-value').textContent, /Quickpay 2%/, 'terms populated via onCarrierChange');
 });
 
+// ── Soft warning: factoring carrier with no factor named on file ──────────────
+
+function makeFactoringDom() {
+  const dom = makeB2Dom((url) => Promise.resolve({ ok: true, json: () => Promise.resolve(
+    String(url).includes('/tms-carriers')
+      ? { carriers: [
+          { vendor_id: 'vF', carrier_name: 'No Factor Co', mc: '1', dot: '2', payment_terms: 'Factoring Company' },
+          { vendor_id: 'vG', carrier_name: 'Named Factor Co', mc: '3', dot: '4', payment_terms: 'Factoring Company - RTS FINANCIAL SERVICES' },
+          { vendor_id: 'vN', carrier_name: 'Net Co', mc: '5', dot: '6', payment_terms: 'Net 30' }
+        ] }
+      : { customers: [] }
+  )}));
+  return dom.window;
+}
+
+test('factoringMissingFactor flags bare Factoring-Company terms only', () => {
+  const wd = makeFactoringDom();
+  assert.strictEqual(wd.factoringMissingFactor('Factoring Company'), true);
+  assert.strictEqual(wd.factoringMissingFactor('Factoring Company - Quick Pay'), true);
+  assert.strictEqual(wd.factoringMissingFactor('Factoring Company - RTS FINANCIAL SERVICES'), false);
+  assert.strictEqual(wd.factoringMissingFactor('Net 30'), false);
+  assert.strictEqual(wd.factoringMissingFactor(''), false);
+});
+
+test('selecting a factoring carrier with no factor shows the soft missing-factor warning', async () => {
+  const w = makeFactoringDom();
+  await w.loadCarriers();
+  w.selectCarrierFromSearch('vF');
+  const warn = w.document.getElementById('terms-warn-factor');
+  assert.ok(warn, 'warning element exists');
+  assert.notStrictEqual(warn.style.display, 'none', 'shown for bare Factoring Company');
+});
+
+test('selecting a factoring carrier WITH a named factor hides the warning', async () => {
+  const w = makeFactoringDom();
+  await w.loadCarriers();
+  w.selectCarrierFromSearch('vG');
+  assert.strictEqual(w.document.getElementById('terms-warn-factor').style.display, 'none');
+});
+
+test('selecting a non-factoring carrier hides the missing-factor warning', async () => {
+  const w = makeFactoringDom();
+  await w.loadCarriers();
+  w.selectCarrierFromSearch('vN');
+  assert.strictEqual(w.document.getElementById('terms-warn-factor').style.display, 'none');
+});
+
 // ── Post-submit reset: clear the form so the same load can't be sent twice ─────
 
 test('a successful submit clears the form, returns to step 1, and blocks resubmission', async () => {

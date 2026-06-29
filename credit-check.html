@@ -585,14 +585,11 @@ function addFiles(files) {
   renderFileChips();
 }
 
-// ── Build payload for addRecords ──────────────────────────────────────────
+// ── Build payload for /credit-submit ─────────────────────────────────────
 function buildPayload() {
   function v(id) { return document.getElementById(id).value.trim(); }
-  // Creator URL fields (type 17) reject a plain string ("Invalid column value
-  // for Company_Website", code 3001); they require a {url} object. Omit the
-  // optional URL fields when empty.
-  function urlVal(id) { var x = v(id); return x ? { value: x, url: x } : null; }
-  var p = {
+  return {
+    email: brokerEmail,                          // backend resolves account (impersonation-aware)
     Customer_Company_Name:     v('Customer_Company_Name'),
     Address: {
       address_line_1: v('address_line_1'),
@@ -601,7 +598,9 @@ function buildPayload() {
       postal_Code:    v('postal_Code')
     },
     Phone_Number:              v('Phone_Number'),
-    Company_Website:           urlVal('Company_Website'),
+    Company_Website:           v('Company_Website'),
+    LinkedIn_Profile:          v('LinkedIn_Profile'),
+    Other_Social_Media_Links:  v('Other_Social_Media_Links'),
     Comments:                  v('Comments'),
     Customer_Point_of_Contact: v('Customer_Point_of_Contact'),
     Phone_Number1:             v('Phone_Number1'),
@@ -609,12 +608,7 @@ function buildPayload() {
     Billing_Point_of_Contact:  v('Billing_Point_of_Contact'),
     Billing_AP_Contact_Number: v('Billing_AP_Contact_Number'),
     Billing_Email:             v('Billing_Email')
-    // Submission_Type is private (stripped from portal addRecords) but the form
-    // sets initial value = "Credit Check", so the record will have that automatically.
   };
-  var li = urlVal('LinkedIn_Profile'); if (li) p.LinkedIn_Profile = li;
-  var osm = urlVal('Other_Social_Media_Links'); if (osm) p.Other_Social_Media_Links = osm;
-  return p;
 }
 
 // ── Submit flow ───────────────────────────────────────────────────────────
@@ -632,34 +626,24 @@ function submitForm() {
   btn.textContent = 'Submitting…';
   showStatus('Submitting your credit check request…', 'loading');
 
-  ZOHO.CREATOR.DATA.addRecords({
-    form_name: FORM_NAME,
-    payload: { data: buildPayload() }
-  }).then(function(res) {
-    console.log('addRecords response:', JSON.stringify(res));
-    if (res && res.code === 3000) {
-      var recordId = res.data && (res.data.ID || (typeof res.data === 'string' ? res.data : null));
-      console.log('Record ID:', recordId);
-      if (recordId && selectedFiles.length > 0) {
-        uploadFiles(recordId);
+  fetch(BROKER_API_BASE + '/credit-submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildPayload())
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      if (r.ok && j && j.id) {
+        if (selectedFiles.length > 0) { uploadFiles(j.id); } else { onSuccess(); }
       } else {
-        onSuccess();
+        var detail = (j && (j.detail || j.error)) ? ': ' + (j.detail || j.error) : ' (HTTP ' + r.status + ')';
+        showStatus('Submission failed' + detail + '. Please try again or contact credit@operfi.com.', 'error');
+        console.error('credit-submit failed:', r.status, JSON.stringify(j));
+        resetButtons();
       }
-    } else {
-      // Surface the real reason (Creator puts field errors in res.error, often an
-      // array) instead of just "(code 3001)".
-      var err = res && (res.error || (res.result && res.result[0] && res.result[0].error));
-      var detailMsg = res && res.message;
-      if (err) detailMsg = (Array.isArray(err) ? err.join('; ') : (typeof err === 'string' ? err : JSON.stringify(err)));
-      var detail = res ? ' (code ' + res.code + (detailMsg ? ': ' + detailMsg : '') + ')' : '';
-      showStatus('Submission failed' + detail + '. Please try again or contact credit@operfi.com.', 'error');
-      console.error('addRecords failed:', JSON.stringify(res));
-      resetButtons();
-    }
-  }).catch(function(e) {
-    var msg = (e && (e.message || e.toString())) ? ': ' + (e.message || e.toString()) : '';
-    showStatus('Submission failed' + msg + '. Please try again or contact credit@operfi.com.', 'error');
-    console.error('submit error', e);
+    });
+  }).catch(function (e) {
+    showStatus('Submission failed: ' + ((e && e.message) || 'network error') + '. Please try again or contact credit@operfi.com.', 'error');
+    console.error('credit-submit error', e);
     resetButtons();
   });
 }

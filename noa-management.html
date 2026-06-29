@@ -866,6 +866,7 @@ var selectedNewFactoringId = null;
 var selectedDocFile = null;
 var selectedNewNoaFile = null;
 var selectedLorFile = null;
+var selectedPayTerm = null;   // carrier's current pay term, captured from the on-file panel
 
 function applyGating(p) {
   var gated = document.querySelector('.type-card.gated-card');
@@ -875,6 +876,7 @@ function applyGating(p) {
 }
 
 function showOnFile(carrier) {
+  if (carrier && carrier.pay_term) selectedPayTerm = carrier.pay_term;
   var panel = document.getElementById('noa-onfile');
   var grid = panel ? panel.querySelector('.onfile-grid') : null;
   if (!panel || !grid || !carrier) return;
@@ -957,6 +959,10 @@ function buildNoaPayload() {
   if (selectedType === 'Factoring Company Change' && selectedNewFactoringId) d.New_Factoring_Company = selectedNewFactoringId;
   var val = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
   if (selectedType === 'LOR Update') {
+    // The form's on-validate requires Carrier_Payment_Terms (normally set by an
+    // on-user-input that API addRecords doesn't fire). Send the carrier's current
+    // pay term, which the on-file panel already shows.
+    if (selectedPayTerm) d.Carrier_Payment_Terms = selectedPayTerm;
     d.Bank_Document_Upload = (lorBankChoice === 'no') ? 'No' : 'Yes';
     if (lorBankChoice === 'yes') {
       var bn = val('lor-bank-name'); if (bn) d.Bank_Name = bn;
@@ -1037,8 +1043,13 @@ function submitNoa() {
   var data = buildNoaPayload();
   return ZOHO.CREATOR.DATA.addRecords({ app_link_name: 'funding-portal', form_name: 'NOA_LOR_Updates', payload: { data: data } })
     .then(function(res){
-      var recId = res && res.result && res.result[0] && res.result[0].ID;
-      if (!recId || (res && typeof res.code !== 'undefined' && res.code !== 3000)) {
+      // Creator returns a single-record add as {code:3000, data:{ID}}; only a
+      // multi-record add uses {result:[{ID}]}. Read both so a real success isn't
+      // mistaken for a failure (which also skipped the doc upload + engine).
+      var recId = (res && res.data && res.data.ID) ||
+                  (res && res.result && res.result[0] && res.result[0].ID);
+      var okCode = res && (res.code === 3000 || res.code === '3000');
+      if (!okCode || !recId) {
         // Surface the real Creator error instead of faking success. Creator puts the
         // detail in different places (top-level message, per-record result error, etc.),
         // so gather what we can and include the raw response for diagnosis.

@@ -22,78 +22,24 @@ function makeWidget() {
   return { window: dom.window, document: dom.window.document };
 }
 
-test('openDocViewer reveals the modal and sets iframe src + title', () => {
-  const { window, document } = makeWidget();
+test('openDocViewer delegates to OperFiDocViewer.open with the url and title as filename', () => {
+  const { window } = makeWidget();
   assert.equal(typeof window.openDocViewer, 'function', 'openDocViewer must be defined');
-
-  // modal should be hidden before open
-  const backdrop = document.querySelector('.doc-viewer-backdrop');
-  assert.ok(backdrop, '.doc-viewer-backdrop element must exist');
-  assert.ok(backdrop.classList.contains('hidden'), 'backdrop should be hidden before open');
-
-  window.openDocViewer('/x', 'POD');
-
-  assert.ok(!backdrop.classList.contains('hidden'), 'backdrop should be visible after openDocViewer');
-
-  const iframe = document.querySelector('.doc-viewer iframe');
-  assert.ok(iframe, 'iframe must exist inside .doc-viewer');
-  assert.equal(iframe.src, 'https://tcroteau01-commits.github.io/x', 'iframe src must be the URL passed in');
-
-  const titleEl = document.querySelector('.doc-viewer-title');
-  assert.ok(titleEl, '.doc-viewer-title element must exist');
-  assert.match(titleEl.textContent, /POD/, 'title must show the doc name');
+  let arg = null;
+  window.OperFiDocViewer = { open: (o) => { arg = o; } };
+  window.openDocViewer('/tms-doc-file?t=abc', 'POD');
+  assert.ok(arg, 'OperFiDocViewer.open was called');
+  assert.equal(arg.url, '/tms-doc-file?t=abc', 'url passed through unchanged');
+  assert.equal(arg.filename, 'POD', 'title passed as filename');
 });
 
-test('fallback anchor href equals the url passed to openDocViewer', () => {
-  const { window, document } = makeWidget();
-  window.openDocViewer('/x', 'POD');
-
-  const anchor = document.querySelector('.doc-viewer-newtab');
-  assert.ok(anchor, '.doc-viewer-newTab anchor must exist');
-  assert.ok(anchor.href.indexOf('/x') !== -1, 'fallback anchor href must contain the url');
-  assert.equal(anchor.target, '_blank', 'fallback anchor must open in new tab');
+test('openDocViewer no-ops safely when the shared viewer has not loaded', () => {
+  const { window } = makeWidget();
+  delete window.OperFiDocViewer;
+  assert.doesNotThrow(() => window.openDocViewer('/x', 'POD'));
 });
 
-test('closeDocViewer hides the modal', () => {
-  const { window, document } = makeWidget();
-  window.openDocViewer('/x', 'POD');
-
-  const backdrop = document.querySelector('.doc-viewer-backdrop');
-  assert.ok(!backdrop.classList.contains('hidden'), 'backdrop visible after open');
-
-  window.closeDocViewer();
-  assert.ok(backdrop.classList.contains('hidden'), 'backdrop hidden after closeDocViewer');
-});
-
-test('backdrop click closes the viewer', () => {
-  const { window, document } = makeWidget();
-  window.openDocViewer('/x', 'POD');
-
-  const backdrop = document.querySelector('.doc-viewer-backdrop');
-  assert.ok(!backdrop.classList.contains('hidden'));
-
-  backdrop.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  assert.ok(backdrop.classList.contains('hidden'), 'backdrop click must close the viewer');
-});
-
-test('ESC key closes the viewer', () => {
-  const { window, document } = makeWidget();
-  window.openDocViewer('/x', 'POD');
-
-  const backdrop = document.querySelector('.doc-viewer-backdrop');
-  assert.ok(!backdrop.classList.contains('hidden'));
-
-  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  assert.ok(backdrop.classList.contains('hidden'), 'ESC must close the viewer');
-});
-
-test('openDocViewer can be called twice; second call updates src and title', () => {
-  const { window, document } = makeWidget();
-  window.openDocViewer('/doc1', 'BOL');
-  window.openDocViewer('/doc2', 'POD');
-
-  const iframe = document.querySelector('.doc-viewer iframe');
-  assert.ok(iframe.src.indexOf('/doc2') !== -1, 'second open must update iframe src');
-  const titleEl = document.querySelector('.doc-viewer-title');
-  assert.match(titleEl.textContent, /POD/);
+test('the page loads the shared pdf.js + OperFiDocViewer scripts', () => {
+  assert.match(HTML, /app\.operfi\.com\/pdfjs\/pdf\.min\.js/);
+  assert.match(HTML, /app\.operfi\.com\/operfi-docviewer\.js/);
 });

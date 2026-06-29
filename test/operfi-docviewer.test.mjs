@@ -278,3 +278,39 @@ test('viewer references hosted standard_fonts + cmaps and the assets are vendore
   const foxit = readFileSync(new URL('../pdfjs/standard_fonts/FoxitDingbats.pfb', import.meta.url));
   assert.ok(foxit.length > 0, 'FoxitDingbats.pfb is vendored (the exact file the failing PDF needed)');
 });
+
+test('the modal is a centered framed card with a footer Esc hint', () => {
+  const w = mk(imgFetch);
+  w.OperFiDocViewer.open({ url: '/x', filename: 'COI-1.png' });
+  const frame = w.document.querySelector('.opf-dv-frame');
+  assert.ok(frame, 'a .opf-dv-frame wrapper must exist');
+  assert.ok(frame.querySelector('.opf-dv-bar'), 'bar is inside the frame');
+  assert.ok(frame.querySelector('.opf-dv-body'), 'body is inside the frame');
+  const foot = w.document.querySelector('.opf-dv-foot');
+  assert.ok(foot, 'a .opf-dv-foot footer must exist');
+  assert.match(foot.textContent, /esc/i, 'footer shows an Esc-to-close hint');
+});
+
+test('the close control reads "Close" (not a bare glyph)', () => {
+  const w = mk(imgFetch);
+  w.OperFiDocViewer.open({ url: '/x', filename: 'COI-1.png' });
+  assert.match(w.document.querySelector('.opf-dv-close').textContent, /close/i);
+});
+
+const octetPdfFetch = () => Promise.resolve({
+  ok: true,
+  blob: () => Promise.resolve({
+    type: 'application/octet-stream',
+    // bytes begin with "%PDF-1.4"
+    arrayBuffer: () => Promise.resolve(new Uint8Array([0x25,0x50,0x44,0x46,0x2D,0x31,0x2E,0x34]).buffer)
+  })
+});
+
+test('a PDF served as application/octet-stream still renders as canvas (content sniff)', async () => {
+  const w = mk(octetPdfFetch);
+  withPdf(w, 1);
+  w.OperFiDocViewer.open({ url: '/funding-doc?x=1', filename: 'merged' });
+  await new Promise(r => setTimeout(r, 60));
+  assert.equal(w.document.querySelectorAll('.opf-dv-body canvas').length, 1, 'rendered as a pdf canvas');
+  assert.equal(w.document.querySelector('.opf-dv-body img'), null, 'not misrendered as an image');
+});

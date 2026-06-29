@@ -298,7 +298,7 @@
 
   </div>
 
-  <div class="version-stamp">v2026-05-19.3</div>
+  <div class="version-stamp">v2026-06-29.1</div>
 
 </div>
 
@@ -689,17 +689,37 @@
         document.getElementById('fundingMethod').value = '';
         document.getElementById('eligibilityMsg').classList.remove('show', 'warn');
       } else {
-        var detail = res ? ' (code ' + res.code + (res.message ? ': ' + res.message : '') + ')' : '';
-        showStatus('Submission failed' + detail + '. Please try again or contact your OperFi rep.', 'error');
+        try { console.error('[Wallet] addRecords non-success:', res); } catch (e) {}
+        showStatus('Submission failed: ' + describeError(res) + '. Please try again or contact your OperFi rep.', 'error');
         btn.disabled = false;
         btn.textContent = 'Submit Request';
       }
     }).catch(function (e) {
-      var msg = (e && (e.message || e.toString())) ? ': ' + (e.message || e.toString()) : '';
-      showStatus('Submission failed' + msg + '. Please try again or contact your OperFi rep.', 'error');
+      try { console.error('[Wallet] addRecords rejected:', e); } catch (x) {}
+      showStatus('Submission failed: ' + describeError(e) + '. Please try again or contact your OperFi rep.', 'error');
       btn.disabled = false;
       btn.textContent = 'Submit Request';
     });
+  }
+
+  // Pull a human-readable error out of whatever Zoho rejects with. The SDK rejects
+  // with a plain object (no .message), which naive String()/.toString() renders as
+  // "[object Object]" — hiding the real cause. Check the known places, then fall
+  // back to a full JSON dump so nothing is ever masked.
+  function describeError(e) {
+    if (e == null) return 'unknown error';
+    if (typeof e === 'string') return e;
+    var parts = [];
+    if (e.code != null) parts.push('code ' + e.code);
+    var m = e.message || e.error || e.description || e.responseText ||
+            (e.data && (e.data.message || e.data.error));
+    if (m) parts.push(String(m));
+    if (parts.length) return parts.join(': ');
+    try {
+      var json = JSON.stringify(e, Object.getOwnPropertyNames(e));
+      if (json && json !== '{}') return json;
+    } catch (x) {}
+    return String(e);
   }
 
   // -------- Helpers --------

@@ -83,3 +83,16 @@ test('subformHasFiles is true only for a non-empty subform array', () => {
   assert.equal(w.subformHasFiles([]), false);
   assert.equal(w.subformHasFiles(undefined), false);
 });
+
+test('with the doc viewer open, Escape does not also close the detail panel', async () => {
+  const w = makeDom();
+  // Wait for the window load event to fire so bindGlobalUI() has bound the keydown handler.
+  await new Promise(r => setTimeout(r, 20));
+  const bd = w.document.createElement('div');
+  bd.className = 'opf-dv-backdrop';          // shared viewer open (not hidden)
+  w.document.body.appendChild(bd);
+  const panel = w.document.getElementById('panel');
+  panel.classList.add('show');
+  w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.ok(panel.classList.contains('show'), 'panel stays open while the viewer owns the keyboard');
+});

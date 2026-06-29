@@ -778,6 +778,8 @@ function bindGlobalUI() {
   // Panel close + keyboard
   document.getElementById('scrim').addEventListener('click', closePanel);
   document.addEventListener('keydown', function(e) {
+    var _dv = document.querySelector('.opf-dv-backdrop');
+    if (_dv && !_dv.classList.contains('hidden')) return; // doc viewer owns the keyboard while open
     if (!document.getElementById('panel').classList.contains('show')) return;
     if (e.key === 'Escape') closePanel();
     else if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navPanel(1); }

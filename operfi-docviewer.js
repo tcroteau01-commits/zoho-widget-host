@@ -1,4 +1,4 @@
-/* OperFi shared document viewer — full-screen modal that renders PDFs to
+/* OperFi shared document viewer — centered framed-card modal that renders PDFs to
  * <canvas> (via PDF.js) and images inline, so a document always displays and
  * never forces a browser download.
  *
@@ -91,6 +91,14 @@
     }
   }
 
+  function looksLikePdf(ab) {
+    try {
+      var b = new Uint8Array(ab.slice(0, 5));
+      // "%PDF-"
+      return b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 && b[4] === 0x2D;
+    } catch (e) { return false; }
+  }
+
   function detectKind(blobType, mime, url) {
     var t = (mime || blobType || '').toLowerCase();
     if (t.indexOf('pdf') !== -1) return 'pdf';
@@ -133,9 +141,16 @@
       if (state.objectUrl) global.URL.revokeObjectURL(state.objectUrl);
       state.objectUrl = global.URL.createObjectURL(blob);
       dl.setAttribute('href', state.objectUrl);
-      state.kind = detectKind(blob.type, opts.mime, opts.url);
-      if (state.kind === 'image') return renderImage(state.objectUrl);
-      return blob.arrayBuffer().then(function (ab) { renderPdfBytes(ab, myToken); });
+      var guessed = detectKind(blob.type, opts.mime, opts.url);
+      return blob.arrayBuffer().then(function (ab) {
+        if (myToken !== state.loadToken) return; // superseded mid-read
+        if (guessed !== 'image' || looksLikePdf(ab)) {
+          state.kind = 'pdf';
+          return renderPdfBytes(ab, myToken);
+        }
+        state.kind = 'image';
+        return renderImage(state.objectUrl);
+      });
     }).catch(function () {
       if (myToken !== state.loadToken) return; // superseded — don't clobber the new doc's error state
       showError('Could not display this document. Use Download to save it instead.');

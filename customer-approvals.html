@@ -1403,6 +1403,25 @@ function esc(s) {
   });
 }
 
+// ── Email fraud guardrail ─────────────────────────────────────────────────
+var FREE_MAIL = ['gmail.com','yahoo.com','outlook.com','hotmail.com','aol.com','icloud.com','live.com','msn.com','protonmail.com','ymail.com'];
+function _emailDomain(e) { var m = String(e || '').toLowerCase().match(/@([^@\s]+)$/); return m ? m[1] : ''; }
+function _siteDomain(u) {
+  var s = String(u || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
+  return s.split('/')[0].split('?')[0].trim();
+}
+function _baseDomain(d) { var p = d.split('.'); return p.length >= 2 ? p.slice(-2).join('.') : d; }
+function creditAppEmailWarning(email, companyWebsite) {
+  var d = _emailDomain(email);
+  if (!d) return '';
+  if (FREE_MAIL.indexOf(d) !== -1) return 'This is a personal/free email address — only proceed if you are sure it is the right contact.';
+  var site = _siteDomain(companyWebsite);
+  if (site && _baseDomain(d) !== _baseDomain(site))
+    return 'This email domain does not match the company website — double-check before sending.';
+  return '';
+}
+if (typeof window !== 'undefined') { window.creditAppEmailWarning = creditAppEmailWarning; }
+
 // ── CSV export ────────────────────────────────────────────────────────────
 function exportCsv() {
   if (!filteredRecords.length) return;

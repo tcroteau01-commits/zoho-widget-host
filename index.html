@@ -182,6 +182,11 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .terms-readout.show { display: block; }
 .terms-readout .k { font-size: 10px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 3px; }
+.terms-warn {
+  font-size: 12px; font-weight: 600; color: #8a4b00; line-height: 1.4;
+  background: #fff3e0; border: 1px solid #f3c98a; border-radius: 6px;
+  padding: 9px 12px; margin: -6px 0 14px;
+}
 
 /* Margin badge inline (carrier card) */
 .mbadge {
@@ -420,6 +425,11 @@ textarea { resize: vertical; min-height: 90px; }
           <span id="terms-readout-value">—</span>
         </div>
 
+        <!-- soft warning: carrier is set to pay a factor but none is on file -->
+        <div class="terms-warn" id="terms-warn-factor" style="display:none;">
+          ⚠ No factoring company is on file for this carrier. The funding transmittal won't name a factor — verify the carrier's factoring company before submitting.
+        </div>
+
         <!-- terms verification banner -->
         <div class="banner-terms" id="terms-banner">
           <div class="bl">Carrier Payment Terms</div>
@@ -594,6 +604,16 @@ function loadCarriers() {
     });
 }
 
+// The backend appends the factor name only when one is on file, so a carrier
+// whose terms come back as bare "Factoring Company" (or "...- Quick Pay") is a
+// factoring carrier with no factoring company linked — worth a soft heads-up so
+// the transmittal doesn't go to Triumph without a named payee.
+function factoringMissingFactor(terms) {
+  terms = String(terms || '').trim();
+  return terms === 'Factoring Company' || terms === 'Factoring Company - Quick Pay';
+}
+window.factoringMissingFactor = factoringMissingFactor;
+
 function onCarrierChange() {
   var sel = document.getElementById('carrier-select');
   var vid = sel ? sel.value : '';
@@ -614,6 +634,11 @@ function onCarrierChange() {
   }
   if (banner) {
     if (terms) { banner.style.display = ''; } else { banner.style.display = 'none'; }
+  }
+
+  var warnFactor = document.getElementById('terms-warn-factor');
+  if (warnFactor) {
+    warnFactor.style.display = (found && factoringMissingFactor(terms)) ? 'block' : 'none';
   }
 
   // Update summary rail (optional but cheap)

@@ -341,41 +341,48 @@ test('search filters carriers by name', () => {
   assert.match(rows[0].textContent, /ROADWAY/);
 });
 
-test('carrier search queries /noa-carriers and renders results', async () => {
+test('carrier combobox loads from /tms-carriers (not /noa-carriers)', async () => {
   const { window } = makeWidget();
   window.brokerEmail = 'b@op.com';
   const calls = [];
   window.fetch = (u) => {
     calls.push(u);
-    return Promise.resolve({ json: () => Promise.resolve({ carriers: [
-      { vendor_id: '1001', carrier_name: 'ROADWAY EXPRESS', mc: '89765', dot: '897123' }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ carriers: [
+      { vendor_id: '1001', carrier_name: 'ROADWAY EXPRESS', mc: '89765', dot: '897123', payment_terms: 'Factoring Company' }
     ]})});
   };
-  await window.searchCarriers('road');
-  assert.ok(calls.some((u) => /\/noa-carriers\?.*q=road/.test(u)));
-  const results = window.document.getElementById('noa-carrier-results').textContent;
+  await window.loadCarriers();
+  assert.ok(calls.some((u) => /\/tms-carriers\?.*email=/.test(u)));
+  assert.ok(!calls.some((u) => /\/noa-carriers/.test(u)));
+  window.renderNoaCarrierResults('road');
+  const results = window.document.getElementById('noa-carrier-list').textContent;
   assert.match(results, /ROADWAY EXPRESS/);
 });
 
-test('selecting a search result sets the vendor and fills the search box', () => {
+test('selecting a combobox result sets the vendor and fills the search box', () => {
   const { window } = makeWidget();
   window.brokerEmail = 'b@op.com';
-  window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ carriers: [] })});
+  window.statusPayload = { carriers: [] };
   window.selectCarrier({ vendor_id: '1001', carrier_name: 'ROADWAY EXPRESS', mc: '89765', dot: '897123' });
   assert.equal(window.selectedVendorId, '1001');
   assert.match(window.document.getElementById('noa-carrier-search').value, /ROADWAY EXPRESS/);
-  // results cleared after selection
-  assert.equal(window.document.getElementById('noa-carrier-results').textContent.trim(), '');
+  // list hidden after selection
+  assert.equal(window.document.getElementById('noa-carrier-list').hidden, true);
 });
 
-test('short query clears results and does not fetch', async () => {
+test('combobox filters client-side without any fetch on keystroke', () => {
   const { window } = makeWidget();
-  window.brokerEmail = 'b@op.com';
+  window._noaCarriers = [
+    { vendor_id: '1', carrier_name: 'ROADWAY EXPRESS', mc: '1', dot: '1' },
+    { vendor_id: '2', carrier_name: 'MIDWEST HAUL', mc: '2', dot: '2' },
+  ];
   let fetched = false;
   window.fetch = () => { fetched = true; return Promise.resolve({ json: () => Promise.resolve({carriers:[]}) }); };
-  await window.searchCarriers('r');
+  window.renderNoaCarrierResults('road');
   assert.equal(fetched, false);
-  assert.equal(window.document.getElementById('noa-carrier-results').textContent.trim(), '');
+  const opts = window.document.querySelectorAll('#noa-carrier-list .combo-opt');
+  assert.equal(opts.length, 1);
+  assert.match(opts[0].textContent, /ROADWAY/);
 });
 
 test('selectType NOA Update shows factoring + upload, hides bank/new-factor/usdot', () => {
@@ -597,4 +604,51 @@ test('Factoring Company Change form exposes an LOR dropzone wired to selectedLor
   Object.defineProperty(input, 'files', { value: [f], configurable: true });
   input.onchange();
   assert.equal(window.selectedLorFile, f);
+});
+
+// ── Carrier combobox: mirror Load Details (client-side filter on /tms-carriers) ──
+const TMS_CARRIERS = { carriers: [
+  { vendor_id: '2001', carrier_name: 'BIG SKY HAULING', mc: '1519382', dot: '4025383', payment_terms: 'Factoring Company' },
+  { vendor_id: '2002', carrier_name: 'TRIPLE H HAULING', mc: '1447214', dot: '3916310', payment_terms: 'Quick Pay' },
+  { vendor_id: '2003', carrier_name: 'ACME FREIGHT', mc: '999111', dot: '222333', payment_terms: 'Factoring Company' },
+] };
+
+test('loadCarriers populates window._noaCarriers from /tms-carriers', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve(TMS_CARRIERS) });
+  await window.loadCarriers();
+  assert.equal((window._noaCarriers || []).length, 3);
+  assert.equal(window._noaCarriers[0].carrier_name, 'BIG SKY HAULING');
+});
+
+test('renderNoaCarrierResults filters client-side by name, MC, and DOT', () => {
+  const { window } = makeWidget();
+  window._noaCarriers = TMS_CARRIERS.carriers;
+  // by name
+  window.renderNoaCarrierResults('haul');
+  let opts = window.document.querySelectorAll('#noa-carrier-list .combo-opt');
+  assert.equal(opts.length, 2);
+  assert.match(opts[0].querySelector('.co-name').textContent, /BIG SKY HAULING/);
+  assert.match(opts[0].querySelector('.co-sub').textContent, /MC 1519382/);
+  // by MC
+  window.renderNoaCarrierResults('999111');
+  opts = window.document.querySelectorAll('#noa-carrier-list .combo-opt');
+  assert.equal(opts.length, 1);
+  assert.match(opts[0].querySelector('.co-name').textContent, /ACME FREIGHT/);
+  // by DOT
+  window.renderNoaCarrierResults('3916310');
+  opts = window.document.querySelectorAll('#noa-carrier-list .combo-opt');
+  assert.equal(opts.length, 1);
+  assert.match(opts[0].querySelector('.co-name').textContent, /TRIPLE H/);
+});
+
+test('selectNoaCarrierFromSearch sets vendor id and fills the search box with the name', () => {
+  const { window } = makeWidget();
+  window._noaCarriers = TMS_CARRIERS.carriers;
+  window.statusPayload = { carriers: [] };
+  window.selectNoaCarrierFromSearch('2001');
+  assert.equal(window.selectedVendorId, '2001');
+  assert.match(window.document.getElementById('noa-carrier-search').value, /BIG SKY HAULING/);
+  assert.equal(window.document.getElementById('noa-carrier-list').hidden, true);
 });

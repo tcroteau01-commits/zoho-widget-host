@@ -38,10 +38,18 @@ test('selectCarrier still fetches /noa-status for a carrier not in the loaded wo
   assert.equal(calls.filter((u) => u.includes('/noa-status')).length, 1);
 });
 
-test('searchCarriers caches an identical query (no duplicate /noa-carriers read)', async () => {
+test('carrier combobox loads once and filters client-side (no per-keystroke read)', async () => {
   const { window } = makeWidget();
-  const calls = withCountingFetch(window, { carriers: [{ vendor_id: '1', carrier_name: 'ROADWAY', mc: '1', dot: '2' }] });
-  await window.searchCarriers('roadway');
-  await window.searchCarriers('roadway');
-  assert.equal(calls.filter((u) => u.includes('/noa-carriers')).length, 1);
+  window.brokerEmail = 'b@op.com';
+  const calls = withCountingFetch(window, { carriers: [
+    { vendor_id: '1', carrier_name: 'ROADWAY', mc: '1', dot: '2', payment_terms: 'Factoring Company' },
+  ] });
+  await window.loadCarriers();
+  // Typing filters the already-loaded list; no further reads.
+  window.renderNoaCarrierResults('road');
+  window.renderNoaCarrierResults('roadw');
+  window.renderNoaCarrierResults('roadway');
+  await flush();
+  assert.equal(calls.filter((u) => u.includes('/tms-carriers')).length, 1);
+  assert.equal(calls.filter((u) => u.includes('/noa-carriers')).length, 0);
 });

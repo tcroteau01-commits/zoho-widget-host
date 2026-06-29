@@ -154,6 +154,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .search-results .opt:last-child { border-bottom: none; }
 .search-results .opt:hover { background: #fafaf6; }
 
+/* Carrier combobox — mirrors the Load Details dropdown look/behavior */
+.combo { position: relative; }
+.combo-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
+  background: #fff; border: 1px solid #d6d9e0; border-radius: 8px; margin-top: 4px;
+  max-height: 280px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.combo-opt { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f1f4; }
+.combo-opt:last-child { border-bottom: none; }
+.combo-opt:hover, .combo-opt.active { background: #fff7e9; }
+.combo-opt .co-name { font-weight: 600; color: #222; }
+.combo-opt .co-sub { font-size: 12px; color: #777; margin-top: 1px; }
+.combo-empty { padding: 10px 12px; color: #999; font-size: 13px; }
+
 /* Type-specific note (red callout) */
 .type-note {
   background: #fdf2f2; border: 1px solid #f0c6c6; border-left: 4px solid #c62828;
@@ -361,9 +373,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <div class="field-grid full">
           <div class="field">
             <label class="field-label">Carrier <span class="req">*</span></label>
-            <input id="noa-carrier-search" class="field-input" type="text" autocomplete="off"
-                   placeholder="Search your carriers by name, MC, or DOT&hellip;" />
-            <div id="noa-carrier-results" class="search-results"></div>
+            <div class="combo" id="noa-carrier-combo">
+              <input id="noa-carrier-search" class="field-input" type="text" autocomplete="off"
+                     placeholder="Search by carrier name, MC #, or DOT&hellip;" />
+              <div class="combo-list" id="noa-carrier-list" role="listbox" hidden></div>
+            </div>
           </div>
         </div>
 
@@ -620,6 +634,7 @@ function boot() {
     result.then(function(params) {
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
       loadStatus();
+      loadCarriers();
       loadFactoringCompanies();
     });
   }
@@ -803,48 +818,66 @@ function renderStatusList(p) {
   }
 }
 
-// Type-to-search against /noa-carriers (worklist is small, so we can't use a dropdown of all carriers)
-var _carrierSearchTimer = null;
-// Cache results by exact query so a repeated query (backspace+retype, re-focus) is
-// not re-read from Creator. Exact-match only: /noa-carriers caps at 20 results, so
-// prefix-filtering a cached list could hide carriers — never narrow client-side.
-var _carrierSearchCache = {};
+// Carrier selector mirrors the Load Details dropdown: load the broker's full carrier
+// list once from /tms-carriers (the SAME account-scoped source the TMS/Submit-Load
+// carrier picker uses — Account_Vendor relationships), then filter client-side as the
+// user types. This replaces the old /noa-carriers per-keystroke search, which scoped
+// via the divergent Vendor.Accounts field and surfaced carriers outside the account.
+function loadCarriers() {
+  if (!brokerEmail) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/tms-carriers?email=' + encodeURIComponent(brokerEmail))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (data) { window._noaCarriers = (data && data.carriers) || []; })
+    .catch(function () { window._noaCarriers = window._noaCarriers || []; });
+}
+window.loadCarriers = loadCarriers;
 
-function renderCarrierResults(box, list) {
-  box.innerHTML = list.map(function (c) {
-    return '<div class="opt" data-vid="' + esc(c.vendor_id) + '">' +
-           esc(c.carrier_name) + ' — MC ' + esc(c.mc) + ' — DOT ' + esc(c.dot) + '</div>';
-  }).join('');
-  Array.prototype.forEach.call(box.querySelectorAll('.opt'), function (el) {
-    el.onclick = function () {
-      var c = list.filter(function (x) { return String(x.vendor_id) === el.getAttribute('data-vid'); })[0];
-      if (c) selectCarrier(c);
-    };
-  });
+function _noaCarrierMatch(c, q) {
+  return String(c.carrier_name || '').toLowerCase().indexOf(q) !== -1 ||
+         String(c.mc || '').toLowerCase().indexOf(q) !== -1 ||
+         String(c.dot || '').toLowerCase().indexOf(q) !== -1;
 }
 
-function searchCarriers(q) {
-  q = (q || '').trim();
-  var box = document.getElementById('noa-carrier-results');
-  if (!box) return Promise.resolve();
-  if (q.length < 2) { box.innerHTML = ''; return Promise.resolve(); }
-  if (_carrierSearchCache[q]) { renderCarrierResults(box, _carrierSearchCache[q]); return Promise.resolve(); }
-  return fetch(BROKER_API_BASE + '/noa-carriers?email=' + encodeURIComponent(brokerEmail) +
-               '&q=' + encodeURIComponent(q))
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      var list = (data && data.carriers) || [];
-      _carrierSearchCache[q] = list;
-      renderCarrierResults(box, list);
-    });
+// Render the filtered carrier list (name + MC/DOT sub-line) and reveal it.
+function renderNoaCarrierResults(query) {
+  var list = document.getElementById('noa-carrier-list');
+  if (!list) return;
+  var carriers = window._noaCarriers || [];
+  var q = String(query || '').trim().toLowerCase();
+  var matches = q ? carriers.filter(function (c) { return _noaCarrierMatch(c, q); }) : carriers;
+  if (!carriers.length) {
+    list.innerHTML = '<div class="combo-empty">No carriers available.</div>';
+  } else if (!matches.length) {
+    list.innerHTML = '<div class="combo-empty">No carriers match that name, MC, or DOT.</div>';
+  } else {
+    list.innerHTML = matches.map(function (c) {
+      var sub = [];
+      if (c.mc) sub.push('MC ' + esc(c.mc));
+      if (c.dot) sub.push('DOT ' + esc(c.dot));
+      return '<div class="combo-opt" data-vid="' + esc(c.vendor_id) + '">' +
+        '<div class="co-name">' + esc(c.carrier_name || '') + '</div>' +
+        (sub.length ? '<div class="co-sub">' + sub.join(' · ') + '</div>' : '') +
+      '</div>';
+    }).join('');
+  }
+  list.hidden = false;
 }
+window.renderNoaCarrierResults = renderNoaCarrierResults;
+
+// Commit a carrier choice from the combobox: resolve the carrier and select it.
+function selectNoaCarrierFromSearch(vendorId) {
+  var carriers = window._noaCarriers || [];
+  var c = carriers.filter(function (x) { return String(x.vendor_id) === String(vendorId); })[0];
+  if (c) selectCarrier(c);
+}
+window.selectNoaCarrierFromSearch = selectNoaCarrierFromSearch;
 
 function selectCarrier(c) {
   selectedVendorId = String(c.vendor_id);
   var input = document.getElementById('noa-carrier-search');
-  if (input) input.value = c.carrier_name + ' — MC ' + c.mc + ' — DOT ' + c.dot;
-  var box = document.getElementById('noa-carrier-results');
-  if (box) box.innerHTML = '';
+  if (input) input.value = c.carrier_name || '';
+  var list = document.getElementById('noa-carrier-list');
+  if (list) list.hidden = true;
   // The carrier's on-file status is already in the worklist loaded on boot; reuse it
   // instead of a fresh /noa-status read. Fall back to a fetch only for a carrier that
   // isn't in the loaded worklist (i.e. has no NOA/LOR on file yet).
@@ -952,7 +985,7 @@ function openSubmitFor(vid) {
   if (carrier) {
     if (typeof showOnFile === 'function') showOnFile(carrier);
     var input = document.getElementById('noa-carrier-search');
-    if (input) input.value = (carrier.carrier_name || '') + ' — MC ' + (carrier.mc || '') + ' — DOT ' + (carrier.dot || '');
+    if (input) input.value = carrier.carrier_name || '';
   }
   applyGating(statusPayload);
   if (typeof showForm === 'function') showForm();
@@ -1110,15 +1143,32 @@ function wireForm() {
   Array.prototype.forEach.call(document.querySelectorAll('#view-form .type-card'), function(card){
     card.onclick = function(){ selectType(card.getAttribute('data-type')); };
   });
-  // Wire carrier type-to-search (debounced)
+  // Wire carrier combobox: filter on type, pick on click, close on outside click —
+  // mirrors the Load Details carrier dropdown.
   var csearch = document.getElementById('noa-carrier-search');
+  var clist = document.getElementById('noa-carrier-list');
   if (csearch) {
     csearch.oninput = function () {
-      clearTimeout(_carrierSearchTimer);
-      var v = csearch.value;
-      _carrierSearchTimer = setTimeout(function () { searchCarriers(v); }, 250);
+      // Editing the box invalidates any prior pick until they choose again.
+      selectedVendorId = null;
+      renderNoaCarrierResults(csearch.value);
     };
+    csearch.onfocus = function () { renderNoaCarrierResults(csearch.value); };
   }
+  if (clist) {
+    // mousedown (before the input blur) so the pick registers and then closes the list.
+    clist.addEventListener('mousedown', function (e) {
+      var opt = e.target && e.target.closest ? e.target.closest('.combo-opt') : null;
+      if (opt && opt.getAttribute('data-vid') !== null) {
+        e.preventDefault();
+        selectNoaCarrierFromSearch(opt.getAttribute('data-vid'));
+      }
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var combo = document.getElementById('noa-carrier-combo');
+    if (combo && !combo.contains(e.target) && clist) clist.hidden = true;
+  });
   // Wire LOR have-bank choice
   Array.prototype.forEach.call(document.querySelectorAll('#lor-bank-choice [data-bank]'), function (b) {
     b.onclick = function () { setLorBankChoice(b.getAttribute('data-bank')); };

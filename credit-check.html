@@ -451,7 +451,6 @@ html, body {
 'use strict';
 
 var UPLOAD_ENDPOINT = 'https://operfi-broker-api.onrender.com/upload-doc';
-var FORM_NAME       = 'Customer_Submission';
 var UPLOAD_REPORT   = 'All_Customer_Submissions';
 var UPLOAD_FIELD    = 'Additional_Supporting_Documents';
 var MAX_FILES       = 10;
@@ -616,6 +615,10 @@ function submitForm() {
   clearStatus();
   if (!validate()) {
     showStatus('Please fix the highlighted fields and try again.', 'error');
+    return;
+  }
+  if (!brokerEmail) {
+    showStatus('Still loading your account — wait a moment and try again.', 'error');
     return;
   }
 

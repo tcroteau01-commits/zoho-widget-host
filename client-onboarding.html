@@ -82,6 +82,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .chip .cx { width:16px;height:16px;border:1.5px solid var(--of-gray-500);border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff; }
 .chip.sel .cx { background: var(--of-orange); border-color: var(--of-orange); }
 .chip.radio .cx { border-radius: 50%; }
+.chip.locked { opacity: 0.5; cursor: not-allowed; background: var(--of-beige-soft); }
+.chip.locked:hover { border-color: var(--of-beige-line); }
+.terms-prompt { margin: 0 0 8px; font-size: 13.5px; color: var(--of-charcoal-soft); }
+.terms-prompt.opened { color: var(--of-charcoal); font-weight: 700; }
 
 .divider { height: 1px; background: var(--of-beige-line); margin: 24px 0; }
 .section-h { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--of-charcoal); margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid var(--of-orange); }
@@ -456,7 +460,12 @@ body.show-contacts .contacts-only { display: block; }
       </div>
 
       <div class="divider"></div>
-      <div class="field"><label><span class="chip" id="termsChip" style="display:inline-flex"><span class="cx">✓</span> I agree to the OperFi Terms &amp; Conditions <span class="req">*</span></span></label><div class="ferr" data-err="terms">You must accept the Terms &amp; Conditions.</div></div>
+      <div class="field">
+        <p class="terms-prompt" id="termsPrompt">Please open and review the OperFi Terms &amp; Conditions before accepting.</p>
+        <a class="add-link" id="termsLink" href="https://operfi.com/terms/" target="_blank" rel="noopener" style="margin:0 0 12px">Open OperFi Terms &amp; Conditions ↗</a>
+        <label><span class="chip locked" id="termsChip" style="display:inline-flex"><span class="cx">✓</span> I agree to the OperFi Terms &amp; Conditions <span class="req">*</span></span></label>
+        <div class="ferr" data-err="terms">You must accept the Terms &amp; Conditions.</div>
+      </div>
       <div class="broker-only">
         <div class="field"><span class="chip" id="appFeeChip" style="display:inline-flex"><span class="cx">✓</span> I authorize the $150 due-diligence application fee <span class="req">*</span></span><div class="ferr" data-err="appFee">You must authorize the $150 due-diligence application fee.</div></div>
         <div class="subnote">The $150 application fee applies to broker applications and is collected at submission.</div>
@@ -832,11 +841,25 @@ function getQueryParam(name) { try { return new URLSearchParams(global.location.
 var UI = { authority: 'carrier', authorityType: 'Carrier', usdot: '', mc: '', partnerKey: null, businessName: '',
   vet: false, hotshotCDL: false, hasPrior: false, term: 'annual', recourse: 'recourse', qp: 2, termsAccepted: false, appFeePaid: false };
 
+// Carrier vs broker get different Terms & Conditions documents.
+var TERMS_URL = { carrier: 'https://operfi.com/terms/', broker: 'https://operfi.com/terms-freight-broker/' };
+// The "I agree" box stays locked until the applicant opens the (correct, authority-specific) T&C.
+function resetTermsGate() {
+  var chip = $('termsChip');
+  if (chip) { chip.classList.add('locked'); chip.classList.remove('sel'); }
+  UI.termsAccepted = false; UI.termsOpened = false;
+  var pr = $('termsPrompt');
+  if (pr) { pr.classList.remove('opened'); pr.textContent = 'Please open and review the OperFi Terms & Conditions before accepting.'; }
+}
 function setAuthorityUI(flow) {
   document.body.classList.remove('is-carrier', 'is-broker', 'is-ambiguous');
   if (flow === 'carrier') { document.body.classList.add('is-carrier'); UI.authority = 'carrier'; }
   else if (flow === 'broker') { document.body.classList.add('is-broker'); UI.authority = 'broker'; }
   else { document.body.classList.add('is-ambiguous'); }
+  // Point the link at the right T&C and re-lock the agree box (they must open THIS document).
+  var tl = $('termsLink');
+  if (tl) tl.href = TERMS_URL[flow] || TERMS_URL.carrier;
+  resetTermsGate();
 }
 
 // Collect a full state snapshot from the DOM.
@@ -1122,7 +1145,17 @@ function initDom() {
   qsa('#termChips .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('termChips', 'data-term', c.getAttribute('data-term')); UI.term = c.getAttribute('data-term'); recalc(); }); });
   qsa('#recChips .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('recChips', 'data-rec', c.getAttribute('data-rec')); UI.recourse = c.getAttribute('data-rec'); recalc(); }); });
   qsa('#qpChips .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('qpChips', 'data-qp', c.getAttribute('data-qp')); UI.qp = parseInt(c.getAttribute('data-qp'), 10); recalc(); }); });
-  $('termsChip').addEventListener('click', function () { this.classList.toggle('sel'); UI.termsAccepted = this.classList.contains('sel'); });
+  // Opening the Terms link unlocks the agree box.
+  $('termsLink').addEventListener('click', function () {
+    UI.termsOpened = true;
+    $('termsChip').classList.remove('locked');
+    var pr = $('termsPrompt');
+    if (pr) { pr.classList.add('opened'); pr.textContent = '✓ Terms opened — you can now accept below.'; }
+  });
+  $('termsChip').addEventListener('click', function () {
+    if (this.classList.contains('locked')) { setBanner('Please open the Terms & Conditions link above before accepting.', 'error'); return; }
+    this.classList.toggle('sel'); UI.termsAccepted = this.classList.contains('sel');
+  });
   $('appFeeChip').addEventListener('click', function () { this.classList.toggle('sel'); UI.appFeePaid = this.classList.contains('sel'); });
 
   qsa('[data-go]').forEach(function (b) {
@@ -1164,6 +1197,7 @@ function prefillTestData() {
       f('dob', '01/01/1990'); f('ssn', '111-11-1111'); f('phone', '6235551212');
       f('email', 'test@example.com'); f('address', '123 Main St, Glendale, AZ');
     }
+    var tl = $('termsLink'); if (tl) tl.click();   // unlock the agree box (simulates opening T&C)
     var tc = $('termsChip'); if (tc && !tc.classList.contains('sel')) tc.click();
     var af = $('appFeeChip'); if (af && !af.classList.contains('sel')) af.click();
     var n0 = $('next0'); if (n0) n0.disabled = false;   // enable step-0 Continue (we bypassed USDOT search)

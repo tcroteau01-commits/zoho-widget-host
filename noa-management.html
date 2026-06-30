@@ -992,7 +992,11 @@ function openSubmitFor(vid) {
 }
 
 function buildNoaPayload() {
-  var d = { Submission_Type: selectedType };
+  // Flag every widget submission so the record-created Zoho Flow skips it (its trigger
+  // filters Widget_Submission = false). The backend /noa-submit owns CRM + Slack; a
+  // separate webhook-triggered Flow handles WorkDrive doc routing. Legacy native-form
+  // submissions leave this unchecked, so the full Flow still runs for them.
+  var d = { Submission_Type: selectedType, Widget_Submission: true };
   if (selectedVendorId) d.Carrier_Name_MC_or_DOT = selectedVendorId;
   if (selectedFactoringId) d.Factoring_Company = selectedFactoringId;
   if (selectedType === 'Factoring Company Change' && selectedNewFactoringId) d.New_Factoring_Company = selectedNewFactoringId;

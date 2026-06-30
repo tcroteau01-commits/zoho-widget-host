@@ -652,3 +652,10 @@ test('selectNoaCarrierFromSearch sets vendor id and fills the search box with th
   assert.match(window.document.getElementById('noa-carrier-search').value, /BIG SKY HAULING/);
   assert.equal(window.document.getElementById('noa-carrier-list').hidden, true);
 });
+
+test('buildNoaPayload flags Widget_Submission so the record-created Flow skips it', () => {
+  const { window } = makeWidget();
+  window.selectedType = 'NOA Update';
+  const d = window.buildNoaPayload();
+  assert.equal(d.Widget_Submission, true);
+});

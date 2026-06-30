@@ -76,6 +76,12 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .kv .row.credit-expl { grid-column:1 / -1; background:var(--of-amber-soft); border:1px solid #f5e0a8; border-radius:8px; padding:10px 12px; margin-top:6px; }
 .kv .row.credit-expl .k { color:var(--of-amber-text); }
 .kv .row.credit-expl .v { white-space:pre-wrap; line-height:1.5; }
+.hrv-box { margin:10px 0 4px; }
+.hrv-suggest { background:var(--of-amber-soft); border:1px solid #f5e0a8; color:var(--of-amber-text); border-radius:8px; padding:8px 12px; font-size:12px; margin-bottom:8px; }
+.hrv-badge { background:#fdecec; border:1px solid #f5b8b8; color:var(--of-red); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:700; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.hrv-badge .hrv-clear { color:var(--of-gray-500); font-weight:700; cursor:pointer; background:none; border:none; font-size:12px; }
+.btn.warn { background:#fff; color:var(--of-red); border:1.5px solid #f5b8b8; }
+.btn.warn:hover { background:#fdecec; }
 
 .flag-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
 .flag { display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:9px; border:1px solid var(--of-beige-line); font-size:12.5px; }
@@ -312,6 +318,16 @@ tr:last-child td { border-bottom:none; }
         </div>
         <div class="card">
           <div class="card-title">Documents <span class="count" id="docCount">—</span></div>
+          <!-- High Volume / High Risk — Underwriting Manual §9.2 expanded documentation -->
+          <div class="hrv-box" id="hrvBox">
+            <div class="hrv-suggest" id="hrvSuggest" style="display:none">⚠ This file reports <b id="hrvTrucks">—</b> trucks — qualifies as <b>High Volume (10+)</b>. Consider applying the §9.2 expanded requirements.</div>
+            <div class="hrv-badge" id="hrvBadge" style="display:none"><span>⚠ High Volume / High Risk — §9.2 expanded requirements applied. IRS Form 8821 sent by Underwriting (wet signature).</span><button class="hrv-clear" id="hrvClear" title="Remove flag">Clear</button></div>
+            <button class="btn warn sm" id="hrvToggle">⚠ Flag High Volume / High Risk</button>
+            <div class="add-form" id="hrvForm" style="display:none">
+              <div class="hint" style="font-size:11px;color:var(--of-gray-500);margin:6px 0">Requests the §9.2 expanded documentation set from the client (appears on their upload portal). Standard items already on the checklist (Operating Authority, Driver's Licenses, Insurance, Articles) are not duplicated. IRS Form 8821 is sent by Underwriting (wet signature) — tracked here, not requested from the client.</div>
+              <button class="btn green sm" id="hrvApply">Apply §9.2 requirements &amp; request from client</button>
+            </div>
+          </div>
           <table id="docTable"></table>
           <div class="add-wrap">
             <button class="btn ghost sm" id="addDocReqToggle">+ Request document</button>
@@ -680,6 +696,7 @@ function buildReviewPayload(s, appId) {
     Manual_Contacts: JSON.stringify(s.manualContacts || []),
     Manual_Customers: JSON.stringify(s.manualCustomers || []),
     Manual_Related: JSON.stringify(s.manualRelated || []),
+    High_Risk_Volume_Flag: !!s.highRiskVolume,
     Decision_Date: s.decisionDate || ''
   };
   if (appId != null) p[APPLICATION_LOOKUP] = appId;
@@ -723,7 +740,8 @@ function recordHasContent(kind, rec){
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, recordHasContent: recordHasContent,
-  STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks };
+  STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
+  trucksOf: trucksOf, hrvDocs: function(){ return HRV_DOCS; }, hrvThreshold: function(){ return HRV_TRUCK_THRESHOLD; } };
 global.OFUW = OFUW;
 
 // ── Demo application queue (dashboard list when not embedded in Creator) ───────
@@ -1018,6 +1036,7 @@ function readState() {
     manualContacts: (MODEL && MODEL.manualContacts) || [],
     manualCustomers: (MODEL && MODEL.manualCustomers) || [],
     manualRelated: (MODEL && MODEL.manualRelated) || [],
+    highRiskVolume: !!(MODEL && MODEL.highRiskVolume),
     decisionDate: $('uwDecisionDate').value,
     approvedCreditLimit: $('uwLimit').value,
     recommendedRate: $('uwRate').value,
@@ -1075,6 +1094,10 @@ function renderModel(m) {
   MODEL.manualCustomers = MODEL.manualCustomers || parseJsonList(_rv.Manual_Customers);
   MODEL.manualRelated   = MODEL.manualRelated   || parseJsonList(_rv.Manual_Related);
   MODEL.manualUcc       = MODEL.manualUcc       || parseJsonList(_rv.Manual_UCC);
+  // High Volume / High Risk flag (Underwriting Manual §9.2) — preserved across in-place re-renders.
+  if (MODEL.highRiskVolume === undefined) {
+    MODEL.highRiskVolume = !!_rv.High_Risk_Volume_Flag;
+  }
   $('console').classList.add('show');
   $('modePill').textContent = LIVE ? 'Live' : 'Demo';
   $('uwName').textContent = a.Assigned_Underwriter || 'Underwriter';
@@ -1304,6 +1327,7 @@ function renderModel(m) {
   $('uwBuyoutFactor').value = r.Buyout_Factor || '';
   $('uwBuyoutDate').value = r.Estimated_Buyout_Date || '';
 
+  renderHrv();
   renderGate();
 }
 
@@ -1450,6 +1474,78 @@ function requestDoc(){
     })
     .catch(function (e){ showStatus('Could not request document: ' + (e && e.message ? e.message : e), 'error'); });
 }
+// ── High Volume / High Risk — Underwriting Manual §9.2 expanded documentation ──
+// High Volume = 10+ trucks; High Risk = heavy debtor concentration. Either triggers the expanded
+// set below. Standard-checklist items (Operating Authority, Driver's Licenses, Insurance, Articles)
+// are already required, so we only request the ADDITIONAL §9.2 items here to avoid duplicates.
+// clientUpload:false = Underwriting handles it (IRS 8821, wet signature) — tracked, not requested.
+var HRV_TRUCK_THRESHOLD = 10;
+var HRV_DOCS = [
+  { type: 'Operating Agreement (ownership %)' },
+  { type: 'Bank statements — last 3 months' },
+  { type: 'Balance Sheet & P&L (or prior-year tax return)' },
+  { type: 'Business banking information' },
+  { type: 'SBA agreement & most recent statement' },          // §9.2 conditional — always included
+  { type: 'Debtor contracts (heavy concentration)' },          // §9.2 conditional — always included
+  { type: 'MCA subordination / payoff letters' },              // §9.2 conditional — always included
+  { type: 'IRS Form 8821 (UW sends — wet signature)', clientUpload: false }
+];
+function trucksOf(a){ var n = parseInt((a && (a.Number_of_Trucks != null ? a.Number_of_Trucks : a.trucks)) || 0, 10); return isNaN(n) ? 0 : n; }
+function hasDocType(type){
+  var t = normType(type);
+  return (MODEL.documents || []).some(function(d){ return normType(docType(d)) === t; });
+}
+// Render the auto-suggest hint (10+ trucks) / applied badge / flag button states.
+function renderHrv(){
+  if (!MODEL) return;
+  var trucks = trucksOf(MODEL.application);
+  var flagged = !!MODEL.highRiskVolume;
+  var badge = $('hrvBadge'), suggest = $('hrvSuggest'), toggle = $('hrvToggle'), form = $('hrvForm');
+  if (badge) badge.style.display = flagged ? 'flex' : 'none';
+  if (toggle) toggle.style.display = flagged ? 'none' : 'inline-flex';
+  if (!flagged && form) form.style.display = 'none';
+  // Auto-suggest only when not yet flagged and the file reports 10+ trucks.
+  var showSuggest = !flagged && trucks >= HRV_TRUCK_THRESHOLD;
+  if (suggest) suggest.style.display = showSuggest ? 'block' : 'none';
+  if (showSuggest && $('hrvTrucks')) $('hrvTrucks').textContent = trucks;
+}
+// Apply §9.2: set the flag + request each additional doc the file doesn't already have.
+function applyHighRiskVolume(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  MODEL.highRiskVolume = true;
+  MODEL.documents = MODEL.documents || [];
+  var toRequest = HRV_DOCS.filter(function(doc){ return doc.clientUpload !== false && !hasDocType(doc.type); });
+  if ($('hrvForm')) $('hrvForm').style.display = 'none';
+  if (MODEL._demo || typeof fetch !== 'function'){
+    toRequest.forEach(function(doc){ MODEL.documents.push([doc.type, 'Underwriting', 'Requested', '']); });
+    renderModel(MODEL);
+    showStatus('✓ §9.2 expanded requirements applied — requested ' + toRequest.length + ' document(s) from the client (demo). IRS 8821 handled by Underwriting.', 'success');
+    return;
+  }
+  showStatus('Applying §9.2 requirements…', 'loading');
+  // Fire each client doc-request, then persist the flag on the review.
+  Promise.all(toRequest.map(function(doc){
+    return fetch(API_BASE + DOCREQ_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, document_type: doc.type, source: 'Underwriting' }) })
+      .then(function(r){ return r.json().catch(function(){ return {}; }); });
+  })).then(function(){
+    return saveReview(buildReviewPayload(readState(), MODEL.appId), MODEL.reviewId);
+  }).then(function(res){
+    if (res && res.review_id) MODEL.reviewId = res.review_id;
+    showStatus('✓ §9.2 expanded requirements applied — requested ' + toRequest.length + ' document(s) from the client. IRS 8821 handled by Underwriting.', 'success');
+    load(MODEL.application.USDOT);
+  }).catch(function(e){ showStatus('Could not apply §9.2 requirements: ' + (e && e.message ? e.message : e), 'error'); });
+}
+// Remove the flag (does not delete already-requested documents — clear those individually if needed).
+function clearHighRiskVolume(){
+  if (!MODEL) return;
+  MODEL.highRiskVolume = false;
+  renderHrv();
+  if (MODEL._demo || typeof fetch !== 'function'){ showStatus('High Volume / High Risk flag cleared (demo).', 'success'); return; }
+  showStatus('Saving…', 'loading');
+  saveReview(buildReviewPayload(readState(), MODEL.appId), MODEL.reviewId)
+    .then(function(res){ if (res && res.review_id) MODEL.reviewId = res.review_id; showStatus('High Volume / High Risk flag cleared.', 'success'); })
+    .catch(function(e){ showStatus('Could not clear flag: ' + (e && e.message ? e.message : e), 'error'); });
+}
 function wireAdd(toggleId, formId, saveId, kind, readFn){
   var t=$(toggleId), s=$(saveId);
   if (t) t.addEventListener('click', function(){ var f=$(formId); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
@@ -1467,6 +1563,9 @@ function boot() {
   if ($('aucSave')) $('aucSave').addEventListener('click', addUcc);
   if ($('addDocReqToggle')) $('addDocReqToggle').addEventListener('click', function(){ var f=$('addDocReqForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
   if ($('rdSave')) $('rdSave').addEventListener('click', requestDoc);
+  if ($('hrvToggle')) $('hrvToggle').addEventListener('click', function(){ var f=$('hrvForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
+  if ($('hrvApply')) $('hrvApply').addEventListener('click', applyHighRiskVolume);
+  if ($('hrvClear')) $('hrvClear').addEventListener('click', clearHighRiskVolume);
   $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
   ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);

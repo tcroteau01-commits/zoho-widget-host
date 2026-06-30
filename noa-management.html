@@ -1134,7 +1134,7 @@ function buildNoaPayload() {
       country: 'US'
     };
   }
-  return d;   // NO FV_Client_ID / DOT / Carrier_Name — engine derives those.
+  return d;   // FV_Client_ID is derived server-side; DOT/Carrier_Name are set above for Add New Carrier.
 }
 
 function _postDoc(recordId, file, field) {

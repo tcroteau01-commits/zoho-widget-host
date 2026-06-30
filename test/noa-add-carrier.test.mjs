@@ -86,6 +86,7 @@ test('buildNoaPayload maps the looked-up carrier fields for Add New Carrier', ()
   const d = w.buildNoaPayload();
   assert.equal(d.Submission_Type, 'Add New Carrier');
   assert.equal(d.USDOT_Search, '2727315');
+  assert.equal(d.DOT, '2727315');
   assert.equal(d.Carrier_Name, 'ROADRUNNER LOGISTICS');
   assert.equal(d.MC_Number, '277621');
   assert.equal(d.FMCSA_Email, 'ap@roadrunner.com');

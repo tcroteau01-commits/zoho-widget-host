@@ -659,3 +659,25 @@ test('buildNoaPayload flags Widget_Submission so the record-created Flow skips i
   const d = window.buildNoaPayload();
   assert.equal(d.Widget_Submission, true);
 });
+
+test('showList re-fetches the status so a new submission appears without a manual reload', () => {
+  const { window } = makeWidget();
+  let called = 0;
+  window.loadStatus = function () { called++; return Promise.resolve(); };
+  window.showList();
+  assert.equal(called, 1);
+});
+
+test('submit shows a spinner and disables the button while it runs', () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  window.selectedFactoringId = 'f1';
+  window.selectedDocFile = { name: 'noa.pdf' };
+  const btn = window.document.getElementById('noa-submit-btn');
+  window.submitNoa();                 // async — check the synchronous in-flight state
+  assert.equal(btn.disabled, true);
+  assert.match(btn.innerHTML, /Submitting/);
+  assert.match(btn.innerHTML, /btn-spinner/);
+});

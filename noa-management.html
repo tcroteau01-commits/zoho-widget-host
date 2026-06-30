@@ -206,6 +206,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .onfile-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
 .onfile-row .lbl { color: #888; font-weight: 500; }
 .onfile-row .val { color: #272727; font-weight: 600; }
+.onfile-auth-warn{background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:8px;padding:8px 12px;font-weight:700;margin-bottom:10px;}
 .stale-warn {
   background: #fff4e0; border: 1px solid #f0d9a8; border-left: 4px solid #e8a020;
   color: #8a5a00; border-radius: 8px; padding: 11px 14px; font-size: 12px;
@@ -947,6 +948,16 @@ function showOnFile(carrier) {
   var panel = document.getElementById('noa-onfile');
   var grid = panel ? panel.querySelector('.onfile-grid') : null;
   if (!panel || !grid || !carrier) return;
+  var ac = carrier.authority_class || '';
+  var existingWarn = panel.querySelector('.onfile-auth-warn');
+  if (existingWarn) existingWarn.parentNode.removeChild(existingWarn);   // clear stale on re-render
+  if (ac === 'dual' || ac === 'broker_only') {
+    var msg = ac === 'dual' ? 'Dual authority: double-broker risk' : 'Broker authority, not a carrier';
+    var warn = document.createElement('div');
+    warn.className = 'onfile-auth-warn';
+    warn.textContent = '⚠ ' + msg;
+    panel.insertBefore(warn, panel.firstChild);
+  }
   var rows = [
     ['Factoring Company', carrier.factoring_company],
     ['Your Pay Term', carrier.pay_term],

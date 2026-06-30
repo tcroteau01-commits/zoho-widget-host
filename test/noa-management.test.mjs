@@ -681,3 +681,16 @@ test('submit shows a spinner and disables the button while it runs', () => {
   assert.match(btn.innerHTML, /Submitting/);
   assert.match(btn.innerHTML, /btn-spinner/);
 });
+
+test('on-file panel calls out dual authority', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ authority_class: 'dual', factoring_company: 'F', pay_term: 'Net 30' });
+  const html = window.document.getElementById('noa-onfile').innerHTML;
+  assert.match(html, /double-broker/i);
+});
+
+test('on-file panel shows no authority chip for a carrier', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ authority_class: 'carrier', factoring_company: 'F', pay_term: 'Net 30' });
+  assert.doesNotMatch(window.document.getElementById('noa-onfile').innerHTML, /double-broker|not a carrier/i);
+});

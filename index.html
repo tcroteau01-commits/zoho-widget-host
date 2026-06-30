@@ -1365,6 +1365,11 @@ function _finalizeFunding(recordId) {
 // After a created funding record, wipe the form back to a clean step 1 so the SAME
 // load cannot be submitted twice, and show a persistent confirmation up top.
 function resetFormAfterSubmit(recordId, uploadIssue) {
+  // Capture the broker's own load number (Customer Reference #) BEFORE clearing the
+  // form so the confirmation can reference it instead of OperFi's generated record id.
+  var refEl = document.getElementById('customer-reference');
+  var loadRef = (refEl && refEl.value) ? refEl.value.trim() : '';
+  var loadLabel = loadRef || recordId;
   ['customer-select', 'customer-reference', 'customer-rate',
    'carrier-select', 'carrier-rate', 'carrier-factoring-invoice', 'rate-con',
    'Load_Comments', 'carrier-search'].forEach(function (id) {
@@ -1393,8 +1398,8 @@ function resetFormAfterSubmit(recordId, uploadIssue) {
   if (banner) {
     banner.className = 'post-submit-banner ' + (uploadIssue ? 'warn' : 'ok');
     banner.innerHTML = uploadIssue
-      ? '✓ Load #' + esc(recordId) + ' submitted — but a document failed to upload. Re-upload it from Submission History or contact OperFi.'
-      : '✓ Load #' + esc(recordId) + ' submitted and is in your Submission History. The form is cleared for your next load.';
+      ? '✓ Load ' + esc(loadLabel) + ' submitted — but a document failed to upload. Re-upload it from Submission History or contact OperFi.'
+      : '✓ Load ' + esc(loadLabel) + ' submitted and is in your Submission History. The form is cleared for your next load.';
     banner.style.display = '';
   }
   try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}

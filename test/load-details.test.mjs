@@ -889,7 +889,21 @@ test('a successful submit clears the form, returns to step 1, and blocks resubmi
   assert.ok(d.getElementById('card-customer').classList.contains('active'), 'returned to step 1');
   assert.ok(!d.getElementById('card-review').classList.contains('active'));
   assert.strictEqual(d.getElementById('submit-btn').disabled, true, 'empty form -> cannot resubmit the same load');
-  assert.match(d.getElementById('post-submit-banner').textContent, /rec_900/, 'confirmation shows the record id');
+  assert.match(d.getElementById('post-submit-banner').textContent, /PO-1/, 'confirmation references the broker load number');
+  assert.doesNotMatch(d.getElementById('post-submit-banner').textContent, /rec_900/, 'confirmation does not show the OperFi record id when a reference exists');
+});
+
+test('confirmation falls back to the OperFi record id when no reference was entered', async () => {
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_950' }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });
+  });
+  const w = dom.window, d = w.document;
+  w._collectFields = () => ({ customer_id: 'c9' });  // no customer-reference set on the form
+  w._mergedPdfs = () => Promise.resolve({ customer: null, carrier: null });
+  await w.submitLoad();
+  assert.match(d.getElementById('post-submit-banner').textContent, /rec_950/, 'no reference -> show the record id');
 });
 
 test('submit shows a document-merge progress message before the network call', () => {

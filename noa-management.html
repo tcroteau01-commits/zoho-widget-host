@@ -128,6 +128,23 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   border-radius: 8px; padding: 8px 12px; margin: 8px 0 0; line-height: 1.4;
 }
 
+/* Add New Carrier -- CarrierOK lookup */
+.nc-lookup-row { display: flex; gap: 8px; align-items: stretch; }
+.nc-lookup-row .field-input { flex: 1; }
+.nc-result { margin-top: 12px; border: 1px solid #e2e2e2; border-radius: 8px; padding: 12px 14px; }
+.nc-result.hidden { display: none; }
+.nc-result.success { border-color: #cfe5d3; background: #f3faf4; }
+.nc-result.warning { border-color: #f5d99a; background: #fff8ec; }
+.nc-result.exists  { border-color: #cfdde8; background: #f3f7fa; }
+.nc-result.error   { border-color: #f0c6c6; background: #fdf2f2; }
+.nc-name { font-weight: 700; color: #272727; margin-bottom: 4px; }
+.nc-meta { font-size: 12px; color: #555; display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0; }
+.nc-detail { font-size: 12px; color: #555; margin-top: 4px; }
+.nc-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+.nc-badge.green { background: #e3f4e6; color: #1f7a36; }
+.nc-badge.red   { background: #fbe4e4; color: #a31818; }
+.nc-badge.blue  { background: #e6eef6; color: #1f5b8a; }
+
 /* Form sections */
 .form-section { margin-bottom: 22px; padding-bottom: 22px; border-bottom: 1px solid #f0efe9; }
 .form-section:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
@@ -518,9 +535,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <div class="field-grid full">
             <div class="field">
               <label class="field-label">USDOT Number <span class="req">*</span></label>
-              <input class="field-input" id="new-carrier-usdot" placeholder="Enter USDOT number to look up carrier">
+              <div class="nc-lookup-row">
+                <input class="field-input" id="new-carrier-usdot" inputmode="numeric" placeholder="Enter USDOT number to look up carrier">
+                <button type="button" class="btn primary" id="new-carrier-lookup-btn">Look Up</button>
+              </div>
             </div>
           </div>
+          <div id="new-carrier-result" class="nc-result hidden"></div>
         </div>
       </div>
 
@@ -909,6 +930,7 @@ var selectedNewFactoringId = null;
 var selectedDocFile = null;
 var selectedNewNoaFile = null;
 var selectedLorFile = null;
+var newCarrierLookup = null;   // { carrier, existing_vendor } of the last successful NEW-carrier lookup
 var selectedPayTerm = null;   // carrier's current pay term, captured from the on-file panel
 var selectedCarrierName = '';  // selected carrier's name, for the confirmation screen
 
@@ -957,6 +979,83 @@ function setLorBankChoice(choice) {
   Array.prototype.forEach.call(document.querySelectorAll('#lor-bank-choice [data-bank]'), function (b) {
     b.classList.toggle('active', b.getAttribute('data-bank') === lorBankChoice);
   });
+}
+
+function renderNewCarrierResult(payload, queryLabel) {
+  var el = document.getElementById('new-carrier-result');
+  if (!el) return;
+  el.classList.remove('hidden');
+  var carrier = payload && payload.carrier;
+  var existing = payload && payload.existing_vendor;
+
+  if (existing) {
+    var dnu = existing.DO_NOT_USE === true || existing.DO_NOT_USE === 'true';
+    el.className = 'nc-result exists';
+    el.innerHTML =
+      '<div class="nc-name">' + esc(existing.Vendor_Name || (carrier && carrier.carrier_name) || queryLabel) +
+        ' <span class="nc-badge blue">Already a Vendor</span>' +
+        (dnu ? ' <span class="nc-badge red">Do Not Use</span>' : '') + '</div>' +
+      '<div class="nc-meta">' +
+        (existing.USDOT ? '<span><b>DOT:</b> ' + esc(existing.USDOT) + '</span>' : '') +
+        (existing.MC ? '<span><b>MC:</b> ' + esc(existing.MC) + '</span>' : '') +
+        (existing.Vendor_Status ? '<span><b>Status:</b> ' + esc(existing.Vendor_Status) + '</span>' : '') +
+      '</div>' +
+      '<div class="nc-detail">This carrier is already on your account. To change their factoring or request a release, go back and use NOA Update or Factoring Company Change instead.</div>';
+    return;
+  }
+
+  if (!carrier) {
+    el.className = 'nc-result warning';
+    el.innerHTML =
+      '<div class="nc-name">' + esc(queryLabel) + ' not found in CarrierOK</div>' +
+      '<div class="nc-detail">We could not find this carrier in CarrierOK by that DOT. Double-check the number, or contact vendors@operfi.com to add this carrier.</div>';
+    return;
+  }
+
+  var nameDisplay = carrier.carrier_name || carrier.dba_name || ('DOT ' + carrier.dot_number);
+  var badges = '';
+  badges += carrier.authority_active ? ' <span class="nc-badge green">FMCSA Active</span>'
+                                     : ' <span class="nc-badge red">No Active Authority</span>';
+  if (carrier.out_of_service) badges += ' <span class="nc-badge red">Out of Service</span>';
+  var loc = [carrier.physical_city, carrier.physical_state].filter(Boolean).join(', ');
+  el.className = 'nc-result success';
+  el.innerHTML =
+    '<div class="nc-name">' + esc(nameDisplay) + badges + '</div>' +
+    '<div class="nc-meta">' +
+      '<span><b>DOT:</b> ' + esc(carrier.dot_number) + '</span>' +
+      (carrier.mc_number ? '<span><b>MC:</b> ' + esc(carrier.mc_number) + '</span>' : '') +
+      (loc ? '<span><b>' + esc(loc) + '</b></span>' : '') +
+      (carrier.insurance_on_file ? '<span><b>Insurance:</b> Active</span>'
+                                 : '<span><b>Insurance:</b> Not on File</span>') +
+    '</div>' +
+    '<div class="nc-detail">New carrier. Select an approved factoring company and attach the NOA below, then submit.</div>';
+}
+
+function lookupNewCarrier() {
+  var input = document.getElementById('new-carrier-usdot');
+  var dot = input ? String(input.value || '').trim() : '';
+  newCarrierLookup = null;
+  var el = document.getElementById('new-carrier-result');
+  if (!dot) {
+    if (el) { el.className = 'nc-result warning'; el.classList.remove('hidden');
+      el.innerHTML = '<div class="nc-detail">Enter a USDOT number to look up the carrier.</div>'; }
+    return Promise.resolve();
+  }
+  if (el) { el.className = 'nc-result'; el.classList.remove('hidden');
+    el.innerHTML = '<div class="nc-detail">Looking up carrier in CarrierOK&hellip;</div>'; }
+  return fetch(BROKER_API_BASE + '/carrier-lookup?email=' + encodeURIComponent(brokerEmail) +
+               '&dot=' + encodeURIComponent(dot))
+    .then(function (r) { return r.json(); })
+    .then(function (payload) {
+      payload = payload || {};
+      renderNewCarrierResult(payload, 'DOT ' + dot);
+      // Store ONLY a usable new carrier (found, and not already a vendor).
+      if (payload.carrier && !payload.existing_vendor) newCarrierLookup = payload;
+    })
+    .catch(function () {
+      if (el) { el.className = 'nc-result error'; el.classList.remove('hidden');
+        el.innerHTML = '<div class="nc-detail">Lookup failed. Please try again, or contact OperFi if this keeps happening.</div>'; }
+    });
 }
 
 function selectType(t) {
@@ -1193,6 +1292,19 @@ function wireForm() {
   // Wire submit button
   var submitBtn = document.getElementById('noa-submit-btn');
   if (submitBtn) { submitBtn.onclick = submitNoa; }
+  // Wire Add New Carrier USDOT lookup
+  var ncBtn = document.getElementById('new-carrier-lookup-btn');
+  if (ncBtn) ncBtn.onclick = function () { lookupNewCarrier(); };
+  var ncInput = document.getElementById('new-carrier-usdot');
+  if (ncInput) {
+    ncInput.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); lookupNewCarrier(); } };
+    ncInput.oninput = function () {
+      // a changed DOT invalidates a prior lookup so a stale carrier can't be submitted
+      newCarrierLookup = null;
+      var el = document.getElementById('new-carrier-result');
+      if (el) { el.classList.add('hidden'); el.innerHTML = ''; }
+    };
+  }
 }
 </script>
 

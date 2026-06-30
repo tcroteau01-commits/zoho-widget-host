@@ -160,3 +160,27 @@ test('carrierBadge: stale response does not overwrite a newer selection', async 
   assert.match(el.textContent, /Net 30/);
   assert.doesNotMatch(el.textContent, /Net 99/);
 });
+
+// Authority chip tests — call _carrierHtml directly through a shared window instance
+const wAV = mk(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+
+test('carrierHtml shows a red chip for dual authority', () => {
+  const html = wAV.OperFiAV._carrierHtml({ authority_class: 'dual' }, true);
+  assert.match(html, /double-broker/i);
+  assert.match(html, /opf-av-dnu/);
+});
+
+test('carrierHtml shows a chip for broker_only', () => {
+  const html = wAV.OperFiAV._carrierHtml({ authority_class: 'broker_only' }, true);
+  assert.match(html, /Broker authority, not a carrier/i);
+});
+
+test('carrierHtml shows no authority chip for a carrier', () => {
+  const html = wAV.OperFiAV._carrierHtml({ authority_class: 'carrier' }, true);
+  assert.doesNotMatch(html, /double-broker|not a carrier/i);
+});
+
+test('carrierHtml suppresses the authority chip when showAuthority is false', () => {
+  const html = wAV.OperFiAV._carrierHtml({ authority_class: 'dual' }, false);
+  assert.doesNotMatch(html, /double-broker/i);
+});

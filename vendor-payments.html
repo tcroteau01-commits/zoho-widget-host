@@ -422,7 +422,7 @@
     document.body.insertAdjacentHTML('beforeend', html);
     if (window.OperFiAV) {
       OperFiAV.carrierBadge(document.getElementById('vp-carrier-av'),
-        { usdot: row['USDOT'], email: state.email, apiBase: BROKER_API_BASE });
+        { usdot: row['USDOT'], email: state.email, apiBase: BROKER_API_BASE, authorityChip: false });
     }
     document.getElementById('detail-close').addEventListener('click', closeDetail);
     document.getElementById('detail-overlay').addEventListener('click', closeDetail);

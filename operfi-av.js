@@ -52,9 +52,10 @@
     el._opfVid = key;
     injectStyles();
     var email = resolveEmail(opts), base = resolveBase(opts);
+    var showAuthority = opts.authorityChip !== false;
     function render(row) {
       if (el._opfVid !== key) return;  // selection changed — drop stale response
-      el.innerHTML = carrierHtml(row);
+      el.innerHTML = carrierHtml(row, showAuthority);
     }
     if (_carrierCache[key]) { render(_carrierCache[key]); return; }
     global.fetch(base + '/noa-status?email=' + encodeURIComponent(email) + queryParam)
@@ -67,13 +68,20 @@
   // shows no status badge — just pay terms + factor as plain info. We do NOT show
   // "approved/pending/good-to-book" reassurance, and the old pay-term NOA heuristic
   // is gone — the authoritative signals come from the Vendor record server-side.
-  function carrierHtml(row) {
+  function carrierHtml(row, showAuthority) {
     if (!row) return '';
     var out = '<div class="opf-av-badges">';
     var flags = row.vetting_flags || [];
     for (var i = 0; i < flags.length; i++) {
       var cls = flags[i].level === 'danger' ? 'opf-av-dnu' : 'opf-av-warn';
       out += '<span class="opf-av-badge ' + cls + '">⚠ ' + esc(flags[i].label || '') + '</span>';
+    }
+    if (showAuthority !== false) {
+      if (row.authority_class === 'dual') {
+        out += '<span class="opf-av-badge opf-av-dnu">⚠ Dual authority: double-broker risk</span>';
+      } else if (row.authority_class === 'broker_only') {
+        out += '<span class="opf-av-badge opf-av-dnu">⚠ Broker authority, not a carrier</span>';
+      }
     }
     if (row.pay_term) out += '<span class="opf-av-badge opf-av-terms">Pay terms: ' + esc(row.pay_term) + '</span>';
     if (row.factoring_company) out += '<span class="opf-av-badge opf-av-terms">Factor: ' + esc(row.factoring_company) + '</span>';
@@ -114,5 +122,5 @@
       '</div>';
   }
 
-  global.OperFiAV = { carrierBadge: carrierBadge, customerCredit: customerCredit };
+  global.OperFiAV = { carrierBadge: carrierBadge, customerCredit: customerCredit, _carrierHtml: carrierHtml };
 })(window);

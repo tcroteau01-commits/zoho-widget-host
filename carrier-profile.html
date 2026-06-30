@@ -569,6 +569,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .decision-bar-actions { flex-direction: column; }
   .decision-bar-actions .btn-primary, .decision-bar-actions .btn-secondary { width: 100%; }
 }
+/* Authority class warning chip */
+.cp-auth-warn{background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:8px;padding:8px 12px;font-weight:700;margin-bottom:10px;}
 </style>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
@@ -1406,13 +1408,17 @@ function renderLitigation(p){
 function renderAuthority(p){
   var el=document.getElementById('cp-authority'); if(!el) return;
   var co=p.carrierok||{};
+  var ac=(p&&p.authority_class)||'';
+  var authHtml='';
+  if(ac==='dual') authHtml='<div class="cp-auth-warn">&#x26A0; Dual authority: double-broker risk</div>';
+  else if(ac==='broker_only') authHtml='<div class="cp-auth-warn">&#x26A0; Broker authority, not a carrier</div>';
   var active=_authorityActive(co), forHire=_forHire(co);
   var reinstated=hasFlag(p,'recent_revocation')||!!co.authority_common_review;
   var revs=_revocationCount(co);
   var boc3=co.boc3_on_file;
   var chain=_hasNetworkGraph(co);
   var authAge=_authorityAge(co)||_years(co.dot_age);
-  el.innerHTML=
+  el.innerHTML=authHtml+
     indRow('Active Authority','CarrierOK',active?'Yes':'No',active?'good':'bad')+
     indRow('Authorized For Hire','CarrierOK',forHire?'Yes':'No',forHire?'good':'bad')+
     indRow('Authority Reinstated (last 6 mo)','CarrierOK',reinstated?'⚠ Yes':'No',reinstated?'warn':'good')+

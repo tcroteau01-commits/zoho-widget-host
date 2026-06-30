@@ -310,6 +310,11 @@ html, body {
   border: 1px solid #f0efe9; border-radius: 8px;
   transition: all 0.12s;
 }
+/* Clickable doc cards (open in the shared viewer) */
+button.doc-item { width: 100%; text-align: left; font: inherit; cursor: pointer; }
+button.doc-item:hover { background: #fff4e0; border-color: #f0d8a8; }
+button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px; }
+.doc-view { font-size: 11px; font-weight: 700; color: #b86e00; flex-shrink: 0; }
 .doc-icon {
   width: 32px; height: 32px;
   background: #fff4e0; color: #b86e00;
@@ -428,7 +433,7 @@ html, body {
     <div id="footer-count">—</div>
   </div>
 
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-05-10.4</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-29.1</div>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -437,6 +442,8 @@ html, body {
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=3"></script>
 <script>
 (function() {
 'use strict';
@@ -1047,7 +1054,7 @@ function renderPanel() {
       // Supporting Documents
       '<div class="panel-section">' +
         '<div class="panel-section-title">Supporting Documents</div>' +
-        docsListHtml(collectFiles(r.Additional_Supporting_Documents)) +
+        docsListHtml(collectFiles(r.Additional_Supporting_Documents), r.ID) +
       '</div>' +
 
     '</div>' +
@@ -1076,6 +1083,7 @@ function renderPanel() {
   wireDecisionSection(r);
   fetchFraudCheck(r);
   wireBillingEdit(r);
+  wireDocOpen(panel);   // delegated: open Supporting Documents in the shared viewer
 }
 
 // CA1 — let the client add/edit a customer's billing contact info before funding.
@@ -1289,21 +1297,63 @@ function fieldLink(label, val) {
     '<div class="field-val"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(display) + '</a></div></div>';
 }
 
-function docsListHtml(files) {
+// Each file is a clickable card that opens in the shared OperFi doc viewer. The
+// file index is its position in the record's Additional_Supporting_Documents field;
+// the backend re-reads that field by index, so the client never sends a raw path.
+function docsListHtml(files, recId) {
   if (!files.length) return '<div class="doc-empty">No supporting documents uploaded.</div>';
   var html = '<div class="docs-list">';
-  files.forEach(function(f) {
+  files.forEach(function(f, i) {
     var ext = (f.name.split('.').pop() || '').toUpperCase().slice(0, 4);
-    html += '<div class="doc-item">' +
+    html += '<button type="button" class="doc-item doc-open" ' +
+      'data-recid="' + esc(String(recId || '')) + '" data-idx="' + i + '" ' +
+      'data-filename="' + esc(f.name) + '">' +
       '<div class="doc-icon">' + esc(ext || 'FILE') + '</div>' +
       '<div class="doc-info">' +
         '<div class="doc-name">' + esc(f.name) + '</div>' +
-        '<div class="doc-meta">Uploaded file</div>' +
+        '<div class="doc-meta">Click to view</div>' +
       '</div>' +
-    '</div>';
+      '<span class="doc-view">View ›</span>' +
+    '</button>';
   });
   html += '</div>';
   return html;
+}
+
+// One delegated click listener for any doc card under `root`.
+function wireDocOpen(root) {
+  if (!root || root.__docOpenWired) return;
+  root.__docOpenWired = true;
+  root.addEventListener('click', function(e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.doc-open') : null;
+    if (!btn || !root.contains(btn)) return;
+    openCreditDoc(btn.dataset.recid, btn.dataset.idx, btn.dataset.filename);
+  });
+}
+
+function creditDocUrl(recId, idx) {
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  return BROKER_API_BASE + '/credit-doc?email=' + encodeURIComponent(email) +
+    '&record_id=' + encodeURIComponent(recId) + '&idx=' + encodeURIComponent(idx);
+}
+
+function creditDocMime(name) {
+  var ext = String(name || '').split('.').pop().toLowerCase();
+  if (ext === 'pdf') return 'application/pdf';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'gif') return 'image/gif';
+  if (ext === 'webp') return 'image/webp';
+  return undefined;  // let the viewer sniff from the response content-type
+}
+
+function openCreditDoc(recId, idx, filename) {
+  if (!window.OperFiDocViewer) return;
+  OperFiDocViewer.open({
+    url: creditDocUrl(recId, idx),
+    filename: filename || 'Document',
+    mime: creditDocMime(filename)
+  });
 }
 
 function collectFiles(field) {
@@ -1313,12 +1363,21 @@ function collectFiles(field) {
   arr.forEach(function(f) {
     if (!f) return;
     if (typeof f === 'string') {
-      out.push({ name: f.split('/').pop().split('?')[0] });
+      out.push({ name: fileNameFromPath(f) });
     } else {
-      out.push({ name: f.filename || f.fileName || f.name || (f.filepath || '').split('/').pop() || 'Uploaded file' });
+      out.push({ name: f.filename || f.fileName || f.name || fileNameFromPath(f.filepath || '') || 'Uploaded file' });
     }
   });
   return out;
+}
+
+// Creator file fields arrive as ".../download?filepath=NAME" URLs. The real name is
+// the filepath= value (URL-encoded); fall back to the path basename.
+function fileNameFromPath(s) {
+  s = String(s || '');
+  var m = s.match(/[?&]filepath=([^&]+)/);
+  if (m) { try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; } }
+  return s.split('?')[0].split('/').pop() || 'Uploaded file';
 }
 
 // ── Format helpers ────────────────────────────────────────────────────────
@@ -1357,7 +1416,13 @@ function addressFieldHtml(addr){
   var val=mh ? '<a href="'+esc(mh)+'" target="_blank" rel="noopener">'+esc(addr)+'</a>' : esc(addr);
   return '<div class="field"><div class="field-label">Address</div><div class="field-val">'+val+'</div></div>';
 }
-if (typeof window !== 'undefined') { window.mapsHref = mapsHref; window.addressFieldHtml = addressFieldHtml; }
+if (typeof window !== 'undefined') {
+  window.mapsHref = mapsHref; window.addressFieldHtml = addressFieldHtml;
+  window.docsListHtml = docsListHtml; window.collectFiles = collectFiles;
+  window.fileNameFromPath = fileNameFromPath; window.wireDocOpen = wireDocOpen;
+  window.creditDocUrl = creditDocUrl; window.creditDocMime = creditDocMime;
+  window.openCreditDoc = openCreditDoc;
+}
 function formatPhone(v) {
   if (!v) return '';
   var s = String(v).trim();

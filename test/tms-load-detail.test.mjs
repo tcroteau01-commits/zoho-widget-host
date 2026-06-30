@@ -267,3 +267,21 @@ test('vettingExtraHtml does not warn for a carrier', () => {
   const html = window.vettingExtraHtml({ authority_class: 'carrier' });
   assert.doesNotMatch(html, /double-broker|broker authority/i);
 });
+
+test('_vettingWarnings calls out dual authority', () => {
+  const { window: w } = makeWidget();
+  const warns = w._vettingWarnings({ vetting: { authority_class: 'dual', risk_flag: 'ok' } });
+  assert.ok(warns.some(s => /double-broker/i.test(s)));
+});
+
+test('_vettingWarnings calls out broker_only authority', () => {
+  const { window: w } = makeWidget();
+  const warns = w._vettingWarnings({ vetting: { authority_class: 'broker_only' } });
+  assert.ok(warns.some(s => /broker, not a carrier|not a carrier/i.test(s)));
+});
+
+test('_vettingWarnings adds no authority warning for a carrier', () => {
+  const { window: w } = makeWidget();
+  const warns = w._vettingWarnings({ vetting: { authority_class: 'carrier' } });
+  assert.ok(!warns.some(s => /double-broker|not a carrier/i.test(s)));
+});

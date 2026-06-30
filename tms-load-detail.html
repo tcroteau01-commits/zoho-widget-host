@@ -562,7 +562,9 @@ function collectForm() {
 function _vettingFromCarrier() {
   var c = carriersById[val('f-carrier_id')];
   if (!c) return {};
-  return { risk_flag: c.dnu ? 'DNU' : 'ok', checked_at: new Date().toISOString() };
+  var cached = _vettingCache[val('f-carrier_id')] || {};
+  return { risk_flag: c.dnu ? 'DNU' : 'ok', checked_at: new Date().toISOString(),
+           authority_class: cached.authority_class || '' };
 }
 
 function showError(msg){ var e = document.getElementById('form-error'); if (e) e.textContent = msg || ''; var o = document.getElementById('form-ok'); if (o) o.textContent = ''; }
@@ -1099,6 +1101,8 @@ function _gateFailures(load, docs) {
 function _vettingWarnings(load) {
   var w = [], v = load.vetting || {};
   if (v.authority_active === false) w.push('Carrier authority is not active.');
+  if (v.authority_class === 'dual') w.push('Carrier holds dual broker and carrier authority (double-broker risk).');
+  else if (v.authority_class === 'broker_only') w.push('Carrier is a broker, not a carrier. Verify before submitting.');
   if (v.risk_flag) w.push('Carrier risk flag: ' + v.risk_flag);
   return w;
 }
@@ -1241,6 +1245,7 @@ window.addStop = addStop; window.removeStop = removeStop; window.recomputeMargin
 window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers; window.ensureCustomerOption = ensureCustomerOption;
 window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; window.saveLoad = saveLoad;
 window.vettingExtraHtml = vettingExtraHtml;
+window._vettingWarnings = _vettingWarnings;  // exposed for tests
 window.applyTemplate = applyTemplate; window.applyTemplateStops = applyTemplateStops; window.hydrate = hydrate; window.saveTemplate = saveTemplate; window.updateTemplate = updateTemplate;
 window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window.renderDocLibrary = renderDocLibrary; window.refreshDocs = refreshDocs; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;

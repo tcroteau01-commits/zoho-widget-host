@@ -1120,7 +1120,19 @@ function buildNoaPayload() {
     }
   }
   if (selectedType === 'Add New Carrier') {
-    var dot = val('new-carrier-usdot'); if (dot) d.USDOT_Search = dot;
+    var c = (newCarrierLookup && newCarrierLookup.carrier) || {};
+    if (c.dot_number) { d.USDOT_Search = String(c.dot_number); d.DOT = String(c.dot_number); }
+    if (c.carrier_name) d.Carrier_Name = c.carrier_name;
+    if (c.mc_number) d.MC_Number = String(c.mc_number);
+    if (c.email_address) d.FMCSA_Email = c.email_address;
+    if (c.telephone) d.FMCSA_Phone = String(c.telephone);
+    d.Address = {
+      address_line_1: c.physical_address_street || '',
+      district_city: c.physical_city || '',
+      state_province: c.physical_state || '',
+      postal_Code: c.physical_address_zip || '',
+      country: 'US'
+    };
   }
   return d;   // NO FV_Client_ID / DOT / Carrier_Name — engine derives those.
 }
@@ -1163,6 +1175,16 @@ function runEngine(recordId) {
 function submitNoa() {
   var fb = document.getElementById('noa-submit-feedback'); if (fb) fb.textContent = '';
   if (!selectedType) { if (fb) fb.textContent = 'Pick an update type.'; return; }
+  if (selectedType === 'Add New Carrier') {
+    if (!newCarrierLookup || !newCarrierLookup.carrier) {
+      if (fb) fb.textContent = 'Look up the carrier by USDOT and confirm the match before submitting.';
+      return;
+    }
+    if (!selectedFactoringId) {
+      if (fb) fb.textContent = 'Select an approved factoring company for this carrier.';
+      return;
+    }
+  }
   // Document required for every type (the form's NOA_or_LOR_Upload is no longer
   // form-mandatory, since the file uploads after the API create; enforce it here).
   if (selectedType === 'Factoring Company Change') {

@@ -475,7 +475,7 @@ test('LOR "Yes bank" shows inputs and payload includes bank fields + Bank_Docume
 test('buildNoaPayload includes USDOT_Search for Add New Carrier', () => {
   const { window } = makeWidget();
   window.selectedType = 'Add New Carrier';
-  window.document.getElementById('new-carrier-usdot').value = '3899999';
+  window.newCarrierLookup = { carrier: { dot_number: '3899999', carrier_name: 'TEST CARRIER' }, existing_vendor: null };
   const d = window.buildNoaPayload();
   assert.equal(d.USDOT_Search, '3899999');
 });

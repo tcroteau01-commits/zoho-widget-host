@@ -342,3 +342,32 @@ test('carrier class still renders green FMCSA Active', async () => {
   const html = dom.window.document.getElementById('lookup-result').innerHTML;
   assert.match(html, /FMCSA Active/i);
 });
+
+test('authorityChipHtml returns a chip for dual', () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  assert.match(dom.window.authorityChipHtml('dual'), /double-broker/i);
+});
+
+test('authorityChipHtml returns a chip for broker_only', () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  assert.match(dom.window.authorityChipHtml('broker_only'), /Broker authority, not a carrier/i);
+});
+
+test('authorityChipHtml returns empty for carrier', () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  assert.equal(dom.window.authorityChipHtml('carrier'), '');
+});
+
+test('already-a-vendor result shows the authority chip for a dual carrier', async () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  dom.window.renderLookupResult({
+    carrier: { dot_number: '7', carrier_name: 'X', authority_class: 'dual' },
+    existing_vendor: { ID: '1', Vendor_Name: 'X', Vendor_Status: 'Approved', USDOT: '7' }
+  }, 'DOT 7');
+  const html = dom.window.document.getElementById('lookup-result').innerHTML;
+  assert.match(html, /double-broker/i);
+});

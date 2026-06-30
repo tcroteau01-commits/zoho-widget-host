@@ -769,6 +769,7 @@ function renderLookupResult(payload, queryLabel) {
         '<div class="result-name">' + esc(existing.Vendor_Name || carrier && carrier.carrier_name || '—') +
           ' <span class="status-badge blue">Already a Vendor</span>' +
           (dnu ? ' <span class="status-badge red">Do Not Use</span>' : '') +
+          (carrier ? authorityChipHtml(carrier.authority_class) : '') +
         '</div>' +
         '<div class="result-meta">' +
           (existing.USDOT ? '<span><b>DOT:</b> ' + esc(existing.USDOT) + '</span>' : '') +
@@ -1101,7 +1102,8 @@ function openModal(type) {
       '<div class="meta">DOT ' + esc(c.dot_number) +
         (c.mc_number ? ' · MC ' + esc(c.mc_number) : '') +
         (c.physical_city || c.physical_state ? ' · ' + esc([c.physical_city, c.physical_state].filter(Boolean).join(', ')) : '') +
-      '</div>';
+      '</div>' +
+      authorityChipHtml(c.authority_class);
   } else {
     dotEl.value = '';
     document.getElementById('modal-carrier-summary').style.display = 'none';
@@ -1329,6 +1331,14 @@ function esc(s) {
     return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
   });
 }
+
+// Soft broker/dual authority chip, shown only for broker_only/dual. Em-dash-free.
+function authorityChipHtml(authorityClass) {
+  if (authorityClass === 'dual') return ' <span class="status-badge red">Dual authority: double-broker risk</span>';
+  if (authorityClass === 'broker_only') return ' <span class="status-badge red">Broker authority, not a carrier</span>';
+  return '';
+}
+window.authorityChipHtml = authorityChipHtml;  // exposed for tests
 
 })();
 </script>

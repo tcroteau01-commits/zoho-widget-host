@@ -1028,6 +1028,8 @@ function renderNewCarrierResult(payload, queryLabel) {
   badges += carrier.authority_active ? ' <span class="nc-badge green">FMCSA Active</span>'
                                      : ' <span class="nc-badge red">No Active Authority</span>';
   if (carrier.out_of_service) badges += ' <span class="nc-badge red">Out of Service</span>';
+  var globalDnu = payload && payload.global_dnu === true;
+  if (globalDnu) badges += ' <span class="nc-badge red">Do Not Use</span>';
   var loc = [carrier.physical_city, carrier.physical_state].filter(Boolean).join(', ');
   el.className = 'nc-result success';
   el.innerHTML =
@@ -1039,6 +1041,7 @@ function renderNewCarrierResult(payload, queryLabel) {
       (carrier.insurance_on_file ? '<span><b>Insurance:</b> Active</span>'
                                  : '<span><b>Insurance:</b> Not on File</span>') +
     '</div>' +
+    (globalDnu ? '<div class="nc-detail" style="color:#a31818;font-weight:600;">⚠ OperFi has flagged this carrier as Do Not Use. Contact vendors@operfi.com before onboarding.</div>' : '') +
     '<div class="nc-detail">New carrier. Select an approved factoring company and attach the NOA below, then submit.</div>';
 }
 

@@ -122,3 +122,37 @@ test('submitNoa blocks Add New Carrier without a factoring company', async () =>
   const fb = w.document.getElementById('noa-submit-feedback');
   assert.match(fb.textContent, /factoring company/i);
 });
+
+test('lookupNewCarrier warns on a globally DNU carrier (soft, still stored)', async () => {
+  const w = boot();
+  w.brokerEmail = 'broker@op.com';
+  w.document.getElementById('new-carrier-usdot').value = '2727315';
+  mockFetchOnce(w, { carrier: {
+    dot_number: '2727315', carrier_name: 'BAD ACTOR LLC',
+    authority_active: true, out_of_service: false, insurance_on_file: true,
+    physical_city: 'Phoenix', physical_state: 'AZ',
+  }, existing_vendor: null, global_dnu: true });
+
+  await w.lookupNewCarrier();
+
+  const card = w.document.getElementById('new-carrier-result');
+  assert.match(card.textContent, /Do Not Use/i);
+  assert.match(card.textContent, /flagged this carrier as Do Not Use/i);
+  // soft warn: the new-carrier lookup is still stored (submit not hard-blocked here)
+  assert.ok(w.newCarrierLookup && w.newCarrierLookup.carrier);
+});
+
+test('lookupNewCarrier shows no DNU warning for a clean carrier', async () => {
+  const w = boot();
+  w.brokerEmail = 'broker@op.com';
+  w.document.getElementById('new-carrier-usdot').value = '2727315';
+  mockFetchOnce(w, { carrier: {
+    dot_number: '2727315', carrier_name: 'CLEAN CARRIER LLC',
+    authority_active: true, out_of_service: false, insurance_on_file: true,
+  }, existing_vendor: null, global_dnu: false });
+
+  await w.lookupNewCarrier();
+
+  const card = w.document.getElementById('new-carrier-result');
+  assert.doesNotMatch(card.textContent, /flagged this carrier as Do Not Use/i);
+});

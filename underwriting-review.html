@@ -76,6 +76,12 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .kv .row.credit-expl { grid-column:1 / -1; background:var(--of-amber-soft); border:1px solid #f5e0a8; border-radius:8px; padding:10px 12px; margin-top:6px; }
 .kv .row.credit-expl .k { color:var(--of-amber-text); }
 .kv .row.credit-expl .v { white-space:pre-wrap; line-height:1.5; }
+.ucc-expand { background:none; border:none; color:var(--of-charcoal); cursor:pointer; font:inherit; font-weight:700; padding:0 4px 0 0; }
+.ucc-sub td { background:var(--of-beige-soft, #faf7f0); padding:10px 14px 12px 28px; }
+.ucc-ev { font-size:12.5px; padding:3px 0; display:flex; align-items:center; gap:8px; }
+.ucc-ev-form { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center; }
+.ucc-ev-form select, .ucc-ev-form input { font:inherit; font-size:12.5px; padding:5px 8px; border:1px solid var(--of-beige-line); border-radius:8px; }
+.ucc-ev-form input { flex:1; min-width:90px; }
 .hrv-box { margin:10px 0 4px; }
 .hrv-suggest { background:var(--of-amber-soft); border:1px solid #f5e0a8; color:var(--of-amber-text); border-radius:8px; padding:8px 12px; font-size:12px; margin-bottom:8px; }
 .hrv-badge { background:#fdecec; border:1px solid #f5b8b8; color:var(--of-red); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:700; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -733,7 +739,11 @@ function buildCustomerRecord(f){ f=f||{}; return { Business_Name:f.name||'', Web
 function buildContactRecord(f){ f=f||{}; return { Name:f.name||'', Title:f.title||'', Phone:f.phone||'', Email:f.email||'' }; }
 function buildRelatedRecord(f){ f=f||{}; return { Business_Name:f.name||'', USDOT:num(f.usdot), MC_Number:num(f.mc), Factoring_Company:f.factor||'', Address:f.address||'' }; }
 // UCC filings live on the model's checks (m.ucc) as {securedParty,type,filed,action}.
-function buildUccRecord(f){ f=f||{}; return { securedParty:f.securedParty||'', fileNumber:f.fileNumber||'', type:f.type||'', debtor:f.debtor||'', collateral:f.collateral||'', filed:f.filed||'', notes:f.notes||'' }; }
+function buildUccRecord(f){ f=f||{}; return { securedParty:f.securedParty||'', fileNumber:f.fileNumber||'', type:f.type||'', debtor:f.debtor||'', collateral:f.collateral||'', filed:f.filed||'', notes:f.notes||'', events: Array.isArray(f.events) ? f.events : [] }; }
+// A UCC filing-lifecycle event (continuation / amendment / assignment / termination / partial release)
+// nested under a manual UCC filing (rides inside that record's `events` array → Manual_UCC JSON).
+var UCC_EVENT_KINDS = ['Continuation','Amendment','Assignment','Termination','Partial Release'];
+function buildUccEvent(f){ f=f||{}; return { kind:f.kind||'', fileNumber:f.fileNumber||'', filed:f.filed||'', notes:f.notes||'' }; }
 function recordHasContent(kind, rec){
   if (kind==='owner') return !!(rec.First_Name1 || rec.Last_Name1);
   if (kind==='customer' || kind==='related') return !!rec.Business_Name;
@@ -744,7 +754,7 @@ function recordHasContent(kind, rec){
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
-  buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, recordHasContent: recordHasContent,
+  buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
   STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
   trucksOf: trucksOf, hrvDocs: function(){ return HRV_DOCS; }, hrvThreshold: function(){ return HRV_TRUCK_THRESHOLD; } };
 global.OFUW = OFUW;
@@ -1419,24 +1429,61 @@ function readUccForm(){ return buildUccRecord({ securedParty:$('aucSecured').val
 function parseJsonList(s){ if (!s) return []; if (Array.isArray(s)) return s; try { var a = JSON.parse(s); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
 function renderUcc(m){
   var auto = m.ucc || [], manual = (MODEL && MODEL.manualUcc) || [];
+  MODEL._uccExpanded = MODEL._uccExpanded || {};
   $('kUcc').textContent = auto.length + manual.length;
-  function row(u, isManual, i){
-    var notes = u.notes || u.action || '';   // automated check rows carry `action`; manual use `notes`
-    return '<tr><td>' + escHtml(u.securedParty || '—') + (isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '') + '</td>' +
-      '<td>' + escHtml(u.fileNumber || '—') + '</td>' +
-      '<td>' + escHtml(u.type || '—') + '</td>' +
-      '<td>' + escHtml(u.debtor || '—') + '</td>' +
-      '<td>' + escHtml(u.collateral || '—') + '</td>' +
-      '<td>' + escHtml(u.filed || '—') + '</td>' +
-      '<td>' + escHtml(notes || '—') + '</td>' +
-      '<td style="text-align:right">' + (isManual ? '<button class="btn ghost sm js-ucc-del" data-i="' + i + '" title="Remove">✕</button>' : '') + '</td></tr>';
+  // Auto (checks-cache) rows: no expand/events. Manual rows: a "▸ N events" toggle + a nested sub-row.
+  function autoRow(u){
+    var notes = u.notes || u.action || '';   // automated check rows carry `action`
+    return '<tr><td>' + escHtml(u.securedParty || '—') + '</td><td>' + escHtml(u.fileNumber || '—') + '</td><td>' + escHtml(u.type || '—') + '</td><td>' + escHtml(u.debtor || '—') + '</td><td>' + escHtml(u.collateral || '—') + '</td><td>' + escHtml(u.filed || '—') + '</td><td>' + escHtml(notes || '—') + '</td><td></td></tr>';
+  }
+  function manualRow(u, i){
+    var ev = u.events || [], open = !!MODEL._uccExpanded[i];
+    var caret = '<button class="ucc-expand js-ucc-expand" data-i="' + i + '">' + (open ? '▾' : '▸') + (ev.length ? ' (' + ev.length + ')' : '') + '</button> ';
+    var main = '<tr><td>' + caret + escHtml(u.securedParty || '—') + ' <span style="color:var(--of-gray-500)">· added</span></td>' +
+      '<td>' + escHtml(u.fileNumber || '—') + '</td><td>' + escHtml(u.type || '—') + '</td><td>' + escHtml(u.debtor || '—') + '</td><td>' + escHtml(u.collateral || '—') + '</td><td>' + escHtml(u.filed || '—') + '</td><td>' + escHtml(u.notes || '—') + '</td>' +
+      '<td style="text-align:right"><button class="btn ghost sm js-ucc-del" data-i="' + i + '" title="Remove filing">✕</button></td></tr>';
+    // events list + inline add-event form (shown only when expanded)
+    var evHtml = ev.map(function(e, j){
+      var meta = [e.filed, e.fileNumber ? 'File# ' + e.fileNumber : '', e.notes].filter(Boolean).map(escHtml).join(' · ');
+      return '<div class="ucc-ev">↳ <b>' + escHtml(e.kind || 'Event') + '</b>' + (meta ? ' · ' + meta : '') +
+        ' <button class="btn ghost sm js-uccev-del" data-p="' + i + '" data-j="' + j + '" title="Remove event">✕</button></div>';
+    }).join('') || '<div class="ucc-ev" style="color:var(--of-gray-500)">No follow-on events yet.</div>';
+    var opts = UCC_EVENT_KINDS.map(function(k){ return '<option>' + k + '</option>'; }).join('');
+    var form = '<div class="ucc-ev-form">' +
+      '<select id="ucev_kind_' + i + '">' + opts + '</select>' +
+      '<input type="text" id="ucev_file_' + i + '" placeholder="File #">' +
+      '<input type="text" id="ucev_filed_' + i + '" placeholder="Filed (YYYY-MM-DD)">' +
+      '<input type="text" id="ucev_notes_' + i + '" placeholder="Notes">' +
+      '<button class="btn green sm js-uccev-add" data-p="' + i + '">+ Add event</button></div>';
+    var sub = '<tr class="ucc-sub" data-parent="' + i + '"' + (open ? '' : ' style="display:none"') + '><td colspan="8">' + evHtml + form + '</td></tr>';
+    return main + sub;
   }
   var ut = '<tr><th>Secured Party</th><th>File #</th><th>Type</th><th>Debtor</th><th>Collateral</th><th>Filed</th><th>Notes</th><th></th></tr>';
-  auto.forEach(function(u){ ut += row(u, false); });
-  manual.forEach(function(u, i){ ut += row(u, true, i); });
+  auto.forEach(function(u){ ut += autoRow(u); });
+  manual.forEach(function(u, i){ ut += manualRow(u, i); });
   if (!auto.length && !manual.length) ut += '<tr><td colspan="8" style="color:var(--of-gray-500)">' + (m.checksReady === false ? 'UCC search pending.' : 'No prior UCC filings found.') + '</td></tr>';
   $('uccTable').innerHTML = ut;
   qsa('#uccTable .js-ucc-del').forEach(function(b){ b.addEventListener('click', function(){ removeManualUcc(parseInt(b.getAttribute('data-i'), 10)); }); });
+  qsa('#uccTable .js-ucc-expand').forEach(function(b){ b.addEventListener('click', function(){ var i = parseInt(b.getAttribute('data-i'), 10); MODEL._uccExpanded[i] = !MODEL._uccExpanded[i]; renderUcc(MODEL); }); });
+  qsa('#uccTable .js-uccev-add').forEach(function(b){ b.addEventListener('click', function(){ addUccEvent(parseInt(b.getAttribute('data-p'), 10)); }); });
+  qsa('#uccTable .js-uccev-del').forEach(function(b){ b.addEventListener('click', function(){ removeUccEvent(parseInt(b.getAttribute('data-p'), 10), parseInt(b.getAttribute('data-j'), 10)); }); });
+}
+// Add / remove a lifecycle event nested under manual UCC filing #p. Events ride in Manual_UCC JSON.
+function addUccEvent(p){
+  if (!MODEL || !MODEL.manualUcc || !MODEL.manualUcc[p]) return;
+  var ev = buildUccEvent({ kind:$('ucev_kind_'+p).value, fileNumber:$('ucev_file_'+p).value, filed:$('ucev_filed_'+p).value, notes:$('ucev_notes_'+p).value });
+  if (!ev.kind){ showStatus('Choose an event type to add.', 'error'); return; }
+  MODEL.manualUcc[p].events = (MODEL.manualUcc[p].events || []).concat([ev]);
+  MODEL._uccExpanded = MODEL._uccExpanded || {}; MODEL._uccExpanded[p] = true;
+  renderUcc(MODEL);
+  persistManual('✓ UCC event added.');
+}
+function removeUccEvent(p, j){
+  if (!MODEL || !MODEL.manualUcc || !MODEL.manualUcc[p] || !MODEL.manualUcc[p].events) return;
+  MODEL.manualUcc[p].events.splice(j, 1);
+  MODEL._uccExpanded = MODEL._uccExpanded || {}; MODEL._uccExpanded[p] = true;
+  renderUcc(MODEL);
+  persistManual('UCC event removed.');
 }
 function addUcc(){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }

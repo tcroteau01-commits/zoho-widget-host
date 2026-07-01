@@ -9,17 +9,25 @@
 
   function target(){ try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } }
 
+  // Append the impersonate target to a backend URL. Safe to call on any URL:
+  // no-op when no target is set, when the URL isn't a backend call, or when
+  // impersonate= is already present. Used by the fetch wrapper AND by widgets
+  // that download via window.open() (which bypasses the fetch wrapper).
+  function decorate(url){
+    try {
+      var imp = target();
+      if (imp && typeof url === 'string' && url.indexOf(API_HOST) !== -1 && url.indexOf('impersonate=') === -1) {
+        return url + (url.indexOf('?') === -1 ? '?' : '&') + 'impersonate=' + encodeURIComponent(imp);
+      }
+    } catch (e) {}
+    return url;
+  }
+
   // wrap fetch immediately so it's in place before widget code runs
   var _fetch = window.fetch ? window.fetch.bind(window) : null;
   if (_fetch) {
     window.fetch = function (url, opts) {
-      try {
-        var imp = target();
-        if (imp && typeof url === 'string' && url.indexOf(API_HOST) !== -1) {
-          url += (url.indexOf('?') === -1 ? '?' : '&') + 'impersonate=' + encodeURIComponent(imp);
-        }
-      } catch (e) {}
-      return _fetch(url, opts);
+      return _fetch(decorate(url), opts);
     };
   }
 
@@ -95,7 +103,7 @@
     } catch (e) {}
   }
 
-  window.OPERFI_IMP = { renderAdminBar: renderAdminBar, target: target, esc: esc };
+  window.OPERFI_IMP = { renderAdminBar: renderAdminBar, target: target, esc: esc, decorate: decorate };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();

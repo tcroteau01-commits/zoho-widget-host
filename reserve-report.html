@@ -5,7 +5,7 @@
 <title>Reserve Report</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
-<script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
 <style>
   :root {
     --bg: #f0efe9;
@@ -540,8 +540,14 @@
     }
     return `${API_BASE}/reserve/export/${format}?${scopeParams()}&start=${start}&end=${end}&tab=${tab}`;
   }
-  document.getElementById('exportCsv').addEventListener('click', () => window.open(exportUrl('csv')));
-  document.getElementById('exportPdf').addEventListener('click', () => window.open(exportUrl('pdf')));
+  // window.open() bypasses the operfi-impersonate.js fetch wrapper, so decorate
+  // the export URL to carry the admin's impersonation target (no-op for real
+  // clients / when not impersonating).
+  function decorateImp(url) {
+    return (window.OPERFI_IMP && window.OPERFI_IMP.decorate) ? window.OPERFI_IMP.decorate(url) : url;
+  }
+  document.getElementById('exportCsv').addEventListener('click', () => window.open(decorateImp(exportUrl('csv'))));
+  document.getElementById('exportPdf').addEventListener('click', () => window.open(decorateImp(exportUrl('pdf'))));
 
   // Bootstrap: getInitParams() returns a Promise in production. Resolve it
   // once, cache to module-scope, then kick off the first load. Defensive

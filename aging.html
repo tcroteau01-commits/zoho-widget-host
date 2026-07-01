@@ -462,7 +462,7 @@
   <aside class="detail-panel" id="detailPanel" aria-hidden="true"></aside>
 
   <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
-  <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+  <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
   <script>
     var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
     var brokerEmail = null;
@@ -1100,7 +1100,13 @@
         if (state.dateBasis === 'invoice') url += '&dateBasis=invoice';
         if (customerId != null) url += '&customerId=' + encodeURIComponent(customerId);
       }
-      window.open(url, '_blank');
+      // window.open() bypasses the operfi-impersonate.js fetch wrapper, so
+      // decorate to carry the admin's impersonation target (no-op otherwise).
+      window.open(decorateImp(url), '_blank');
+    }
+
+    function decorateImp(url) {
+      return (window.OPERFI_IMP && window.OPERFI_IMP.decorate) ? window.OPERFI_IMP.decorate(url) : url;
     }
 
     function bindRowClicks() {

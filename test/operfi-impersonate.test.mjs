@@ -49,3 +49,48 @@ test('esc escapes & < > " correctly', () => {
   w.eval(js);
   assert.equal(w.OPERFI_IMP.esc('a&b<c>d"e'), 'a&amp;b&lt;c&gt;d&quot;e');
 });
+
+test('decorate appends impersonate to backend URLs when a target is set', () => {
+  const { w } = boot();
+  w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
+  w.eval(js);
+  w.localStorage.setItem('operfiImpersonate', 'client@x.com');
+  const out = w.OPERFI_IMP.decorate('https://operfi-broker-api.onrender.com/reserve/export/csv?email=a@op.com');
+  assert.ok(out.includes('impersonate=client%40x.com'), out);
+});
+
+test('decorate uses & when the URL already has a query string', () => {
+  const { w } = boot();
+  w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
+  w.eval(js);
+  w.localStorage.setItem('operfiImpersonate', 'client@x.com');
+  const out = w.OPERFI_IMP.decorate('https://operfi-broker-api.onrender.com/reserve/export/csv?email=a@op.com');
+  assert.ok(out.includes('?email=a@op.com&impersonate='), out);
+});
+
+test('decorate leaves the URL untouched when no target is set', () => {
+  const { w } = boot();
+  w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
+  w.eval(js);
+  const url = 'https://operfi-broker-api.onrender.com/reserve/export/csv?email=a@op.com';
+  assert.equal(w.OPERFI_IMP.decorate(url), url);
+});
+
+test('decorate leaves non-backend URLs untouched even when a target is set', () => {
+  const { w } = boot();
+  w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
+  w.eval(js);
+  w.localStorage.setItem('operfiImpersonate', 'client@x.com');
+  const url = 'https://other.com/x?a=1';
+  assert.equal(w.OPERFI_IMP.decorate(url), url);
+});
+
+test('decorate does not double-append when impersonate is already present', () => {
+  const { w } = boot();
+  w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
+  w.eval(js);
+  w.localStorage.setItem('operfiImpersonate', 'client@x.com');
+  const url = 'https://operfi-broker-api.onrender.com/reserve/export/csv?email=a@op.com&impersonate=client%40x.com';
+  const out = w.OPERFI_IMP.decorate(url);
+  assert.equal(out.match(/impersonate=/g).length, 1, out);
+});

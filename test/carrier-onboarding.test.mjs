@@ -371,3 +371,46 @@ test('already-a-vendor result shows the authority chip for a dual carrier', asyn
   const html = dom.window.document.getElementById('lookup-result').innerHTML;
   assert.match(html, /double-broker/i);
 });
+
+test('global DNU renders a Do Not Use warning; Send stays enabled', async () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  dom.window.renderLookupResult({
+    carrier: { dot_number: '444', carrier_name: 'BAD ACTOR LLC',
+               authority_class: 'carrier', authority_active: true },
+    existing_vendor: null,
+    global_dnu: true
+  }, 'DOT 444');
+  const el = dom.window.document.getElementById('lookup-result');
+  assert.match(el.innerHTML, /Do Not Use/i);
+  assert.match(el.innerHTML, /flagged this carrier as Do Not Use/i);
+  // warn, don't block: Send Onboarding Link still present
+  assert.ok(el.querySelector('[data-open-modal]'));
+});
+
+test('no global DNU renders no Do Not Use warning', async () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  dom.window.renderLookupResult({
+    carrier: { dot_number: '555', carrier_name: 'CLEAN CARRIER LLC',
+               authority_class: 'carrier', authority_active: true },
+    existing_vendor: null,
+    global_dnu: false
+  }, 'DOT 555');
+  const el = dom.window.document.getElementById('lookup-result');
+  assert.doesNotMatch(el.innerHTML, /flagged this carrier as Do Not Use/i);
+});
+
+test('global DNU and broker authority both warn', async () => {
+  const dom = makeWidget({ [FULL]: [], [PAY]: [] });
+  boot(dom.window);
+  dom.window.renderLookupResult({
+    carrier: { dot_number: '666', carrier_name: 'BROKER AND BANNED LLC',
+               authority_class: 'broker_only', authority_active: true },
+    existing_vendor: null,
+    global_dnu: true
+  }, 'DOT 666');
+  const html = dom.window.document.getElementById('lookup-result').innerHTML;
+  assert.match(html, /Broker Authority/i);
+  assert.match(html, /flagged this carrier as Do Not Use/i);
+});

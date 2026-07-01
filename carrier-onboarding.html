@@ -834,6 +834,11 @@ function renderLookupResult(payload, queryLabel) {
     badges.push('<span class="status-badge red">No Active Authority</span>');
   }
   if (carrier.out_of_service) badges.push('<span class="status-badge red">Out of Service</span>');
+  var globalDnu = payload.global_dnu === true;
+  if (globalDnu) badges.push('<span class="status-badge red">Do Not Use</span>');
+  var dnuWarn = globalDnu
+    ? 'OperFi has flagged this carrier as Do Not Use. Contact vendors@operfi.com before sending an onboarding link.'
+    : '';
 
   el.className = 'lookup-result success';
   el.innerHTML =
@@ -845,6 +850,7 @@ function renderLookupResult(payload, queryLabel) {
         (carrier.physical_city || carrier.physical_state ? '<span><b>' + esc([carrier.physical_city, carrier.physical_state].filter(Boolean).join(', ')) + '</b></span>' : '') +
         (carrier.insurance_on_file ? '<span><b>Insurance:</b> Active</span>' : '<span><b>Insurance:</b> <span style="color:#a31818;">Not on File</span></span>') +
       '</div>' +
+      (dnuWarn ? '<div class="result-detail error">⚠ ' + esc(dnuWarn) + '</div>' : '') +
       (authWarn ? '<div class="result-detail error">⚠ ' + esc(authWarn) + '</div>' : '') +
       '<div class="result-detail success">New carrier — not yet in your vendors. Send them an onboarding link below to get them set up.</div>' +
     '</div>' +

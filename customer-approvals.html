@@ -454,6 +454,7 @@ var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
 // ── State ─────────────────────────────────────────────────────────────────
 var brokerEmail = '';
 var allRecords = [];
+Object.defineProperty(window, 'allRecords', { get: function(){ return allRecords; }, configurable: true });  // exposed for tests
 var filteredRecords = [];
 var allClients = false;       // true when backend returns see-all (admin/credit, not impersonating)
 var currentStatus = 'all';
@@ -771,7 +772,7 @@ function renderList() {
       e.stopPropagation();
       var action = btn.dataset.action;
       var recId = btn.dataset.recid;
-      if (action === 'boost') navigateParent('#Form:Credit_Boost_Request' + (recId ? '?Company_Name_ID=' + encodeURIComponent(recId) : ''));
+      if (action === 'boost') openCreditBoost(recId);
       else if (action === 'resubmit') navigateParent('#Page:Credit_Check');
       else if (action === 'send-credit-app') openSendCreditApp(btn.dataset.recid, btn.dataset.email || '', btn.dataset.site || '');
     });
@@ -1073,10 +1074,7 @@ function renderPanel() {
   if (!next.classList.contains('disabled')) next.addEventListener('click', function() { navPanel(1); });
   document.getElementById('p-close').addEventListener('click', closePanel);
   var b = document.getElementById('p-boost');
-  if (b) b.addEventListener('click', function() {
-    var recId = r.ID || '';
-    navigateParent('#Form:Credit_Boost_Request' + (recId ? '?Company_Name_ID=' + encodeURIComponent(recId) : ''));
-  });
+  if (b) b.addEventListener('click', function() { openCreditBoost(r.ID || ''); });
   var rs = document.getElementById('p-resubmit');
   if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check'); });
 
@@ -1553,6 +1551,106 @@ function markCreditAppSent(recId, toEmail) {
 }
 
 if (typeof window !== 'undefined') { window.sendCreditApp = sendCreditApp; window.rowHtml = rowHtml; }
+
+// ── Credit Boost ──────────────────────────────────────────────────────────
+function creditBoostReady(s) {
+  s = s || {};
+  var amt = parseFloat(s.amount);
+  return !!(s.band && s.amount && !isNaN(amt) && amt > 0 && s.agreement && s.coi && s.ack);
+}
+
+function submitCreditBoost(recId, fields, files) {
+  var senderEmail = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  var fd = new FormData();
+  fd.append('email', senderEmail);
+  fd.append('submission_id', recId);
+  fd.append('requested_limit', (fields && fields.band) || '');
+  fd.append('credit_limit', (fields && fields.amount) || '');
+  fd.append('fee_ack', 'true');
+  if (files && files.agreement) fd.append('customer_agreement', files.agreement);
+  if (files && files.coi) fd.append('certificate_of_insurance', files.coi);
+  return fetch(BROKER_API_BASE + '/credit-boost', { method: 'POST', body: fd })
+    .then(function (r) { return r.json().catch(function () { return {}; }); });
+}
+
+function markBoostRequested(recId) {
+  for (var i = 0; i < allRecords.length; i++) {
+    if (allRecords[i] && allRecords[i].ID === recId) { allRecords[i].Credit_Decision = 'Credit Boost Requested'; break; }
+  }
+  if (typeof renderKpis === 'function') renderKpis();
+  if (typeof buildChips === 'function') buildChips();
+  if (typeof applyFilters === 'function') applyFilters();
+}
+
+function openCreditBoost(recId) {
+  var existing = document.getElementById('cb-modal'); if (existing) existing.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'cb-modal';
+  overlay.setAttribute('style', 'position:fixed;inset:0;background:rgba(16,24,40,.5);z-index:100000;display:flex;align-items:center;justify-content:center;');
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:10px;max-width:480px;width:92%;padding:22px;font:14px Inter,system-ui,sans-serif;max-height:90vh;overflow:auto;">' +
+      '<div style="font-weight:700;font-size:16px;margin-bottom:6px;">Request Credit Boost</div>' +
+      '<div style="color:#667085;margin-bottom:12px;">Request an initial credit line or an extension for this customer. A third party review is required, so a fee applies.</div>' +
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px;">' +
+        '<thead><tr><th style="text-align:left;border:1px solid #eee;padding:6px 8px;">Desired Credit Limit</th><th style="text-align:left;border:1px solid #eee;padding:6px 8px;">Fee</th></tr></thead>' +
+        '<tbody><tr><td style="border:1px solid #eee;padding:6px 8px;">Up to $50,000</td><td style="border:1px solid #eee;padding:6px 8px;">$25</td></tr>' +
+        '<tr><td style="border:1px solid #eee;padding:6px 8px;">Over $50,000</td><td style="border:1px solid #eee;padding:6px 8px;">$60</td></tr></tbody>' +
+      '</table>' +
+      '<label style="font-size:12px;color:#475467;">Requested limit</label><br>' +
+      '<label style="font-size:13px;display:inline-block;margin:4px 12px 6px 0;"><input type="radio" name="cb-band" value="Up to $50,000"> Up to $50,000</label>' +
+      '<label style="font-size:13px;display:inline-block;margin:4px 0 6px 0;"><input type="radio" name="cb-band" value="Over $50,000"> Over $50,000</label>' +
+      '<div style="margin-top:8px;"><label style="font-size:12px;color:#475467;">Desired credit limit ($)</label>' +
+        '<input id="cb-amount" type="number" min="1" style="width:100%;padding:9px 10px;border:1px solid #d0d5dd;border-radius:7px;margin:4px 0;">' +
+        '<div style="font-size:11px;color:#98a2b3;">Enter only what you can run with this customer monthly in the near term.</div></div>' +
+      '<div style="margin-top:8px;"><label style="font-size:12px;color:#475467;">Customer Agreement</label>' +
+        '<input id="cb-agreement" type="file" style="width:100%;margin:4px 0;"></div>' +
+      '<div style="margin-top:4px;"><label style="font-size:12px;color:#475467;">Certificate of Insurance</label>' +
+        '<input id="cb-coi" type="file" style="width:100%;margin:4px 0;"></div>' +
+      '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#475467;margin-top:10px;">' +
+        '<input id="cb-ack" type="checkbox" style="margin-top:2px;"><span>I understand the credit boost fee is charged even if the requested limit cannot be obtained.</span></label>' +
+      '<div id="cb-msg" style="color:#b42318;font-size:13px;min-height:16px;margin-top:8px;"></div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">' +
+        '<button id="cb-cancel" class="row-action" style="background:#fff;">Cancel</button>' +
+        '<button id="cb-submit" class="row-action" style="background:var(--of-orange,#f97316);color:#fff;" disabled>Submit request</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  var submitBtn = overlay.querySelector('#cb-submit');
+  var msg = overlay.querySelector('#cb-msg');
+  function state() {
+    var band = overlay.querySelector('input[name="cb-band"]:checked');
+    return {
+      band: band ? band.value : '',
+      amount: (overlay.querySelector('#cb-amount').value || '').trim(),
+      agreement: (overlay.querySelector('#cb-agreement').files || [])[0] || null,
+      coi: (overlay.querySelector('#cb-coi').files || [])[0] || null,
+      ack: overlay.querySelector('#cb-ack').checked
+    };
+  }
+  function refresh() { submitBtn.disabled = !creditBoostReady(state()); }
+  overlay.addEventListener('input', refresh);
+  overlay.addEventListener('change', refresh);
+  overlay.querySelector('#cb-cancel').onclick = function () { overlay.remove(); };
+  submitBtn.onclick = function () {
+    var s = state();
+    if (!creditBoostReady(s)) return;
+    submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
+    submitCreditBoost(recId, { band: s.band, amount: s.amount }, { agreement: s.agreement, coi: s.coi })
+      .then(function (r) {
+        if (r && r.ok) { overlay.remove(); markBoostRequested(recId); }
+        else { msg.textContent = (r && (r.detail || r.error)) || 'Request failed.'; submitBtn.disabled = false; submitBtn.textContent = 'Submit request'; }
+      })
+      .catch(function (e) { msg.textContent = (e && e.message) || 'Network error.'; submitBtn.disabled = false; submitBtn.textContent = 'Submit request'; });
+  };
+}
+
+if (typeof window !== 'undefined') {
+  window.creditBoostReady = creditBoostReady;
+  window.submitCreditBoost = submitCreditBoost;
+  window.markBoostRequested = markBoostRequested;
+  window.openCreditBoost = openCreditBoost;
+}
 
 // ── CSV export ────────────────────────────────────────────────────────────
 function exportCsv() {

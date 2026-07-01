@@ -219,10 +219,16 @@ body.show-contacts .contacts-only { display: block; }
         <div class="chip radio" id="vetChip" style="display:inline-flex"><span class="cx">✓</span> I'm a Veteran, Active Duty, or Law Enforcement</div>
         <div class="hint">Qualifies you for a 0.25% rate discount. Proof of service requested after submission.</div>
       </div>
-      <div class="field vet-only" id="branchWrap">
-        <label>Branch of Service / Affiliation <span class="req">*</span></label>
-        <input type="text" id="branchOfService" placeholder="e.g. U.S. Army">
-        <div class="hint">Stored once Tom adds the Branch_of_Service field in Creator (see README).</div>
+      <div class="field vet-only" id="govxWrap">
+        <label>GovX Verification <span class="req">*</span></label>
+        <p style="margin:0 0 8px;font-size:13px;color:var(--of-charcoal-soft)">Verify your military / first-responder status with GovX, then enter the code they give you. Required to continue.</p>
+        <a class="add-link" id="govxLink" href="https://offers.govx.com/verify/offer/0492ee8d-0102-413a-9bfc-2c55ea811be7" target="_blank" rel="noopener" style="margin:0 0 10px">Verify with GovX ↗</a>
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <input type="text" id="govxCode" placeholder="Enter GovX verification code" style="flex:1">
+          <button type="button" class="btn ghost" id="govxVerifyBtn" style="padding:0 18px">Verify</button>
+        </div>
+        <div id="govxStatus" style="font-size:12px;margin-top:6px"></div>
+        <div class="ferr" data-err="govxCode">Enter and verify your GovX code to continue.</div>
       </div>
 
       <div class="nav">
@@ -620,6 +626,7 @@ function buildApplicationPayload(s) {
     Referral_Name: s.referralName || '',
     Partner_Key: s.partnerKey || '',
     Veteran: s.vet ? 'Yes' : 'No',
+    GovX_Code: s.vet ? (s.govxCode || '') : '',
     Submitted_At: s.submittedAt || '',
     USDOT: num(s.usdot),
     MC_Number: num(s.mc),
@@ -691,6 +698,29 @@ function buildChildPayloads(s, appId) {
 function isEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s || ''); }
 function einRequired(formationType) { return ['LLC', 'S-Corp', 'C-Corp', 'Partnership'].indexOf(formationType) !== -1; }
 
+// GovX code verification — check the entered code against the unclaimed list via the backend
+// (the codes live in Zoho Creator, never in the widget). Degrades gracefully if the endpoint is
+// unreachable/not built yet: we flag govxDegraded so a non-empty code still lets the applicant
+// continue (the backend re-checks + claims at submit).
+function setGovxStatus(msg, kind) {
+  var el = $('govxStatus'); if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = kind === 'ok' ? 'var(--of-green-text)' : kind === 'err' ? 'var(--of-red-text)' : 'var(--of-charcoal-soft)';
+}
+function verifyGovx() {
+  var code = (val('govxCode') || '').trim();
+  UI.govxVerified = false; UI.govxDegraded = false;
+  if (!code) { setGovxStatus('', ''); return; }
+  setGovxStatus('Checking…', 'muted');
+  fetch(API_BASE + '/govx-verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) })
+    .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+    .then(function (j) {
+      if (j && j.valid) { UI.govxVerified = true; setGovxStatus('✓ Code verified', 'ok'); }
+      else { UI.govxVerified = false; setGovxStatus('✗ Invalid or already-claimed code', 'err'); }
+    })
+    .catch(function () { UI.govxDegraded = true; setGovxStatus('Couldn’t verify right now — we’ll confirm it after you submit.', 'muted'); });
+}
+
 function validateAll(s) {
   var errors = [];
   var req = function (cond, field, msg) { if (!cond) errors.push({ field: field, msg: msg }); };
@@ -721,7 +751,7 @@ function validateAll(s) {
     var o2 = (s.owners || [])[1] || {};
     req(o2.first && o2.last, 'owner', 'A second owner is required because Owner 1 holds under 100%.');
   }
-  if (s.vet) req(s.branchOfService, 'branchOfService', 'Branch of service is required for veterans.');
+  if (s.vet) req(s.govxVerified || (s.govxDegraded && s.govxCode), 'govxCode', 'Verify your GovX code to continue (use the Verify button).');
   req(/^\d{4}$/.test(s.pin || ''), 'opPin', 'Create a 4-digit portal PIN.');
   req((s.pin || '') === (s.pinConfirm || ''), 'opPinConfirm', 'Your PINs do not match.');
   req(s.termsAccepted, 'terms', 'You must accept the Terms & Conditions.');
@@ -839,7 +869,7 @@ if (typeof document !== 'undefined') {
 function getQueryParam(name) { try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; } }
 
 var UI = { authority: 'carrier', authorityType: 'Carrier', usdot: '', mc: '', partnerKey: null, businessName: '',
-  vet: false, hotshotCDL: false, hasPrior: false, term: 'annual', recourse: 'recourse', qp: 2, termsAccepted: false, appFeePaid: false };
+  vet: false, govxVerified: false, govxDegraded: false, hotshotCDL: false, hasPrior: false, term: 'annual', recourse: 'recourse', qp: 2, termsAccepted: false, appFeePaid: false };
 
 // Carrier vs broker get different Terms & Conditions documents.
 var TERMS_URL = { carrier: 'https://operfi.com/terms/', broker: 'https://operfi.com/terms-freight-broker/' };
@@ -886,7 +916,7 @@ function readState() {
   return {
     authority: UI.authority, authorityType: UI.authorityType, usdot: val('opUsdot') || UI.usdot, mc: val('opMC') || UI.mc,
     referralSource: val('referralSource'), referralName: val('referralName'),
-    partnerKey: UI.partnerKey, vet: UI.vet, branchOfService: val('branchOfService'),
+    partnerKey: UI.partnerKey, vet: UI.vet, govxCode: val('govxCode'), govxVerified: !!UI.govxVerified, govxDegraded: !!UI.govxDegraded,
     businessName: val('opName'), dba: val('opDBA'), formationType: val('opFormation'), ein: val('opEIN'),
     trucks: val('opTrucks'), drivers: val('opDrivers'), equipTypes: equipTypes, hotshotCDL: UI.hotshotCDL, otherFreight: val('opOtherFreight'),
     monthly: val('opMonthly'),
@@ -958,7 +988,8 @@ function validateStep(step) {
   function needEmail(id) { var el = $(id); if (el && !isEmail((el.value || '').trim())) fail(el, id); }
 
   if (step === 0) {
-    if (UI.vet) need('branchOfService');
+    // Veteran box checked → GovX code must be verified (or, if the check couldn't run, non-empty).
+    if (UI.vet && !(UI.govxVerified || (UI.govxDegraded && (val('govxCode') || '').trim()))) fail($('govxCode'), 'govxCode');
   } else if (step === 1) {
     need('opName'); need('opFormation');
     if (einRequired(val('opFormation'))) need('opEIN');
@@ -1092,6 +1123,11 @@ function initDom() {
   $('referralSource').addEventListener('change', function () { $('referralNameWrap').style.display = this.value === 'Referral Partner' ? 'block' : 'none'; });
 
   $('vetChip').addEventListener('click', function () { this.classList.toggle('sel'); UI.vet = this.classList.contains('sel'); document.body.classList.toggle('is-vet', UI.vet); recalc(); });
+  if ($('govxVerifyBtn')) $('govxVerifyBtn').addEventListener('click', verifyGovx);
+  if ($('govxCode')) {
+    $('govxCode').addEventListener('blur', verifyGovx);
+    $('govxCode').addEventListener('input', function () { UI.govxVerified = false; UI.govxDegraded = false; setGovxStatus('', ''); });
+  }
   $('next0').addEventListener('click', function () { if (validateStep(0)) go(1); });
 
   qsa('#equipChips .chip').forEach(function (c) {

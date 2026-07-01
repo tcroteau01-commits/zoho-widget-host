@@ -299,6 +299,7 @@ tr:last-child td { border-bottom:none; }
               <div class="fld"><label>Business Name</label><input type="text" id="arName"></div>
               <div class="fld row2"><div><label>USDOT</label><input type="text" id="arUsdot"></div><div><label>MC #</label><input type="text" id="arMc"></div></div>
               <div class="fld"><label>Factoring Company</label><input type="text" id="arFactor"></div>
+              <div class="fld"><label>Address</label><input type="text" id="arAddress"></div>
               <button class="btn green sm" id="arSave">Save related business</button>
             </div>
           </div>
@@ -310,8 +311,10 @@ tr:last-child td { border-bottom:none; }
             <button class="btn ghost sm" id="addUccToggle">+ Add UCC filing</button>
             <div class="add-form" id="addUccForm" style="display:none">
               <div class="fld"><label>Secured Party</label><input type="text" id="aucSecured"></div>
-              <div class="fld row2"><div><label>Type</label><input type="text" id="aucType" placeholder="e.g. Factor"></div><div><label>Filed</label><input type="text" id="aucFiled" placeholder="YYYY-MM-DD"></div></div>
-              <div class="fld"><label>Action</label><input type="text" id="aucAction" placeholder="e.g. LOR Required"></div>
+              <div class="fld row2"><div><label>File #</label><input type="text" id="aucFileNum"></div><div><label>Type</label><input type="text" id="aucType" placeholder="e.g. Factor"></div></div>
+              <div class="fld"><label>Debtor</label><input type="text" id="aucDebtor"></div>
+              <div class="fld"><label>Collateral</label><input type="text" id="aucCollateral"></div>
+              <div class="fld row2"><div><label>Filed</label><input type="text" id="aucFiled" placeholder="YYYY-MM-DD"></div><div><label>Notes</label><input type="text" id="aucNotes" placeholder="e.g. LOR Required"></div></div>
               <button class="btn green sm" id="aucSave">Save UCC filing</button>
             </div>
           </div>
@@ -629,6 +632,8 @@ function stateFromAddress(addr) {
   return '';
 }
 function stateLinks(code) { code = String(code || '').toUpperCase(); return STATE_LINKS[code] || null; }
+// FMCSA SAFER company snapshot deep-link by USDOT (public safety/authority/insurance record).
+function saferUrl(dot) { dot = String(dot == null ? '' : dot).replace(/[^0-9]/g, ''); return dot ? 'https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=USDOT&original_query_param=NAME&query_string=' + dot : ''; }
 // "{label} — {ST}" block: up to 3 links (omitting any the state lacks); friendly note otherwise.
 function renderStateFilings(code, labelOverride) {
   var label = labelOverride || 'State Filings';
@@ -726,9 +731,9 @@ function computeRecommendation(checks) {
 function buildOwnerRecord(f){ f=f||{}; return { First_Name1:f.first||'', Last_Name1:f.last||'', Title:f.title||'', Ownership_Percent:num(f.pct), Birthdate:f.dob||'', SSN:f.ssn||'', Phone:f.phone||'', Email:f.email||'', Address:f.address||'' }; }
 function buildCustomerRecord(f){ f=f||{}; return { Business_Name:f.name||'', Website:f.website||'', Expected_Monthly_Revenue:num(f.revenue) }; }
 function buildContactRecord(f){ f=f||{}; return { Name:f.name||'', Title:f.title||'', Phone:f.phone||'', Email:f.email||'' }; }
-function buildRelatedRecord(f){ f=f||{}; return { Business_Name:f.name||'', USDOT:num(f.usdot), MC_Number:num(f.mc), Factoring_Company:f.factor||'' }; }
+function buildRelatedRecord(f){ f=f||{}; return { Business_Name:f.name||'', USDOT:num(f.usdot), MC_Number:num(f.mc), Factoring_Company:f.factor||'', Address:f.address||'' }; }
 // UCC filings live on the model's checks (m.ucc) as {securedParty,type,filed,action}.
-function buildUccRecord(f){ f=f||{}; return { securedParty:f.securedParty||'', type:f.type||'', filed:f.filed||'', action:f.action||'' }; }
+function buildUccRecord(f){ f=f||{}; return { securedParty:f.securedParty||'', fileNumber:f.fileNumber||'', type:f.type||'', debtor:f.debtor||'', collateral:f.collateral||'', filed:f.filed||'', notes:f.notes||'' }; }
 function recordHasContent(kind, rec){
   if (kind==='owner') return !!(rec.First_Name1 || rec.Last_Name1);
   if (kind==='customer' || kind==='related') return !!rec.Business_Name;
@@ -1144,6 +1149,9 @@ function renderModel(m) {
     ['Requested Term', (a.Rate_Term_Selection||'').replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],
     ['Credit Issues', creditFlags.length ? creditFlags.join(', ') : 'None']
   ].map(function(r){ return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+(r[1]||'—')+'</div></div>'; }).join('');
+  // FMCSA SAFER snapshot (by USDOT) — quick due-diligence link, shown above the credit explanation.
+  var _safer = saferUrl(a.USDOT);
+  if (_safer) appHtml += '<div class="row"><div class="k">FMCSA</div><div class="v"><a href="' + _safer + '" target="_blank" rel="noopener" style="color:var(--of-blue-text,#1a5fb4);font-weight:600;text-decoration:none">SAFER Snapshot ↗</a></div></div>';
   // When the prospect reported credit issue(s), surface THEIR explanation prominently for the underwriter.
   if (creditFlags.length) {
     appHtml += '<div class="row credit-expl"><div class="k">Credit Explanation</div><div class="v">' +
@@ -1269,16 +1277,18 @@ function renderModel(m) {
 
   // Related businesses (affiliated entities)
   var related = m.related || [], manRel = MODEL.manualRelated || [];
-  var rlt = '<tr><th>Business</th><th>USDOT</th><th>MC</th><th>Factoring Co.</th><th></th></tr>';
+  var rlt = '<tr><th>Business</th><th>USDOT</th><th>MC</th><th>Factoring Co.</th><th>Address</th><th></th></tr>';
   function relRow(rb, isManual, mi) {
     var tag = isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '';
     var del = isManual ? '<button class="btn ghost sm js-rel-del" data-i="' + mi + '" title="Remove">✕</button>' : '';
-    return '<tr><td><b>' + escHtml(rb.Business_Name || '—') + '</b>' + tag + '</td><td>' + escHtml(rb.USDOT || '—') + '</td><td>' + escHtml(rb.MC_Number || '—') + '</td><td>' + escHtml(rb.Factoring_Company || '—') + '</td><td style="text-align:right">' + del + '</td></tr>';
+    var rDot = saferUrl(rb.USDOT);   // affiliated carrier → its own SAFER snapshot
+    var usdotCell = rDot ? '<a href="' + rDot + '" target="_blank" rel="noopener" title="FMCSA SAFER snapshot">' + escHtml(rb.USDOT) + ' ↗</a>' : escHtml(rb.USDOT || '—');
+    return '<tr><td><b>' + escHtml(rb.Business_Name || '—') + '</b>' + tag + '</td><td>' + usdotCell + '</td><td>' + escHtml(rb.MC_Number || '—') + '</td><td>' + escHtml(rb.Factoring_Company || '—') + '</td><td>' + escHtml(rb.Address || '—') + '</td><td style="text-align:right">' + del + '</td></tr>';
   }
   if (related.length || manRel.length) {
     related.forEach(function (rb) { rlt += relRow(rb, false); });
     manRel.forEach(function (rb, mi) { rlt += relRow(rb, true, mi); });
-  } else { rlt += '<tr><td colspan="5" style="color:var(--of-gray-500)">No related businesses on this application.</td></tr>'; }
+  } else { rlt += '<tr><td colspan="6" style="color:var(--of-gray-500)">No related businesses on this application.</td></tr>'; }
   $('relatedList').innerHTML = rlt;
   var relTot = related.length + manRel.length;
   $('relatedCount').textContent = relTot ? relTot + (relTot === 1 ? ' entity' : ' entities') : 'none';
@@ -1402,8 +1412,8 @@ function removeManual(bucket, i, okMsg){
 function readOwnerForm(){ return buildOwnerRecord({ first:$('aoFirst').value, last:$('aoLast').value, title:$('aoTitle').value, pct:$('aoPct').value, dob:$('aoDob').value, ssn:$('aoSsn').value, phone:$('aoPhone').value, email:$('aoEmail').value, address:$('aoAddr').value }); }
 function readContactForm(){ return buildContactRecord({ name:$('acName').value, title:$('acTitle').value, phone:$('acPhone').value, email:$('acEmail').value }); }
 function readClienteleForm(){ return buildCustomerRecord({ name:$('aclName').value, website:$('aclWebsite').value, revenue:$('aclRevenue').value }); }
-function readRelatedForm(){ return buildRelatedRecord({ name:$('arName').value, usdot:$('arUsdot').value, mc:$('arMc').value, factor:$('arFactor').value }); }
-function readUccForm(){ return buildUccRecord({ securedParty:$('aucSecured').value, type:$('aucType').value, filed:$('aucFiled').value, action:$('aucAction').value }); }
+function readRelatedForm(){ return buildRelatedRecord({ name:$('arName').value, usdot:$('arUsdot').value, mc:$('arMc').value, factor:$('arFactor').value, address:$('arAddress').value }); }
+function readUccForm(){ return buildUccRecord({ securedParty:$('aucSecured').value, fileNumber:$('aucFileNum').value, type:$('aucType').value, debtor:$('aucDebtor').value, collateral:$('aucCollateral').value, filed:$('aucFiled').value, notes:$('aucNotes').value }); }
 // Underwriter-added records (Manual_Owners/Contacts/Customers/Related/UCC) are stored as JSON on
 // the Underwriting_Review, NOT as live child records — so a hand-added row rides with the review.
 function parseJsonList(s){ if (!s) return []; if (Array.isArray(s)) return s; try { var a = JSON.parse(s); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
@@ -1411,15 +1421,20 @@ function renderUcc(m){
   var auto = m.ucc || [], manual = (MODEL && MODEL.manualUcc) || [];
   $('kUcc').textContent = auto.length + manual.length;
   function row(u, isManual, i){
-    return '<tr><td>' + escHtml(u.securedParty || '—') + (isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '') +
-      '</td><td>' + escHtml(u.type || '—') + '</td><td>' + escHtml(u.filed || '—') + '</td>' +
-      '<td><span class="pill r">' + escHtml(u.action || '—') + '</span></td>' +
+    var notes = u.notes || u.action || '';   // automated check rows carry `action`; manual use `notes`
+    return '<tr><td>' + escHtml(u.securedParty || '—') + (isManual ? ' <span style="color:var(--of-gray-500)">· added</span>' : '') + '</td>' +
+      '<td>' + escHtml(u.fileNumber || '—') + '</td>' +
+      '<td>' + escHtml(u.type || '—') + '</td>' +
+      '<td>' + escHtml(u.debtor || '—') + '</td>' +
+      '<td>' + escHtml(u.collateral || '—') + '</td>' +
+      '<td>' + escHtml(u.filed || '—') + '</td>' +
+      '<td>' + escHtml(notes || '—') + '</td>' +
       '<td style="text-align:right">' + (isManual ? '<button class="btn ghost sm js-ucc-del" data-i="' + i + '" title="Remove">✕</button>' : '') + '</td></tr>';
   }
-  var ut = '<tr><th>Secured Party</th><th>Type</th><th>Filed</th><th>Action</th><th></th></tr>';
+  var ut = '<tr><th>Secured Party</th><th>File #</th><th>Type</th><th>Debtor</th><th>Collateral</th><th>Filed</th><th>Notes</th><th></th></tr>';
   auto.forEach(function(u){ ut += row(u, false); });
   manual.forEach(function(u, i){ ut += row(u, true, i); });
-  if (!auto.length && !manual.length) ut += '<tr><td colspan="5" style="color:var(--of-gray-500)">' + (m.checksReady === false ? 'UCC search pending.' : 'No prior UCC filings found.') + '</td></tr>';
+  if (!auto.length && !manual.length) ut += '<tr><td colspan="8" style="color:var(--of-gray-500)">' + (m.checksReady === false ? 'UCC search pending.' : 'No prior UCC filings found.') + '</td></tr>';
   $('uccTable').innerHTML = ut;
   qsa('#uccTable .js-ucc-del').forEach(function(b){ b.addEventListener('click', function(){ removeManualUcc(parseInt(b.getAttribute('data-i'), 10)); }); });
 }

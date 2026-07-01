@@ -15,15 +15,55 @@ test('approved rows still render a Request Credit Boost button', () => {
   assert.match(html, /data-action="boost"/);
 });
 
-test('creditBoostReady requires band, positive amount, both files, and ack', () => {
+test('creditBoostReady: Up to $50,000 needs no amount; Over $50,000 needs amount over 50000', () => {
   const w = boot();
-  const full = { band: 'Up to $50,000', amount: '25000', agreement: {}, coi: {}, ack: true };
-  assert.equal(w.creditBoostReady(full), true);
-  assert.equal(w.creditBoostReady({ ...full, band: '' }), false);
-  assert.equal(w.creditBoostReady({ ...full, amount: '0' }), false);
-  assert.equal(w.creditBoostReady({ ...full, agreement: null }), false);
-  assert.equal(w.creditBoostReady({ ...full, coi: null }), false);
-  assert.equal(w.creditBoostReady({ ...full, ack: false }), false);
+  const base = { agreement: {}, coi: {}, ack: true };
+  // Up to $50,000: amount is not required (records the ceiling)
+  assert.equal(w.creditBoostReady({ ...base, band: 'Up to $50,000' }), true);
+  assert.equal(w.creditBoostReady({ ...base, band: 'Up to $50,000', amount: '' }), true);
+  // Over $50,000: requires a specific amount strictly greater than 50000
+  assert.equal(w.creditBoostReady({ ...base, band: 'Over $50,000', amount: '75000' }), true);
+  assert.equal(w.creditBoostReady({ ...base, band: 'Over $50,000', amount: '50000' }), false);
+  assert.equal(w.creditBoostReady({ ...base, band: 'Over $50,000', amount: '' }), false);
+  // band, both files, and ack are always required
+  assert.equal(w.creditBoostReady({ ...base, band: '' }), false);
+  assert.equal(w.creditBoostReady({ band: 'Up to $50,000', coi: {}, ack: true }), false);
+  assert.equal(w.creditBoostReady({ band: 'Up to $50,000', agreement: {}, ack: true }), false);
+  assert.equal(w.creditBoostReady({ band: 'Up to $50,000', agreement: {}, coi: {}, ack: false }), false);
+});
+
+test('openCreditBoost hides the desired-amount box until Over $50,000 is chosen', () => {
+  const w = boot();
+  w.openCreditBoost('s1');
+  const doc = w.document;
+  const wrap = doc.getElementById('cb-amount-wrap');
+  assert.equal(wrap.style.display, 'none');
+  const over = doc.querySelector('input[name="cb-band"][value="Over $50,000"]');
+  over.checked = true;
+  over.dispatchEvent(new w.Event('change', { bubbles: true }));
+  assert.notEqual(wrap.style.display, 'none');
+  const up = doc.querySelector('input[name="cb-band"][value="Up to $50,000"]');
+  up.checked = true; over.checked = false;
+  up.dispatchEvent(new w.Event('change', { bubbles: true }));
+  assert.equal(wrap.style.display, 'none');
+});
+
+test('submitting without the fee-ack checkbox highlights it red and does not POST', () => {
+  const w = boot();
+  w.brokerEmail = 'b@op.com';
+  let called = false;
+  w.fetch = () => { called = true; return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); };
+  w.openCreditBoost('s1');
+  const doc = w.document;
+  doc.getElementById('cb-submit').click();
+  assert.equal(called, false, 'must not POST when required fields are missing');
+  const ackRow = doc.getElementById('cb-ack-row');
+  assert.match(ackRow.style.outline, /d92d20|solid/i, 'fee-ack row should be outlined red');
+  // checking the box clears its highlight
+  const ack = doc.getElementById('cb-ack');
+  ack.checked = true;
+  ack.dispatchEvent(new w.Event('change', { bubbles: true }));
+  assert.equal(ackRow.style.outline, '', 'highlight clears once acknowledged');
 });
 
 test('submitCreditBoost POSTs multipart to /credit-boost with the request fields', async () => {

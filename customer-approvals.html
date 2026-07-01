@@ -1555,8 +1555,14 @@ if (typeof window !== 'undefined') { window.sendCreditApp = sendCreditApp; windo
 // ── Credit Boost ──────────────────────────────────────────────────────────
 function creditBoostReady(s) {
   s = s || {};
-  var amt = parseFloat(s.amount);
-  return !!(s.band && s.amount && !isNaN(amt) && amt > 0 && s.agreement && s.coi && s.ack);
+  if (!s.band || !s.agreement || !s.coi || !s.ack) return false;
+  // "Up to $50,000" needs no amount (the request records the $50,000 ceiling).
+  // "Over $50,000" requires a specific amount strictly greater than $50,000.
+  if (s.band === 'Over $50,000') {
+    var amt = parseFloat(s.amount);
+    return !isNaN(amt) && amt > 50000;
+  }
+  return true;
 }
 
 function submitCreditBoost(recId, fields, files) {
@@ -1596,45 +1602,82 @@ function openCreditBoost(recId) {
         '<tbody><tr><td style="border:1px solid #eee;padding:6px 8px;">Up to $50,000</td><td style="border:1px solid #eee;padding:6px 8px;">$25</td></tr>' +
         '<tr><td style="border:1px solid #eee;padding:6px 8px;">Over $50,000</td><td style="border:1px solid #eee;padding:6px 8px;">$60</td></tr></tbody>' +
       '</table>' +
-      '<label style="font-size:12px;color:#475467;">Requested limit</label><br>' +
-      '<label style="font-size:13px;display:inline-block;margin:4px 12px 6px 0;"><input type="radio" name="cb-band" value="Up to $50,000"> Up to $50,000</label>' +
-      '<label style="font-size:13px;display:inline-block;margin:4px 0 6px 0;"><input type="radio" name="cb-band" value="Over $50,000"> Over $50,000</label>' +
-      '<div style="margin-top:8px;"><label style="font-size:12px;color:#475467;">Desired credit limit ($)</label>' +
-        '<input id="cb-amount" type="number" min="1" style="width:100%;padding:9px 10px;border:1px solid #d0d5dd;border-radius:7px;margin:4px 0;">' +
+      '<label style="font-size:12px;color:#475467;">Requested limit</label>' +
+      '<div id="cb-band-wrap" style="padding:4px 6px;border-radius:7px;">' +
+        '<label style="font-size:13px;display:inline-block;margin:4px 12px 6px 0;"><input type="radio" name="cb-band" value="Up to $50,000"> Up to $50,000</label>' +
+        '<label style="font-size:13px;display:inline-block;margin:4px 0 6px 0;"><input type="radio" name="cb-band" value="Over $50,000"> Over $50,000</label>' +
+      '</div>' +
+      '<div id="cb-amount-wrap" style="margin-top:8px;display:none;"><label style="font-size:12px;color:#475467;">Desired credit limit ($) — must be over $50,000</label>' +
+        '<input id="cb-amount" type="number" min="50001" placeholder="e.g. 75000" style="width:100%;padding:9px 10px;border:1px solid #d0d5dd;border-radius:7px;margin:4px 0;">' +
         '<div style="font-size:11px;color:#98a2b3;">Enter only what you can run with this customer monthly in the near term.</div></div>' +
       '<div style="margin-top:8px;"><label style="font-size:12px;color:#475467;">Customer Agreement</label>' +
-        '<input id="cb-agreement" type="file" style="width:100%;margin:4px 0;"></div>' +
+        '<input id="cb-agreement" type="file" style="width:100%;margin:4px 0;border-radius:7px;"></div>' +
       '<div style="margin-top:4px;"><label style="font-size:12px;color:#475467;">Certificate of Insurance</label>' +
-        '<input id="cb-coi" type="file" style="width:100%;margin:4px 0;"></div>' +
-      '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#475467;margin-top:10px;">' +
+        '<input id="cb-coi" type="file" style="width:100%;margin:4px 0;border-radius:7px;"></div>' +
+      '<label id="cb-ack-row" style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#475467;margin-top:10px;padding:6px;border-radius:7px;">' +
         '<input id="cb-ack" type="checkbox" style="margin-top:2px;"><span>I understand the credit boost fee is charged even if the requested limit cannot be obtained.</span></label>' +
       '<div id="cb-msg" style="color:#b42318;font-size:13px;min-height:16px;margin-top:8px;"></div>' +
       '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">' +
         '<button id="cb-cancel" class="row-action" style="background:#fff;">Cancel</button>' +
-        '<button id="cb-submit" class="row-action" style="background:var(--of-orange,#f97316);color:#fff;" disabled>Submit request</button>' +
+        '<button id="cb-submit" class="row-action" style="background:var(--of-orange,#f97316);color:#fff;">Submit request</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(overlay);
 
   var submitBtn = overlay.querySelector('#cb-submit');
   var msg = overlay.querySelector('#cb-msg');
+  var amountWrap = overlay.querySelector('#cb-amount-wrap');
+  var amountInput = overlay.querySelector('#cb-amount');
+  var bandWrap = overlay.querySelector('#cb-band-wrap');
+  var agreementInput = overlay.querySelector('#cb-agreement');
+  var coiInput = overlay.querySelector('#cb-coi');
+  var ackRow = overlay.querySelector('#cb-ack-row');
+
+  function setErr(el, on) {
+    if (!el) return;
+    el.style.outline = on ? '2px solid #d92d20' : '';
+    el.style.outlineOffset = on ? '2px' : '';
+  }
   function state() {
-    var band = overlay.querySelector('input[name="cb-band"]:checked');
+    var bandEl = overlay.querySelector('input[name="cb-band"]:checked');
+    var band = bandEl ? bandEl.value : '';
+    var raw = (amountInput.value || '').trim();
+    // "Up to $50,000" records the $50,000 ceiling; "Over $50,000" uses the entered amount.
+    var amount = band === 'Over $50,000' ? raw : (band === 'Up to $50,000' ? '50000' : '');
     return {
-      band: band ? band.value : '',
-      amount: (overlay.querySelector('#cb-amount').value || '').trim(),
-      agreement: (overlay.querySelector('#cb-agreement').files || [])[0] || null,
-      coi: (overlay.querySelector('#cb-coi').files || [])[0] || null,
+      band: band, amount: amount,
+      agreement: (agreementInput.files || [])[0] || null,
+      coi: (coiInput.files || [])[0] || null,
       ack: overlay.querySelector('#cb-ack').checked
     };
   }
-  function refresh() { submitBtn.disabled = !creditBoostReady(state()); }
+  function refresh() {
+    var s = state();
+    amountWrap.style.display = (s.band === 'Over $50,000') ? '' : 'none';
+    // Clear the red highlight on each field once it's satisfied.
+    if (s.band) setErr(bandWrap, false);
+    if (s.agreement) setErr(agreementInput, false);
+    if (s.coi) setErr(coiInput, false);
+    if (s.ack) setErr(ackRow, false);
+    if (s.band !== 'Over $50,000' || parseFloat(s.amount) > 50000) setErr(amountInput, false);
+    if (creditBoostReady(s)) msg.textContent = '';
+  }
   overlay.addEventListener('input', refresh);
   overlay.addEventListener('change', refresh);
   overlay.querySelector('#cb-cancel').onclick = function () { overlay.remove(); };
   submitBtn.onclick = function () {
     var s = state();
-    if (!creditBoostReady(s)) return;
+    if (!creditBoostReady(s)) {
+      // Highlight exactly what's missing instead of silently doing nothing.
+      var missing = [];
+      if (!s.band) { setErr(bandWrap, true); missing.push('requested limit'); }
+      if (s.band === 'Over $50,000' && !(parseFloat(s.amount) > 50000)) { setErr(amountInput, true); missing.push('a desired limit over $50,000'); }
+      if (!s.agreement) { setErr(agreementInput, true); missing.push('Customer Agreement'); }
+      if (!s.coi) { setErr(coiInput, true); missing.push('Certificate of Insurance'); }
+      if (!s.ack) { setErr(ackRow, true); missing.push('the fee acknowledgment'); }
+      msg.textContent = 'Please complete: ' + missing.join(', ') + '.';
+      return;
+    }
     submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
     submitCreditBoost(recId, { band: s.band, amount: s.amount }, { agreement: s.agreement, coi: s.coi })
       .then(function (r) {

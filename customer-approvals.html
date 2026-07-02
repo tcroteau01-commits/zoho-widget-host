@@ -1773,9 +1773,6 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
-// Ensure UI listeners are bound even if initialization fails (e.g., in test environment)
-try { if (document.getElementById('sort-select')) bindGlobalUI(); } catch (e) {}
-
 })();
 </script>
 </body>

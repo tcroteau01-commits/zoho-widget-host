@@ -66,6 +66,11 @@ test('sortRecords with no sortKey falls back to the currentSort module state (de
 
 test('changing the sort-select updates currentSort and re-renders without changing the active chip/search filter', () => {
   const w = boot();
+  // Fire the real 'load' event so the widget's normal boot path runs bindGlobalUI()
+  // (wiring the #sort-select change listener under test), mirroring the pattern used
+  // throughout test/view-vendors.test.mjs. ZOHO is undefined in this environment, so
+  // bootApp() just calls showError() and returns -- it does not throw.
+  w.dispatchEvent(new w.Event('load'));
   // Boot the widget's data path directly via the exposed hook (no ZOHO SDK needed
   // for this file's other tests) by calling onRecordsLoaded, which the file exposes
   // for tests the same way it exposes rowHtml/sendCreditApp elsewhere.

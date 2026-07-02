@@ -231,6 +231,14 @@ body.show-contacts .contacts-only { display: block; }
         <input type="text" id="referralName" placeholder="Individual or company name">
       </div>
 
+      <div class="field" id="smsPhoneWrap">
+        <label>Mobile Number for Text Updates <span class="req">*</span></label>
+        <input type="tel" id="opSmsPhone" data-req placeholder="(555) 123-4567" autocomplete="tel">
+        <div id="smsCheckStatus" style="font-size:12px;margin-top:6px"></div>
+        <div class="ferr" data-err="opSmsPhone">Enter a valid mobile number (10 digits).</div>
+        <p style="margin:8px 0 0;font-size:12.5px;color:var(--of-charcoal-soft);line-height:1.45">We text your secure document link and status updates here, so it must be a mobile number that can receive texts. By providing it you agree to receive SMS from OperFi about your application. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.</p>
+      </div>
+
       <div class="field">
         <div class="chip radio" id="vetChip" style="display:inline-flex"><span class="cx">✓</span> I'm a Veteran, Active Duty, or Law Enforcement</div>
         <div class="hint">Qualifies you for a 0.25% rate discount. Proof of service requested after submission.</div>
@@ -310,10 +318,9 @@ body.show-contacts .contacts-only { display: block; }
         <div class="field"><label>Business Admin Email <span class="req">*</span></label><input type="email" id="opEmail" data-req><div class="ferr" data-err="opEmail">A valid admin email is required.</div></div>
       </div>
       <div class="row2">
-        <div class="field"><label>SMS / Admin Phone <span class="req">*</span></label><input type="tel" id="opSmsPhone" data-req><div class="ferr" data-err="opSmsPhone">Enter a valid mobile number (10 digits).</div></div>
+        <div class="field"><label>SMS / Admin Phone</label><input type="tel" id="opSmsPhoneMirror" readonly tabindex="-1" style="background:var(--of-beige);color:var(--of-charcoal-soft);cursor:not-allowed"><div class="hint">Entered &amp; verified on the first step. Go back there to change it.</div></div>
         <div class="field"><label>Alternate Phone</label><input type="tel" id="opAltPhone"><div class="ferr" data-err="opAltPhone">Enter a valid phone (10 digits).</div></div>
       </div>
-      <p style="margin:-4px 0 4px;font-size:12.5px;color:var(--of-charcoal-soft);line-height:1.45">By providing the SMS / Admin Phone number you agree to receive text messages from OperFi about your application (link and status updates). Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.</p>
       <div class="broker-only">
         <div class="row2">
           <div class="field"><label>Operations Email <span class="req">*</span></label><input type="email" id="opOpsEmail"><div class="ferr" data-err="opOpsEmail">Operations email is required for brokers.</div></div>
@@ -953,6 +960,38 @@ function setGovxStatus(msg, kind) {
   el.textContent = msg || '';
   el.style.color = kind === 'ok' ? 'var(--of-green-text)' : kind === 'err' ? 'var(--of-red-text)' : 'var(--of-charcoal-soft)';
 }
+
+// ── SMS mobile-number VOIP/validity check (Get Started) ──────────────────────────
+function setSmsStatus(msg, kind) {
+  var el = $('smsCheckStatus'); if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = kind === 'ok' ? 'var(--of-green-text)' : kind === 'err' ? 'var(--of-red-text)' : 'var(--of-charcoal-soft)';
+}
+function runSmsCheck() {
+  var raw = (val('opSmsPhone') || '').trim();
+  var digits = raw.replace(/\D/g, ''); if (digits.length === 11 && digits.charAt(0) === '1') digits = digits.slice(1);
+  if (!isPhone(raw)) { UI.smsCheck = null; UI.smsChecking = false; setSmsStatus('', ''); return; }
+  if (UI.smsChecking) return;
+  if (UI.smsCheck && UI.smsCheck.phone === digits) return;   // already have a verdict for this number
+  UI.smsChecking = true; setSmsStatus('Checking this number…', 'muted');
+  fetch(API_BASE + '/phone-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: raw }) })
+    .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+    .then(function (j) {
+      UI.smsChecking = false;
+      UI.smsCheck = { phone: digits, ok: !!(j && j.ok), status: (j && j.status) || '', message: (j && j.message) || '' };
+      var el = $('opSmsPhone');
+      if (UI.smsCheck.ok) {
+        setSmsStatus(UI.smsCheck.status === 'unknown' ? '' : '✓ Mobile number verified — texts will reach you here.', 'ok');
+        if (el) el.classList.remove('invalid');
+      } else {
+        setSmsStatus('✗ ' + (UI.smsCheck.message || 'This number can’t receive our texts — please use a mobile number.'), 'err');
+        if (el) el.classList.add('invalid');
+      }
+    })
+    .catch(function () {   // fail-open: never hard-block on a network / API blip
+      UI.smsChecking = false; UI.smsCheck = { phone: digits, ok: true, status: 'unknown', message: '' }; setSmsStatus('', '');
+    });
+}
 function verifyGovx() {
   var code = (val('govxCode') || '').trim();
   UI.govxVerified = false; UI.govxDegraded = false;
@@ -977,6 +1016,7 @@ function validateAll(s) {
   if (s.altPhone) req(isPhone(s.altPhone), 'opAltPhone', 'Enter a valid alternate phone (10 digits).');
   req(isEmail(s.adminEmail), 'opEmail', 'A valid admin email is required.');
   req(isPhone(s.smsPhone), 'opSmsPhone', 'Enter a valid mobile number (10 digits).');
+  req(!s.smsPhone || !UI.smsCheck || UI.smsCheck.ok, 'opSmsPhone', 'Your text-update number must be a mobile line that can receive texts (checked on the first step).');
   req(s.physicalAddress, 'opPhysical', 'Physical address is required.');
   req(num(s.monthly) !== '', 'opMonthly', 'Estimated monthly invoices is required.');
   if (s.authority === 'carrier') {
@@ -1227,6 +1267,7 @@ function recalc() {
 var curStep = 0;
 function go(step) {
   curStep = step;
+  var _m = $('opSmsPhoneMirror'); if (_m) _m.value = val('opSmsPhone') || '';   // keep step-2 read-only mirror current
   qsa('.step').forEach(function (s) { s.style.display = 'none'; });
   document.querySelector('.step[data-step="' + step + '"]').style.display = 'block';
   qsa('.rail-step').forEach(function (r) {
@@ -1261,12 +1302,25 @@ function validateStep(step) {
   function needPhoneOpt(id) { var el = $(id); var v = el ? (el.value || '').trim() : ''; if (el && v && !isPhone(v)) fail(el, id); }  // optional: only if filled
 
   if (step === 0) {
+    // SMS mobile number: valid format AND passed the VOIP/validity check for THIS number.
+    var smsEl = $('opSmsPhone'); var sv = smsEl ? (smsEl.value || '').trim() : '';
+    var sd = sv.replace(/\D/g, ''); if (sd.length === 11 && sd.charAt(0) === '1') sd = sd.slice(1);
+    if (!isPhone(sv)) {
+      needPhone('opSmsPhone');
+    } else if (UI.smsChecking || !UI.smsCheck || UI.smsCheck.phone !== sd) {
+      if (smsEl) { smsEl.classList.add('invalid'); bad.push(smsEl); }
+      setSmsStatus('Verifying this number — one moment…', 'muted');
+      runSmsCheck();   // kick it off; they can retry Continue once it resolves
+    } else if (!UI.smsCheck.ok) {
+      if (smsEl) { smsEl.classList.add('invalid'); bad.push(smsEl); }
+      setSmsStatus('✗ ' + (UI.smsCheck.message || 'This number can’t receive our texts — please use a mobile number.'), 'err');
+    }
     // Veteran box checked → GovX code must be verified (or, if the check couldn't run, non-empty).
     if (UI.vet && !(UI.govxVerified || (UI.govxDegraded && (val('govxCode') || '').trim()))) fail($('govxCode'), 'govxCode');
   } else if (step === 1) {
     need('opName'); need('opFormation');
     if (einRequired(val('opFormation'))) need('opEIN');
-    needPhone('opPhone'); needEmail('opEmail'); needPhone('opSmsPhone'); needPhoneOpt('opAltPhone'); need('opPhysical'); need('opMonthly');
+    needPhone('opPhone'); needEmail('opEmail'); needPhoneOpt('opAltPhone'); need('opPhysical'); need('opMonthly');
     if (!$('sameAddrChip').classList.contains('sel')) need('opMailing');
     if (!/^\d{4}$/.test(val('opPin'))) fail($('opPin'), 'opPin');
     if (val('opPin') !== val('opPinConfirm')) fail($('opPinConfirm'), 'opPinConfirm');
@@ -1407,6 +1461,13 @@ function initDom() {
   if ($('govxCode')) {
     $('govxCode').addEventListener('blur', verifyGovx);
     $('govxCode').addEventListener('input', function () { UI.govxVerified = false; UI.govxDegraded = false; setGovxStatus('', ''); });
+  }
+  if ($('opSmsPhone')) {
+    $('opSmsPhone').addEventListener('blur', runSmsCheck);   // one paid VOIP lookup when they finish typing
+    $('opSmsPhone').addEventListener('input', function () {
+      UI.smsCheck = null; UI.smsChecking = false; setSmsStatus('', ''); this.classList.remove('invalid');
+      var m = $('opSmsPhoneMirror'); if (m) m.value = this.value;   // keep the step-2 read-only mirror in sync
+    });
   }
   $('next0').addEventListener('click', function () { if (validateStep(0)) go(1); });
 

@@ -306,12 +306,12 @@ body.show-contacts .contacts-only { display: block; }
 
       <div class="section-h" style="margin-top:24px">Contact &amp; Address</div>
       <div class="row2">
-        <div class="field"><label>Business Phone <span class="req">*</span></label><input type="tel" id="opPhone" data-req><div class="ferr" data-err="opPhone">Business phone is required.</div></div>
+        <div class="field"><label>Business Phone <span class="req">*</span></label><input type="tel" id="opPhone" data-req><div class="ferr" data-err="opPhone">Enter a valid business phone (10 digits).</div></div>
         <div class="field"><label>Business Admin Email <span class="req">*</span></label><input type="email" id="opEmail" data-req><div class="ferr" data-err="opEmail">A valid admin email is required.</div></div>
       </div>
       <div class="row2">
         <div class="field"><label>SMS / Admin Phone <span class="req">*</span></label><input type="tel" id="opSmsPhone" data-req><div class="ferr" data-err="opSmsPhone">Enter a valid mobile number (10 digits).</div></div>
-        <div class="field"><label>Alternate Phone</label><input type="tel" id="opAltPhone"></div>
+        <div class="field"><label>Alternate Phone</label><input type="tel" id="opAltPhone"><div class="ferr" data-err="opAltPhone">Enter a valid phone (10 digits).</div></div>
       </div>
       <p style="margin:-4px 0 4px;font-size:12.5px;color:var(--of-charcoal-soft);line-height:1.45">By providing the SMS / Admin Phone number you agree to receive text messages from OperFi about your application (link and status updates). Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.</p>
       <div class="broker-only">
@@ -973,7 +973,8 @@ function validateAll(s) {
   req(s.businessName, 'opName', 'Business name is required.');
   req(s.formationType, 'opFormation', 'Formation type is required.');
   if (einRequired(s.formationType)) req(s.ein, 'opEIN', 'EIN is required for LLC, Corp, and Partnership.');
-  req(s.businessPhone, 'opPhone', 'Business phone is required.');
+  req(isPhone(s.businessPhone), 'opPhone', 'Enter a valid business phone (10 digits).');
+  if (s.altPhone) req(isPhone(s.altPhone), 'opAltPhone', 'Enter a valid alternate phone (10 digits).');
   req(isEmail(s.adminEmail), 'opEmail', 'A valid admin email is required.');
   req(isPhone(s.smsPhone), 'opSmsPhone', 'Enter a valid mobile number (10 digits).');
   req(s.physicalAddress, 'opPhysical', 'Physical address is required.');
@@ -1257,6 +1258,7 @@ function validateStep(step) {
   function need(id) { var el = $(id); if (el && !(el.value || '').trim()) fail(el, id); }
   function needEmail(id) { var el = $(id); if (el && !isEmail((el.value || '').trim())) fail(el, id); }
   function needPhone(id) { var el = $(id); if (el && !isPhone((el.value || '').trim())) fail(el, id); }
+  function needPhoneOpt(id) { var el = $(id); var v = el ? (el.value || '').trim() : ''; if (el && v && !isPhone(v)) fail(el, id); }  // optional: only if filled
 
   if (step === 0) {
     // Veteran box checked → GovX code must be verified (or, if the check couldn't run, non-empty).
@@ -1264,7 +1266,7 @@ function validateStep(step) {
   } else if (step === 1) {
     need('opName'); need('opFormation');
     if (einRequired(val('opFormation'))) need('opEIN');
-    need('opPhone'); needEmail('opEmail'); needPhone('opSmsPhone'); need('opPhysical'); need('opMonthly');
+    needPhone('opPhone'); needEmail('opEmail'); needPhone('opSmsPhone'); needPhoneOpt('opAltPhone'); need('opPhysical'); need('opMonthly');
     if (!$('sameAddrChip').classList.contains('sel')) need('opMailing');
     if (!/^\d{4}$/.test(val('opPin'))) fail($('opPin'), 'opPin');
     if (val('opPin') !== val('opPinConfirm')) fail($('opPinConfirm'), 'opPinConfirm');
@@ -1283,7 +1285,9 @@ function validateStep(step) {
     var b1 = document.querySelector('#ownerList .owner-block');
     if (b1) {
       ['first', 'last', 'title', 'pct', 'dob', 'ssn', 'email', 'phone'].forEach(function (f) {
-        var el = b1.querySelector('[data-of="' + f + '"]'); if (el && !el.value.trim()) { el.classList.add('invalid'); bad.push(el); }
+        var el = b1.querySelector('[data-of="' + f + '"]'); if (!el) return;
+        var v = el.value.trim();
+        if (!v || (f === 'phone' && !isPhone(v))) { el.classList.add('invalid'); bad.push(el); }
       });
       var pct = num((b1.querySelector('[data-of="pct"]') || {}).value);
       if (pct !== '' && pct !== 100) {
@@ -1292,6 +1296,11 @@ function validateStep(step) {
         else { ['first', 'last'].forEach(function (f) { var el = b2.querySelector('[data-of="' + f + '"]'); if (el && !el.value.trim()) { el.classList.add('invalid'); bad.push(el); } }); }
       }
     }
+    // Trusted Contacts are optional, but any phone entered must be valid. (sub-rows use data-f)
+    qsa('#contactRows .sub-row').forEach(function (r) {
+      var el = r.querySelector('[data-f="phone"]'); var v = el ? el.value.trim() : '';
+      if (el && v && !isPhone(v)) { el.classList.add('invalid'); bad.push(el); }
+    });
   } else if (step === 4) {
     if (!UI.termsAccepted) fail($('termsChip'), 'terms');
     if (UI.authority === 'broker' && !UI.appFeePaid) fail($('appFeeChip'), 'appFee');

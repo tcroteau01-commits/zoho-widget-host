@@ -419,6 +419,12 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
       <input type="text" id="search-input" placeholder="Search by company, email, or phone...">
     </div>
     <div class="chips" id="chips"></div>
+    <select id="sort-select" class="btn" aria-label="Sort customers" style="cursor:pointer;">
+      <option value="newest" selected>Newest</option>
+      <option value="oldest">Oldest</option>
+      <option value="name_asc">Name (A–Z)</option>
+      <option value="name_desc">Name (Z–A)</option>
+    </select>
   </div>
 
   <div id="results">
@@ -471,6 +477,7 @@ window.renderFraudCheck = function(d){ return renderFraudCheck(d); };  // expose
 window.urlVal = function(v){ return urlVal(v); };                      // exposed for tests
 window.wireBillingEdit = function(r){ return wireBillingEdit(r); };    // exposed for tests (CA1)
 var currentSearch = '';
+var currentSort = 'newest';
 var openIndex = -1;
 var currentLoadId = 0;
 
@@ -565,6 +572,10 @@ function bindGlobalUI() {
     currentSearch = e.target.value.toLowerCase().trim();
     applyFilters();
   });
+  document.getElementById('sort-select').addEventListener('change', function(e) {
+    currentSort = e.target.value;
+    applyFilters();
+  });
   document.getElementById('btn-new').addEventListener('click', function() { navigateParent('#Page:Credit_Check'); });
   document.getElementById('btn-export').addEventListener('click', exportCsv);
 
@@ -651,11 +662,11 @@ function fetchAll(loadId) {
 }
 
 function onRecordsLoaded(records) {
-  records.sort(function(a, b) { return parseDate(b.Added_Time) - parseDate(a.Added_Time); });
   allRecords = records;
   buildChips();
   applyFilters();
 }
+window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 
 // ── Filters & rendering ───────────────────────────────────────────────────
 function buildChips() {
@@ -699,7 +710,7 @@ function countByStatus(records) {
 }
 
 function applyFilters() {
-  filteredRecords = allRecords.filter(function(r) {
+  filteredRecords = sortRecords(allRecords).filter(function(r) {
     if (currentStatus !== 'all') {
       var k = statusMeta(r).key;
       // "Awaiting" chip groups awaiting + pending-app
@@ -1444,6 +1455,32 @@ function parseDate(v) {
   var d = new Date(v);
   return isNaN(d) ? null : d;
 }
+// Returns a NEW sorted array; never mutates `records`. sortKey defaults to
+// the module-level currentSort so production call sites can omit it.
+// Missing/unparseable Added_Time always sorts last in 'newest'/'oldest'.
+function sortRecords(records, sortKey) {
+  var key = sortKey || currentSort;
+  var arr = records.slice();
+  if (key === 'name_asc' || key === 'name_desc') {
+    var dir = key === 'name_asc' ? 1 : -1;
+    arr.sort(function(a, b) {
+      return dir * (a.Customer_Company_Name || '').toLowerCase()
+                     .localeCompare((b.Customer_Company_Name || '').toLowerCase());
+    });
+    return arr;
+  }
+  // 'newest' (default) or 'oldest'
+  var sign = key === 'oldest' ? 1 : -1;
+  arr.sort(function(a, b) {
+    var da = parseDate(a.Added_Time), db = parseDate(b.Added_Time);
+    if (!da && !db) return 0;
+    if (!da) return 1;   // missing dates always sort last
+    if (!db) return -1;
+    return sign * (da.getTime() - db.getTime());
+  });
+  return arr;
+}
+window.sortRecords = sortRecords;  // exposed for tests (SORT2)
 function fmtTime(d) {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
@@ -1735,6 +1772,9 @@ function exportCsv() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// Ensure UI listeners are bound even if initialization fails (e.g., in test environment)
+try { if (document.getElementById('sort-select')) bindGlobalUI(); } catch (e) {}
 
 })();
 </script>

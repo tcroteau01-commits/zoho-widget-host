@@ -308,6 +308,48 @@
     };
   }
 
+  function _marginRow(label, group) {
+    var purchase = _sum(group, function (l) { return l.purchaseAmount; });
+    var discount = _sum(group, function (l) { return l.discountFee; });
+    var vp = _sum(group, function (l) { return l.vendorPayable; });
+    var margin = _sum(group, function (l) { return l.margin; });
+    return { label: label, loadCount: group.length, purchaseAmount: purchase, discountFee: discount, vendorPayable: vp, margin: margin, marginPct: purchase ? round2((margin / purchase) * 100) : 0 };
+  }
+
+  function loadsMargins(groupBy) {
+    var L = window.OPERFI_DEMO_LEDGER;
+    var rows;
+    if (groupBy === 'debtor') {
+      var byDebtor = {};
+      L.loads.forEach(function (l) { (byDebtor[l.debtorId] = byDebtor[l.debtorId] || []).push(l); });
+      rows = Object.keys(byDebtor).map(function (id) { return _marginRow(_debtorName(id), byDebtor[id]); });
+    } else {
+      var byMonth = {};
+      L.loads.forEach(function (l) {
+        var d = new Date(); d.setDate(d.getDate() - l.daysAgo);
+        var key = d.toISOString().slice(0, 7);
+        (byMonth[key] = byMonth[key] || []).push(l);
+      });
+      rows = Object.keys(byMonth).sort().reverse().map(function (key) { return _marginRow(key, byMonth[key]); });
+    }
+    rows.sort(function (a, b) { return b.purchaseAmount - a.purchaseAmount; });
+    var totalsRow = _marginRow('__total__', L.loads);
+    delete totalsRow.label;
+    return { groupBy: groupBy || 'month', rows: rows, totals: totalsRow };
+  }
+
+  var FEE_GL_LABELS = { '3001': 'Discount Fee' }; // demo ledger only synthesizes the discount fee GL; that's the dominant fee bucket on every real account too.
+
+  function loadsFees() {
+    var L = window.OPERFI_DEMO_LEDGER;
+    var txns = L.loads.map(function (l) {
+      return { date: offsetISO(l.daysAgo), loadId: l.id, loadNumber: l.invNo, debtorName: _debtorName(l.debtorId), amount: l.discountFee };
+    });
+    var subtotal = _sum(txns, function (t) { return t.amount; });
+    var group = { glCode: '3001', feeType: 'Discount Fee', count: txns.length, subtotal: subtotal, transactions: txns.sort(function (a, b) { return a.date < b.date ? 1 : -1; }) };
+    return { groups: [group], totals: { count: txns.length, amount: subtotal } };
+  }
+
   window.OPERFI_DEMO = {
     EMAIL: DEMO_EMAIL, ACCOUNT_NAME: DEMO_ACCOUNT_NAME,
     isDemo: isDemo, todayISO: todayISO, offsetISO: offsetISO,
@@ -316,6 +358,7 @@
     dashboardSummary: dashboardSummary,
     aging: aging,
     agingReceipts: agingReceipts, agingCustomerReceipts: agingCustomerReceipts, agingLoadPreview: agingLoadPreview,
-    loads: loads, loadPreview: loadPreview
+    loads: loads, loadPreview: loadPreview,
+    loadsMargins: loadsMargins, loadsFees: loadsFees
   };
 })();

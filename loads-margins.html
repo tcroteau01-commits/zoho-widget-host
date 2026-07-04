@@ -557,10 +557,27 @@
       }
       return html;
     }
+
+    function handleFeesData(data) {
+      state.feesData = data;
+      state.feesLoading = false;
+      renderShell();
+    }
+
     function fetchFees() {
       state.feesLoading = true;
       renderShell();
       var f = state.feesFilters;
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.loadsFees())
+          .then(handleFeesData)
+          .catch(function (err) {
+            console.error('fetchFees demo failed', err);
+            state.feesData = { groups: [], totals: { count: 0, amount: 0 } };
+            state.feesLoading = false;
+            renderShell();
+          });
+      }
       var range = resolvedRange(f);
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
@@ -571,11 +588,7 @@
       if (f.loadId)   params.set('loadId',   f.loadId);
       fetch(BROKER_API_BASE + '/loads/fees?' + params.toString())
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          state.feesData = data;
-          state.feesLoading = false;
-          renderShell();
-        })
+        .then(handleFeesData)
         .catch(function (err) {
           console.error('fetchFees failed', err);
           state.feesData = { groups: [], totals: { count: 0, amount: 0 } };
@@ -734,10 +747,26 @@
       return html;
     }
 
+    function handleMarginsData(data) {
+      state.marginsData = data;
+      state.marginsLoading = false;
+      renderShell();
+    }
+
     function fetchMargins() {
       state.marginsLoading = true;
       renderShell();
       var f = state.marginsFilters;
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.loadsMargins(state.marginsGroupBy))
+          .then(handleMarginsData)
+          .catch(function (err) {
+            console.error('fetchMargins demo failed', err);
+            state.marginsData = { rows: [], totals: {} };
+            state.marginsLoading = false;
+            renderShell();
+          });
+      }
       var range = resolvedRange(f);
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
@@ -747,11 +776,7 @@
       params.set('groupBy', state.marginsGroupBy);
       fetch(BROKER_API_BASE + '/loads/margins?' + params.toString())
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          state.marginsData = data;
-          state.marginsLoading = false;
-          renderShell();
-        })
+        .then(handleMarginsData)
         .catch(function (err) {
           console.error('fetchMargins failed', err);
           state.marginsData = { rows: [], totals: {} };

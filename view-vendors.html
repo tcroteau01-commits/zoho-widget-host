@@ -54,10 +54,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .row:hover { border-color: #c8c4b6; box-shadow: 0 2px 6px rgba(0,0,0,0.04); transform: translateY(-1px); }
 .row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 10px 0 0 10px; background: #ddd; }
 .row.s-approved::before { background: #2e7d32; }
-.row.s-pending::before  { background: #f5a623; }
-.row.s-denied::before   { background: #c62828; }
-.row.s-dnu::before      { background: #c62828; }
-.row.s-payment-change::before { background: #1976d2; }
+.row.s-approved-caution::before { background: #e8a020; }
+.row.s-not-reviewed::before { background: #f5a623; }
+.row.s-hold::before      { background: #e8a020; }
+.row.s-declined::before  { background: #c62828; }
+.row.s-dnu::before       { background: #c62828; }
 .row.s-dnu { background: #fafaf6; }
 .row.s-dnu .cell-val { color: #888; }
 
@@ -76,9 +77,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .tag.net30    { background: #f0efe9; color: #555; }
 .tag.dnu      { background: #fde4e4; color: #a31818; }
 .tag.approved { background: #e3f4e3; color: #1f6321; }
-.tag.pending  { background: #fff4e0; color: #b86e00; }
-.tag.denied   { background: #fde4e4; color: #a31818; }
-.tag.payment-change { background: #e3f0fb; color: #0d4a8a; }
+.tag.approved-caution { background: #fff4e0; color: #b86e00; }
+.tag.not-reviewed { background: #fff4e0; color: #b86e00; }
+.tag.hold     { background: #fde8d0; color: #a15c00; }
+.tag.declined { background: #fde4e4; color: #a31818; }
 
 .row-action {
   background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
@@ -334,13 +336,14 @@ function statusMeta(r) {
   if (r.DO_NOT_USE === true || r.DO_NOT_USE === 'true') {
     return { key: 'dnu', label: 'Do Not Use', tag: 'dnu' };
   }
-  var raw = r.Vendor_Status || '';
+  var raw = r.Hiring_Decision || '';
   switch (raw) {
-    case 'Approved':       return { key: 'approved',       label: 'Approved',       tag: 'approved' };
-    case 'Pending':        return { key: 'pending',        label: 'Pending',        tag: 'pending' };
-    case 'DENIED':         return { key: 'denied',         label: 'Denied',         tag: 'denied' };
-    case 'Payment Change': return { key: 'payment-change', label: 'Payment Change', tag: 'payment-change' };
-    default:               return { key: 'unknown',        label: raw || '—',       tag: '' };
+    case 'Approve':              return { key: 'approved',         label: 'Approved',           tag: 'approved' };
+    case 'Approve with Caution': return { key: 'approved-caution', label: 'Approved (Caution)', tag: 'approved-caution' };
+    case 'Hold':                 return { key: 'hold',             label: 'On Hold',            tag: 'hold' };
+    case 'Decline':              return { key: 'declined',         label: 'Declined',           tag: 'declined' };
+    case 'Not Reviewed':
+    default:                     return { key: 'not-reviewed',     label: 'Not Reviewed',       tag: 'not-reviewed' };
   }
 }
 
@@ -1222,7 +1225,8 @@ function exportCsv() {
 window.__vvtest = {
   deriveVettingFlags: deriveVettingFlags,
   recommendedDocs: recommendedDocs,
-  vettingSummary: vettingSummary
+  vettingSummary: vettingSummary,
+  statusMeta: statusMeta
 };
 
 })();

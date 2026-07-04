@@ -760,3 +760,46 @@ test('docs: non-factored missing banking recommends banking, never NOA/LOR', asy
   assert.ok(recRows.some((t) => /Banking/.test(t)), 'Banking recommended (non-factored)');
   assert.ok(!recRows.some((t) => /NOA/.test(t)), 'NOA/LOR never recommended for non-factored');
 });
+
+// ── statusMeta: Hiring_Decision replaces Vendor_Status ─────────────────────
+
+test('statusMeta: DO_NOT_USE overrides any Hiring_Decision', () => {
+  const m = vvApi().statusMeta({ DO_NOT_USE: true, Hiring_Decision: 'Approve' });
+  assert.equal(m.key, 'dnu');
+  assert.equal(m.label, 'Do Not Use');
+  assert.equal(m.tag, 'dnu');
+});
+
+test('statusMeta: Approve maps to approved', () => {
+  const m = vvApi().statusMeta({ Hiring_Decision: 'Approve' });
+  assert.equal(m.key, 'approved');
+  assert.equal(m.label, 'Approved');
+  assert.equal(m.tag, 'approved');
+});
+
+test('statusMeta: Approve with Caution maps to approved-caution', () => {
+  const m = vvApi().statusMeta({ Hiring_Decision: 'Approve with Caution' });
+  assert.equal(m.key, 'approved-caution');
+  assert.equal(m.label, 'Approved (Caution)');
+  assert.equal(m.tag, 'approved-caution');
+});
+
+test('statusMeta: Hold maps to hold', () => {
+  const m = vvApi().statusMeta({ Hiring_Decision: 'Hold' });
+  assert.equal(m.key, 'hold');
+  assert.equal(m.label, 'On Hold');
+  assert.equal(m.tag, 'hold');
+});
+
+test('statusMeta: Decline maps to declined', () => {
+  const m = vvApi().statusMeta({ Hiring_Decision: 'Decline' });
+  assert.equal(m.key, 'declined');
+  assert.equal(m.label, 'Declined');
+  assert.equal(m.tag, 'declined');
+});
+
+test('statusMeta: Not Reviewed and missing/unrecognized both map to not-reviewed', () => {
+  assert.equal(vvApi().statusMeta({ Hiring_Decision: 'Not Reviewed' }).key, 'not-reviewed');
+  assert.equal(vvApi().statusMeta({}).key, 'not-reviewed');
+  assert.equal(vvApi().statusMeta({ Hiring_Decision: 'Some Future Value' }).key, 'not-reviewed');
+});

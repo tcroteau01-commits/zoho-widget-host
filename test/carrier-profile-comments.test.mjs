@@ -186,6 +186,8 @@ test('submitDecision stamps Reviewed_At + Reviewed_By and forwards CRM IDs', asy
               vendor: { ID: '9001' }, broker_contact_id: 'c_77',
               system_recommendation: 'Approve', risk_decisions: [], comments: [] };
   window.profilePayload = p;
+  window.renderChecklist(p);
+  Object.keys(window.checklistState).forEach(k => { window.checklistState[k] = true; });
   window.selectedDecision = 'Approve';   // notes not required for Approve == rec
   await window.submitDecision();
   assert.equal(addCalls.length, 1);
@@ -195,6 +197,79 @@ test('submitDecision stamps Reviewed_At + Reviewed_By and forwards CRM IDs', asy
   assert.match(d.Reviewed_At, CREATOR_DT);
   assert.equal(d.Account_CRM_ID, '5005550001');
   assert.equal(d.Vendor_CRM_ID, '5005559999');
+});
+
+test('checklist blocks the decision options and submit until every item is checked', () => {
+  const { window } = makeWidget();
+  const p = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001' }, bank: { has_bank_info: true }, broker_contact_id: 'c_77' };
+  window.profilePayload = p;
+  window.renderChecklist(p);
+  window.wireDecisionCapture(p);
+  const opt = window.document.querySelector('#cp-decision-options .decision-option[data-decision="Approve"]');
+  assert.ok(opt.classList.contains('disabled'));
+  assert.equal(window.document.getElementById('cp-submit').disabled, true);
+
+  Object.keys(window.checklistState).forEach(k => {
+    const cb = window.document.querySelector('.cp-check-item[data-key="' + k + '"]');
+    cb.checked = true;
+    cb.onchange();
+  });
+  assert.ok(!opt.classList.contains('disabled'));
+});
+
+test('Select All checks every item and unlocks the decision options in one action', () => {
+  const { window } = makeWidget();
+  const p = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001' }, bank: { has_bank_info: true }, broker_contact_id: 'c_77' };
+  window.profilePayload = p;
+  window.renderChecklist(p);
+  window.wireDecisionCapture(p);
+  const selectAll = window.document.getElementById('cp-check-all');
+  selectAll.checked = true;
+  selectAll.onchange();
+  assert.ok(Object.keys(window.checklistState).every(k => window.checklistState[k] === true));
+  const opt = window.document.querySelector('#cp-decision-options .decision-option[data-decision="Approve"]');
+  assert.ok(!opt.classList.contains('disabled'));
+});
+
+test('bank-letter checklist item only appears when direct-pay or factor status is Denied/Pending', () => {
+  const { window } = makeWidget();
+  const direct = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001' }, bank: { has_bank_info: false } };
+  window.renderChecklist(direct);
+  assert.ok(window.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]'));
+
+  const cleanFactor = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001', Factor_Status: 'Approved' }, bank: { has_bank_info: true } };
+  window.renderChecklist(cleanFactor);
+  assert.ok(!window.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]'));
+});
+
+test('submitDecision blocks with a feedback message when the checklist is incomplete', async () => {
+  const { window, addCalls } = makeWidget();
+  const p = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001' }, broker_contact_id: 'c_77',
+              system_recommendation: 'Approve', risk_decisions: [] };
+  window.profilePayload = p;
+  window.renderChecklist(p);   // leaves every item unchecked
+  window.selectedDecision = 'Approve';
+  await window.submitDecision();
+  assert.equal(addCalls.length, 0);
+  assert.match(window.document.getElementById('cp-rail-feedback').textContent, /checklist/i);
+});
+
+test('buildDecisionPayload includes all checklist booleans, null for the inapplicable bank-letter item', () => {
+  const { window } = makeWidget();
+  const p = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001', Factor_Status: 'Approved' }, bank: { has_bank_info: true },
+              system_recommendation: 'Approve', risk_decisions: [] };
+  window.profilePayload = p;
+  window.renderChecklist(p);
+  Object.keys(window.checklistState).forEach(k => { window.checklistState[k] = true; });
+  window.selectedDecision = 'Approve';
+  const d = window.buildDecisionPayload();
+  assert.equal(d.Checklist_COI_Truck_Driver, true);
+  assert.equal(d.Checklist_Authority_Active, true);
+  assert.equal(d.Checklist_Remittance_Matches, true);
+  assert.equal(d.Checklist_Identity_Verified_FMCSA, true);
+  assert.equal(d.Checklist_DOT_MC_Match_Pickup, true);
+  assert.equal(d.Checklist_OOS_HOS_Reviewed, true);
+  assert.equal(d.Checklist_Bank_Letter_Verified, null);
 });
 
 // ── UX fix 1: "↻ Refresh all data" button was a dead button (no handler) ──────

@@ -948,7 +948,7 @@ function refreshAll() {
 function renderProfile(p) {
   renderLoadHistory(p); renderHero(p); renderRiskStrip(p); renderDigitalFootprint(p); renderBankRouting(p); renderBankChecklist(p); renderRecommendation(p);
   renderAuthority(p); renderAuthorityChecklist(p); renderInsurance(p); renderInsuranceChecklist(p); renderSafety(p); renderSafetyChecklist(p); renderCrash(p); renderCrashChecklist(p); renderStability(p);
-  renderDecisionState(p); renderDecisionHistory(p); renderComments(p); wireDecisionCapture(p);
+  renderDecisionState(p); renderDecisionHistory(p); renderComments(p); renderChecklist(p); wireDecisionCapture(p);
   // Non-blocking NOA status card — degrades silently if endpoint unavailable
   fetch(BROKER_API_BASE + '/noa-status?email=' + encodeURIComponent(brokerEmail) + '&vendor_id=' + encodeURIComponent(vendorId))
     .then(function(r){ return r.json(); })
@@ -1703,6 +1703,65 @@ function renderDecisionHistory(p){
 
 var DECISION_RANK = {"Approve":3,"Approve with Caution":2,"Hold":1,"Decline":0};
 var selectedDecision = null;
+var CHECKLIST_ITEMS = [
+  { key: 'Checklist_COI_Truck_Driver', label: 'COI lists the actual truck + driver on this load' },
+  { key: 'Checklist_Authority_Active', label: 'Authority is active today' },
+  { key: 'Checklist_Remittance_Matches', label: 'Remittance matches the carrier on file' },
+  { key: 'Checklist_Identity_Verified_FMCSA', label: 'Identity verified via an FMCSA-listed contact' },
+  { key: 'Checklist_DOT_MC_Match_Pickup', label: 'DOT/MC matches at pickup' },
+  { key: 'Checklist_OOS_HOS_Reviewed', label: 'OOS/HOS reviewed' }
+];
+var CHECKLIST_BANK_ITEM = { key: 'Checklist_Bank_Letter_Verified', label: 'Bank letter verified directly' };
+var checklistState = {};
+
+function _checklistApplies(p){
+  var v=p.vendor||{}, bank=p.bank||{};
+  var fs=(v.Factor_Status||'').toString();
+  return !bank.has_bank_info || fs==='Denied' || fs==='Pending';
+}
+function renderChecklist(p){
+  var el=document.getElementById('cp-checklist'); if(!el) return;
+  checklistState={};
+  if(!p.account_vendor){
+    el.innerHTML='<div class="card-title" style="margin-bottom:10px;">Confirm Before You Book</div>'+
+      '<div style="color:var(--of-gray-500);font-size:13px;">Tender a load to this carrier to enable decision capture.</div>';
+    updateDecisionGate();
+    return;
+  }
+  var items=CHECKLIST_ITEMS.slice();
+  if(_checklistApplies(p)) items.push(CHECKLIST_BANK_ITEM);
+  items.forEach(function(it){ checklistState[it.key]=false; });
+  el.innerHTML='<div class="card-title" style="margin-bottom:10px;">Confirm Before You Book</div>'+
+    '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--of-gray-700);margin-bottom:10px;cursor:pointer;">'+
+      '<input type="checkbox" id="cp-check-all"> Select All</label>'+
+    items.map(function(it){
+      return '<label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:6px 0;cursor:pointer;">'+
+        '<input type="checkbox" class="cp-check-item" data-key="'+it.key+'" style="margin-top:2px;"> <span>'+esc(it.label)+'</span></label>';
+    }).join('');
+  var selectAll=document.getElementById('cp-check-all');
+  if(selectAll) selectAll.onchange=function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.cp-check-item'), function(cb){ cb.checked=selectAll.checked; checklistState[cb.getAttribute('data-key')]=selectAll.checked; });
+    updateDecisionGate();
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('.cp-check-item'), function(cb){
+    cb.onchange=function(){ checklistState[cb.getAttribute('data-key')]=cb.checked; updateDecisionGate(); };
+  });
+  updateDecisionGate();
+}
+function checklistComplete(){
+  var keys=Object.keys(checklistState);
+  if(!keys.length) return false;
+  return keys.every(function(k){ return checklistState[k]===true; });
+}
+function updateDecisionGate(){
+  var ok=checklistComplete() && !!(profilePayload && profilePayload.account_vendor);
+  Array.prototype.forEach.call(document.querySelectorAll('#cp-decision-options .decision-option'), function(opt){
+    if(ok){ opt.classList.remove('disabled'); opt.style.opacity=''; opt.style.pointerEvents=''; }
+    else { opt.classList.add('disabled'); opt.style.opacity='0.45'; opt.style.pointerEvents='none'; }
+  });
+  var sb=document.getElementById('cp-submit');
+  if(sb) sb.disabled = !ok || !selectedDecision;
+}
 
 function notesRequired(decision, systemRec){
   if(decision==null) return false;
@@ -1717,10 +1776,14 @@ function buildDecisionPayload(){
   var d={ Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
   if(av.Account_CRM_ID) d.Account_CRM_ID=av.Account_CRM_ID;
   if(av.Vendor_CRM_ID) d.Vendor_CRM_ID=av.Vendor_CRM_ID;
+  CHECKLIST_ITEMS.concat([CHECKLIST_BANK_ITEM]).forEach(function(it){
+    d[it.key] = checklistState.hasOwnProperty(it.key) ? !!checklistState[it.key] : null;
+  });
   return d;
 }
 function submitDecision(){
   var fb=document.getElementById('cp-rail-feedback'); if(fb) fb.textContent='';
+  if(!checklistComplete()){ if(fb) fb.textContent='Complete the checklist before recording a decision.'; return; }
   if(!selectedDecision){ if(fb) fb.textContent='Pick a decision.'; return; }
   var rec=profilePayload.system_recommendation;
   var notes=(document.getElementById('cp-notes')||{}).value||'';
@@ -1750,6 +1813,7 @@ function wireDecisionCapture(p){
       selectedDecision=opt.getAttribute('data-decision');
       var lbl=document.querySelector('.modal-notes-label .req');
       if(lbl) lbl.style.display=notesRequired(selectedDecision,p.system_recommendation)?'inline':'none';
+      updateDecisionGate();
     };
   });
   var sb=document.getElementById('cp-submit'); if(sb) sb.onclick=submitDecision;

@@ -447,6 +447,29 @@
     return { rows: rows, totals: { paymentCount: rows.length, totalPaid: _sum(rows, function (r) { return r['Vendor Amount']; }), carriersPaid: new Set(closed.map(function (l) { return l.carrierId; })).size }, accountName: DEMO_ACCOUNT_NAME, seeAll: false };
   }
 
+  function creditDashboard() {
+    var L = window.OPERFI_DEMO_LEDGER;
+    var byDebtor = {};
+    L.ratings.forEach(function (r) { (byDebtor[r.debtorId] = byDebtor[r.debtorId] || []).push(r); });
+    var debtors = Object.keys(byDebtor).map(function (debtorId) {
+      var snaps = byDebtor[debtorId].slice().sort(function (a, b) { return a.daysAgo - b.daysAgo; });
+      return {
+        name: _debtorName(debtorId), mc: '10' + debtorId.slice(1).padStart(4, '0'), mcList: [],
+        snapshots: snaps.map(function (r) {
+          return {
+            date: offsetISO(r.daysAgo) + 'T00:00:00', rating: r.rating, riskScore: r.riskScore,
+            cosReporting: 1, reportType: 'Monitor', login: 'system',
+            daysToPay: parseInt(r.rating.split('-')[1], 10), arMonthlyBalance: parseInt(r.rating.split('K')[0], 10) * 1000, noData: false
+          };
+        }).sort(function (a, b) { return a.date < b.date ? 1 : -1; })
+      };
+    });
+    return {
+      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, mc: '1029384', mcNormalized: 'MC1029384', dot: '9182734' },
+      debtorCount: debtors.length, totalSnapshots: L.ratings.length, debtors: debtors
+    };
+  }
+
   window.OPERFI_DEMO = {
     EMAIL: DEMO_EMAIL, ACCOUNT_NAME: DEMO_ACCOUNT_NAME,
     isDemo: isDemo, todayISO: todayISO, offsetISO: offsetISO,
@@ -458,6 +481,7 @@
     loads: loads, loadPreview: loadPreview,
     loadsMargins: loadsMargins, loadsFees: loadsFees,
     reserveActivity: reserveActivity,
-    vendorPaymentsOpen: vendorPaymentsOpen, vendorPaymentsHistory: vendorPaymentsHistory
+    vendorPaymentsOpen: vendorPaymentsOpen, vendorPaymentsHistory: vendorPaymentsHistory,
+    creditDashboard: creditDashboard
   };
 })();

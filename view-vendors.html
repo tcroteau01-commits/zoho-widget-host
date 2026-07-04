@@ -624,14 +624,15 @@ function rowHtml(r, idx) {
   var p = paymentMeta(r);
   var addr = formatAddress(r.Address);
   var isDnu = s.key === 'dnu';
-  var canInvoice = s.key === 'approved';
+  var canInvoice = s.key === 'approved' || s.key === 'approved-caution';
   var actionLabel = isDnu ? 'Blocked' : 'Submit Invoice';
   var actionDisabled = !canInvoice;
   var actionTitle = canInvoice ? '' :
     (isDnu ? 'Vendor is marked Do Not Use.' :
-     s.key === 'pending' ? 'Vendor must be Approved before invoicing.' :
-     s.key === 'denied'  ? 'Vendor has been denied.' :
-     'Vendor not approved for invoicing.');
+     s.key === 'not-reviewed' ? 'You have not reviewed this carrier yet.' :
+     s.key === 'hold'         ? 'Carrier is on hold pending your review.' :
+     s.key === 'declined'     ? 'You declined this carrier.' :
+     'Carrier not approved for invoicing.');
 
   return '' +
     '<div class="row s-' + s.key + '" data-idx="' + idx + '">' +
@@ -716,11 +717,11 @@ function renderPanel() {
   var addr = formatAddress(r.Address);
   var prevDis = (openIndex <= 0) ? ' disabled' : '';
   var nextDis = (openIndex >= filteredRecords.length - 1) ? ' disabled' : '';
-  var canInvoice = s.key === 'approved';
+  var canInvoice = s.key === 'approved' || s.key === 'approved-caution';
 
   var invoiceBtn = canInvoice
     ? '<button class="btn primary" id="p-invoice">Submit Invoice</button>'
-    : '<button class="btn" id="p-invoice" disabled title="Vendor must be Approved">Submit Invoice</button>';
+    : '<button class="btn" id="p-invoice" disabled title="You must approve this carrier before invoicing">Submit Invoice</button>';
   var footerActions =
     '<button class="btn" id="p-profile">View Full Profile</button>' +
     '<button class="btn" id="p-noa">NOA / LOR</button>' +

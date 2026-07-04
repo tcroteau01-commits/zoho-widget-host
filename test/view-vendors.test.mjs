@@ -857,3 +857,56 @@ test('status sort ranks Approved-family above Not Reviewed/Hold above Declined a
   setSort(w, 'status');
   assert.deepEqual(rowNames(w), ['Approve Co', 'Hold Co', 'Declined Co', 'DNU Co']);
 });
+
+// ── Invoicing gate follows Hiring_Decision ─────────────────────────────────
+
+async function bootOne(rec) {
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = makeFetch([rec]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  return w;
+}
+
+test('row action: Approve with Caution can still invoice (button enabled)', async () => {
+  const w = await bootOne({ ID: 'i1', Vendor_Name: 'Caution Co', Hiring_Decision: 'Approve with Caution' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(!btn.classList.contains('disabled'));
+  assert.match(btn.textContent, /Submit Invoice/);
+});
+
+test('row action: Hold blocks invoicing with an explanatory title', async () => {
+  const w = await bootOne({ ID: 'i2', Vendor_Name: 'Hold Co', Hiring_Decision: 'Hold' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.getAttribute('title'), /on hold/i);
+});
+
+test('row action: Not Reviewed blocks invoicing with an explanatory title', async () => {
+  const w = await bootOne({ ID: 'i3', Vendor_Name: 'NotRev Co', Hiring_Decision: 'Not Reviewed' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.getAttribute('title'), /not reviewed/i);
+});
+
+test('row action: Declined blocks invoicing with an explanatory title', async () => {
+  const w = await bootOne({ ID: 'i4', Vendor_Name: 'Declined Co', Hiring_Decision: 'Decline' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.getAttribute('title'), /declined/i);
+});
+
+test('panel: Submit Invoice is enabled for Approve with Caution', async () => {
+  const w = await bootOne({ ID: 'i5', Vendor_Name: 'Caution Co', Hiring_Decision: 'Approve with Caution' });
+  w.document.querySelector('.row').click();
+  const inv = w.document.getElementById('p-invoice');
+  assert.ok(!inv.disabled);
+});
+
+test('panel: Submit Invoice is disabled for Hold', async () => {
+  const w = await bootOne({ ID: 'i6', Vendor_Name: 'Hold Co', Hiring_Decision: 'Hold' });
+  w.document.querySelector('.row').click();
+  const inv = w.document.getElementById('p-invoice');
+  assert.ok(inv.disabled);
+});

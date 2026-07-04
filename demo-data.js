@@ -250,6 +250,64 @@
 
   function agingLoadPreview(loadId) { return loadPreview(loadId); }
 
+  function _vendorName(carrierId) {
+    var c = window.OPERFI_DEMO_LEDGER.carriers.filter(function (x) { return x.id === carrierId; })[0];
+    return c ? c.name : '(unknown)';
+  }
+  function _loadById(loadId) { return window.OPERFI_DEMO_LEDGER.loads.filter(function (l) { return l.id === loadId; })[0]; }
+
+  function loads(filters) {
+    filters = filters || {};
+    var all = window.OPERFI_DEMO_LEDGER.loads.slice();
+    var filtered = all.filter(function (l) {
+      if (filters.arStatus && filters.arStatus !== 'all' && l.status !== filters.arStatus) return false;
+      if (filters.debtorId && l.debtorId !== filters.debtorId) return false;
+      if (filters.vendor && _vendorName(l.carrierId).toLowerCase().indexOf(String(filters.vendor).toLowerCase()) === -1) return false;
+      if (filters.loadId && l.invNo.toLowerCase().indexOf(String(filters.loadId).toLowerCase()) === -1) return false;
+      return true;
+    }).sort(function (a, b) { return a.daysAgo - b.daysAgo; }); // newest buy date first
+
+    var rows = filtered.map(function (l) {
+      return {
+        loadId: l.id, loadNumber: l.invNo, invoiceId: l.id, invoiceNo: l.invNo,
+        buyDate: offsetISO(l.daysAgo), arStatus: l.status, debtorId: l.debtorId, debtorName: _debtorName(l.debtorId),
+        vendorName: _vendorName(l.carrierId), vendorInvoiceNo: 'V' + l.id.slice(3),
+        purchaseAmount: l.purchaseAmount, discountFee: l.discountFee, vendorPayable: l.vendorPayable,
+        escrowReserve: l.escrowReserve, cashReserve: l.cashReserve, margin: l.margin, marginPct: l.marginPct
+      };
+    });
+    var sumPurchase = _sum(rows, function (r) { return r.purchaseAmount; });
+    var sumMargin = _sum(rows, function (r) { return r.margin; });
+    return { loads: rows, totals: { count: rows.length, purchaseAmount: sumPurchase, margin: sumMargin, marginPct: sumPurchase ? round2((sumMargin / sumPurchase) * 100) : 0 } };
+  }
+
+  function loadPreview(loadId) {
+    var l = _loadById(loadId);
+    if (!l) return null;
+    var carrierPay = l.vendorPayable; // already negative
+    var feeAmt = l.discountFee;       // already negative
+    var netCash = round2(l.purchaseAmount + feeAmt + carrierPay);
+    return {
+      load: {
+        loadNumber: l.invNo, buyDate: offsetISO(l.daysAgo), invoiceNo: l.invNo, arStatus: l.status,
+        purchaseAmount: l.purchaseAmount, margin: l.margin, marginPct: l.marginPct,
+        discountFee: l.discountFee, vendorPayable: l.vendorPayable, escrowReserve: l.escrowReserve,
+        cashReserve: l.cashReserve, debtorId: l.debtorId, debtorName: _debtorName(l.debtorId)
+      },
+      vendor: {
+        name: _vendorName(l.carrierId), invoiceNo: 'V' + l.id.slice(3), terms: 'Net 30',
+        paidDate: l.status === 'closed' ? offsetISO(l.closedDaysAgo) : null,
+        paymentStatus: l.status === 'closed' ? 'Paid' : 'Pending', poNumber: 'PO' + l.id.slice(3)
+      },
+      settlement: {
+        arPurchased: l.purchaseAmount, carrierPay: carrierPay,
+        fees: [{ label: 'Discount Fee', amount: feeAmt }],
+        reserves: [{ label: 'Escrow reserve', amount: l.escrowReserve }, { label: 'Cash reserve', amount: l.cashReserve }],
+        loanPayments: [], other: [], netCash: netCash
+      }
+    };
+  }
+
   window.OPERFI_DEMO = {
     EMAIL: DEMO_EMAIL, ACCOUNT_NAME: DEMO_ACCOUNT_NAME,
     isDemo: isDemo, todayISO: todayISO, offsetISO: offsetISO,
@@ -257,6 +315,7 @@
     csvFromRows: csvFromRows, downloadCSV: downloadCSV, pdfFromRows: pdfFromRows,
     dashboardSummary: dashboardSummary,
     aging: aging,
-    agingReceipts: agingReceipts, agingCustomerReceipts: agingCustomerReceipts, agingLoadPreview: agingLoadPreview
+    agingReceipts: agingReceipts, agingCustomerReceipts: agingCustomerReceipts, agingLoadPreview: agingLoadPreview,
+    loads: loads, loadPreview: loadPreview
   };
 })();

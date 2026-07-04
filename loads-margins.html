@@ -353,6 +353,8 @@
 
   <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
   <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
+  <script src="https://app.operfi.com/demo-ledger.js"></script>
+  <script src="https://app.operfi.com/demo-data.js"></script>
   <script>
     var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
     var brokerEmail = null;
@@ -946,10 +948,27 @@
     function resolvedLoadsDateFrom(f) { return resolvedRange(f).from; }
     function resolvedLoadsDateTo(f)   { return resolvedRange(f).to; }
 
+    function handleLoadsData(data) {
+      state.loadsData = data;
+      state.loadsLoading = false;
+      renderShell();
+    }
+
     function fetchLoads() {
       state.loadsLoading = true;
       renderShell();
       var f = state.loadsFilters;
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.loads({
+          arStatus: f.arStatus, debtorId: f.debtorId,
+          vendor: f.vendor, loadId: f.loadId
+        })).then(handleLoadsData).catch(function (err) {
+          console.error('fetchLoads demo failed', err);
+          state.loadsData = { loads: [], totals: { count: 0, purchaseAmount: 0, margin: 0, marginPct: null } };
+          state.loadsLoading = false;
+          renderShell();
+        });
+      }
       var range = resolvedRange(f);
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
@@ -963,11 +982,7 @@
 
       fetch(BROKER_API_BASE + '/loads?' + params.toString())
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          state.loadsData = data;
-          state.loadsLoading = false;
-          renderShell();
-        })
+        .then(handleLoadsData)
         .catch(function (err) {
           console.error('fetchLoads failed', err);
           state.loadsData = { loads: [], totals: { count: 0, purchaseAmount: 0, margin: 0, marginPct: null } };
@@ -1093,6 +1108,13 @@
       return (window.OPERFI_IMP && window.OPERFI_IMP.decorate) ? window.OPERFI_IMP.decorate(url) : url;
     }
 
+    function handleLoadPreviewData(data) {
+      if (state.selectedLoadId !== data.loadId && state.selectedLoadId !== data.load.loadNumber) return;
+      state.loadPreview = data;
+      state.loadPreviewLoading = false;
+      renderLoadDetail();
+    }
+
     function openLoadDetail(loadId) {
       if (!loadId) return;
       state.selectedLoadId = loadId;
@@ -1105,6 +1127,22 @@
       panel.setAttribute('aria-hidden', 'false');
       overlay.classList.add('open');
       renderLoadDetail();
+
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.loadPreview(loadId))
+          .then(function (data) {
+            if (state.selectedLoadId !== loadId) return;
+            state.loadPreview = data;
+            state.loadPreviewLoading = false;
+            renderLoadDetail();
+          })
+          .catch(function (err) {
+            if (state.selectedLoadId !== loadId) return;
+            state.loadPreviewLoading = false;
+            state.loadPreviewError = err.message || String(err);
+            renderLoadDetail();
+          });
+      }
 
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);

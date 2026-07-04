@@ -19,8 +19,8 @@ test('produces 20 debtors and 65 carriers', () => {
 test('is fully deterministic across independent runs', () => {
   const w1 = boot();
   const w2 = boot();
-  assert.deepEqual(w1.OPERFI_DEMO_LEDGER.loads, w2.OPERFI_DEMO_LEDGER.loads);
-  assert.deepEqual(w1.OPERFI_DEMO_LEDGER.reserveTxns, w2.OPERFI_DEMO_LEDGER.reserveTxns);
+  assert.equal(JSON.stringify(w1.OPERFI_DEMO_LEDGER.loads), JSON.stringify(w2.OPERFI_DEMO_LEDGER.loads));
+  assert.equal(JSON.stringify(w1.OPERFI_DEMO_LEDGER.reserveTxns), JSON.stringify(w2.OPERFI_DEMO_LEDGER.reserveTxns));
 });
 
 test('every load\'s margin matches purchase + discountFee + vendorPayable (backend formula)', () => {
@@ -46,10 +46,10 @@ test('escrow reserve is always exactly 6.5% of purchase amount', () => {
   });
 });
 
-test('net cash reserve (sum of GL 2006 reserveTxns) lands on the $18,240.55 target', () => {
+test('net cash reserve (sum of GL 2005+2006 reserveTxns) lands on the $18,240.55 target', () => {
   const w = boot();
   const net = w.OPERFI_DEMO_LEDGER.reserveTxns
-    .filter((t) => t.glCode === '2006')
+    .filter((t) => t.glCode === '2006' || t.glCode === '2005')
     .reduce((sum, t) => sum + t.amount, 0);
   assert.ok(Math.abs(net - 18240.55) < 0.01, `net cash ${net} != 18240.55`);
 });

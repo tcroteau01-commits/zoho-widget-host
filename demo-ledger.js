@@ -109,7 +109,7 @@
     }
   });
 
-  var cashBeforeReleases = round2(reserveTxns.filter(function (t) { return t.glCode === '2006'; }).reduce(function (sum, t) { return sum + t.amount; }, 0));
+  var cashBeforeReleases = round2(reserveTxns.filter(function (t) { return t.glCode === '2006' || t.glCode === '2005'; }).reduce(function (sum, t) { return sum + t.amount; }, 0));
   var totalReleaseNeeded = round2(cashBeforeReleases - CASH_RESERVE_TARGET);
 
   var releaseWeeks = [];
@@ -119,11 +119,11 @@
     var isLast = idx === releaseWeeks.length - 1;
     var chunk = isLast ? remaining : Math.min(remaining, round2((totalReleaseNeeded / releaseWeeks.length) * rf(0.7, 1.3)));
     remaining = round2(remaining - chunk);
-    reserveTxns.push({ id: 'RT' + (txnSeq++), daysAgo: daysAgoW, glCode: '2006', amount: -chunk, invId: '', debtorId: '', note: 'Reserve Release' });
+    reserveTxns.push({ id: 'RT' + (txnSeq++), daysAgo: daysAgoW, glCode: '2005', amount: -chunk, invId: '', debtorId: '', note: 'Reserve Release' });
   });
   // Force-correct any rounding drift from the chunk loop onto the final (oldest) release
   // so the net always lands exactly on target, never off by a stray cent.
-  var netNow = round2(reserveTxns.filter(function (t) { return t.glCode === '2006'; }).reduce(function (sum, t) { return sum + t.amount; }, 0));
+  var netNow = round2(reserveTxns.filter(function (t) { return t.glCode === '2006' || t.glCode === '2005'; }).reduce(function (sum, t) { return sum + t.amount; }, 0));
   var drift = round2(netNow - CASH_RESERVE_TARGET);
   if (drift !== 0) {
     var lastRelease = reserveTxns.filter(function (t) { return t.note === 'Reserve Release'; }).slice(-1)[0];

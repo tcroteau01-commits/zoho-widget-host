@@ -189,6 +189,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .rail-signal-detail { font-size: 12px; color: var(--of-gray-700); margin-top: 10px; line-height: 1.4; }
 @media (max-width: 900px) { .cp-layout { grid-template-columns: 1fr; } .cp-rail { position: static; } }
 
+.cp-accordion { border: 1px solid var(--of-beige-line); border-radius: 12px; background: #fff; margin-bottom: 10px; overflow: hidden; }
+.cp-accordion > summary { list-style: none; cursor: pointer; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 14px; }
+.cp-accordion > summary::-webkit-details-marker { display: none; }
+.cp-accordion > summary::after { content: '▾'; font-size: 12px; color: var(--of-gray-500); transition: transform 0.15s; }
+.cp-accordion[open] > summary::after { transform: rotate(180deg); }
+.cp-accordion > summary .tag { font-weight: 500; }
+.cp-accordion-body { padding: 0 20px 20px; border-top: 1px solid var(--of-beige-line); }
+.acc-summary-pill { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px; margin-left: auto; margin-right: 12px; }
+.acc-summary-pill.clean { background: var(--of-green-soft); color: var(--of-green-text); }
+.acc-summary-pill.caution { background: var(--of-amber-soft); color: var(--of-amber-text); }
+.acc-summary-pill.flag { background: var(--of-red-soft); color: var(--of-red-text); }
+
 /* Indicator pills */
 .indicators { display: flex; flex-direction: column; gap: 8px; }
 .ind-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 0; }
@@ -597,50 +609,38 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div id="cp-litigation" class="checklist-grid"></div>
   </div>
 
-  <!-- Two-column: Authority & Insurance -->
-  <div class="grid-2">
+  <details class="cp-accordion" id="cp-acc-authority">
+    <summary>Authority &amp; Operating History <span id="cp-acc-authority-pill" class="acc-summary-pill clean">Clean</span><span class="tag">CarrierOK · FMCSA</span></summary>
+    <div class="cp-accordion-body"><div id="cp-authority" class="indicators"></div></div>
+  </details>
 
-    <div class="card">
-      <div class="card-title">Authority &amp; Operating History <span class="tag">CarrierOK · FMCSA</span></div>
-      <div id="cp-authority" class="indicators"></div>
+  <details class="cp-accordion" id="cp-acc-insurance">
+    <summary>Insurance <span id="cp-acc-insurance-pill" class="acc-summary-pill clean">Clean</span><span class="tag">FMCSA</span></summary>
+    <div class="cp-accordion-body"><div id="cp-insurance" class="indicators"></div></div>
+  </details>
+
+  <details class="cp-accordion" id="cp-acc-safety">
+    <summary>Safety &amp; Compliance <span id="cp-acc-safety-pill" class="acc-summary-pill clean">Clean</span><span class="tag">FMCSA</span></summary>
+    <div class="cp-accordion-body"><div id="cp-safety"></div></div>
+  </details>
+
+  <details class="cp-accordion" id="cp-acc-crash">
+    <summary>Crash History <span id="cp-acc-crash-pill" class="acc-summary-pill clean">Clean</span><span class="tag">FMCSA · 24 months</span></summary>
+    <div class="cp-accordion-body"><div id="cp-crash" class="crash-grid"></div></div>
+  </details>
+
+  <details class="cp-accordion" id="cp-acc-footprint">
+    <summary>Digital Footprint &amp; Identity <span id="cp-acc-footprint-pill" class="acc-summary-pill clean">Clean</span><span class="tag">IPQualityScore · CarrierOK</span></summary>
+    <div class="cp-accordion-body">
+      <div id="cp-digital-footprint"></div>
+      <div id="cp-stability" style="margin-top:14px;"></div>
     </div>
+  </details>
 
-    <div class="card">
-      <div class="card-title">Insurance Detail <span class="tag">FMCSA</span></div>
-      <div id="cp-insurance" class="indicators"></div>
-    </div>
-
-  </div>
-
-  <!-- Safety & Compliance -->
-  <div class="card">
-    <div class="card-title">Safety &amp; Compliance Metrics <span class="tag">FMCSA</span></div>
-    <div id="cp-safety"></div>
-  </div>
-
-  <!-- Crash History -->
-  <div class="card">
-    <div class="card-title">Crash History <span class="tag">FMCSA · 24 months</span></div>
-    <div id="cp-crash" class="crash-grid"></div>
-  </div>
-
-  <!-- Digital Footprint (IPQS) -->
-  <div class="card">
-    <div class="card-title">Digital Footprint <span class="tag">IPQualityScore</span></div>
-    <div id="cp-digital-footprint"></div>
-  </div>
-
-  <!-- Bank-check -->
-  <div class="card">
-    <div class="card-title">Bank &amp; Routing Intelligence <span class="tag">FedACH · OperFi Network</span></div>
-    <div id="cp-bank-routing"></div>
-  </div>
-
-  <!-- Stability & Contact -->
-  <div class="card">
-    <div class="card-title">Stability &amp; Contact History <span class="tag">CarrierOK</span></div>
-    <div id="cp-stability"></div>
-  </div>
+  <details class="cp-accordion" id="cp-acc-bank">
+    <summary>Bank, Routing &amp; Factoring <span id="cp-acc-bank-pill" class="acc-summary-pill clean">Clean</span><span class="tag">FedACH · OperFi Network</span></summary>
+    <div class="cp-accordion-body"><div id="cp-bank-routing"></div></div>
+  </details>
 
   <!-- Decision History -->
   <div class="card">
@@ -652,10 +652,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   <div id="cp-noa-card" class="card"></div>
 
   <!-- Carrier Documents (WorkDrive) -->
-  <div class="card" id="cp-docs-card">
-    <div class="card-title">Documents<span id="cp-docs-count" class="cp-ct"></span></div>
-    <div id="cp-docs-body" class="cp-docs-body">Loading documents…</div>
-  </div>
+  <details class="cp-accordion" id="cp-acc-docs">
+    <summary>Documents on File <span id="cp-docs-count" class="cp-ct"></span></summary>
+    <div class="cp-accordion-body" id="cp-docs-card"><div id="cp-docs-body" class="cp-docs-body">Loading documents…</div></div>
+  </details>
 
   <!-- Document viewer (inline PDF/image) -->
   <div id="cp-doc-viewer" class="cp-doc-viewer" style="display:none"></div>
@@ -963,6 +963,7 @@ function renderProfile(p) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function setAccPill(id, cls, text){ var el=document.getElementById(id); if(el){ el.className='acc-summary-pill '+cls; el.textContent=text; } }
 var REC_ICON = {"Approve":"✓","Approve with Caution":"◐","Hold":"⏸","Decline":"✕"};
 var FLAG_CATEGORIES = ["Authority and Compliance","Identity and Signup Fraud","Insurance","Operations and Safety","Payment and Internal"];
 function flagsByCategory(p, cat){ return ((p.risk && p.risk.flags) || []).filter(function(f){ return f.category === cat; }); }
@@ -1191,6 +1192,7 @@ function renderDigitalFootprint(p){
     ind('Email Frequent Complainer','Email',!!q.email_frequent_complainer,'No','⚠ Yes')
   ];
   el.innerHTML=summary+'<div class="indicators">'+rows.join('')+'</div>';
+  setAccPill('cp-acc-footprint-pill', worstSeverity(flagsByCategory(p,'Identity and Signup Fraud'))>=2?'flag':(worstSeverity(flagsByCategory(p,'Identity and Signup Fraud'))>=1?'caution':'clean'), worstSeverity(flagsByCategory(p,'Identity and Signup Fraud'))>=2?'Flag':(worstSeverity(flagsByCategory(p,'Identity and Signup Fraud'))>=1?'Caution':'Clean'));
 }
 
 function renderBankRouting(p){
@@ -1198,6 +1200,7 @@ function renderBankRouting(p){
   var b=p.bank||{};
   if(!b.has_bank_info){
     el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">No direct bank account on file (factored or not yet provided).</div>';
+    setAccPill('cp-acc-bank-pill','clean','Clean');
     return;
   }
   var bankBad=(b.routing_present && !b.routing_valid) || b.state_mismatch || b.bad_actor;
@@ -1225,6 +1228,7 @@ function renderBankRouting(p){
   el.innerHTML='<div class="bank-grid">'+bankCard+fpCard+fsCard+'</div>'+
     '<div style="font-size:12px;color:var(--of-gray-700);margin-top:14px;line-height:1.5;">'+
     'Bank name, routing, and region are from the FedACH directory + OperFi network. A bank-carrier region mismatch is a fraud marker, not disqualifying. Full account details visible to OperFi admin only.</div>';
+  setAccPill('cp-acc-bank-pill', bankBad?'flag':'clean', bankBad?'Flag':'Clean');
 }
 
 // ── Recommendation ─────────────────────────────────────────────────────────
@@ -1353,6 +1357,7 @@ function renderAuthority(p){
     indRow('USDOT-MC Chain of Title','FMCSA',chain?'Review':'Unchanged',chain?'warn':'good')+
     indRow('Last MCS-150 Filing','FMCSA',co.mcs150_date||'—','neutral')+
     indRow('Authority Age','CarrierOK',authAge||'—','neutral');
+  setAccPill('cp-acc-authority-pill', hasFlag(p,'recent_revocation')||!_authorityActive(p.carrierok||{})?'flag':'clean', hasFlag(p,'recent_revocation')||!_authorityActive(p.carrierok||{})?'Review':'Clean');
 }
 
 // ── Insurance ──────────────────────────────────────────────────────────────
@@ -1379,6 +1384,7 @@ function renderInsurance(p){
     indRow('Pending Cancellation','FMCSA',pend?'⚠ Yes':'No',pend?'warn':'good')+
     indRow('Cancel Count (lifetime)','FMCSA',cancel!=null?String(cancel):'—',cancel>0?'warn':'good')+
     indRow('Hazmat Coverage','OperFi',hazmat?'Required':'N/A (no hazmat)','neutral');
+  var _insBad=(p.carrierok&&p.carrierok.indicator_insurance===false); setAccPill('cp-acc-insurance-pill', _insBad?'flag':(p.carrierok&&p.carrierok.pending_insurance_cancellation?'caution':'clean'), _insBad?'Flag':(p.carrierok&&p.carrierok.pending_insurance_cancellation?'Caution':'Clean'));
 }
 
 // ── Safety ─────────────────────────────────────────────────────────────────
@@ -1444,6 +1450,7 @@ function renderSafety(p){
 
   var flagsHtml=flags.length?'<div style="margin-top:16px;">'+flags.map(renderFlagRow).join('')+'</div>':'';
   el.innerHTML=statsHtml+bars+alerts+flagsHtml;
+  var _oos=!!((p.carrierok||{}).out_of_service_flag); setAccPill('cp-acc-safety-pill', _oos?'flag':'clean', _oos?'Flag':'Clean');
 }
 
 // ── Crash ──────────────────────────────────────────────────────────────────
@@ -1463,6 +1470,7 @@ function renderCrash(p){
     card(inj,'Injuries',inj!=null&&inj>0?'warn':'good')+
     card(prev,'Preventable',prev!=null&&prev>0?'warn':(prev===0?'good':''))+
     card(total,'Total Crashes',total!=null&&total>0?'warn':'good');
+  var _fatal=_num((p.carrierok||{}).crash_fatalities); setAccPill('cp-acc-crash-pill', (_fatal&&_fatal>0)?'flag':'clean', (_fatal&&_fatal>0)?'Flag':'Clean');
 }
 
 // ── Stability & Contact History ────────────────────────────────────────────

@@ -1108,11 +1108,22 @@
       return (window.OPERFI_IMP && window.OPERFI_IMP.decorate) ? window.OPERFI_IMP.decorate(url) : url;
     }
 
-    function handleLoadPreviewData(data) {
-      if (state.selectedLoadId !== data.loadId && state.selectedLoadId !== data.load.loadNumber) return;
-      state.loadPreview = data;
-      state.loadPreviewLoading = false;
-      renderLoadDetail();
+    function handleLoadPreviewSuccess(loadId) {
+      return function(data) {
+        if (state.selectedLoadId !== loadId) return;
+        state.loadPreview = data;
+        state.loadPreviewLoading = false;
+        renderLoadDetail();
+      };
+    }
+
+    function handleLoadPreviewError(loadId) {
+      return function(err) {
+        if (state.selectedLoadId !== loadId) return;
+        state.loadPreviewLoading = false;
+        state.loadPreviewError = err.message || String(err);
+        renderLoadDetail();
+      };
     }
 
     function openLoadDetail(loadId) {
@@ -1130,18 +1141,8 @@
 
       if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
         return Promise.resolve(window.OPERFI_DEMO.loadPreview(loadId))
-          .then(function (data) {
-            if (state.selectedLoadId !== loadId) return;
-            state.loadPreview = data;
-            state.loadPreviewLoading = false;
-            renderLoadDetail();
-          })
-          .catch(function (err) {
-            if (state.selectedLoadId !== loadId) return;
-            state.loadPreviewLoading = false;
-            state.loadPreviewError = err.message || String(err);
-            renderLoadDetail();
-          });
+          .then(handleLoadPreviewSuccess(loadId))
+          .catch(handleLoadPreviewError(loadId));
       }
 
       var params = new URLSearchParams();
@@ -1153,18 +1154,8 @@
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.json();
         })
-        .then(function (data) {
-          if (state.selectedLoadId !== loadId) return;
-          state.loadPreview = data;
-          state.loadPreviewLoading = false;
-          renderLoadDetail();
-        })
-        .catch(function (err) {
-          if (state.selectedLoadId !== loadId) return;
-          state.loadPreviewLoading = false;
-          state.loadPreviewError = err.message || String(err);
-          renderLoadDetail();
-        });
+        .then(handleLoadPreviewSuccess(loadId))
+        .catch(handleLoadPreviewError(loadId));
     }
 
     function closeLoadDetail() {

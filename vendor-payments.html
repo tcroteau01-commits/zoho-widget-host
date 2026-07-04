@@ -149,6 +149,9 @@
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
+<script src="https://app.operfi.com/demo-ledger.js"></script>
+<script src="https://app.operfi.com/demo-data.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
 (function () {
   'use strict';
@@ -213,6 +216,17 @@
 
   function fetchOpenAP(force) {
     var panel = document.getElementById('panel-open');
+    if (typeof window.OPERFI_DEMO !== 'undefined' && window.OPERFI_DEMO.isDemo()) {
+      var data = window.OPERFI_DEMO.vendorPaymentsOpen();
+      state.seeAll = !!data.seeAll;
+      state.accountName = data.accountName || '';
+      if (state.accountName) {
+        document.getElementById('acctName').textContent = state.accountName;
+        document.getElementById('acctPill').style.display = 'inline-block';
+      }
+      renderOpenAP(data.rows || [], data.totals || {}, state.accountName);
+      return;
+    }
     if (isLocalTest()) {
       renderOpenAP(MOCK_OPEN_ROWS, mockTotals(MOCK_OPEN_ROWS, 'open'), 'Marek LLC (mock)');
       state.accountName = 'Marek LLC (mock)';
@@ -447,6 +461,33 @@
   function escClose(e) { if (e.key === 'Escape') closeDetail(); }
 
   function exportPdf(tab) {
+    if (typeof window.OPERFI_DEMO !== 'undefined' && window.OPERFI_DEMO.isDemo()) {
+      var columns = [
+        {key:'Load #',label:'Load #'},
+        {key:'Debtor',label:'Debtor'},
+        {key:'Vendor Name',label:'Vendor'},
+        {key:'Vendor Amount',label:'Amount'},
+        {key:'Payment Status',label:'Status'}
+      ];
+      var rows = tab === 'open' ? (state.openRows || []) : (state.historyRows || []);
+      var title = 'Vendor Payments ' + (tab === 'open' ? 'Open AP' : 'History');
+      var kpiLines = [];
+      if (tab === 'open' && state.openTotals) {
+        kpiLines = [
+          'Open Loads: ' + state.openTotals.openLoads,
+          'Total Owed: $' + (state.openTotals.totalOwed || 0).toFixed(2),
+          'Carriers: ' + state.openTotals.carrierCount
+        ];
+      } else if (tab === 'history' && state.historyKpis) {
+        kpiLines = [
+          'Payments: ' + state.historyKpis.paymentCount,
+          'Total Paid: $' + (state.historyKpis.totalPaid || 0).toFixed(2),
+          'Carriers Paid: ' + state.historyKpis.carriersPaid
+        ];
+      }
+      window.OPERFI_DEMO.pdfFromRows(title, columns, rows, kpiLines);
+      return;
+    }
     if (isLocalTest()) {
       alert('Test mode: PDF export would download vendor_payments_' + tab + '.pdf');
       return;
@@ -555,6 +596,14 @@
 
   function doHistoryFetch(force) {
     var d = state.historyDates;
+    if (typeof window.OPERFI_DEMO !== 'undefined' && window.OPERFI_DEMO.isDemo()) {
+      var data = window.OPERFI_DEMO.vendorPaymentsHistory(d.from, d.to);
+      state.seeAll = !!data.seeAll;
+      state.historyRows = data.rows || [];
+      renderHistoryKpis(data.totals || {});
+      renderHistoryTable();
+      return;
+    }
     if (isLocalTest()) {
       state.historyRows = MOCK_HISTORY_ROWS;
       renderHistoryKpis(mockTotals(MOCK_HISTORY_ROWS, 'history'));
@@ -579,6 +628,7 @@
   }
 
   function renderHistoryKpis(totals) {
+    state.historyKpis = totals;
     document.getElementById('hist-kpis').innerHTML = '' +
       kpiCard('PAYMENTS', totals.paymentCount || 0) +
       kpiCard('TOTAL PAID', '$' + fmtMoney(totals.totalPaid || 0)) +

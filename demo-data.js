@@ -421,6 +421,32 @@
     };
   }
 
+  function _vpRow(l) {
+    var carrier = window.OPERFI_DEMO_LEDGER.carriers.filter(function (c) { return c.id === l.carrierId; })[0];
+    return {
+      _id: l.id, Client: DEMO_ACCOUNT_NAME, 'Load #': l.invNo, Debtor: _debtorName(l.debtorId),
+      'Vendor Name': carrier ? carrier.name : '(unknown)', USDOT: '19' + l.carrierId.slice(1).padStart(5, '0'),
+      'Vendor Amount': Math.abs(l.vendorPayable),
+      'Date of Buy Date': offsetISO(l.daysAgo), 'Purchase Date': offsetISO(l.daysAgo),
+      'Vendor Pmt Terms': 'Quick Pay', 'Broker Pmt Terms': 'Net 30', 'Factoring Company': '',
+      'Pmt Acct Number': 'ACCT' + l.carrierId.slice(1), 'Vendor Invoice #': 'V' + l.id.slice(3), 'Invoice #': l.id,
+      'Payment Status': l.status === 'closed' ? 'Paid' : 'Pending', 'AR Balance': l.status === 'open' ? l.purchaseAmount : 0,
+      'Vendor Gross Amt': Math.abs(l.vendorPayable), 'PO #': 'PO' + l.id.slice(3), 'Other Reference': ''
+    };
+  }
+
+  function vendorPaymentsOpen() {
+    var open = _openLoads();
+    var rows = open.map(function (l) { var r = _vpRow(l); r['Vendor Due'] = offsetISO(l.daysAgo - 30); return r; });
+    return { rows: rows, totals: { openLoads: rows.length, totalOwed: _sum(rows, function (r) { return r['Vendor Amount']; }), carrierCount: new Set(open.map(function (l) { return l.carrierId; })).size }, accountName: DEMO_ACCOUNT_NAME, seeAll: false };
+  }
+
+  function vendorPaymentsHistory(from, to) {
+    var closed = _closedLoads();
+    var rows = closed.map(function (l) { var r = _vpRow(l); r['Paid Date'] = offsetISO(l.closedDaysAgo); return r; });
+    return { rows: rows, totals: { paymentCount: rows.length, totalPaid: _sum(rows, function (r) { return r['Vendor Amount']; }), carriersPaid: new Set(closed.map(function (l) { return l.carrierId; })).size }, accountName: DEMO_ACCOUNT_NAME, seeAll: false };
+  }
+
   window.OPERFI_DEMO = {
     EMAIL: DEMO_EMAIL, ACCOUNT_NAME: DEMO_ACCOUNT_NAME,
     isDemo: isDemo, todayISO: todayISO, offsetISO: offsetISO,
@@ -431,6 +457,7 @@
     agingReceipts: agingReceipts, agingCustomerReceipts: agingCustomerReceipts, agingLoadPreview: agingLoadPreview,
     loads: loads, loadPreview: loadPreview,
     loadsMargins: loadsMargins, loadsFees: loadsFees,
-    reserveActivity: reserveActivity
+    reserveActivity: reserveActivity,
+    vendorPaymentsOpen: vendorPaymentsOpen, vendorPaymentsHistory: vendorPaymentsHistory
   };
 })();

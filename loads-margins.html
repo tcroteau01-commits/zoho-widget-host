@@ -355,6 +355,7 @@
   <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
   <script src="https://app.operfi.com/demo-ledger.js"></script>
   <script src="https://app.operfi.com/demo-data.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script>
     var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
     var brokerEmail = null;
@@ -505,8 +506,8 @@
           '<button id="feesExportBtn" class="btn-export">Export &#9660;</button>' +
           (state.feesExportOpen ?
             '<div class="export-menu">' +
-              '<button data-export="fees:csv">Fees CSV</button>' +
-              '<button data-export="fees:pdf">Fees PDF</button>' +
+              '<button data-export="fees:csv" data-export-scope="fees" data-export-format="csv">Fees CSV</button>' +
+              '<button data-export="fees:pdf" data-export-scope="fees" data-export-format="pdf">Fees PDF</button>' +
             '</div>' : '') +
         '</div>' +
       '</div>';
@@ -694,8 +695,8 @@
           '<button id="marginsExportBtn" class="btn-export">Export &#9660;</button>' +
           (state.marginsExportOpen ?
             '<div class="export-menu">' +
-              '<button data-export="margins:csv">Margins CSV</button>' +
-              '<button data-export="margins:pdf">Margins PDF</button>' +
+              '<button data-export="margins:csv" data-export-scope="margins" data-export-format="csv">Margins CSV</button>' +
+              '<button data-export="margins:pdf" data-export-scope="margins" data-export-format="pdf">Margins PDF</button>' +
             '</div>' : '') +
         '</div>' +
       '</div>';
@@ -878,8 +879,8 @@
           '<button id="loadsExportBtn" class="btn-export">Export &#9660;</button>' +
           (state.loadsExportOpen ?
             '<div class="export-menu">' +
-              '<button data-export="loads:csv">Loads CSV</button>' +
-              '<button data-export="loads:pdf">Loads PDF</button>' +
+              '<button data-export="loads:csv" data-export-scope="loads" data-export-format="csv">Loads CSV</button>' +
+              '<button data-export="loads:pdf" data-export-scope="loads" data-export-format="pdf">Loads PDF</button>' +
             '</div>' : '') +
         '</div>' +
       '</div>';
@@ -1096,6 +1097,43 @@
     }
 
     function openExport(scope, format) {
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        var rows, columns, title, footers;
+        if (scope === 'loads') {
+          var ld = window.OPERFI_DEMO.loads(state.loadsFilters);
+          rows = ld.loads;
+          columns = [
+            { key: 'buyDate', label: 'Buy Date' }, { key: 'loadNumber', label: 'Load #' },
+            { key: 'debtorName', label: 'Debtor' }, { key: 'vendorName', label: 'Vendor' },
+            { key: 'purchaseAmount', label: 'Purchase' }, { key: 'margin', label: 'Margin' }, { key: 'marginPct', label: 'Margin %' }
+          ];
+          title = 'Loads';
+          footers = ['Total Purchase: $' + ld.totals.purchaseAmount.toFixed(2), 'Total Margin: $' + ld.totals.margin.toFixed(2)];
+        } else if (scope === 'margins') {
+          var md = window.OPERFI_DEMO.loadsMargins(state.marginsGroupBy);
+          rows = md.rows;
+          columns = [
+            { key: 'label', label: state.marginsGroupBy === 'debtor' ? 'Debtor' : 'Period' },
+            { key: 'loadCount', label: 'Loads' }, { key: 'purchaseAmount', label: 'Purchase' },
+            { key: 'discountFee', label: 'Discount Fee' }, { key: 'vendorPayable', label: 'Vendor Payable' },
+            { key: 'margin', label: 'Margin' }, { key: 'marginPct', label: 'Margin %' }
+          ];
+          title = 'Margins by Period';
+          footers = ['Total Margin: $' + md.totals.margin.toFixed(2)];
+        } else {
+          var fd = window.OPERFI_DEMO.loadsFees();
+          rows = fd.groups.reduce(function (acc, g) { return acc.concat(g.transactions); }, []);
+          columns = [
+            { key: 'date', label: 'Date' }, { key: 'loadNumber', label: 'Load #' },
+            { key: 'debtorName', label: 'Debtor' }, { key: 'amount', label: 'Amount' }
+          ];
+          title = 'Fees Paid';
+          footers = ['Total Fees: $' + fd.totals.amount.toFixed(2)];
+        }
+        if (format === 'csv') { window.OPERFI_DEMO.downloadCSV(scope + '.csv', window.OPERFI_DEMO.csvFromRows(columns, rows)); return; }
+        window.OPERFI_DEMO.pdfFromRows(title, columns, rows, footers);
+        return;
+      }
       var f, range, params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
       else                params.set('email', brokerEmail);

@@ -10,10 +10,19 @@
 
   var DEMO_EMAIL = 'demo@operfi.com';
   var DEMO_ACCOUNT_NAME = 'OperFi Demo';
+  // The admin impersonation picker shows one representative contact per account (not
+  // necessarily DEMO_EMAIL), and every contact under the OperFi Demo account displays
+  // as "OperFi Demo" in that picker with no way to tell them apart. So isDemo() must
+  // accept any authorized-user contact on the OperFi Demo account, not just DEMO_EMAIL,
+  // or picking the "wrong" (but still correct-looking) row silently falls through to
+  // the real backend instead of the fixture.
+  var DEMO_EMAILS = ['demo@operfi.com', 'morgan.ellis@operfidemo.com', 'jordan.price@operfidemo.com', 'casey.nguyen@operfidemo.com'];
 
   function isDemo() {
-    try { return !!(window.OPERFI_IMP && window.OPERFI_IMP.target() === DEMO_EMAIL); }
-    catch (e) { return false; }
+    try {
+      var t = window.OPERFI_IMP && window.OPERFI_IMP.target();
+      return !!(t && DEMO_EMAILS.indexOf(t) !== -1);
+    } catch (e) { return false; }
   }
 
   function todayISO() { return new Date().toISOString().slice(0, 10); }

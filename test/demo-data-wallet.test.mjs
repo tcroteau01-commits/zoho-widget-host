@@ -23,6 +23,12 @@ test('isDemo() is true only when impersonating the reserved demo email', () => {
   assert.equal(boot().OPERFI_DEMO.isDemo(), false);
 });
 
+test('isDemo() is also true for the other OperFi Demo authorized-user contacts (admin picker only shows one representative row per account, indistinguishable in the UI)', () => {
+  assert.equal(boot('morgan.ellis@operfidemo.com').OPERFI_DEMO.isDemo(), true);
+  assert.equal(boot('jordan.price@operfidemo.com').OPERFI_DEMO.isDemo(), true);
+  assert.equal(boot('casey.nguyen@operfidemo.com').OPERFI_DEMO.isDemo(), true);
+});
+
 test('offsetISO converts a daysAgo offset into a real past ISO date', () => {
   const w = boot('demo@operfi.com');
   const today = new Date();

@@ -217,12 +217,45 @@
     };
   }
 
+  function _receiptsFromClosedLoads(debtorFilter) {
+    var closed = _closedLoads().filter(function (l) { return !debtorFilter || l.debtorId === debtorFilter; });
+    var receipts = closed.map(function (l) {
+      return {
+        date: offsetISO(l.closedDaysAgo), invoiceNo: l.invNo, debtorId: l.debtorId,
+        debtorName: _debtorName(l.debtorId), note: 'Collection', checkNumber: 'CHK' + l.id.slice(3),
+        age: l.daysAgo - l.closedDaysAgo, amount: l.purchaseAmount, loadId: l.id
+      };
+    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    return receipts;
+  }
+
+  function agingReceipts() {
+    var receipts = _receiptsFromClosedLoads(null);
+    var byDate = {};
+    receipts.forEach(function (r) {
+      if (!byDate[r.date]) byDate[r.date] = { date: r.date, pmtNumber: 'PMT' + r.date.replace(/-/g, ''), debtorId: r.debtorId, debtorName: r.debtorName, invoiceCount: 0, amount: 0, invoices: [] };
+      byDate[r.date].invoiceCount += 1;
+      byDate[r.date].amount = round2(byDate[r.date].amount + r.amount);
+      byDate[r.date].invoices.push({ invoiceNo: r.invoiceNo, loadId: r.loadId, age: r.age, note: r.note, amount: r.amount });
+    });
+    var summary = Object.keys(byDate).map(function (k) { return byDate[k]; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    return { receipts: receipts, summary: summary, totals: { count: receipts.length, amount: _sum(receipts, function (r) { return r.amount; }), summaryCount: summary.length } };
+  }
+
+  function agingCustomerReceipts(debtorId) {
+    var receipts = _receiptsFromClosedLoads(debtorId);
+    return { receipts: receipts, totals: { count: receipts.length, amount: _sum(receipts, function (r) { return r.amount; }) } };
+  }
+
+  function agingLoadPreview(loadId) { return loadPreview(loadId); }
+
   window.OPERFI_DEMO = {
     EMAIL: DEMO_EMAIL, ACCOUNT_NAME: DEMO_ACCOUNT_NAME,
     isDemo: isDemo, todayISO: todayISO, offsetISO: offsetISO,
     wallet: wallet,
     csvFromRows: csvFromRows, downloadCSV: downloadCSV, pdfFromRows: pdfFromRows,
     dashboardSummary: dashboardSummary,
-    aging: aging
+    aging: aging,
+    agingReceipts: agingReceipts, agingCustomerReceipts: agingCustomerReceipts, agingLoadPreview: agingLoadPreview
   };
 })();

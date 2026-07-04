@@ -926,7 +926,7 @@ test('panel: Submit Invoice is disabled when DNU=true even with Hiring_Decision=
   assert.ok(inv.disabled);
 });
 
-test('vetting pane: Decline shows the Denied stop flag', async () => {
+test('vetting pane: Decline shows the Declined stop flag', async () => {
   const dom = makeDom();
   const w = dom.window;
   const rec = { ID: '8001', Vendor_Name: 'DECLINED LLC', Hiring_Decision: 'Decline', MC: '1', USDOT: '2', Factoring_Company: '' };
@@ -937,7 +937,8 @@ test('vetting pane: Decline shows the Denied stop flag', async () => {
   await new Promise((r) => setTimeout(r, 50));
   const strip = w.document.getElementById('vv-redflags');
   assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1);
-  assert.match(strip.textContent, /Denied/);
+  assert.match(strip.textContent, /Declined/);
+  assert.doesNotMatch(strip.textContent, /Payment change pending/);
 });
 
 test('vetting pane: Payment Change flag fires even when Hiring_Decision is Approve', async () => {

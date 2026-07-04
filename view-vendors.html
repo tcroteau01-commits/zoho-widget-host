@@ -806,6 +806,8 @@ function renderPanel() {
     isDnu: statusMeta(r).key === 'dnu',
     statusKey: statusMeta(r).key,
     isFactored: !!(r.Factoring_Company || '').trim(),
+    // Vendor_Status is otherwise unused by the badge (statusMeta reads Hiring_Decision) —
+    // the backend must keep emitting it or this flag silently stops firing.
     paymentChangePending: (r.Vendor_Status || '') === 'Payment Change'
   };
   loadVendorDocs(r.ID, document.getElementById('vv-docs'));
@@ -948,8 +950,8 @@ function deriveVettingFlags(profile, ctx) {
   // Account / status hard stops
   if (ctx.isDnu) flags.push({ key: 'dnu', level: 'stop', label: 'Do Not Use',
     reason: 'This carrier is marked Do Not Use.' });
-  if (ctx.statusKey === 'declined') flags.push({ key: 'denied', level: 'stop', label: 'Denied',
-    reason: 'This carrier was denied.' });
+  if (ctx.statusKey === 'declined') flags.push({ key: 'denied', level: 'stop', label: 'Declined',
+    reason: 'You declined this carrier.' });
 
   // Bank
   if (has('bank_bad_actor')) flags.push({ key: 'bank_bad_actor', level: 'stop',
@@ -1082,6 +1084,8 @@ function loadVendorRedFlags(rec, force) {
     isDnu: statusMeta(rec).key === 'dnu',
     statusKey: statusMeta(rec).key,
     isFactored: !!(rec.Factoring_Company || '').trim(),
+    // Vendor_Status is otherwise unused by the badge (statusMeta reads Hiring_Decision) —
+    // the backend must keep emitting it or this flag silently stops firing.
     paymentChangePending: (rec.Vendor_Status || '') === 'Payment Change',
     profileError: false
   };

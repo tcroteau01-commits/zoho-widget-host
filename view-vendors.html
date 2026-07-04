@@ -485,11 +485,14 @@ function sortRecords(records) {
     });
     return arr;
   }
-  // 'status' (default) — preserved verbatim from the original onRecordsLoaded sort.
+  // 'status' (default) — Approved-family first, Not Reviewed/Hold next, Declined,
+  // then Do Not Use last; ties broken by name.
   arr.sort(function(a, b) {
     var sa = statusMeta(a), sb = statusMeta(b);
-    var rank = { approved: 0, pending: 1, 'payment-change': 1, denied: 2, dnu: 3, unknown: 4 };
-    var diff = (rank[sa.key] || 9) - (rank[sb.key] || 9);
+    var rank = { approved: 0, 'approved-caution': 0, 'not-reviewed': 1, hold: 1, declined: 2, dnu: 3 };
+    var ra = Object.prototype.hasOwnProperty.call(rank, sa.key) ? rank[sa.key] : 9;
+    var rb = Object.prototype.hasOwnProperty.call(rank, sb.key) ? rank[sb.key] : 9;
+    var diff = ra - rb;
     if (diff !== 0) return diff;
     return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
   });
@@ -507,17 +510,19 @@ function buildChips() {
   var chips = document.getElementById('chips');
   var counts = countBy(allRecords);
   var def = [
-    { key: 'all',       label: 'All',        count: allRecords.length },
-    { key: 'approved',  label: 'Approved',   count: counts.status.approved || 0 },
-    { key: 'pending',   label: 'Pending',    count: (counts.status.pending || 0) + (counts.status['payment-change'] || 0) },
-    { key: 'factor',    label: 'Factoring',  count: counts.payment.factor || 0 },
-    { key: 'quickpay',  label: 'Quick Pay',  count: counts.payment.quickpay || 0 },
-    { key: 'net30',     label: 'Net Terms',  count: counts.payment.net30 || 0 },
-    { key: 'dnu',       label: 'Do Not Use', count: counts.status.dnu || 0 }
+    { key: 'all',          label: 'All',          count: allRecords.length },
+    { key: 'approved',     label: 'Approved',     count: (counts.status.approved || 0) + (counts.status['approved-caution'] || 0) },
+    { key: 'not-reviewed', label: 'Not Reviewed', count: counts.status['not-reviewed'] || 0 },
+    { key: 'hold',         label: 'On Hold',      count: counts.status.hold || 0 },
+    { key: 'declined',     label: 'Declined',     count: counts.status.declined || 0 },
+    { key: 'factor',       label: 'Factoring',    count: counts.payment.factor || 0 },
+    { key: 'quickpay',     label: 'Quick Pay',    count: counts.payment.quickpay || 0 },
+    { key: 'net30',        label: 'Net Terms',    count: counts.payment.net30 || 0 },
+    { key: 'dnu',          label: 'Do Not Use',   count: counts.status.dnu || 0 }
   ];
   chips.innerHTML = '';
   def.forEach(function(c) {
-    if (c.key === 'dnu' && c.count === 0) return;
+    if ((c.key === 'dnu' || c.key === 'hold' || c.key === 'declined') && c.count === 0) return;
     var el = document.createElement('span');
     el.className = 'chip' + (c.key === currentFilter ? ' active' : '');
     el.dataset.key = c.key;
@@ -548,9 +553,11 @@ function applyFilters() {
   filteredRecords = sortRecords(allRecords).filter(function(r) {
     if (currentFilter !== 'all') {
       var sm = statusMeta(r), pm = paymentMeta(r);
-      if (currentFilter === 'approved' && sm.key !== 'approved') return false;
-      if (currentFilter === 'pending'  && sm.key !== 'pending' && sm.key !== 'payment-change') return false;
-      if (currentFilter === 'dnu'      && sm.key !== 'dnu')      return false;
+      if (currentFilter === 'approved'     && sm.key !== 'approved' && sm.key !== 'approved-caution') return false;
+      if (currentFilter === 'not-reviewed' && sm.key !== 'not-reviewed') return false;
+      if (currentFilter === 'hold'         && sm.key !== 'hold')         return false;
+      if (currentFilter === 'declined'     && sm.key !== 'declined')     return false;
+      if (currentFilter === 'dnu'          && sm.key !== 'dnu')          return false;
       if (currentFilter === 'factor'   && pm.key !== 'factor')   return false;
       if (currentFilter === 'quickpay' && pm.key !== 'quickpay') return false;
       if (currentFilter === 'net30'    && pm.key !== 'net30')    return false;
@@ -576,7 +583,8 @@ function applyFilters() {
 function renderKpis() {
   var counts = countBy(allRecords);
   document.getElementById('kpi-total').textContent    = allRecords.length.toLocaleString();
-  document.getElementById('kpi-approved').textContent = (counts.status.approved || 0).toLocaleString();
+  document.getElementById('kpi-approved').textContent =
+    ((counts.status.approved || 0) + (counts.status['approved-caution'] || 0)).toLocaleString();
   document.getElementById('kpi-factor').textContent   = (counts.payment.factor || 0).toLocaleString();
   document.getElementById('kpi-quickpay').textContent = (counts.payment.quickpay || 0).toLocaleString();
   document.getElementById('kpi-dnu').textContent      = (counts.status.dnu || 0).toLocaleString();

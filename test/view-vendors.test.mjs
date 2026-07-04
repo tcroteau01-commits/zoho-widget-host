@@ -803,3 +803,57 @@ test('statusMeta: Not Reviewed and missing/unrecognized both map to not-reviewed
   assert.equal(vvApi().statusMeta({}).key, 'not-reviewed');
   assert.equal(vvApi().statusMeta({ Hiring_Decision: 'Some Future Value' }).key, 'not-reviewed');
 });
+
+// ── Filters, KPIs, and sort with the 5-state Hiring_Decision field ────────
+
+const HD_SET = [
+  { ID: 'h1', Vendor_Name: 'Approve Co',   Hiring_Decision: 'Approve' },
+  { ID: 'h2', Vendor_Name: 'Caution Co',   Hiring_Decision: 'Approve with Caution' },
+  { ID: 'h3', Vendor_Name: 'NotRev Co',    Hiring_Decision: 'Not Reviewed' },
+  { ID: 'h4', Vendor_Name: 'Hold Co',      Hiring_Decision: 'Hold' },
+  { ID: 'h5', Vendor_Name: 'Declined Co',  Hiring_Decision: 'Decline' },
+];
+
+test('chips: renders Approved / Not Reviewed / Hold / Declined with correct counts', async () => {
+  const w = await bootSorted(HD_SET);
+  const chips = [...w.document.querySelectorAll('#chips .chip')];
+  const byLabel = {};
+  chips.forEach((c) => { byLabel[c.textContent.replace(/\s+\d+$/, '').trim()] = c.querySelector('.count').textContent; });
+  assert.equal(byLabel['Approved'], '2');       // Approve + Approve with Caution
+  assert.equal(byLabel['Not Reviewed'], '1');
+  assert.equal(byLabel['On Hold'], '1');
+  assert.equal(byLabel['Declined'], '1');
+});
+
+test('chips: Hold and Declined chips are hidden when their count is zero', async () => {
+  const w = await bootSorted([HD_SET[0], HD_SET[2]]); // only Approve + Not Reviewed present
+  const labels = [...w.document.querySelectorAll('#chips .chip')].map((c) => c.textContent);
+  assert.ok(!labels.some((t) => /On Hold/.test(t)), 'On Hold chip hidden at zero count');
+  assert.ok(!labels.some((t) => /Declined/.test(t)), 'Declined chip hidden at zero count');
+});
+
+test('KPI Approved tile sums Approve + Approve with Caution', async () => {
+  const w = await bootSorted(HD_SET);
+  assert.equal(w.document.getElementById('kpi-approved').textContent, '2');
+});
+
+test('filter: clicking the Declined chip narrows to only declined carriers', async () => {
+  const w = await bootSorted(HD_SET);
+  const chip = [...w.document.querySelectorAll('#chips .chip')].find((c) => /Declined/.test(c.textContent));
+  chip.click();
+  assert.deepEqual(rowNames(w), ['Declined Co']);
+});
+
+test('filter: clicking the Approved chip includes both Approve and Approve with Caution', async () => {
+  const w = await bootSorted(HD_SET);
+  const chip = [...w.document.querySelectorAll('#chips .chip')].find((c) => /^Approved/.test(c.textContent));
+  chip.click();
+  assert.deepEqual(rowNames(w).sort(), ['Approve Co', 'Caution Co']);
+});
+
+test('status sort ranks Approved-family above Not Reviewed/Hold above Declined above DNU', async () => {
+  const dnuRec = { ID: 'h6', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' };
+  const w = await bootSorted([HD_SET[4], HD_SET[0], dnuRec, HD_SET[3]]); // declined, approved, dnu, hold
+  setSort(w, 'status');
+  assert.deepEqual(rowNames(w), ['Approve Co', 'Hold Co', 'Declined Co', 'DNU Co']);
+});

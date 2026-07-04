@@ -910,3 +910,17 @@ test('panel: Submit Invoice is disabled for Hold', async () => {
   const inv = w.document.getElementById('p-invoice');
   assert.ok(inv.disabled);
 });
+
+test('row action: DNU blocks invoicing even when Hiring_Decision=Approve', async () => {
+  const w = await bootOne({ ID: 'dnu1', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.textContent, /Blocked/);
+});
+
+test('panel: Submit Invoice is disabled when DNU=true even with Hiring_Decision=Approve', async () => {
+  const w = await bootOne({ ID: 'dnu2', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' });
+  w.document.querySelector('.row').click();
+  const inv = w.document.getElementById('p-invoice');
+  assert.ok(inv.disabled);
+});

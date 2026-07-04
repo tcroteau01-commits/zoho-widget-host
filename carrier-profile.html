@@ -1228,26 +1228,22 @@ function renderBankRouting(p){
 }
 
 // ── Recommendation ─────────────────────────────────────────────────────────
+var TIER_TO_SIGNAL = {"Low":null,"Medium":"Limited","High":"Elevated","Critical":"Serious"};
 function renderRecommendation(p){
-  var el=document.getElementById('cp-recommendation'); if(!el) return;
-  var rec=p.system_recommendation||'Hold';
-  var verdictEl=el.querySelector('.rec-verdict');
-  var metaEl=el.querySelector('.rec-meta');
-  if(verdictEl) verdictEl.innerHTML='<span class="rec-icon">'+(REC_ICON[rec]||'◐')+'</span> '+esc(rec);
-  if(metaEl) metaEl.textContent='Engine: risk_model · Based on the flags below';
-  var reasonsList=document.getElementById('cp-rec-reasons');
-  if(reasonsList){
+  var badge=document.getElementById('cp-rail-signal'); if(!badge) return;
+  var detail=document.getElementById('cp-rail-signal-detail');
+  var tier=(p.risk&&p.risk.tier)||'Medium';
+  var signal=TIER_TO_SIGNAL[tier];
+  badge.className='rail-signal-badge'+(signal?(' '+signal.toLowerCase()):'');
+  badge.textContent=signal?(signal+' signal'):'No elevated signals';
+  if(detail){
     var allFlags=(p.risk&&p.risk.flags)||[];
     var SRANK={"Critical":3,"High":2,"Medium":1,"Low":0};
-    var sorted=allFlags.slice().sort(function(a,b){
-      return (SRANK[b.severity]||0)-(SRANK[a.severity]||0);
-    });
+    var sorted=allFlags.slice().sort(function(a,b){ return (SRANK[b.severity]||0)-(SRANK[a.severity]||0); });
     var top=sorted.slice(0,4);
-    if(top.length){
-      reasonsList.innerHTML=top.map(function(f){ return '<li>'+esc(f.label)+'</li>'; }).join('');
-    } else {
-      reasonsList.innerHTML='<li>No risk flags detected.</li>';
-    }
+    detail.innerHTML = top.length
+      ? ('Top items: <ul style="margin:4px 0 0 16px;">'+top.map(function(f){ return '<li>'+esc(f.label)+'</li>'; }).join('')+'</ul>')
+      : 'No risk flags detected in the data reviewed.';
   }
 }
 

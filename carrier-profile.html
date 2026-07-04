@@ -1039,7 +1039,7 @@ function renderLoadHistory(p){
   var av=p.account_vendor;
   var count=av?(av.Loads_Tendered_Count||0):0;
   if(!av || count===0){
-    el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;">First load with this carrier? No history is normal at our size. Treat it as a trial load and lean on the checklist to the right. A clean record is a mitigating factor, but it does not replace this load's checks.</div>';
+    el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;">First load with this carrier? No history is normal at our size. Treat it as a trial load and lean on the checklist to the right. A clean record is a mitigating factor, but it does not replace this load\'s checks.</div>';
     return;
   }
   el.innerHTML='<div style="display:flex;gap:24px;flex-wrap:wrap;">'+

@@ -29,3 +29,14 @@ test('agingCustomerReceipts(debtorId) returns only that debtor\'s receipts', () 
   const r = w.OPERFI_DEMO.agingCustomerReceipts(debtorId);
   r.receipts.forEach((x) => assert.equal(x.debtorId, debtorId));
 });
+
+test('agingReceipts() summary rows never mix receipts from more than one debtor', () => {
+  const w = boot();
+  const r = w.OPERFI_DEMO.agingReceipts();
+  r.summary.forEach((row) => {
+    const debtorIdsInRow = new Set(
+      r.receipts.filter((x) => row.invoices.some((inv) => inv.loadId === x.loadId)).map((x) => x.debtorId)
+    );
+    assert.equal(debtorIdsInRow.size, 1, `summary row for ${row.date} mixes debtors: ${JSON.stringify([...debtorIdsInRow])}`);
+  });
+});

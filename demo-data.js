@@ -231,14 +231,15 @@
 
   function agingReceipts() {
     var receipts = _receiptsFromClosedLoads(null);
-    var byDate = {};
+    var byKey = {};
     receipts.forEach(function (r) {
-      if (!byDate[r.date]) byDate[r.date] = { date: r.date, pmtNumber: 'PMT' + r.date.replace(/-/g, ''), debtorId: r.debtorId, debtorName: r.debtorName, invoiceCount: 0, amount: 0, invoices: [] };
-      byDate[r.date].invoiceCount += 1;
-      byDate[r.date].amount = round2(byDate[r.date].amount + r.amount);
-      byDate[r.date].invoices.push({ invoiceNo: r.invoiceNo, loadId: r.loadId, age: r.age, note: r.note, amount: r.amount });
+      var key = r.date + '|' + r.debtorId;
+      if (!byKey[key]) byKey[key] = { date: r.date, pmtNumber: 'PMT' + r.date.replace(/-/g, '') + '-' + r.debtorId, debtorId: r.debtorId, debtorName: r.debtorName, invoiceCount: 0, amount: 0, invoices: [] };
+      byKey[key].invoiceCount += 1;
+      byKey[key].amount = round2(byKey[key].amount + r.amount);
+      byKey[key].invoices.push({ invoiceNo: r.invoiceNo, loadId: r.loadId, age: r.age, note: r.note, amount: r.amount });
     });
-    var summary = Object.keys(byDate).map(function (k) { return byDate[k]; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    var summary = Object.keys(byKey).map(function (k) { return byKey[k]; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     return { receipts: receipts, summary: summary, totals: { count: receipts.length, amount: _sum(receipts, function (r) { return r.amount; }), summaryCount: summary.length } };
   }
 

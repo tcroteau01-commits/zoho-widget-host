@@ -368,20 +368,20 @@
   }
 
   function fetchReserves() {
-    if (isLocalTest()) {
-      try { console.log('[Wallet] Local test mode — using mock reserves'); } catch (e) {}
-      state.cash = 5000;
-      state.escrow = 20000;
-      state.accountName = state.accountName || 'Marek LLC (mock)';
-      state.loaded = true;
-      renderReserves();
-      return;
-    }
     if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
       var demo = window.OPERFI_DEMO.wallet();
       state.cash = demo.cash;
       state.escrow = demo.escrow;
       state.accountName = demo.account_name;
+      state.loaded = true;
+      renderReserves();
+      return;
+    }
+    if (isLocalTest()) {
+      try { console.log('[Wallet] Local test mode — using mock reserves'); } catch (e) {}
+      state.cash = 5000;
+      state.escrow = 20000;
+      state.accountName = state.accountName || 'Marek LLC (mock)';
       state.loaded = true;
       renderReserves();
       return;

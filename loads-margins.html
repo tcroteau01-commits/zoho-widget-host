@@ -355,7 +355,15 @@
   <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
   <script src="https://app.operfi.com/demo-ledger.js"></script>
   <script src="https://app.operfi.com/demo-data.js"></script>
-  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script>
+    (function () {
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        var s = document.createElement('script');
+        s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+        document.head.appendChild(s);
+      }
+    })();
+  </script>
   <script>
     var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
     var brokerEmail = null;
@@ -1118,7 +1126,7 @@
             { key: 'discountFee', label: 'Discount Fee' }, { key: 'vendorPayable', label: 'Vendor Payable' },
             { key: 'margin', label: 'Margin' }, { key: 'marginPct', label: 'Margin %' }
           ];
-          title = 'Margins by Period';
+          title = 'Margins by ' + (state.marginsGroupBy === 'debtor' ? 'Debtor' : 'Period');
           footers = ['Total Margin: $' + md.totals.margin.toFixed(2)];
         } else {
           var fd = window.OPERFI_DEMO.loadsFees();

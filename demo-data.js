@@ -102,7 +102,6 @@
     var L = window.OPERFI_DEMO_LEDGER;
     var open = _openLoads();
     var thisMonthLoads = L.loads.filter(function (l) { return l.daysAgo <= 30; });
-    var pastDue31Plus = open.filter(function (l) { return _ageDays(l) > 30; });
 
     var agingDefs = [
       { label: '0-30', test: function (d) { return d <= 30; } },
@@ -337,8 +336,6 @@
     delete totalsRow.label;
     return { groupBy: groupBy || 'month', rows: rows, totals: totalsRow };
   }
-
-  var FEE_GL_LABELS = { '3001': 'Discount Fee' }; // demo ledger only synthesizes the discount fee GL; that's the dominant fee bucket on every real account too.
 
   function loadsFees() {
     var L = window.OPERFI_DEMO_LEDGER;

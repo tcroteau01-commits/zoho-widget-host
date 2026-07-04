@@ -151,7 +151,15 @@
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
 <script src="https://app.operfi.com/demo-ledger.js"></script>
 <script src="https://app.operfi.com/demo-data.js"></script>
-<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+  (function () {
+    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+      document.head.appendChild(s);
+    }
+  })();
+</script>
 <script>
 (function () {
   'use strict';

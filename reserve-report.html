@@ -6,6 +6,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
+<script src="https://app.operfi.com/demo-ledger.js"></script>
+<script src="https://app.operfi.com/demo-data.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <style>
   :root {
     --bg: #f0efe9;
@@ -444,6 +447,15 @@
   }
 
   async function loadActivity() {
+    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+      const data = window.OPERFI_DEMO.reserveActivity();
+      hasOutstandingBalance = !!data.has_outstanding_balance;
+      loanData = null;
+      currentData = data;
+      renderKpis(currentTab);
+      renderActivity(data);
+      return;
+    }
     const { start, end } = getDateRange();
     const reserveUrl = `${API_BASE}/reserve/activity?${scopeParams()}&start=${start}&end=${end}`;
 
@@ -546,8 +558,35 @@
   function decorateImp(url) {
     return (window.OPERFI_IMP && window.OPERFI_IMP.decorate) ? window.OPERFI_IMP.decorate(url) : url;
   }
-  document.getElementById('exportCsv').addEventListener('click', () => window.open(decorateImp(exportUrl('csv'))));
-  document.getElementById('exportPdf').addEventListener('click', () => window.open(decorateImp(exportUrl('pdf'))));
+  document.getElementById('exportCsv').addEventListener('click', () => {
+    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+      const rows = (currentTab === 'cash' ? currentData.cash_activity_by_date : currentData.escrow_activity_by_date).flatMap((d) => d.transactions);
+      const columns = [
+        { key: 'trans_id', label: 'Trans ID' }, { key: 'date_only', label: 'Trans Date' }, { key: 'inv_no', label: 'Invoice' },
+        { key: 'debtor_name', label: 'Debtor' }, { key: 'category', label: 'Category' }, { key: 'beginning_balance', label: 'Beginning' },
+        { key: 'amount', label: 'Amount' }, { key: 'ending_balance', label: 'Ending' }
+      ];
+      window.OPERFI_DEMO.downloadCSV('reserve-' + currentTab + '.csv', window.OPERFI_DEMO.csvFromRows(columns, rows));
+      return;
+    }
+    window.open(decorateImp(exportUrl('csv')));
+  });
+  document.getElementById('exportPdf').addEventListener('click', () => {
+    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+      const rows = (currentTab === 'cash' ? currentData.cash_activity_by_date : currentData.escrow_activity_by_date).flatMap((d) => d.transactions);
+      const columns = [
+        { key: 'trans_id', label: 'Trans' }, { key: 'date_only', label: 'Date' }, { key: 'inv_no', label: 'Inv #' },
+        { key: 'debtor_name', label: 'Debtor' }, { key: 'category', label: 'Category' }, { key: 'beginning_balance', label: 'Beginning' },
+        { key: 'amount', label: 'Amount' }, { key: 'ending_balance', label: 'Ending' }
+      ];
+      window.OPERFI_DEMO.pdfFromRows('Reserve Report - ' + currentTab, columns, rows, [
+        'Cash Reserve: $' + currentData.kpis.cash_reserve.toFixed(2),
+        'Escrow Reserve: $' + currentData.kpis.escrow_reserve.toFixed(2)
+      ]);
+      return;
+    }
+    window.open(decorateImp(exportUrl('pdf')));
+  });
 
   // Bootstrap: getInitParams() returns a Promise in production. Resolve it
   // once, cache to module-scope, then kick off the first load. Defensive

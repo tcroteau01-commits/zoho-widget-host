@@ -350,6 +350,72 @@
     return { groups: [group], totals: { count: txns.length, amount: subtotal } };
   }
 
+  function _categoryFor(t) { // mirrors reserve_helpers.py infer_category, single-transaction-per-journal simplification (the demo ledger never puts two GLs in the same instant except the escrow<->cash transfer pair, handled by note)
+    if (t.note === 'Reserve Release') return 'Reserve Release';
+    if (t.note === 'Escrow Reserve Transfer' || t.note === 'Escrow to Cash Transfer') return 'Escrow ↔ Cash Transfer';
+    if (t.glCode === '2004') return 'Escrow Reserve';
+    if (t.glCode === '2006') return 'Invoice Purchase';
+    return 'Other';
+  }
+
+  function _groupReserveByDate(txns) {
+    var byDate = {};
+    txns.forEach(function (t) {
+      var date = offsetISO(t.daysAgo);
+      (byDate[date] = byDate[date] || []).push(t);
+    });
+    var dates = Object.keys(byDate).sort().reverse();
+    var days = dates.map(function (date) {
+      var dayTxns = byDate[date];
+      var netChange = _sum(dayTxns, function (t) { return t.amount; });
+      return {
+        date: date, transaction_count: dayTxns.length, net_change: netChange,
+        ending_balance: 0, // filled in after running-balance pass below
+        transactions: dayTxns
+      };
+    });
+    return days;
+  }
+
+  function _withRunningBalances(days) {
+    // Walk oldest-to-newest to compute running balances, then reverse for display.
+    var chronological = days.slice().reverse();
+    var running = 0;
+    chronological.forEach(function (day) {
+      day.transactions.slice().sort(function (a, b) { return a.id < b.id ? -1 : 1; }).forEach(function (t) {
+        var beginning = running;
+        running = round2(running + t.amount);
+        t.beginning_balance = beginning; t.ending_balance = running;
+        t.category = _categoryFor(t);
+        t.trans_id = t.id; t.trans_date = offsetISO(t.daysAgo) + 'T12:00:00'; t.date_only = offsetISO(t.daysAgo);
+        t.gl_bucket = t.glCode === '2004' ? 'escrow' : 'cash';
+        t.gl_code = t.glCode; t.inv_id = t.invId; t.debtor_id = t.debtorId; t.ref_number = t.id;
+        t.inv_no = t.invId ? (_loadById(t.invId) || {}).invNo || '' : '';
+        t.debtor_name = t.debtorId ? _debtorName(t.debtorId) : '';
+      });
+      day.ending_balance = running;
+    });
+    return chronological.reverse(); // back to newest-first
+  }
+
+  function reserveActivity() {
+    var L = window.OPERFI_DEMO_LEDGER;
+    var cashTxns = L.reserveTxns.filter(function (t) { return t.glCode === '2006' || t.glCode === '2005'; });
+    var escrowTxns = L.reserveTxns.filter(function (t) { return t.glCode === '2004'; });
+    var cashDays = _withRunningBalances(_groupReserveByDate(cashTxns));
+    var escrowDays = _withRunningBalances(_groupReserveByDate(escrowTxns));
+    var cashReserve = cashDays.length ? cashDays[0].ending_balance : 0;
+    var escrowReserve = escrowDays.length ? escrowDays[0].ending_balance : 0;
+    var oldestDay = cashDays.concat(escrowDays).map(function (d) { return d.date; }).sort()[0];
+    var newestDay = cashDays.concat(escrowDays).map(function (d) { return d.date; }).sort().reverse()[0];
+    return {
+      kpis: { cash_reserve: cashReserve, escrow_reserve: escrowReserve, total_reserve: round2(cashReserve + escrowReserve), available_for_release: cashReserve },
+      cash_activity_by_date: cashDays, escrow_activity_by_date: escrowDays,
+      date_range: { start: oldestDay || null, end: newestDay || null },
+      client: { fvClientId: 'DEMO001' }, has_outstanding_balance: false
+    };
+  }
+
   window.OPERFI_DEMO = {
     EMAIL: DEMO_EMAIL, ACCOUNT_NAME: DEMO_ACCOUNT_NAME,
     isDemo: isDemo, todayISO: todayISO, offsetISO: offsetISO,
@@ -359,6 +425,7 @@
     aging: aging,
     agingReceipts: agingReceipts, agingCustomerReceipts: agingCustomerReceipts, agingLoadPreview: agingLoadPreview,
     loads: loads, loadPreview: loadPreview,
-    loadsMargins: loadsMargins, loadsFees: loadsFees
+    loadsMargins: loadsMargins, loadsFees: loadsFees,
+    reserveActivity: reserveActivity
   };
 })();

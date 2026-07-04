@@ -54,10 +54,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .row:hover { border-color: #c8c4b6; box-shadow: 0 2px 6px rgba(0,0,0,0.04); transform: translateY(-1px); }
 .row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 10px 0 0 10px; background: #ddd; }
 .row.s-approved::before { background: #2e7d32; }
-.row.s-pending::before  { background: #f5a623; }
-.row.s-denied::before   { background: #c62828; }
-.row.s-dnu::before      { background: #c62828; }
-.row.s-payment-change::before { background: #1976d2; }
+.row.s-approved-caution::before { background: #e8a020; }
+.row.s-not-reviewed::before { background: #f5a623; }
+.row.s-hold::before      { background: #e8a020; }
+.row.s-declined::before  { background: #c62828; }
+.row.s-dnu::before       { background: #c62828; }
 .row.s-dnu { background: #fafaf6; }
 .row.s-dnu .cell-val { color: #888; }
 
@@ -76,9 +77,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .tag.net30    { background: #f0efe9; color: #555; }
 .tag.dnu      { background: #fde4e4; color: #a31818; }
 .tag.approved { background: #e3f4e3; color: #1f6321; }
-.tag.pending  { background: #fff4e0; color: #b86e00; }
-.tag.denied   { background: #fde4e4; color: #a31818; }
-.tag.payment-change { background: #e3f0fb; color: #0d4a8a; }
+.tag.approved-caution { background: #fff4e0; color: #b86e00; }
+.tag.not-reviewed { background: #fff4e0; color: #b86e00; }
+.tag.hold     { background: #fde8d0; color: #a15c00; }
+.tag.declined { background: #fde4e4; color: #a31818; }
 
 .row-action {
   background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
@@ -334,13 +336,14 @@ function statusMeta(r) {
   if (r.DO_NOT_USE === true || r.DO_NOT_USE === 'true') {
     return { key: 'dnu', label: 'Do Not Use', tag: 'dnu' };
   }
-  var raw = r.Vendor_Status || '';
+  var raw = r.Hiring_Decision || '';
   switch (raw) {
-    case 'Approved':       return { key: 'approved',       label: 'Approved',       tag: 'approved' };
-    case 'Pending':        return { key: 'pending',        label: 'Pending',        tag: 'pending' };
-    case 'DENIED':         return { key: 'denied',         label: 'Denied',         tag: 'denied' };
-    case 'Payment Change': return { key: 'payment-change', label: 'Payment Change', tag: 'payment-change' };
-    default:               return { key: 'unknown',        label: raw || '—',       tag: '' };
+    case 'Approve':              return { key: 'approved',         label: 'Approved',           tag: 'approved' };
+    case 'Approve with Caution': return { key: 'approved-caution', label: 'Approved (Caution)', tag: 'approved-caution' };
+    case 'Hold':                 return { key: 'hold',             label: 'On Hold',            tag: 'hold' };
+    case 'Decline':              return { key: 'declined',         label: 'Declined',           tag: 'declined' };
+    case 'Not Reviewed':
+    default:                     return { key: 'not-reviewed',     label: 'Not Reviewed',       tag: 'not-reviewed' };
   }
 }
 
@@ -482,11 +485,14 @@ function sortRecords(records) {
     });
     return arr;
   }
-  // 'status' (default) — preserved verbatim from the original onRecordsLoaded sort.
+  // 'status' (default) — Approved-family first, Not Reviewed/Hold next, Declined,
+  // then Do Not Use last; ties broken by name.
   arr.sort(function(a, b) {
     var sa = statusMeta(a), sb = statusMeta(b);
-    var rank = { approved: 0, pending: 1, 'payment-change': 1, denied: 2, dnu: 3, unknown: 4 };
-    var diff = (rank[sa.key] || 9) - (rank[sb.key] || 9);
+    var rank = { approved: 0, 'approved-caution': 0, 'not-reviewed': 1, hold: 1, declined: 2, dnu: 3 };
+    var ra = Object.prototype.hasOwnProperty.call(rank, sa.key) ? rank[sa.key] : 9;
+    var rb = Object.prototype.hasOwnProperty.call(rank, sb.key) ? rank[sb.key] : 9;
+    var diff = ra - rb;
     if (diff !== 0) return diff;
     return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
   });
@@ -504,17 +510,19 @@ function buildChips() {
   var chips = document.getElementById('chips');
   var counts = countBy(allRecords);
   var def = [
-    { key: 'all',       label: 'All',        count: allRecords.length },
-    { key: 'approved',  label: 'Approved',   count: counts.status.approved || 0 },
-    { key: 'pending',   label: 'Pending',    count: (counts.status.pending || 0) + (counts.status['payment-change'] || 0) },
-    { key: 'factor',    label: 'Factoring',  count: counts.payment.factor || 0 },
-    { key: 'quickpay',  label: 'Quick Pay',  count: counts.payment.quickpay || 0 },
-    { key: 'net30',     label: 'Net Terms',  count: counts.payment.net30 || 0 },
-    { key: 'dnu',       label: 'Do Not Use', count: counts.status.dnu || 0 }
+    { key: 'all',          label: 'All',          count: allRecords.length },
+    { key: 'approved',     label: 'Approved',     count: (counts.status.approved || 0) + (counts.status['approved-caution'] || 0) },
+    { key: 'not-reviewed', label: 'Not Reviewed', count: counts.status['not-reviewed'] || 0 },
+    { key: 'hold',         label: 'On Hold',      count: counts.status.hold || 0 },
+    { key: 'declined',     label: 'Declined',     count: counts.status.declined || 0 },
+    { key: 'factor',       label: 'Factoring',    count: counts.payment.factor || 0 },
+    { key: 'quickpay',     label: 'Quick Pay',    count: counts.payment.quickpay || 0 },
+    { key: 'net30',        label: 'Net Terms',    count: counts.payment.net30 || 0 },
+    { key: 'dnu',          label: 'Do Not Use',   count: counts.status.dnu || 0 }
   ];
   chips.innerHTML = '';
   def.forEach(function(c) {
-    if (c.key === 'dnu' && c.count === 0) return;
+    if ((c.key === 'dnu' || c.key === 'hold' || c.key === 'declined') && c.count === 0) return;
     var el = document.createElement('span');
     el.className = 'chip' + (c.key === currentFilter ? ' active' : '');
     el.dataset.key = c.key;
@@ -545,9 +553,11 @@ function applyFilters() {
   filteredRecords = sortRecords(allRecords).filter(function(r) {
     if (currentFilter !== 'all') {
       var sm = statusMeta(r), pm = paymentMeta(r);
-      if (currentFilter === 'approved' && sm.key !== 'approved') return false;
-      if (currentFilter === 'pending'  && sm.key !== 'pending' && sm.key !== 'payment-change') return false;
-      if (currentFilter === 'dnu'      && sm.key !== 'dnu')      return false;
+      if (currentFilter === 'approved'     && sm.key !== 'approved' && sm.key !== 'approved-caution') return false;
+      if (currentFilter === 'not-reviewed' && sm.key !== 'not-reviewed') return false;
+      if (currentFilter === 'hold'         && sm.key !== 'hold')         return false;
+      if (currentFilter === 'declined'     && sm.key !== 'declined')     return false;
+      if (currentFilter === 'dnu'          && sm.key !== 'dnu')          return false;
       if (currentFilter === 'factor'   && pm.key !== 'factor')   return false;
       if (currentFilter === 'quickpay' && pm.key !== 'quickpay') return false;
       if (currentFilter === 'net30'    && pm.key !== 'net30')    return false;
@@ -573,7 +583,8 @@ function applyFilters() {
 function renderKpis() {
   var counts = countBy(allRecords);
   document.getElementById('kpi-total').textContent    = allRecords.length.toLocaleString();
-  document.getElementById('kpi-approved').textContent = (counts.status.approved || 0).toLocaleString();
+  document.getElementById('kpi-approved').textContent =
+    ((counts.status.approved || 0) + (counts.status['approved-caution'] || 0)).toLocaleString();
   document.getElementById('kpi-factor').textContent   = (counts.payment.factor || 0).toLocaleString();
   document.getElementById('kpi-quickpay').textContent = (counts.payment.quickpay || 0).toLocaleString();
   document.getElementById('kpi-dnu').textContent      = (counts.status.dnu || 0).toLocaleString();
@@ -613,14 +624,15 @@ function rowHtml(r, idx) {
   var p = paymentMeta(r);
   var addr = formatAddress(r.Address);
   var isDnu = s.key === 'dnu';
-  var canInvoice = s.key === 'approved';
+  var canInvoice = s.key === 'approved' || s.key === 'approved-caution';
   var actionLabel = isDnu ? 'Blocked' : 'Submit Invoice';
   var actionDisabled = !canInvoice;
   var actionTitle = canInvoice ? '' :
     (isDnu ? 'Vendor is marked Do Not Use.' :
-     s.key === 'pending' ? 'Vendor must be Approved before invoicing.' :
-     s.key === 'denied'  ? 'Vendor has been denied.' :
-     'Vendor not approved for invoicing.');
+     s.key === 'not-reviewed' ? 'You have not reviewed this carrier yet.' :
+     s.key === 'hold'         ? 'Carrier is on hold pending your review.' :
+     s.key === 'declined'     ? 'You declined this carrier.' :
+     'Carrier not approved for invoicing.');
 
   return '' +
     '<div class="row s-' + s.key + '" data-idx="' + idx + '">' +
@@ -705,11 +717,11 @@ function renderPanel() {
   var addr = formatAddress(r.Address);
   var prevDis = (openIndex <= 0) ? ' disabled' : '';
   var nextDis = (openIndex >= filteredRecords.length - 1) ? ' disabled' : '';
-  var canInvoice = s.key === 'approved';
+  var canInvoice = s.key === 'approved' || s.key === 'approved-caution';
 
   var invoiceBtn = canInvoice
     ? '<button class="btn primary" id="p-invoice">Submit Invoice</button>'
-    : '<button class="btn" id="p-invoice" disabled title="Vendor must be Approved">Submit Invoice</button>';
+    : '<button class="btn" id="p-invoice" disabled title="You must approve this carrier before invoicing">Submit Invoice</button>';
   var footerActions =
     '<button class="btn" id="p-profile">View Full Profile</button>' +
     '<button class="btn" id="p-noa">NOA / LOR</button>' +
@@ -793,7 +805,10 @@ function renderPanel() {
     vendorId: r.ID,
     isDnu: statusMeta(r).key === 'dnu',
     statusKey: statusMeta(r).key,
-    isFactored: !!(r.Factoring_Company || '').trim()
+    isFactored: !!(r.Factoring_Company || '').trim(),
+    // Vendor_Status is otherwise unused by the badge (statusMeta reads Hiring_Decision) —
+    // the backend must keep emitting it or this flag silently stops firing.
+    paymentChangePending: (r.Vendor_Status || '') === 'Payment Change'
   };
   loadVendorDocs(r.ID, document.getElementById('vv-docs'));
   loadVendorRedFlags(r);
@@ -935,8 +950,8 @@ function deriveVettingFlags(profile, ctx) {
   // Account / status hard stops
   if (ctx.isDnu) flags.push({ key: 'dnu', level: 'stop', label: 'Do Not Use',
     reason: 'This carrier is marked Do Not Use.' });
-  if (ctx.statusKey === 'denied') flags.push({ key: 'denied', level: 'stop', label: 'Denied',
-    reason: 'This carrier was denied.' });
+  if (ctx.statusKey === 'declined') flags.push({ key: 'denied', level: 'stop', label: 'Declined',
+    reason: 'You declined this carrier.' });
 
   // Bank
   if (has('bank_bad_actor')) flags.push({ key: 'bank_bad_actor', level: 'stop',
@@ -969,8 +984,9 @@ function deriveVettingFlags(profile, ctx) {
   else if (has('factor_pending')) flags.push({ key: 'factor_pending', level: 'check',
     label: 'Factor pending OperFi approval', reason: 'Factoring company is pending OperFi approval.' });
 
-  // Payment change pending
-  if (ctx.statusKey === 'payment-change') flags.push({ key: 'pay_change', level: 'check',
+  // Payment change pending — sourced from the raw Vendor_Status field directly;
+  // there is no Hiring_Decision equivalent for "payment/factoring setup mid-change".
+  if (ctx.paymentChangePending) flags.push({ key: 'pay_change', level: 'check',
     label: 'Payment change pending', reason: 'A payment-info change is pending review.' });
 
   // Stop above check; stable within level (Node/JSDOM sort is stable).
@@ -1068,6 +1084,9 @@ function loadVendorRedFlags(rec, force) {
     isDnu: statusMeta(rec).key === 'dnu',
     statusKey: statusMeta(rec).key,
     isFactored: !!(rec.Factoring_Company || '').trim(),
+    // Vendor_Status is otherwise unused by the badge (statusMeta reads Hiring_Decision) —
+    // the backend must keep emitting it or this flag silently stops firing.
+    paymentChangePending: (rec.Vendor_Status || '') === 'Payment Change',
     profileError: false
   };
   refreshVettingPane();
@@ -1222,7 +1241,8 @@ function exportCsv() {
 window.__vvtest = {
   deriveVettingFlags: deriveVettingFlags,
   recommendedDocs: recommendedDocs,
-  vettingSummary: vettingSummary
+  vettingSummary: vettingSummary,
+  statusMeta: statusMeta
 };
 
 })();

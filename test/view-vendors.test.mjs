@@ -446,8 +446,8 @@ test('deriveVettingFlags: DNU is a stop', () => {
   assert.equal(flags[0].level, 'stop');
 });
 
-test('deriveVettingFlags: denied status is a stop', () => {
-  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'denied', isFactored: false });
+test('deriveVettingFlags: declined status is a stop', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'declined', isFactored: false });
   assert.ok(flags.some((f) => f.key === 'denied' && f.level === 'stop'));
 });
 
@@ -491,8 +491,9 @@ test('deriveVettingFlags: factor denied=stop, pending=check', () => {
   assert.equal(api.deriveVettingFlags(riskProfile(['factor_pending']), ctx)[0].level, 'check');
 });
 
-test('deriveVettingFlags: payment-change is a check', () => {
-  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'payment-change', isFactored: false });
+test('deriveVettingFlags: paymentChangePending (from Vendor_Status) is a check, independent of Hiring_Decision', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]),
+    { isDnu: false, statusKey: 'approved', isFactored: false, paymentChangePending: true });
   assert.ok(flags.some((f) => f.key === 'pay_change' && f.level === 'check'));
 });
 
@@ -759,4 +760,197 @@ test('docs: non-factored missing banking recommends banking, never NOA/LOR', asy
   const recRows = Array.from(box.querySelectorAll('.vvp-doc.recommended')).map((e) => e.textContent);
   assert.ok(recRows.some((t) => /Banking/.test(t)), 'Banking recommended (non-factored)');
   assert.ok(!recRows.some((t) => /NOA/.test(t)), 'NOA/LOR never recommended for non-factored');
+});
+
+// ── statusMeta: Hiring_Decision replaces Vendor_Status ─────────────────────
+
+test('statusMeta: DO_NOT_USE overrides any Hiring_Decision', () => {
+  const m = vvApi().statusMeta({ DO_NOT_USE: true, Hiring_Decision: 'Approve' });
+  assert.equal(m.key, 'dnu');
+  assert.equal(m.label, 'Do Not Use');
+  assert.equal(m.tag, 'dnu');
+});
+
+test('statusMeta: Approve maps to approved', () => {
+  const m = vvApi().statusMeta({ Hiring_Decision: 'Approve' });
+  assert.equal(m.key, 'approved');
+  assert.equal(m.label, 'Approved');
+  assert.equal(m.tag, 'approved');
+});
+
+test('statusMeta: Approve with Caution maps to approved-caution', () => {
+  const m = vvApi().statusMeta({ Hiring_Decision: 'Approve with Caution' });
+  assert.equal(m.key, 'approved-caution');
+  assert.equal(m.label, 'Approved (Caution)');
+  assert.equal(m.tag, 'approved-caution');
+});
+
+test('statusMeta: Hold maps to hold', () => {
+  const m = vvApi().statusMeta({ Hiring_Decision: 'Hold' });
+  assert.equal(m.key, 'hold');
+  assert.equal(m.label, 'On Hold');
+  assert.equal(m.tag, 'hold');
+});
+
+test('statusMeta: Decline maps to declined', () => {
+  const m = vvApi().statusMeta({ Hiring_Decision: 'Decline' });
+  assert.equal(m.key, 'declined');
+  assert.equal(m.label, 'Declined');
+  assert.equal(m.tag, 'declined');
+});
+
+test('statusMeta: Not Reviewed and missing/unrecognized both map to not-reviewed', () => {
+  assert.equal(vvApi().statusMeta({ Hiring_Decision: 'Not Reviewed' }).key, 'not-reviewed');
+  assert.equal(vvApi().statusMeta({}).key, 'not-reviewed');
+  assert.equal(vvApi().statusMeta({ Hiring_Decision: 'Some Future Value' }).key, 'not-reviewed');
+});
+
+// ── Filters, KPIs, and sort with the 5-state Hiring_Decision field ────────
+
+const HD_SET = [
+  { ID: 'h1', Vendor_Name: 'Approve Co',   Hiring_Decision: 'Approve' },
+  { ID: 'h2', Vendor_Name: 'Caution Co',   Hiring_Decision: 'Approve with Caution' },
+  { ID: 'h3', Vendor_Name: 'NotRev Co',    Hiring_Decision: 'Not Reviewed' },
+  { ID: 'h4', Vendor_Name: 'Hold Co',      Hiring_Decision: 'Hold' },
+  { ID: 'h5', Vendor_Name: 'Declined Co',  Hiring_Decision: 'Decline' },
+];
+
+test('chips: renders Approved / Not Reviewed / Hold / Declined with correct counts', async () => {
+  const w = await bootSorted(HD_SET);
+  const chips = [...w.document.querySelectorAll('#chips .chip')];
+  const byLabel = {};
+  chips.forEach((c) => { byLabel[c.textContent.replace(/\s+\d+$/, '').trim()] = c.querySelector('.count').textContent; });
+  assert.equal(byLabel['Approved'], '2');       // Approve + Approve with Caution
+  assert.equal(byLabel['Not Reviewed'], '1');
+  assert.equal(byLabel['On Hold'], '1');
+  assert.equal(byLabel['Declined'], '1');
+});
+
+test('chips: Hold and Declined chips are hidden when their count is zero', async () => {
+  const w = await bootSorted([HD_SET[0], HD_SET[2]]); // only Approve + Not Reviewed present
+  const labels = [...w.document.querySelectorAll('#chips .chip')].map((c) => c.textContent);
+  assert.ok(!labels.some((t) => /On Hold/.test(t)), 'On Hold chip hidden at zero count');
+  assert.ok(!labels.some((t) => /Declined/.test(t)), 'Declined chip hidden at zero count');
+});
+
+test('KPI Approved tile sums Approve + Approve with Caution', async () => {
+  const w = await bootSorted(HD_SET);
+  assert.equal(w.document.getElementById('kpi-approved').textContent, '2');
+});
+
+test('filter: clicking the Declined chip narrows to only declined carriers', async () => {
+  const w = await bootSorted(HD_SET);
+  const chip = [...w.document.querySelectorAll('#chips .chip')].find((c) => /Declined/.test(c.textContent));
+  chip.click();
+  assert.deepEqual(rowNames(w), ['Declined Co']);
+});
+
+test('filter: clicking the Approved chip includes both Approve and Approve with Caution', async () => {
+  const w = await bootSorted(HD_SET);
+  const chip = [...w.document.querySelectorAll('#chips .chip')].find((c) => /^Approved/.test(c.textContent));
+  chip.click();
+  assert.deepEqual(rowNames(w).sort(), ['Approve Co', 'Caution Co']);
+});
+
+test('status sort ranks Approved-family above Not Reviewed/Hold above Declined above DNU', async () => {
+  const dnuRec = { ID: 'h6', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' };
+  const w = await bootSorted([HD_SET[4], HD_SET[0], dnuRec, HD_SET[3]]); // declined, approved, dnu, hold
+  setSort(w, 'status');
+  assert.deepEqual(rowNames(w), ['Approve Co', 'Hold Co', 'Declined Co', 'DNU Co']);
+});
+
+// ── Invoicing gate follows Hiring_Decision ─────────────────────────────────
+
+async function bootOne(rec) {
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = makeFetch([rec]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  return w;
+}
+
+test('row action: Approve with Caution can still invoice (button enabled)', async () => {
+  const w = await bootOne({ ID: 'i1', Vendor_Name: 'Caution Co', Hiring_Decision: 'Approve with Caution' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(!btn.classList.contains('disabled'));
+  assert.match(btn.textContent, /Submit Invoice/);
+});
+
+test('row action: Hold blocks invoicing with an explanatory title', async () => {
+  const w = await bootOne({ ID: 'i2', Vendor_Name: 'Hold Co', Hiring_Decision: 'Hold' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.getAttribute('title'), /on hold/i);
+});
+
+test('row action: Not Reviewed blocks invoicing with an explanatory title', async () => {
+  const w = await bootOne({ ID: 'i3', Vendor_Name: 'NotRev Co', Hiring_Decision: 'Not Reviewed' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.getAttribute('title'), /not reviewed/i);
+});
+
+test('row action: Declined blocks invoicing with an explanatory title', async () => {
+  const w = await bootOne({ ID: 'i4', Vendor_Name: 'Declined Co', Hiring_Decision: 'Decline' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.getAttribute('title'), /declined/i);
+});
+
+test('panel: Submit Invoice is enabled for Approve with Caution', async () => {
+  const w = await bootOne({ ID: 'i5', Vendor_Name: 'Caution Co', Hiring_Decision: 'Approve with Caution' });
+  w.document.querySelector('.row').click();
+  const inv = w.document.getElementById('p-invoice');
+  assert.ok(!inv.disabled);
+});
+
+test('panel: Submit Invoice is disabled for Hold', async () => {
+  const w = await bootOne({ ID: 'i6', Vendor_Name: 'Hold Co', Hiring_Decision: 'Hold' });
+  w.document.querySelector('.row').click();
+  const inv = w.document.getElementById('p-invoice');
+  assert.ok(inv.disabled);
+});
+
+test('row action: DNU blocks invoicing even when Hiring_Decision=Approve', async () => {
+  const w = await bootOne({ ID: 'dnu1', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' });
+  const btn = w.document.querySelector('.row-action');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.textContent, /Blocked/);
+});
+
+test('panel: Submit Invoice is disabled when DNU=true even with Hiring_Decision=Approve', async () => {
+  const w = await bootOne({ ID: 'dnu2', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' });
+  w.document.querySelector('.row').click();
+  const inv = w.document.getElementById('p-invoice');
+  assert.ok(inv.disabled);
+});
+
+test('vetting pane: Decline shows the Declined stop flag', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '8001', Vendor_Name: 'DECLINED LLC', Hiring_Decision: 'Decline', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, []);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1);
+  assert.match(strip.textContent, /Declined/);
+  assert.doesNotMatch(strip.textContent, /Payment change pending/);
+});
+
+test('vetting pane: Payment Change flag fires even when Hiring_Decision is Approve', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '8002', Vendor_Name: 'PAYCHANGE LLC', Hiring_Decision: 'Approve',
+                Vendor_Status: 'Payment Change', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, []);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.match(strip.textContent, /Payment change pending/);
 });

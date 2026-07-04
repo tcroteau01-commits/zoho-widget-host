@@ -67,11 +67,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .review-banner-text { font-size: 13px; color: var(--of-amber-text); font-weight: 600; line-height: 1.4; }
 .review-banner-text strong { color: var(--of-charcoal); }
 .review-banner-text .meta { color: var(--of-gray-700); font-weight: 500; font-size: 12px; margin-top: 2px; display: block; }
-.review-cta {
-  background: var(--of-charcoal); color: #fff; border: none; border-radius: 8px;
-  padding: 9px 16px; font-size: 12px; font-weight: 700; cursor: pointer;
-  letter-spacing: 0.3px;
-}
 
 /* Hero */
 .hero {
@@ -182,6 +177,17 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 .grid-2 .card { margin-bottom: 0; }
+
+.cp-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; align-items: start; margin-top: 14px; }
+.cp-rail { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 14px; }
+.rail-card { background: #fff; border: 1px solid var(--of-beige-line); border-radius: 12px; padding: 20px 22px; }
+.rail-signal-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 8px; background: var(--of-beige); color: var(--of-charcoal-soft); }
+.rail-signal-badge.limited { background: var(--of-blue-soft); color: var(--of-blue-text); }
+.rail-signal-badge.elevated { background: var(--of-amber-soft); color: var(--of-amber-text); }
+.rail-signal-badge.serious { background: var(--of-red-soft); color: var(--of-red-text); }
+.rail-disclaimer { font-size: 11px; color: var(--of-gray-500); line-height: 1.4; margin-top: 8px; }
+.rail-signal-detail { font-size: 12px; color: var(--of-gray-700); margin-top: 10px; line-height: 1.4; }
+@media (max-width: 900px) { .cp-layout { grid-template-columns: 1fr; } .cp-rail { position: static; } }
 
 /* Indicator pills */
 .indicators { display: flex; flex-direction: column; gap: 8px; }
@@ -411,33 +417,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .comment-pinned-marker { font-size: 10px; color: var(--of-amber-text); font-weight: 700; }
 .comment-text { font-size: 13px; color: var(--of-charcoal-soft); line-height: 1.5; }
 
-/* Decision modal preview */
-.modal-preview {
-  background: #fff; border: 1px solid var(--of-beige-line); border-radius: 12px;
-  padding: 24px 28px; margin-bottom: 14px;
-  border-top: 4px solid var(--of-orange);
-}
-/* Opened as a fixed, centered overlay so it pops regardless of scroll position
-   (it lives near the bottom of a long profile; an inline reveal was invisible). */
-.modal-preview.open {
-  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  z-index: 200; margin: 0;
-  width: calc(100% - 48px); max-width: 720px; max-height: 90vh; overflow-y: auto;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.28);
-}
-#cp-modal-backdrop {
-  display: none; position: fixed; inset: 0;
-  background: rgba(20,20,20,0.45); z-index: 150;
-}
-#cp-modal-backdrop.open { display: block; }
-.modal-head { font-size: 18px; font-weight: 700; color: var(--of-charcoal); letter-spacing: -0.3px; margin-bottom: 6px; }
-.modal-sub { font-size: 12px; color: var(--of-gray-700); margin-bottom: 16px; }
-.modal-recommendation {
-  background: var(--of-beige); border-radius: 8px; padding: 10px 14px;
-  font-size: 12px; color: var(--of-charcoal-soft); margin-bottom: 18px;
-  display: flex; align-items: center; gap: 8px;
-}
-.modal-recommendation strong { color: var(--of-charcoal); }
 .decision-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
 .decision-option {
   border: 2px solid var(--of-beige-line); border-radius: 10px; padding: 14px;
@@ -462,34 +441,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   resize: vertical;
 }
 .modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; }
-.modal-cancel {
-  background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal);
-  border-radius: 6px; padding: 9px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer;
-  font-family: inherit;
-}
 .modal-submit {
   background: var(--of-charcoal); color: #fff; border: none; border-radius: 6px;
   padding: 9px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer;
   font-family: inherit;
 }
 
-/* Sticky decision bar */
-.decision-bar {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  background: #fff; border-top: 1px solid var(--of-beige-line);
-  padding: 14px 24px;
-  display: flex; justify-content: space-between; align-items: center;
-  z-index: 100; box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
-}
-.decision-bar-left { display: flex; gap: 14px; align-items: center; }
-.decision-bar-pill {
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
-  padding: 5px 12px; border-radius: 6px;
-  background: var(--of-beige); color: var(--of-charcoal-soft);
-}
-.decision-bar-pill.need-review { background: var(--of-amber-soft); color: var(--of-amber-text); }
-.decision-bar-info { font-size: 12px; color: var(--of-gray-700); }
-.decision-bar-actions { display: flex; gap: 10px; }
 .btn-secondary {
   background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal);
   border-radius: 8px; padding: 10px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer;
@@ -553,21 +510,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .ipqs-summary, .bank-grid { grid-template-columns: 1fr !important; }
   .verdict { align-items: flex-start; }
   /* Tap targets + iOS-zoom-safe inputs */
-  button, .btn, .btn-primary, .btn-secondary, .review-cta, .chip { min-height: 44px; }
+  button, .btn, .btn-primary, .btn-secondary, .chip { min-height: 44px; }
   input, select, textarea, .modal-notes-input { font-size: 16px; }
-  /* Decision modal full-screen */
-  .modal-preview.open {
-    top: 0; left: 0; transform: none;
-    width: 100% !important; max-width: 100% !important; height: 100%; max-height: 100%;
-    border-radius: 0; overflow-y: auto; padding: 20px 16px;
-  }
   .decision-options { grid-template-columns: 1fr !important; }
   .modal-actions { flex-direction: column; }
-  .modal-cancel, .modal-submit { width: 100%; min-height: 44px; }
-  /* Sticky decision bar stacks + buttons full-width */
-  .decision-bar { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px; }
-  .decision-bar-actions { flex-direction: column; }
-  .decision-bar-actions .btn-primary, .decision-bar-actions .btn-secondary { width: 100%; }
+  .modal-submit { width: 100%; min-height: 44px; }
 }
 /* Authority class warning chip */
 .cp-auth-warn{background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:8px;padding:8px 12px;font-weight:700;margin-bottom:10px;}
@@ -596,14 +543,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
   </div>
 
-  <!-- Re-review banner (data-driven; hidden by default) -->
-  <div id="cp-review-banner" class="review-banner" style="display:none">
-    <div class="review-banner-text">
-      <span id="cp-review-banner-text"></span>
-    </div>
-    <button class="review-cta">Document New Decision</button>
-  </div>
-
   <!-- Hero -->
   <div class="hero">
     <div id="cp-hero" class="hero-left">
@@ -625,15 +564,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <button class="refresh-btn">↻ Refresh all data</button>
   </div>
 
-  <!-- Recommendation card -->
-  <div class="recommendation">
-    <div id="cp-recommendation" class="rec-left">
-      <div class="rec-label">System Recommendation</div>
-      <div class="rec-verdict"></div>
-      <ul id="cp-rec-reasons" class="rec-reasons"></ul>
-      <div class="rec-meta"></div>
-    </div>
-  </div>
+  <div id="cp-layout" class="cp-layout">
+  <div id="cp-left-col">
 
   <!-- KPI strip -->
   <div id="cp-kpi-row" class="kpi-row">
@@ -748,69 +680,67 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div id="cp-comments"></div>
   </div>
 
-  <!-- Decision Modal Preview -->
-  <div id="cp-modal-backdrop"></div>
-  <div id="cp-modal" class="modal-preview" style="display:none">
-    <div class="modal-head">Document Hiring Decision</div>
-    <div class="modal-sub">Your decision is recorded in the audit log along with a snapshot of the risk data shown above. Notes are required for any decision other than Approve.</div>
-
-    <div class="modal-recommendation">
-      <strong>System recommends:</strong> Hold for review <span style="opacity:0.6;">— Conditional rating + recent reinstatement + bank-state mismatch</span>
-    </div>
-
-    <div class="decision-options">
-      <div class="decision-option good" data-decision="Approve">
-        <span class="decision-option-icon">✓</span>
-        <div class="decision-option-name">Approve</div>
-        <div class="decision-option-desc">Clean profile, normal use.</div>
-      </div>
-      <div class="decision-option warn" data-decision="Approve with Caution">
-        <span class="decision-option-icon">◐</span>
-        <div class="decision-option-name">Approve with Caution</div>
-        <div class="decision-option-desc">Saw flags, accepting risk. Notes required.</div>
-      </div>
-      <div class="decision-option amber" data-decision="Hold">
-        <span class="decision-option-icon">⏸</span>
-        <div class="decision-option-name">Hold</div>
-        <div class="decision-option-desc">Need more info. Pauses use.</div>
-      </div>
-      <div class="decision-option bad" data-decision="Decline">
-        <span class="decision-option-icon">✕</span>
-        <div class="decision-option-name">Decline</div>
-        <div class="decision-option-desc">Won't use. Adds to your DNU list.</div>
-      </div>
-    </div>
-
-    <label class="modal-notes-label">Decision Notes <span class="req">*</span></label>
-    <textarea id="cp-notes" class="modal-notes-input" placeholder="Why are you choosing Approve with Caution over the system recommendation of Hold? (required when decision differs from system recommendation)"></textarea>
-
-    <div class="modal-actions">
-      <button id="cp-cancel" class="modal-cancel">Cancel</button>
-      <button id="cp-submit" class="modal-submit">Save Decision &amp; Update Hiring Status</button>
-      <div id="cp-modal-feedback" style="color:var(--of-red-text);font-size:12px;margin-top:6px;"></div>
-    </div>
-  </div>
-
   <div class="footer-note">
     Data sourced from CarrierOK, FMCSA, IPQualityScore, FedACH Directory, and OperFi Network · Live data<br>
     Risk profile is informational. Final booking decisions are at the broker's discretion. Decisions and snapshots are retained for audit purposes per Montgomery v. Caribe Transport II (2026) due diligence requirements.
   </div>
   <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-28.1</div>
 
-</div>
+  </div><!-- /cp-left-col -->
 
-<!-- Sticky decision bar -->
-<div id="cp-decision-bar" class="decision-bar">
-  <div class="decision-bar-left">
-    <span class="decision-bar-pill need-review">⟳ Needs Re-review</span>
-    <span id="cp-decision-meta" class="decision-bar-info"></span>
-  </div>
-  <div class="decision-bar-actions">
-    <button class="btn-secondary">🖨 Print / Save PDF</button>
-    <button class="btn-primary amber">Document New Decision</button>
-  </div>
-</div>
+  <div id="cp-rail" class="cp-rail">
+    <div class="rail-card">
+      <div id="cp-rail-signal" class="rail-signal-badge">Loading…</div>
+      <div id="cp-rail-signal-detail" class="rail-signal-detail"></div>
+      <div class="rail-disclaimer">OperFi does not approve, endorse, or guarantee carriers and does not make hiring decisions.</div>
+    </div>
 
+    <div id="cp-review-banner" class="review-banner rail-card" style="display:none">
+      <div class="review-banner-text">
+        <span id="cp-review-banner-text"></span>
+      </div>
+    </div>
+
+    <div class="rail-card">
+      <div id="cp-checklist"></div>
+    </div>
+
+    <div class="rail-card">
+      <div class="decision-options" id="cp-decision-options">
+        <div class="decision-option good" data-decision="Approve">
+          <span class="decision-option-icon">✓</span>
+          <div class="decision-option-name">Approve</div>
+          <div class="decision-option-desc">Clean profile, normal use.</div>
+        </div>
+        <div class="decision-option warn" data-decision="Approve with Caution">
+          <span class="decision-option-icon">◐</span>
+          <div class="decision-option-name">Approve with Caution</div>
+          <div class="decision-option-desc">Saw flags, accepting risk. Notes required.</div>
+        </div>
+        <div class="decision-option amber" data-decision="Hold">
+          <span class="decision-option-icon">⏸</span>
+          <div class="decision-option-name">Hold</div>
+          <div class="decision-option-desc">Need more info. Pauses use.</div>
+        </div>
+        <div class="decision-option bad" data-decision="Decline">
+          <span class="decision-option-icon">✕</span>
+          <div class="decision-option-name">Decline</div>
+          <div class="decision-option-desc">Won't use. Adds to your DNU list.</div>
+        </div>
+      </div>
+      <label class="modal-notes-label">Decision Notes <span class="req">*</span></label>
+      <textarea id="cp-notes" class="modal-notes-input" placeholder="Why are you choosing this over the data signal above? (required when decision carries more risk than the signal suggests)"></textarea>
+      <div class="modal-actions">
+        <button id="cp-submit" class="modal-submit" disabled>Save Decision &amp; Update Hiring Status</button>
+        <button class="btn-secondary" id="cp-print" style="margin-top:8px;width:100%;">🖨 Print / Save PDF</button>
+        <div id="cp-rail-feedback" style="color:var(--of-red-text);font-size:12px;margin-top:6px;"></div>
+      </div>
+    </div>
+  </div><!-- /cp-rail -->
+
+  </div><!-- /cp-layout -->
+
+</div><!-- /page -->
 
 <script>
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
@@ -1757,20 +1687,6 @@ function notesRequired(decision, systemRec){
   if(decision!=="Approve") return true;
   return DECISION_RANK[decision] > (DECISION_RANK[systemRec]!=null?DECISION_RANK[systemRec]:3);
 }
-function openDecisionModal(){
-  if(!profilePayload||!profilePayload.account_vendor) return;
-  selectedDecision=null;
-  Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(o){ o.classList.remove('selected'); });
-  var notesEl=document.getElementById('cp-notes'); if(notesEl) notesEl.value='';
-  var reqEl=document.querySelector('.modal-notes-label .req'); if(reqEl) reqEl.style.display='none';
-  var m=document.getElementById('cp-modal'); if(m){ m.style.display='block'; m.classList.add('open'); }
-  var bd=document.getElementById('cp-modal-backdrop'); if(bd) bd.classList.add('open');
-}
-function closeDecisionModal(){
-  var m=document.getElementById('cp-modal'); if(m){ m.style.display='none'; m.classList.remove('open'); }
-  var bd=document.getElementById('cp-modal-backdrop'); if(bd) bd.classList.remove('open');
-  selectedDecision=null;
-}
 function buildDecisionPayload(){
   var av=profilePayload.account_vendor;
   var rec=profilePayload.system_recommendation||'Hold';
@@ -1782,7 +1698,7 @@ function buildDecisionPayload(){
   return d;
 }
 function submitDecision(){
-  var fb=document.getElementById('cp-modal-feedback'); if(fb) fb.textContent='';
+  var fb=document.getElementById('cp-rail-feedback'); if(fb) fb.textContent='';
   if(!selectedDecision){ if(fb) fb.textContent='Pick a decision.'; return; }
   var rec=profilePayload.system_recommendation;
   var notes=(document.getElementById('cp-notes')||{}).value||'';
@@ -1796,7 +1712,7 @@ function submitDecision(){
   return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}})
     .then(function(res){
       if(sb) sb.disabled=false;
-      if(res&&(res.code===3000||(res.result&&res.result.length))){ closeDecisionModal(); loadProfile(); }
+      if(res&&(res.code===3000||(res.result&&res.result.length))){ loadProfile(); }
       else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
     }).catch(function(err){
       if(sb) sb.disabled=false;
@@ -1804,14 +1720,10 @@ function submitDecision(){
     });
 }
 function wireDecisionCapture(p){
-  var av=p.account_vendor;
-  Array.prototype.forEach.call(document.querySelectorAll('.review-cta, .decision-bar-actions .btn-primary'), function(btn){
-    if(!av){ btn.setAttribute('disabled','disabled'); btn.title='Tender a load to enable decision capture.'; }
-    else { btn.removeAttribute('disabled'); btn.onclick=openDecisionModal; }
-  });
-  Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(opt){
+  Array.prototype.forEach.call(document.querySelectorAll('#cp-decision-options .decision-option'), function(opt){
     opt.onclick=function(){
-      Array.prototype.forEach.call(document.querySelectorAll('#cp-modal .decision-option'), function(o){ o.classList.remove('selected'); });
+      if(opt.classList.contains('disabled')) return;
+      Array.prototype.forEach.call(document.querySelectorAll('#cp-decision-options .decision-option'), function(o){ o.classList.remove('selected'); });
       opt.classList.add('selected');
       selectedDecision=opt.getAttribute('data-decision');
       var lbl=document.querySelector('.modal-notes-label .req');
@@ -1819,11 +1731,7 @@ function wireDecisionCapture(p){
     };
   });
   var sb=document.getElementById('cp-submit'); if(sb) sb.onclick=submitDecision;
-  var cb=document.getElementById('cp-cancel'); if(cb) cb.onclick=closeDecisionModal;
-  var bd=document.getElementById('cp-modal-backdrop'); if(bd) bd.onclick=closeDecisionModal;
-  var mr=document.querySelector('#cp-modal .modal-recommendation');
-  if(mr) mr.innerHTML='System recommendation: <strong>'+esc(p.system_recommendation||'Hold')+'</strong>';
-  var pb=document.querySelector('.decision-bar-actions .btn-secondary'); if(pb) pb.onclick=function(){ window.print(); };
+  var pb=document.getElementById('cp-print'); if(pb) pb.onclick=function(){ window.print(); };
   var rb=document.querySelector('.refresh-btn'); if(rb) rb.onclick=refreshAll;
 }
 

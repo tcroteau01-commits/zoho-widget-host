@@ -234,40 +234,6 @@ test('refreshAll disables the button, shows a refreshing label, and force-loads'
   assert.equal(forced, true);
 });
 
-// ── UX fix 2: decision modal was an inline block near page bottom (invisible) ─
-
-test('openDecisionModal opens a fixed overlay (modal + backdrop get the open class)', () => {
-  const { window } = makeWidget();
-  window.profilePayload = RICH;
-  window.openDecisionModal();
-  const modal = window.document.getElementById('cp-modal');
-  const backdrop = window.document.getElementById('cp-modal-backdrop');
-  assert.ok(modal.classList.contains('open'));
-  assert.ok(backdrop && backdrop.classList.contains('open'));
-});
-
-test('closeDecisionModal removes the open class from modal and backdrop', () => {
-  const { window } = makeWidget();
-  window.profilePayload = RICH;
-  window.openDecisionModal();
-  window.closeDecisionModal();
-  const modal = window.document.getElementById('cp-modal');
-  const backdrop = window.document.getElementById('cp-modal-backdrop');
-  assert.ok(!modal.classList.contains('open'));
-  assert.ok(!backdrop.classList.contains('open'));
-});
-
-test('clicking the backdrop closes the modal', () => {
-  const { window } = makeWidget();
-  window.profilePayload = RICH;
-  window.wireDecisionCapture(RICH);
-  window.openDecisionModal();
-  const backdrop = window.document.getElementById('cp-modal-backdrop');
-  assert.equal(typeof backdrop.onclick, 'function');
-  backdrop.onclick();
-  assert.ok(!window.document.getElementById('cp-modal').classList.contains('open'));
-});
-
 test('renderNoaCard shows factoring + pay term and a Manage button with a handler', () => {
   const { window } = makeWidget();
   const carrier = { vendor_id: '1001', factoring_company: 'Triumph', pay_term: 'Factoring Company',

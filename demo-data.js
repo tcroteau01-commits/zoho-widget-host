@@ -165,11 +165,64 @@
     };
   }
 
+  var AGING_BUCKET_DEFS = [
+    { key: 'b0_30', test: function (d) { return d <= 30; } },
+    { key: 'b31_45', test: function (d) { return d > 30 && d <= 45; } },
+    { key: 'b46_60', test: function (d) { return d > 45 && d <= 60; } },
+    { key: 'b61_90', test: function (d) { return d > 60 && d <= 90; } },
+    { key: 'b90_plus', test: function (d) { return d > 90; } }
+  ];
+  function _agingBucketOf(ageDays) {
+    for (var i = 0; i < AGING_BUCKET_DEFS.length; i++) if (AGING_BUCKET_DEFS[i].test(ageDays)) return AGING_BUCKET_DEFS[i].key;
+    return 'b90_plus';
+  }
+  function _emptyBuckets() { return { b0_30: 0, b31_45: 0, b46_60: 0, b61_90: 0, b90_plus: 0, total: 0 }; }
+
+  function aging(dateBasis) {
+    var open = _openLoads();
+    var totalOpen = _sum(open, function (l) { return l.purchaseAmount; });
+    var overallBuckets = _emptyBuckets();
+    var byDebtor = {};
+
+    open.forEach(function (l) {
+      var ageDays = _ageDays(l);
+      var bucket = _agingBucketOf(ageDays);
+      overallBuckets[bucket] = round2(overallBuckets[bucket] + l.purchaseAmount);
+      overallBuckets.total = round2(overallBuckets.total + l.purchaseAmount);
+      if (!byDebtor[l.debtorId]) byDebtor[l.debtorId] = { buckets: _emptyBuckets(), invoices: [] };
+      byDebtor[l.debtorId].buckets[bucket] = round2(byDebtor[l.debtorId].buckets[bucket] + l.purchaseAmount);
+      byDebtor[l.debtorId].buckets.total = round2(byDebtor[l.debtorId].buckets.total + l.purchaseAmount);
+      byDebtor[l.debtorId].invoices.push({
+        fvInvoiceId: l.id, invoiceNumber: l.invNo, loadId: l.id,
+        buyDate: offsetISO(l.daysAgo), invoiceDate: offsetISO(l.daysAgo), dueDate: offsetISO(l.daysAgo - 30),
+        ageDays: ageDays, bucket: bucket, openBalance: l.purchaseAmount
+      });
+    });
+
+    var customers = Object.keys(byDebtor).map(function (debtorId) {
+      var entry = byDebtor[debtorId];
+      entry.invoices.sort(function (a, b) { return b.ageDays - a.ageDays; });
+      return {
+        name: _debtorName(debtorId), debtorId: debtorId, buyLimit: 100000,
+        buckets: entry.buckets,
+        concentrationPct: totalOpen ? round2((entry.buckets.total / totalOpen) * 100) : 0,
+        invoices: entry.invoices
+      };
+    }).sort(function (a, b) { return b.buckets.total - a.buckets.total; });
+
+    return {
+      buckets: overallBuckets, customers: customers,
+      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, buyLimit: 750000, available: round2(750000 - totalOpen) },
+      asOf: todayISO(), dateBasis: dateBasis || 'purchase'
+    };
+  }
+
   window.OPERFI_DEMO = {
     EMAIL: DEMO_EMAIL, ACCOUNT_NAME: DEMO_ACCOUNT_NAME,
     isDemo: isDemo, todayISO: todayISO, offsetISO: offsetISO,
     wallet: wallet,
     csvFromRows: csvFromRows, downloadCSV: downloadCSV, pdfFromRows: pdfFromRows,
-    dashboardSummary: dashboardSummary
+    dashboardSummary: dashboardSummary,
+    aging: aging
   };
 })();

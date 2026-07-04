@@ -463,6 +463,8 @@
 
   <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
   <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
+  <script src="https://app.operfi.com/demo-ledger.js"></script>
+  <script src="https://app.operfi.com/demo-data.js"></script>
   <script>
     var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
     var brokerEmail = null;
@@ -551,7 +553,21 @@
       window.addEventListener('load', init);
     }
 
+    function handleAgingData(data) {
+      if (!data || !data.client || !data.buckets) {
+        throw new Error('Aging data returned in unexpected format.');
+      }
+      state.data = data;
+      renderSummary();
+    }
+
     function fetchAging() {
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        document.getElementById('aging-app').innerHTML = '<div class="loading">Loading aging data...</div>';
+        return Promise.resolve(window.OPERFI_DEMO.aging(state.dateBasis)).then(handleAgingData).catch(function (err) {
+          showError("Couldn't load aging data: " + (err && err.message ? err.message : 'unknown error'));
+        });
+      }
       var url = BROKER_API_BASE + '/aging?' + buildAuthParams();
       if (state.dateBasis === 'invoice') url += '&dateBasis=invoice';
       document.getElementById('aging-app').innerHTML = '<div class="loading">Loading aging data...</div>';
@@ -566,13 +582,7 @@
           }
           return r.json();
         })
-        .then(function (data) {
-          if (!data || !data.client || !data.buckets) {
-            throw new Error('Aging data returned in unexpected format.');
-          }
-          state.data = data;
-          renderSummary();
-        })
+        .then(handleAgingData)
         .catch(function (err) {
           showError("Couldn't load aging data: " + (err && err.message ? err.message : 'unknown error'));
         });

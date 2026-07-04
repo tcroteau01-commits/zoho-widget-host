@@ -382,7 +382,10 @@
     var chronological = days.slice().reverse();
     var running = 0;
     chronological.forEach(function (day) {
-      day.transactions.slice().sort(function (a, b) { return a.id < b.id ? -1 : 1; }).forEach(function (t) {
+      var ordered = day.transactions.slice().sort(function (a, b) {
+        return parseInt(a.id.slice(2), 10) - parseInt(b.id.slice(2), 10);
+      });
+      ordered.forEach(function (t) {
         var beginning = running;
         running = round2(running + t.amount);
         t.beginning_balance = beginning; t.ending_balance = running;
@@ -393,6 +396,8 @@
         t.inv_no = t.invId ? (_loadById(t.invId) || {}).invNo || '' : '';
         t.debtor_name = t.debtorId ? _debtorName(t.debtorId) : '';
       });
+      day.transactions = ordered; // CRITICAL: reassign so the array actually returned/rendered/exported
+                                    // matches the order the running balance was computed in.
       day.ending_balance = running;
     });
     return chronological.reverse(); // back to newest-first

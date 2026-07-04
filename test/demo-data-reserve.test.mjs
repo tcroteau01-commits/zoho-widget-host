@@ -45,3 +45,21 @@ test('a "Reserve Release" transaction category appears at least once (weekly rel
   const allTxns = r.cash_activity_by_date.concat(r.escrow_activity_by_date).flatMap((d) => d.transactions);
   assert.ok(allTxns.some((t) => t.category === 'Reserve Release'));
 });
+
+test('within each day, consecutive transactions chain: prior ending_balance equals next beginning_balance', () => {
+  const w = boot();
+  const r = w.OPERFI_DEMO.reserveActivity();
+  const allDays = r.cash_activity_by_date.concat(r.escrow_activity_by_date);
+  let checkedMultiTxnDays = 0;
+  allDays.forEach((day) => {
+    if (day.transactions.length < 2) return;
+    checkedMultiTxnDays++;
+    for (let i = 1; i < day.transactions.length; i++) {
+      assert.ok(
+        Math.abs(day.transactions[i - 1].ending_balance - day.transactions[i].beginning_balance) < 0.01,
+        `day ${day.date} txn ${i}: prior ending ${day.transactions[i - 1].ending_balance} != next beginning ${day.transactions[i].beginning_balance}`
+      );
+    }
+  });
+  assert.ok(checkedMultiTxnDays > 5, 'expected several multi-transaction days to actually exercise this check');
+});

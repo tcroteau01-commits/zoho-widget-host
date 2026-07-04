@@ -353,6 +353,17 @@
 
   <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
   <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
+  <script src="https://app.operfi.com/demo-ledger.js"></script>
+  <script src="https://app.operfi.com/demo-data.js"></script>
+  <script>
+    (function () {
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        var s = document.createElement('script');
+        s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+        document.head.appendChild(s);
+      }
+    })();
+  </script>
   <script>
     var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
     var brokerEmail = null;
@@ -503,8 +514,8 @@
           '<button id="feesExportBtn" class="btn-export">Export &#9660;</button>' +
           (state.feesExportOpen ?
             '<div class="export-menu">' +
-              '<button data-export="fees:csv">Fees CSV</button>' +
-              '<button data-export="fees:pdf">Fees PDF</button>' +
+              '<button data-export="fees:csv" data-export-scope="fees" data-export-format="csv">Fees CSV</button>' +
+              '<button data-export="fees:pdf" data-export-scope="fees" data-export-format="pdf">Fees PDF</button>' +
             '</div>' : '') +
         '</div>' +
       '</div>';
@@ -555,10 +566,27 @@
       }
       return html;
     }
+
+    function handleFeesData(data) {
+      state.feesData = data;
+      state.feesLoading = false;
+      renderShell();
+    }
+
     function fetchFees() {
       state.feesLoading = true;
       renderShell();
       var f = state.feesFilters;
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.loadsFees())
+          .then(handleFeesData)
+          .catch(function (err) {
+            console.error('fetchFees demo failed', err);
+            state.feesData = { groups: [], totals: { count: 0, amount: 0 } };
+            state.feesLoading = false;
+            renderShell();
+          });
+      }
       var range = resolvedRange(f);
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
@@ -569,11 +597,7 @@
       if (f.loadId)   params.set('loadId',   f.loadId);
       fetch(BROKER_API_BASE + '/loads/fees?' + params.toString())
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          state.feesData = data;
-          state.feesLoading = false;
-          renderShell();
-        })
+        .then(handleFeesData)
         .catch(function (err) {
           console.error('fetchFees failed', err);
           state.feesData = { groups: [], totals: { count: 0, amount: 0 } };
@@ -679,8 +703,8 @@
           '<button id="marginsExportBtn" class="btn-export">Export &#9660;</button>' +
           (state.marginsExportOpen ?
             '<div class="export-menu">' +
-              '<button data-export="margins:csv">Margins CSV</button>' +
-              '<button data-export="margins:pdf">Margins PDF</button>' +
+              '<button data-export="margins:csv" data-export-scope="margins" data-export-format="csv">Margins CSV</button>' +
+              '<button data-export="margins:pdf" data-export-scope="margins" data-export-format="pdf">Margins PDF</button>' +
             '</div>' : '') +
         '</div>' +
       '</div>';
@@ -732,10 +756,26 @@
       return html;
     }
 
+    function handleMarginsData(data) {
+      state.marginsData = data;
+      state.marginsLoading = false;
+      renderShell();
+    }
+
     function fetchMargins() {
       state.marginsLoading = true;
       renderShell();
       var f = state.marginsFilters;
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.loadsMargins(state.marginsGroupBy))
+          .then(handleMarginsData)
+          .catch(function (err) {
+            console.error('fetchMargins demo failed', err);
+            state.marginsData = { rows: [], totals: {} };
+            state.marginsLoading = false;
+            renderShell();
+          });
+      }
       var range = resolvedRange(f);
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
@@ -745,11 +785,7 @@
       params.set('groupBy', state.marginsGroupBy);
       fetch(BROKER_API_BASE + '/loads/margins?' + params.toString())
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          state.marginsData = data;
-          state.marginsLoading = false;
-          renderShell();
-        })
+        .then(handleMarginsData)
         .catch(function (err) {
           console.error('fetchMargins failed', err);
           state.marginsData = { rows: [], totals: {} };
@@ -851,8 +887,8 @@
           '<button id="loadsExportBtn" class="btn-export">Export &#9660;</button>' +
           (state.loadsExportOpen ?
             '<div class="export-menu">' +
-              '<button data-export="loads:csv">Loads CSV</button>' +
-              '<button data-export="loads:pdf">Loads PDF</button>' +
+              '<button data-export="loads:csv" data-export-scope="loads" data-export-format="csv">Loads CSV</button>' +
+              '<button data-export="loads:pdf" data-export-scope="loads" data-export-format="pdf">Loads PDF</button>' +
             '</div>' : '') +
         '</div>' +
       '</div>';
@@ -946,10 +982,27 @@
     function resolvedLoadsDateFrom(f) { return resolvedRange(f).from; }
     function resolvedLoadsDateTo(f)   { return resolvedRange(f).to; }
 
+    function handleLoadsData(data) {
+      state.loadsData = data;
+      state.loadsLoading = false;
+      renderShell();
+    }
+
     function fetchLoads() {
       state.loadsLoading = true;
       renderShell();
       var f = state.loadsFilters;
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.loads({
+          arStatus: f.arStatus, debtorId: f.debtorId,
+          vendor: f.vendor, loadId: f.loadId
+        })).then(handleLoadsData).catch(function (err) {
+          console.error('fetchLoads demo failed', err);
+          state.loadsData = { loads: [], totals: { count: 0, purchaseAmount: 0, margin: 0, marginPct: null } };
+          state.loadsLoading = false;
+          renderShell();
+        });
+      }
       var range = resolvedRange(f);
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
@@ -963,11 +1016,7 @@
 
       fetch(BROKER_API_BASE + '/loads?' + params.toString())
         .then(function (r) { return r.json(); })
-        .then(function (data) {
-          state.loadsData = data;
-          state.loadsLoading = false;
-          renderShell();
-        })
+        .then(handleLoadsData)
         .catch(function (err) {
           console.error('fetchLoads failed', err);
           state.loadsData = { loads: [], totals: { count: 0, purchaseAmount: 0, margin: 0, marginPct: null } };
@@ -1056,6 +1105,43 @@
     }
 
     function openExport(scope, format) {
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        var rows, columns, title, footers;
+        if (scope === 'loads') {
+          var ld = window.OPERFI_DEMO.loads(state.loadsFilters);
+          rows = ld.loads;
+          columns = [
+            { key: 'buyDate', label: 'Buy Date' }, { key: 'loadNumber', label: 'Load #' },
+            { key: 'debtorName', label: 'Debtor' }, { key: 'vendorName', label: 'Vendor' },
+            { key: 'purchaseAmount', label: 'Purchase' }, { key: 'margin', label: 'Margin' }, { key: 'marginPct', label: 'Margin %' }
+          ];
+          title = 'Loads';
+          footers = ['Total Purchase: $' + ld.totals.purchaseAmount.toFixed(2), 'Total Margin: $' + ld.totals.margin.toFixed(2)];
+        } else if (scope === 'margins') {
+          var md = window.OPERFI_DEMO.loadsMargins(state.marginsGroupBy);
+          rows = md.rows;
+          columns = [
+            { key: 'label', label: state.marginsGroupBy === 'debtor' ? 'Debtor' : 'Period' },
+            { key: 'loadCount', label: 'Loads' }, { key: 'purchaseAmount', label: 'Purchase' },
+            { key: 'discountFee', label: 'Discount Fee' }, { key: 'vendorPayable', label: 'Vendor Payable' },
+            { key: 'margin', label: 'Margin' }, { key: 'marginPct', label: 'Margin %' }
+          ];
+          title = 'Margins by ' + (state.marginsGroupBy === 'debtor' ? 'Debtor' : 'Period');
+          footers = ['Total Margin: $' + md.totals.margin.toFixed(2)];
+        } else {
+          var fd = window.OPERFI_DEMO.loadsFees();
+          rows = fd.groups.reduce(function (acc, g) { return acc.concat(g.transactions); }, []);
+          columns = [
+            { key: 'date', label: 'Date' }, { key: 'loadNumber', label: 'Load #' },
+            { key: 'debtorName', label: 'Debtor' }, { key: 'amount', label: 'Amount' }
+          ];
+          title = 'Fees Paid';
+          footers = ['Total Fees: $' + fd.totals.amount.toFixed(2)];
+        }
+        if (format === 'csv') { window.OPERFI_DEMO.downloadCSV(scope + '.csv', window.OPERFI_DEMO.csvFromRows(columns, rows)); return; }
+        window.OPERFI_DEMO.pdfFromRows(title, columns, rows, footers);
+        return;
+      }
       var f, range, params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
       else                params.set('email', brokerEmail);
@@ -1093,6 +1179,24 @@
       return (window.OPERFI_IMP && window.OPERFI_IMP.decorate) ? window.OPERFI_IMP.decorate(url) : url;
     }
 
+    function handleLoadPreviewSuccess(loadId) {
+      return function(data) {
+        if (state.selectedLoadId !== loadId) return;
+        state.loadPreview = data;
+        state.loadPreviewLoading = false;
+        renderLoadDetail();
+      };
+    }
+
+    function handleLoadPreviewError(loadId) {
+      return function(err) {
+        if (state.selectedLoadId !== loadId) return;
+        state.loadPreviewLoading = false;
+        state.loadPreviewError = err.message || String(err);
+        renderLoadDetail();
+      };
+    }
+
     function openLoadDetail(loadId) {
       if (!loadId) return;
       state.selectedLoadId = loadId;
@@ -1106,6 +1210,12 @@
       overlay.classList.add('open');
       renderLoadDetail();
 
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.loadPreview(loadId))
+          .then(handleLoadPreviewSuccess(loadId))
+          .catch(handleLoadPreviewError(loadId));
+      }
+
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
       else                params.set('email', brokerEmail);
@@ -1115,18 +1225,8 @@
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.json();
         })
-        .then(function (data) {
-          if (state.selectedLoadId !== loadId) return;
-          state.loadPreview = data;
-          state.loadPreviewLoading = false;
-          renderLoadDetail();
-        })
-        .catch(function (err) {
-          if (state.selectedLoadId !== loadId) return;
-          state.loadPreviewLoading = false;
-          state.loadPreviewError = err.message || String(err);
-          renderLoadDetail();
-        });
+        .then(handleLoadPreviewSuccess(loadId))
+        .catch(handleLoadPreviewError(loadId));
     }
 
     function closeLoadDetail() {

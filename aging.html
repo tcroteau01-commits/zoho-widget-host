@@ -463,6 +463,17 @@
 
   <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
   <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
+  <script src="https://app.operfi.com/demo-ledger.js"></script>
+  <script src="https://app.operfi.com/demo-data.js"></script>
+  <script>
+    (function () {
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        var s = document.createElement('script');
+        s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+        document.head.appendChild(s);
+      }
+    })();
+  </script>
   <script>
     var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
     var brokerEmail = null;
@@ -551,7 +562,21 @@
       window.addEventListener('load', init);
     }
 
+    function handleAgingData(data) {
+      if (!data || !data.client || !data.buckets) {
+        throw new Error('Aging data returned in unexpected format.');
+      }
+      state.data = data;
+      renderSummary();
+    }
+
     function fetchAging() {
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        document.getElementById('aging-app').innerHTML = '<div class="loading">Loading aging data...</div>';
+        return Promise.resolve(window.OPERFI_DEMO.aging(state.dateBasis)).then(handleAgingData).catch(function (err) {
+          showError("Couldn't load aging data: " + (err && err.message ? err.message : 'unknown error'));
+        });
+      }
       var url = BROKER_API_BASE + '/aging?' + buildAuthParams();
       if (state.dateBasis === 'invoice') url += '&dateBasis=invoice';
       document.getElementById('aging-app').innerHTML = '<div class="loading">Loading aging data...</div>';
@@ -566,13 +591,7 @@
           }
           return r.json();
         })
-        .then(function (data) {
-          if (!data || !data.client || !data.buckets) {
-            throw new Error('Aging data returned in unexpected format.');
-          }
-          state.data = data;
-          renderSummary();
-        })
+        .then(handleAgingData)
         .catch(function (err) {
           showError("Couldn't load aging data: " + (err && err.message ? err.message : 'unknown error'));
         });
@@ -809,9 +828,15 @@
 
     function renderReceiptsExportMenu() {
       return '<div class="export-menu">' +
-        '<button data-export="receipts:csv">Receipts CSV</button>' +
-        '<button data-export="receipts:pdf">Receipts PDF</button>' +
+        '<button data-export="receipts:csv" data-export-scope="receipts" data-export-format="csv">Receipts CSV</button>' +
+        '<button data-export="receipts:pdf" data-export-scope="receipts" data-export-format="pdf">Receipts PDF</button>' +
       '</div>';
+    }
+
+    function handleReceiptsData(data) {
+      state.receipts = data;
+      state.receiptsLoading = false;
+      renderSummary();
     }
 
     function fetchReceipts() {
@@ -828,13 +853,18 @@
       if (f.loadId)    params.set('loadId',    f.loadId);
       if (f.invoiceNo) params.set('invoiceNo', f.invoiceNo);
 
-      fetch(BROKER_API_BASE + '/aging/receipts?' + params.toString())
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          state.receipts = data;
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.agingReceipts()).then(handleReceiptsData).catch(function (err) {
+          console.error('fetchReceipts failed', err);
+          state.receipts = { receipts: [], summary: [], totals: { count: 0, amount: 0, summaryCount: 0 } };
           state.receiptsLoading = false;
           renderSummary();
-        })
+        });
+      }
+
+      fetch(BROKER_API_BASE + '/aging/receipts?' + params.toString())
+        .then(function (r) { return r.json(); })
+        .then(handleReceiptsData)
         .catch(function (err) {
           console.error('fetchReceipts failed', err);
           state.receipts = { receipts: [], summary: [], totals: { count: 0, amount: 0, summaryCount: 0 } };
@@ -1069,15 +1099,41 @@
 
     function renderSummaryExportMenu() {
       return '<div class="export-menu">' +
-        '<button data-export="summary:csv">Summary CSV</button>' +
-        '<button data-export="summary:pdf">Summary PDF</button>' +
+        '<button data-export="summary:csv" data-export-scope="summary" data-export-format="csv">Summary CSV</button>' +
+        '<button data-export="summary:pdf" data-export-scope="summary" data-export-format="pdf">Summary PDF</button>' +
         '<div class="divider"></div>' +
-        '<button data-export="detail:csv">All Detail CSV</button>' +
-        '<button data-export="detail:pdf">All Detail PDF</button>' +
+        '<button data-export="detail:csv" data-export-scope="detail" data-export-format="csv">All Detail CSV</button>' +
+        '<button data-export="detail:pdf" data-export-scope="detail" data-export-format="pdf">All Detail PDF</button>' +
       '</div>';
     }
 
     function openExport(scope, format, customerId) {
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        if (scope === 'receipts') {
+          var rrows = (state.receipts && state.receipts.receipts) || [];
+          var rcolumns = [
+            { key: 'date', label: 'Date' }, { key: 'invoiceNo', label: 'Invoice #' },
+            { key: 'debtorName', label: 'Debtor' }, { key: 'note', label: 'Note' },
+            { key: 'checkNumber', label: 'Check #' }, { key: 'amount', label: 'Amount' }
+          ];
+          if (format === 'csv') { window.OPERFI_DEMO.downloadCSV('aging-receipts.csv', window.OPERFI_DEMO.csvFromRows(rcolumns, rrows)); return; }
+          var rTotal = (state.receipts && state.receipts.totals && state.receipts.totals.amount) || 0;
+          window.OPERFI_DEMO.pdfFromRows('Aging Receipts', rcolumns, rrows, ['Total Receipts: $' + rTotal.toFixed(2)]);
+          return;
+        }
+        var data = window.OPERFI_DEMO.aging(state.dateBasis);
+        var rows = scope === 'customer'
+          ? data.customers.filter(function (c) { return c.debtorId === customerId; })[0].invoices
+          : data.customers;
+        var columns = scope === 'customer'
+          ? [{ key: 'invoiceNumber', label: 'Invoice' }, { key: 'buyDate', label: 'Buy Date' }, { key: 'ageDays', label: 'Age' }, { key: 'bucket', label: 'Bucket' }, { key: 'openBalance', label: 'Balance' }]
+          : [{ key: 'name', label: 'Customer' }, { key: 'buyLimit', label: 'Buy Limit' }, { key: 'concentrationPct', label: '% Concentration' }];
+        var fileScope = scope === 'customer' ? 'customer-' + customerId : scope;
+        if (format === 'csv') { window.OPERFI_DEMO.downloadCSV('aging-' + fileScope + '.csv', window.OPERFI_DEMO.csvFromRows(columns, rows)); return; }
+        var pdfTitle = scope === 'customer' ? 'Aging Report - Customer ' + customerId : 'Aging Report - ' + scope;
+        window.OPERFI_DEMO.pdfFromRows(pdfTitle, columns, rows, ['Total Open AR: $' + data.buckets.total.toFixed(2)]);
+        return;
+      }
       var url;
       if (scope === 'receipts') {
         var f = state.receiptsFilters;
@@ -1205,35 +1261,49 @@
         '<div class="recent-receipts" id="recentReceipts-' + esc(debtorId) + '">Loading…</div>';
     }
 
+    function handleCustomerReceiptsData(debtorId, data) {
+      var el = document.getElementById('recentReceipts-' + debtorId);
+      if (!el) return;
+      if (!data.receipts || data.receipts.length === 0) {
+        el.innerHTML = '<div class="rcpt-empty" style="padding:12px 0;text-align:left">No recent receipts.</div>';
+        return;
+      }
+      var html = '<table class="detail" style="margin-top:4px"><thead><tr>' +
+        '<th class="first">Date</th><th>Invoice #</th><th>Check #</th><th class="last num">Amount</th>' +
+      '</tr></thead><tbody>';
+      for (var i = 0; i < data.receipts.length; i++) {
+        var r = data.receipts[i];
+        html += '<tr>' +
+          '<td class="first">' + esc(r.date || '') + '</td>' +
+          '<td>' + esc(r.invoiceNo || '') + '</td>' +
+          '<td>' + esc(r.checkNumber || '') + '</td>' +
+          '<td class="last">' + fmtMoney(r.amount) + '</td>' +
+        '</tr>';
+      }
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    }
+
     function fillRecentReceipts(debtorId) {
       var params = new URLSearchParams();
       if (state.clientId) params.set('clientId', state.clientId);
       if (typeof brokerEmail !== 'undefined' && brokerEmail) params.set('email', brokerEmail);
       params.set('debtorId', debtorId);
       params.set('limit', '10');
+
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.agingCustomerReceipts(debtorId)).then(function (data) {
+          handleCustomerReceiptsData(debtorId, data);
+        }).catch(function () {
+          var el = document.getElementById('recentReceipts-' + debtorId);
+          if (el) el.innerHTML = '<div class="rcpt-empty" style="padding:12px 0;text-align:left">Could not load.</div>';
+        });
+      }
+
       fetch(BROKER_API_BASE + '/aging/customer-receipts?' + params.toString())
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          var el = document.getElementById('recentReceipts-' + debtorId);
-          if (!el) return;
-          if (!data.receipts || data.receipts.length === 0) {
-            el.innerHTML = '<div class="rcpt-empty" style="padding:12px 0;text-align:left">No recent receipts.</div>';
-            return;
-          }
-          var html = '<table class="detail" style="margin-top:4px"><thead><tr>' +
-            '<th class="first">Date</th><th>Invoice #</th><th>Check #</th><th class="last num">Amount</th>' +
-          '</tr></thead><tbody>';
-          for (var i = 0; i < data.receipts.length; i++) {
-            var r = data.receipts[i];
-            html += '<tr>' +
-              '<td class="first">' + esc(r.date || '') + '</td>' +
-              '<td>' + esc(r.invoiceNo || '') + '</td>' +
-              '<td>' + esc(r.checkNumber || '') + '</td>' +
-              '<td class="last">' + fmtMoney(r.amount) + '</td>' +
-            '</tr>';
-          }
-          html += '</tbody></table>';
-          el.innerHTML = html;
+          handleCustomerReceiptsData(debtorId, data);
         })
         .catch(function () {
           var el = document.getElementById('recentReceipts-' + debtorId);
@@ -1289,6 +1359,21 @@
     }
 
     // ----- Load preview view (stacked inside detail panel) -----
+    function handleLoadPreviewData(loadId, data) {
+      // Guard: user may have navigated away
+      if (String(state.viewingLoadId) !== String(loadId)) return;
+      state.loadPreview = data;
+      state.loadPreviewLoading = false;
+      renderDetail();
+    }
+
+    function handleLoadPreviewError(loadId, err) {
+      if (String(state.viewingLoadId) !== String(loadId)) return;
+      state.loadPreviewLoading = false;
+      state.loadPreviewError = (err && err.message) ? err.message : 'Failed to load';
+      renderDetail();
+    }
+
     function openLoadPreview(loadId, debtorNameFallback) {
       if (!loadId) return;
       state.viewingLoadId = String(loadId);
@@ -1307,6 +1392,15 @@
         if (overlay) overlay.classList.add('open');
       }
       renderDetail();
+
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+        return Promise.resolve(window.OPERFI_DEMO.agingLoadPreview(loadId)).then(function (data) {
+          handleLoadPreviewData(loadId, data);
+        }).catch(function (err) {
+          handleLoadPreviewError(loadId, err);
+        });
+      }
+
       var url = BROKER_API_BASE + '/aging/load-preview?' + buildAuthParams() +
                 '&loadId=' + encodeURIComponent(loadId);
       fetch(url)
@@ -1315,17 +1409,10 @@
           return r.json();
         })
         .then(function (data) {
-          // Guard: user may have navigated away
-          if (String(state.viewingLoadId) !== String(loadId)) return;
-          state.loadPreview = data;
-          state.loadPreviewLoading = false;
-          renderDetail();
+          handleLoadPreviewData(loadId, data);
         })
         .catch(function (err) {
-          if (String(state.viewingLoadId) !== String(loadId)) return;
-          state.loadPreviewLoading = false;
-          state.loadPreviewError = (err && err.message) ? err.message : 'Failed to load';
-          renderDetail();
+          handleLoadPreviewError(loadId, err);
         });
     }
 
@@ -1455,8 +1542,8 @@
           '<button id="dpExportBtn" class="btn-export">Export <span style="font-size:9px;">&#9660;</span></button>' +
           (state.detailExportOpen ?
             '<div class="export-menu">' +
-              '<button data-dp-export="csv">CSV</button>' +
-              '<button data-dp-export="pdf">PDF</button>' +
+              '<button data-dp-export="csv" data-export-scope="customer" data-export-format="csv">CSV</button>' +
+              '<button data-dp-export="pdf" data-export-scope="customer" data-export-format="pdf">PDF</button>' +
             '</div>' : '') +
         '</div>' +
       '</div>';

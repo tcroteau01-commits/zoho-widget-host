@@ -80,6 +80,8 @@
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/demo-ledger.js"></script>
+<script src="https://app.operfi.com/demo-data.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function () {
@@ -136,6 +138,13 @@
   }
 
   function fetchAndRender() {
+    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
+      state.data = window.OPERFI_DEMO.dashboardSummary();
+      render();
+      state.reserves = window.OPERFI_DEMO.wallet();
+      fillReserves(state.reserves);
+      return;
+    }
     if (isLocalTest()) {
       state.data = MOCK_DASHBOARD;
       render();

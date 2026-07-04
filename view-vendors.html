@@ -805,7 +805,8 @@ function renderPanel() {
     vendorId: r.ID,
     isDnu: statusMeta(r).key === 'dnu',
     statusKey: statusMeta(r).key,
-    isFactored: !!(r.Factoring_Company || '').trim()
+    isFactored: !!(r.Factoring_Company || '').trim(),
+    paymentChangePending: (r.Vendor_Status || '') === 'Payment Change'
   };
   loadVendorDocs(r.ID, document.getElementById('vv-docs'));
   loadVendorRedFlags(r);
@@ -947,7 +948,7 @@ function deriveVettingFlags(profile, ctx) {
   // Account / status hard stops
   if (ctx.isDnu) flags.push({ key: 'dnu', level: 'stop', label: 'Do Not Use',
     reason: 'This carrier is marked Do Not Use.' });
-  if (ctx.statusKey === 'denied') flags.push({ key: 'denied', level: 'stop', label: 'Denied',
+  if (ctx.statusKey === 'declined') flags.push({ key: 'denied', level: 'stop', label: 'Denied',
     reason: 'This carrier was denied.' });
 
   // Bank
@@ -981,8 +982,9 @@ function deriveVettingFlags(profile, ctx) {
   else if (has('factor_pending')) flags.push({ key: 'factor_pending', level: 'check',
     label: 'Factor pending OperFi approval', reason: 'Factoring company is pending OperFi approval.' });
 
-  // Payment change pending
-  if (ctx.statusKey === 'payment-change') flags.push({ key: 'pay_change', level: 'check',
+  // Payment change pending — sourced from the raw Vendor_Status field directly;
+  // there is no Hiring_Decision equivalent for "payment/factoring setup mid-change".
+  if (ctx.paymentChangePending) flags.push({ key: 'pay_change', level: 'check',
     label: 'Payment change pending', reason: 'A payment-info change is pending review.' });
 
   // Stop above check; stable within level (Node/JSDOM sort is stable).
@@ -1080,6 +1082,7 @@ function loadVendorRedFlags(rec, force) {
     isDnu: statusMeta(rec).key === 'dnu',
     statusKey: statusMeta(rec).key,
     isFactored: !!(rec.Factoring_Company || '').trim(),
+    paymentChangePending: (rec.Vendor_Status || '') === 'Payment Change',
     profileError: false
   };
   refreshVettingPane();

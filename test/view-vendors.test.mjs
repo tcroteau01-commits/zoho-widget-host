@@ -446,8 +446,8 @@ test('deriveVettingFlags: DNU is a stop', () => {
   assert.equal(flags[0].level, 'stop');
 });
 
-test('deriveVettingFlags: denied status is a stop', () => {
-  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'denied', isFactored: false });
+test('deriveVettingFlags: declined status is a stop', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'declined', isFactored: false });
   assert.ok(flags.some((f) => f.key === 'denied' && f.level === 'stop'));
 });
 
@@ -491,8 +491,9 @@ test('deriveVettingFlags: factor denied=stop, pending=check', () => {
   assert.equal(api.deriveVettingFlags(riskProfile(['factor_pending']), ctx)[0].level, 'check');
 });
 
-test('deriveVettingFlags: payment-change is a check', () => {
-  const flags = vvApi().deriveVettingFlags(riskProfile([]), { isDnu: false, statusKey: 'payment-change', isFactored: false });
+test('deriveVettingFlags: paymentChangePending (from Vendor_Status) is a check, independent of Hiring_Decision', () => {
+  const flags = vvApi().deriveVettingFlags(riskProfile([]),
+    { isDnu: false, statusKey: 'approved', isFactored: false, paymentChangePending: true });
   assert.ok(flags.some((f) => f.key === 'pay_change' && f.level === 'check'));
 });
 
@@ -923,4 +924,32 @@ test('panel: Submit Invoice is disabled when DNU=true even with Hiring_Decision=
   w.document.querySelector('.row').click();
   const inv = w.document.getElementById('p-invoice');
   assert.ok(inv.disabled);
+});
+
+test('vetting pane: Decline shows the Denied stop flag', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '8001', Vendor_Name: 'DECLINED LLC', Hiring_Decision: 'Decline', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, []);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.equal(strip.querySelectorAll('.vvp-flag.stop').length, 1);
+  assert.match(strip.textContent, /Denied/);
+});
+
+test('vetting pane: Payment Change flag fires even when Hiring_Decision is Approve', async () => {
+  const dom = makeDom();
+  const w = dom.window;
+  const rec = { ID: '8002', Vendor_Name: 'PAYCHANGE LLC', Hiring_Decision: 'Approve',
+                Vendor_Status: 'Payment Change', MC: '1', USDOT: '2', Factoring_Company: '' };
+  w.fetch = makeVetFetch([rec], { risk: { flags: [] }, ipqs: {} }, []);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise((r) => setTimeout(r, 50));
+  const strip = w.document.getElementById('vv-redflags');
+  assert.match(strip.textContent, /Payment change pending/);
 });

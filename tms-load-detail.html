@@ -422,6 +422,23 @@ function ensureCustomerOption(id) {
   }
 }
 
+// Short label suffix flagging a carrier's hiring-decision/DNU status wherever it's
+// rendered. '' for a clean, funding-eligible carrier.
+function carrierStatusSuffix(c) {
+  if (c.dnu) return ' ⚠ DNU';
+  if (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution') {
+    return ' · ' + (c.hiring_decision || 'Not Reviewed');
+  }
+  return '';
+}
+
+// Whether a carrier should be presented as blocked (disabled option).
+// Courtesy only — /tms-load and /tms-submit are the real gate, this just steers
+// brokers away from picking a carrier that would get rejected on save/submit.
+function carrierIsBlocked(c) {
+  return !!c.dnu || (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution');
+}
+
 function populateCarriers(carriers) {
   carriersById = {};
   var sel = document.getElementById('f-carrier_id');
@@ -429,7 +446,8 @@ function populateCarriers(carriers) {
   (carriers || []).forEach(function(c){
     carriersById[c.vendor_id] = c;
     var o = document.createElement('option');
-    o.value = c.vendor_id; o.textContent = c.carrier_name + (c.mc ? ' · MC ' + c.mc : '') + (c.dnu ? ' ⚠' : '');
+    o.value = c.vendor_id; o.textContent = c.carrier_name + (c.mc ? ' · MC ' + c.mc : '') + carrierStatusSuffix(c);
+    if (carrierIsBlocked(c)) o.disabled = true;
     sel.appendChild(o);
   });
 }
@@ -445,8 +463,10 @@ function onCarrierChange() {
   // Base status (DNU / OK) renders immediately; broker-specific pay terms, factor,
   // and NOA/LOR on-file are fetched from /noa-status and appended when they arrive.
   var base = c.dnu
-    ? '<span class="badge warn">⚠ Do Not Use — submission will be soft-blocked</span>'
-    : '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>';
+    ? '<span class="badge warn">⚠ Do Not Use — submission will be blocked</span>'
+    : (carrierIsBlocked(c)
+      ? '<span class="badge warn">Not approved — hiring decision is "' + esc(c.hiring_decision || 'Not Reviewed') + '". Submission will be blocked.</span>'
+      : '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>');
   badge.innerHTML = base;
   fetchCarrierVetting(c.vendor_id, base);
 }
@@ -1243,6 +1263,7 @@ if (typeof window !== 'undefined') {
 // expose for tests
 window.addStop = addStop; window.removeStop = removeStop; window.recomputeMargin = recomputeMargin;
 window.populateCarriers = populateCarriers; window.populateCustomers = populateCustomers; window.ensureCustomerOption = ensureCustomerOption;
+window.carrierStatusSuffix = carrierStatusSuffix; window.carrierIsBlocked = carrierIsBlocked;
 window.onCarrierChange = onCarrierChange; window.collectForm = collectForm; window.saveLoad = saveLoad;
 window.vettingExtraHtml = vettingExtraHtml;
 window._vettingWarnings = _vettingWarnings;  // exposed for tests

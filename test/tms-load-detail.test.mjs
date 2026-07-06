@@ -6,8 +6,8 @@ import { JSDOM } from 'jsdom';
 const HTML = readFileSync(new URL('../tms-load-detail.html', import.meta.url), 'utf8');
 
 const CARRIERS = { carriers: [
-  { vendor_id: 'v1', carrier_name: 'ROADWAY', mc: '123', dot: '897', dnu: false, status: 'Active', payment_terms: 'Net 30' },
-  { vendor_id: 'v2', carrier_name: 'BADCO', mc: '999', dot: '111', dnu: true, status: 'Active' },
+  { vendor_id: 'v1', carrier_name: 'ROADWAY', mc: '123', dot: '897', dnu: false, hiring_decision: 'Approve', status: 'Active', payment_terms: 'Net 30' },
+  { vendor_id: 'v2', carrier_name: 'BADCO', mc: '999', dot: '111', dnu: true, hiring_decision: 'Decline', status: 'Active' },
 ]};
 const CUSTOMERS = { customers: [
   { customer_id: 'cu1', customer_name: 'Big Shipper', credit_decision: 'Approved' },
@@ -65,6 +65,24 @@ test('populateCarriers marks DNU carriers and shows a warning on select', () => 
   sel.value = 'v2';                                // BADCO (dnu)
   window.onCarrierChange();
   assert.match(window.document.getElementById('vetting-badge').textContent, /Do Not Use|DNU/i);
+  assert.match(window.document.getElementById('vetting-badge').textContent, /will be blocked/i);
+  assert.doesNotMatch(window.document.getElementById('vetting-badge').textContent, /soft-blocked/i);
+});
+
+test('populateCarriers marks unapproved (non-DNU) carriers and shows the real hiring-decision status on select', () => {
+  const { window } = makeWidget();
+  window.populateCarriers([
+    { vendor_id: 'v1', carrier_name: 'Good Co', mc: '1', hiring_decision: 'Approve', dnu: false },
+    { vendor_id: 'v2', carrier_name: 'Unreviewed Co', mc: '2', hiring_decision: 'Not Reviewed', dnu: false },
+  ]);
+  const sel = window.document.getElementById('f-carrier_id');
+  assert.match(sel.options[2].textContent, /Not Reviewed/);   // index 0 = placeholder, 1 = Good Co, 2 = Unreviewed Co
+  assert.equal(sel.options[2].disabled, true);
+  assert.equal(sel.options[1].disabled, false);
+  sel.value = 'v2';
+  window.onCarrierChange();
+  assert.match(window.document.getElementById('vetting-badge').textContent, /Not Reviewed/);
+  assert.match(window.document.getElementById('vetting-badge').textContent, /will be blocked/i);
 });
 
 test('Customer Payment Terms input offers a datalist of common terms (still free-text)', () => {

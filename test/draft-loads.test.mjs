@@ -436,6 +436,97 @@ test('skip reason codes are shown as readable text, not raw codes', () => {
   assert.match(toast, /carrier not on your account/i);
 });
 
+// ---- Task 11: carrier hiring-decision gate ----
+test('carrierOptions shows hiring-decision status and disables non-approved options', () => {
+  const { window } = makeWidget();
+  window.__state.carriers = [
+    { vendor_id: 'v1', carrier_name: 'Good Co', mc: '1', hiring_decision: 'Approve', dnu: false },
+    { vendor_id: 'v2', carrier_name: 'Caution Co', mc: '2', hiring_decision: 'Approve with Caution', dnu: false },
+    { vendor_id: 'v3', carrier_name: 'Hold Co', mc: '3', hiring_decision: 'Hold', dnu: false },
+    { vendor_id: 'v4', carrier_name: 'Bad Co', mc: '4', hiring_decision: 'Decline', dnu: true }
+  ];
+  const html = window.carrierOptions(null);
+  const wrap = window.document.createElement('select');
+  wrap.innerHTML = html;
+  const opts = [...wrap.querySelectorAll('option')];
+  const byLabel = (name) => opts.find((o) => o.textContent.indexOf(name) !== -1);
+
+  assert.ok(byLabel('Good Co'), 'approved carrier present');
+  assert.equal(byLabel('Good Co').disabled, false, 'Approve is not blocked');
+  assert.doesNotMatch(byLabel('Good Co').textContent, /·/, 'Approve gets no status suffix');
+
+  assert.equal(byLabel('Caution Co').disabled, false, 'Approve with Caution is not blocked');
+  assert.doesNotMatch(byLabel('Caution Co').textContent, /·/, 'Approve with Caution gets no status suffix');
+
+  assert.equal(byLabel('Hold Co').disabled, true, 'Hold is blocked');
+  assert.match(byLabel('Hold Co').textContent, /· Hold/);
+
+  assert.equal(byLabel('Bad Co').disabled, true, 'DNU is blocked');
+  assert.match(byLabel('Bad Co').textContent, /· DNU/);
+});
+
+test('REASON_TEXT maps carrier_not_approved and carrier_dnu to readable messages', () => {
+  const { window } = makeWidget();
+  assert.ok(window.REASON_TEXT.carrier_not_approved);
+  assert.ok(window.REASON_TEXT.carrier_dnu);
+  assert.equal(window.reasonText('carrier_not_approved'), window.REASON_TEXT.carrier_not_approved);
+  assert.equal(window.reasonText('carrier_dnu'), window.REASON_TEXT.carrier_dnu);
+});
+
+test('skipped drafts show the new carrier-gate reason codes as readable text, not raw codes', () => {
+  const { window } = makeWidget();
+  window.handleSubmitResult({ submitted: [], skipped: [{ id: '901', reasons: ['carrier_dnu'] }], count: 0 });
+  const toast = window.document.getElementById('toast').textContent;
+  assert.doesNotMatch(toast, /carrier_dnu\b/, 'raw code must not leak');
+  assert.equal(toast.indexOf(window.REASON_TEXT.carrier_dnu) !== -1, true);
+});
+
+test('bulkSetCarrier surfaces the backend gate reason instead of a generic failure message', async () => {
+  const { window } = makeWidget();
+  window.fetch = function (url, opts) {
+    if (String(url).indexOf('/draft-loads/') !== -1 && opts && opts.method === 'PATCH') {
+      return Promise.resolve({ ok: false, json: function () {
+        return Promise.resolve({ error: 'Carrier is DNU', reason: 'carrier_dnu' });
+      } });
+    }
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ drafts: [], count: 0, summary: {} }); } });
+  };
+  window.__state.selected = ['900'];
+  await window.bulkSetCarrier('v4');
+  const toast = window.document.getElementById('toast').textContent;
+  assert.equal(toast, window.REASON_TEXT.carrier_dnu);
+});
+
+test('bulkSetCarrier falls back to the backend error string when the reason code is unrecognized', async () => {
+  const { window } = makeWidget();
+  window.fetch = function (url, opts) {
+    if (String(url).indexOf('/draft-loads/') !== -1 && opts && opts.method === 'PATCH') {
+      return Promise.resolve({ ok: false, json: function () {
+        return Promise.resolve({ error: 'Some other backend message', reason: 'something_unmapped' });
+      } });
+    }
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ drafts: [], count: 0, summary: {} }); } });
+  };
+  window.__state.selected = ['900'];
+  await window.bulkSetCarrier('v4');
+  const toast = window.document.getElementById('toast').textContent;
+  assert.equal(toast, 'Some other backend message');
+});
+
+test('bulkSetCarrier falls back to the generic failure message when the backend gives no error/reason at all', async () => {
+  const { window } = makeWidget();
+  window.fetch = function (url, opts) {
+    if (String(url).indexOf('/draft-loads/') !== -1 && opts && opts.method === 'PATCH') {
+      return Promise.resolve({ ok: false, json: function () { return Promise.resolve({}); } });
+    }
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ drafts: [], count: 0, summary: {} }); } });
+  };
+  window.__state.selected = ['900'];
+  await window.bulkSetCarrier('v4');
+  const toast = window.document.getElementById('toast').textContent;
+  assert.match(toast, /update failed/i);
+});
+
 // ---- Code-quality fixes ----
 test('margin tolerates formatted money strings like "$2,850"', () => {
   const { window } = makeWidget();

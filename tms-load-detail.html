@@ -277,6 +277,7 @@ var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
 var brokerEmail = '';
 var loadId = '';
 var carriersById = {};
+var _gateEnabled = true;
 var allCustomers = [];
 var stopSeq = 0;
 
@@ -434,8 +435,11 @@ function carrierStatusSuffix(c) {
 
 // Whether a carrier should be presented as blocked (disabled option).
 // Courtesy only — /tms-load and /tms-submit are the real gate, this just steers
-// brokers away from picking a carrier that would get rejected on save/submit.
+// brokers away from picking a carrier that would get rejected on save/submit. When
+// the account's Hiring_Decision_Gate_Enabled kill-switch is off, nothing is blocked
+// here either — matching the backend gate, which skips enforcement for that account.
 function carrierIsBlocked(c) {
+  if (_gateEnabled === false) return false;
   return !!c.dnu || (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution');
 }
 
@@ -462,11 +466,11 @@ function onCarrierChange() {
   setVal('f-carrier_mc', c.mc || '');
   // Base status (DNU / OK) renders immediately; broker-specific pay terms, factor,
   // and NOA/LOR on-file are fetched from /noa-status and appended when they arrive.
-  var base = c.dnu
-    ? '<span class="badge warn">⚠ Do Not Use — submission will be blocked</span>'
-    : (carrierIsBlocked(c)
-      ? '<span class="badge warn">Not approved — hiring decision is "' + esc(c.hiring_decision || 'Not Reviewed') + '". Submission will be blocked.</span>'
-      : '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>');
+  var base = !carrierIsBlocked(c)
+    ? '<span class="badge ok">✓ ' + esc(c.carrier_name) + ' · MC ' + esc(c.mc) + '</span>'
+    : (c.dnu
+      ? '<span class="badge warn">⚠ Do Not Use — submission will be blocked</span>'
+      : '<span class="badge warn">Not approved — hiring decision is "' + esc(c.hiring_decision || 'Not Reviewed') + '". Submission will be blocked.</span>');
   badge.innerHTML = base;
   fetchCarrierVetting(c.vendor_id, base);
 }
@@ -794,7 +798,7 @@ function loadRefData() {
   var pCust = fetch(BROKER_API_BASE + '/tms-customers?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); }).then(function(p){ populateCustomers((p && p.customers) || []); });
   var pCarr = fetch(BROKER_API_BASE + '/tms-carriers?email=' + encodeURIComponent(brokerEmail))
-    .then(function(r){ return r.json(); }).then(function(p){ populateCarriers((p && p.carriers) || []); });
+    .then(function(r){ return r.json(); }).then(function(p){ _gateEnabled = !(p && p.gate_enabled === false); populateCarriers((p && p.carriers) || []); });
   fetch(BROKER_API_BASE + '/tms-templates?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); }).then(function(p){ populateTemplates((p && p.templates) || []); });
   Promise.all([pLoad, pCust]).then(function(res){ if (res[0]) hydrate(res[0]); showLoading(false); });

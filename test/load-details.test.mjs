@@ -163,6 +163,26 @@ test('carrier combobox results show the same status suffix and a blocked class',
   assert.ok(!v1Row.classList.contains('combo-blocked'), 'approved row should not carry a blocked class');
 });
 
+test('carrier options are never disabled when the account gate is switched off', async () => {
+  const dom = makeB2Dom((url) =>
+    Promise.resolve({ ok: true, json: () => Promise.resolve(
+      String(url).includes('/tms-carriers')
+        ? { gate_enabled: false, carriers: [
+            { vendor_id: 'v2', carrier_name: 'Unreviewed Carrier', mc: '222', hiring_decision: 'Not Reviewed', dnu: false },
+            { vendor_id: 'v3', carrier_name: 'DNU Carrier', mc: '333', hiring_decision: 'Approve', dnu: true }
+          ] }
+        : { customers: [] }
+    )})
+  );
+  const w = dom.window;
+  await w.loadCarriers();
+  const opts = [...w.document.querySelectorAll('#carrier-select option')];
+  const v2 = opts.find(o => o.value === 'v2');
+  const v3 = opts.find(o => o.value === 'v3');
+  assert.strictEqual(v2.disabled, false, 'unreviewed carrier should not be disabled when the gate is off');
+  assert.strictEqual(v3.disabled, false, 'DNU carrier should not be disabled when the gate is off');
+});
+
 test('mousedown on a blocked combobox row does not select the carrier', async () => {
   const dom = makeB2Dom((url) =>
     Promise.resolve({ ok: true, json: () => Promise.resolve(

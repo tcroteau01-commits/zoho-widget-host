@@ -592,8 +592,11 @@ window.carrierStatusSuffix = carrierStatusSuffix;
 
 // Whether a carrier should be presented as blocked (disabled option / blocked combo row).
 // Courtesy only — /funding-submit is the real gate, this just steers brokers away
-// from picking a carrier that would get rejected on submit.
+// from picking a carrier that would get rejected on submit. When the account's
+// Hiring_Decision_Gate_Enabled kill-switch is off, nothing is blocked here either —
+// matching the backend gate, which skips enforcement entirely for that account.
 function carrierIsBlocked(c) {
+  if (window._gateEnabled === false) return false;
   return !!c.dnu || (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution');
 }
 window.carrierIsBlocked = carrierIsBlocked;
@@ -605,6 +608,7 @@ function loadCarriers() {
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (data) {
       window._carriers = data.carriers || [];
+      window._gateEnabled = data.gate_enabled !== false;
       var sel = document.getElementById('carrier-select');
       sel.innerHTML = '<option value="">Select a carrier…</option>' +
         window._carriers.map(function (c) {

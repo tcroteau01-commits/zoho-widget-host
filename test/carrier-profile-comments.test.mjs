@@ -22,7 +22,12 @@ function makeWidget() {
           }
         }
       };
-      window.fetch = () => new Promise(() => {});
+      // Never-resolving for boot()'s initial /carrier-profile load (kept pending
+      // harmlessly), but addComment's post-save loadProfile(true) refetch needs a
+      // real resolution or the test file hangs on a dangling promise.
+      window.fetch = (url) => String(url).indexOf('/carrier-profile') !== -1
+        ? Promise.resolve({ ok: true, json: () => Promise.resolve({ account_vendor: { av_id: 'av_1' }, comments: [] }) })
+        : new Promise(() => {});
     }
   });
   return { window: dom.window, addCalls };

@@ -1607,8 +1607,8 @@ function addComment(){
   return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Vendor_Comments',payload:{data:data}})
     .then(function(res){
       if(btn) btn.disabled=false;
-      if(res&&(res.code===3000||(res.result&&res.result.length))){ if(ta) ta.value=''; loadProfile(); }
-      else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
+      if(res&&(res.code===3000||(res.result&&res.result.length))){ if(ta) ta.value=''; return loadProfile(true); }
+      if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{}));
     }).catch(function(err){
       if(btn) btn.disabled=false;
       if(fb) fb.textContent='Submit error: '+esc(String(err));
@@ -1793,14 +1793,19 @@ function submitDecision(){
   var data=buildDecisionPayload();
   data.Reviewed_By=cid;
   data.Reviewed_At=_creatorNow();   // form ${zoho.currenttime} default doesn't fire on API add
-  var sb=document.getElementById('cp-submit'); if(sb) sb.disabled=true;
+  var sb=document.getElementById('cp-submit'); if(sb){ sb.disabled=true; sb.textContent='Saving…'; }
   return ZOHO.CREATOR.DATA.addRecords({app_link_name:'funding-portal',form_name:'Carrier_Risk_Decision',payload:{data:data}})
     .then(function(res){
-      if(sb) sb.disabled=false;
-      if(res&&(res.code===3000||(res.result&&res.result.length))){ loadProfile(); }
-      else { if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{})); }
+      if(res&&(res.code===3000||(res.result&&res.result.length))){
+        var notes=document.getElementById('cp-notes'); if(notes) notes.value='';
+        return loadProfile(true).then(function(){
+          if(sb) sb.textContent='Save Decision & Update Hiring Status';
+        });
+      }
+      if(sb){ sb.disabled=false; sb.textContent='Save Decision & Update Hiring Status'; }
+      if(fb) fb.textContent='Submit failed: '+esc(JSON.stringify(res||{}));
     }).catch(function(err){
-      if(sb) sb.disabled=false;
+      if(sb){ sb.disabled=false; sb.textContent='Save Decision & Update Hiring Status'; }
       if(fb) fb.textContent='Submit error: '+esc(String(err));
     });
 }

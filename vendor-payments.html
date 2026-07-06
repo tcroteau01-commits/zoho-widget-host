@@ -144,7 +144,7 @@
   </div>
   <div class="tab-panel active" id="panel-open"><div class="loading">Loading open vendor payments...</div></div>
   <div class="tab-panel" id="panel-history"><div class="loading">Click to load Payment History</div></div>
-  <div class="version-stamp">v2026-07-04.1</div>
+  <div class="version-stamp">v2026-07-06.1</div>
 </div>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
@@ -358,7 +358,7 @@
   function matchesSearch(r, q) {
     if (!q) return true;
     var hay = [r['Vendor Name'], r['USDOT'], r['Load #'], r['Invoice #'],
-               r['Vendor Invoice #'], r['PO #']].map(function (x) {
+               r['Vendor Invoice #'], r['PO #'], r['Other Reference']].map(function (x) {
       return String(x || '').toLowerCase();
     });
     return hay.some(function (s) { return s.indexOf(q) !== -1; });

@@ -465,6 +465,22 @@ test('carrierOptions shows hiring-decision status and disables non-approved opti
   assert.match(byLabel('Bad Co').textContent, /· DNU/);
 });
 
+test('carrierOptions disables nothing when the account gate is switched off', () => {
+  const { window } = makeWidget();
+  window.__state.carriers = [
+    { vendor_id: 'v3', carrier_name: 'Hold Co', mc: '3', hiring_decision: 'Hold', dnu: false },
+    { vendor_id: 'v4', carrier_name: 'Bad Co', mc: '4', hiring_decision: 'Decline', dnu: true }
+  ];
+  window.__state.gateEnabled = false;
+  const html = window.carrierOptions(null);
+  const wrap = window.document.createElement('select');
+  wrap.innerHTML = html;
+  const opts = [...wrap.querySelectorAll('option')];
+  const byLabel = (name) => opts.find((o) => o.textContent.indexOf(name) !== -1);
+  assert.equal(byLabel('Hold Co').disabled, false, 'Hold should not be disabled when the gate is off');
+  assert.equal(byLabel('Bad Co').disabled, false, 'DNU should not be disabled when the gate is off');
+});
+
 test('REASON_TEXT maps carrier_not_approved and carrier_dnu to readable messages', () => {
   const { window } = makeWidget();
   assert.ok(window.REASON_TEXT.carrier_not_approved);

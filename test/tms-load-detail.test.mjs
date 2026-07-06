@@ -85,6 +85,18 @@ test('populateCarriers marks unapproved (non-DNU) carriers and shows the real hi
   assert.match(window.document.getElementById('vetting-badge').textContent, /will be blocked/i);
 });
 
+test('populateCarriers disables nothing and shows the ok badge when the account gate is switched off', () => {
+  const { window } = makeWidget();
+  window._gateEnabled = false;
+  window.populateCarriers(CARRIERS.carriers);
+  const sel = window.document.getElementById('f-carrier_id');
+  assert.equal(sel.options[2].disabled, false, 'DNU carrier should not be disabled when the gate is off');
+  sel.value = 'v2';
+  window.onCarrierChange();
+  assert.match(window.document.getElementById('vetting-badge').textContent, /✓|BADCO/);
+  assert.doesNotMatch(window.document.getElementById('vetting-badge').textContent, /will be blocked/i);
+});
+
 test('Customer Payment Terms input offers a datalist of common terms (still free-text)', () => {
   const { window } = makeWidget();
   const input = window.document.getElementById('f-customer_payment_terms');

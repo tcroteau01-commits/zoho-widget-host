@@ -319,6 +319,7 @@ var __state = {
   selected: [],
   customers: [],
   carriers: [],
+  gateEnabled: true,
   candidatesByRaw: {},
   lastSkipped: []
 };
@@ -730,8 +731,11 @@ function carrierStatusSuffix(c){
   return '';
 }
 // Whether a carrier should be presented as blocked (disabled option). Courtesy only —
-// the backend PATCH/submit gate is the real enforcement.
+// the backend PATCH/submit gate is the real enforcement. When the account's
+// Hiring_Decision_Gate_Enabled kill-switch is off, nothing is blocked here either —
+// matching the backend gate, which skips enforcement entirely for that account.
 function carrierIsBlocked(c){
+  if (__state.gateEnabled === false) return false;
   return !!c.dnu || (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution');
 }
 function carrierOptions(selectedId){
@@ -893,7 +897,7 @@ function loadPickLists(){
       }));
     }).catch(function(){});
   var v=fetch(BROKER_API_BASE+'/tms-carriers?email='+encodeURIComponent(brokerEmail))
-    .then(function(r){return r.json();}).then(function(p){ __state.carriers=(p&&p.carriers)||[]; }).catch(function(){});
+    .then(function(r){return r.json();}).then(function(p){ __state.carriers=(p&&p.carriers)||[]; __state.gateEnabled=!(p&&p.gate_enabled===false); }).catch(function(){});
   return Promise.all([c,v]);
 }
 

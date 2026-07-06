@@ -1784,7 +1784,7 @@ function buildDecisionPayload(){
   });
   // Baseline for Phase C's daily re-review diff -- captures this decision's risk
   // computation so a later automated sweep has something to compare against.
-  d.Risk_Snapshot = JSON.stringify((profilePayload && profilePayload.risk) || {});
+  d.Risk_Snapshot1 = JSON.stringify((profilePayload && profilePayload.risk) || {});
   return d;
 }
 function submitDecision(){

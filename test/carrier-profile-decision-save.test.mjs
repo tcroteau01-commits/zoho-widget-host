@@ -105,7 +105,7 @@ test('submitDecision restores the button label after the post-save reload comple
   assert.equal(sb.textContent, 'Save Decision & Update Hiring Status');
 });
 
-test('buildDecisionPayload captures the current risk computation as Risk_Snapshot', () => {
+test('buildDecisionPayload captures the current risk computation as Risk_Snapshot1', () => {
   const { window } = makeWidget();
   window.profilePayload = {
     account_vendor: { av_id: 'av_1' },
@@ -118,8 +118,8 @@ test('buildDecisionPayload captures the current risk computation as Risk_Snapsho
 
   const payload = window.buildDecisionPayload();
 
-  assert.equal(typeof payload.Risk_Snapshot, 'string');
-  const parsed = JSON.parse(payload.Risk_Snapshot);
+  assert.equal(typeof payload.Risk_Snapshot1, 'string');
+  const parsed = JSON.parse(payload.Risk_Snapshot1);
   assert.equal(parsed.tier, 'Medium');
   assert.equal(parsed.flags[0].id, 'quick_pay');
 });
@@ -136,7 +136,7 @@ test('buildDecisionPayload does not throw when risk is missing from profilePaylo
 
   const payload = window.buildDecisionPayload();
 
-  assert.equal(payload.Risk_Snapshot, '{}');
+  assert.equal(payload.Risk_Snapshot1, '{}');
 });
 
 test('buildDecisionPayload picks the 180-day Trigger_Type when Re_Review_Reason says so', () => {

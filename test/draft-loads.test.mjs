@@ -489,6 +489,11 @@ test('REASON_TEXT maps carrier_not_approved and carrier_dnu to readable messages
   assert.equal(window.reasonText('carrier_dnu'), window.REASON_TEXT.carrier_dnu);
 });
 
+test('REASON_TEXT maps carrier_needs_re_review to a readable message', () => {
+  const { window } = makeWidget();
+  assert.ok(window.REASON_TEXT.carrier_needs_re_review);
+});
+
 test('skipped drafts show the new carrier-gate reason codes as readable text, not raw codes', () => {
   const { window } = makeWidget();
   window.handleSubmitResult({ submitted: [], skipped: [{ id: '901', reasons: ['carrier_dnu'] }], count: 0 });

@@ -105,6 +105,66 @@ test('submitDecision restores the button label after the post-save reload comple
   assert.equal(sb.textContent, 'Save Decision & Update Hiring Status');
 });
 
+test('buildDecisionPayload captures the current risk computation as Risk_Snapshot', () => {
+  const { window } = makeWidget();
+  window.profilePayload = {
+    account_vendor: { av_id: 'av_1' },
+    system_recommendation: 'Approve',
+    risk_decisions: [],
+    risk: { tier: 'Medium', flags: [{ id: 'quick_pay', category: 'Payment and Internal', severity: 'Medium', label: 'Quick Pay Payment Terms' }] },
+  };
+  window.checklistState = { Checklist_COI_Truck_Driver: true };
+  window.selectedDecision = 'Approve with Caution';
+
+  const payload = window.buildDecisionPayload();
+
+  assert.equal(typeof payload.Risk_Snapshot, 'string');
+  const parsed = JSON.parse(payload.Risk_Snapshot);
+  assert.equal(parsed.tier, 'Medium');
+  assert.equal(parsed.flags[0].id, 'quick_pay');
+});
+
+test('buildDecisionPayload does not throw when risk is missing from profilePayload', () => {
+  const { window } = makeWidget();
+  window.profilePayload = {
+    account_vendor: { av_id: 'av_1' },
+    system_recommendation: 'Approve',
+    risk_decisions: [],
+  };
+  window.checklistState = {};
+  window.selectedDecision = 'Approve';
+
+  const payload = window.buildDecisionPayload();
+
+  assert.equal(payload.Risk_Snapshot, '{}');
+});
+
+test('buildDecisionPayload picks the 180-day Trigger_Type when Re_Review_Reason says so', () => {
+  const { window } = makeWidget();
+  window.profilePayload = {
+    account_vendor: { av_id: 'av_1', Re_Review_Reason: '180 days since last review' },
+    system_recommendation: 'Approve', risk_decisions: [{ ID: '1' }],
+    risk: { tier: 'Low', flags: [] },
+  };
+  window.checklistState = {};
+  window.selectedDecision = 'Approve';
+  const payload = window.buildDecisionPayload();
+  assert.equal(payload.Trigger_Type, 'Re-review: 180-Day Freshness Check');
+});
+
+test('buildDecisionPayload keeps the standard re-review Trigger_Type when Re_Review_Reason is absent/non-180-day', () => {
+  const { window } = makeWidget();
+  window.profilePayload = {
+    account_vendor: { av_id: 'av_1' },
+    system_recommendation: 'Approve', risk_decisions: [{ ID: '1' }],
+    risk: { tier: 'Low', flags: [] },
+  };
+  window.checklistState = {};
+  window.selectedDecision = 'Approve';
+  const payload = window.buildDecisionPayload();
+  assert.equal(payload.Trigger_Type, 'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud');
+});
+
 test('submitDecision leaves the button disabled after a successful save (fresh checklist required for the next decision)', async () => {
   const { window } = makeWidget();
   window.brokerEmail = 'broker@op.com';

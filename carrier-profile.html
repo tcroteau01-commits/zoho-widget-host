@@ -1772,13 +1772,19 @@ function buildDecisionPayload(){
   var av=profilePayload.account_vendor;
   var rec=profilePayload.system_recommendation||'Hold';
   var notes=(document.getElementById('cp-notes')||{}).value||'';
-  var trigger=(profilePayload.risk_decisions||[]).length===0?'First Review':'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud';
+  var trigger;
+  if((profilePayload.risk_decisions||[]).length===0){ trigger='First Review'; }
+  else if(/180 day/i.test(av.Re_Review_Reason||'')){ trigger='Re-review: 180-Day Freshness Check'; }
+  else { trigger='Re-review: Authority, Ins, Safety, Crash, OOS, Fraud'; }
   var d={ Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
   if(av.Account_CRM_ID) d.Account_CRM_ID=av.Account_CRM_ID;
   if(av.Vendor_CRM_ID) d.Vendor_CRM_ID=av.Vendor_CRM_ID;
   CHECKLIST_ITEMS.concat([CHECKLIST_BANK_ITEM]).forEach(function(it){
     d[it.key] = checklistState.hasOwnProperty(it.key) ? !!checklistState[it.key] : null;
   });
+  // Baseline for Phase C's daily re-review diff -- captures this decision's risk
+  // computation so a later automated sweep has something to compare against.
+  d.Risk_Snapshot = JSON.stringify((profilePayload && profilePayload.risk) || {});
   return d;
 }
 function submitDecision(){

@@ -1799,6 +1799,13 @@ function submitDecision(){
       if(res&&(res.code===3000||(res.result&&res.result.length))){
         var notes=document.getElementById('cp-notes'); if(notes) notes.value='';
         return loadProfile(true).then(function(){
+          // Deliberately NOT touching sb.disabled here: a successful save resets the
+          // checklist, and updateDecisionGate() (run during this reload's re-render)
+          // correctly re-disables the button until the checklist is completed again for
+          // a new decision. Only restore the label -- disabled state is the re-render's
+          // responsibility. (Known gap: if the re-render throws partway through before
+          // reaching updateDecisionGate, the button could stay stuck disabled -- low
+          // probability, tracked as a fast-follow rather than risking a wrong fix here.)
           if(sb) sb.textContent='Save Decision & Update Hiring Status';
         });
       }

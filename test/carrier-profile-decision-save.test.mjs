@@ -104,3 +104,25 @@ test('submitDecision restores the button label after the post-save reload comple
   await savingPromise;
   assert.equal(sb.textContent, 'Save Decision & Update Hiring Status');
 });
+
+test('submitDecision leaves the button disabled after a successful save (fresh checklist required for the next decision)', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'broker@op.com';
+  window.vendorId = '9001';
+  window.profilePayload = {
+    account_vendor: { av_id: 'av_1' }, broker_contact_id: 'c_77',
+    system_recommendation: 'Approve', risk_decisions: [],
+  };
+  window.checklistState = {
+    Checklist_COI_Truck_Driver: true, Checklist_Authority_Active: true,
+    Checklist_Remittance_Matches: true, Checklist_Identity_Verified_FMCSA: true,
+    Checklist_DOT_MC_Match_Pickup: true, Checklist_OOS_HOS_Reviewed: true,
+  };
+  window.selectedDecision = 'Approve';
+
+  await window.submitDecision();
+
+  const sb = window.document.getElementById('cp-submit');
+  assert.equal(sb.disabled, true,
+    'the reload resets the checklist, so the button must stay disabled until it is completed again for a new decision');
+});

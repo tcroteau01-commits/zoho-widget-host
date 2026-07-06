@@ -540,7 +540,7 @@ function openInlineEdit(tr, d, kind){
     Promise.all(ids.map(function(id){ var p={}; p[patchKey]=val; return patchDraft(id,p); }))
       .then(function(){ return loadQueue(); })
       .then(function(){ showToast('Updated'); })
-      .catch(function(){ showToast('Update failed'); });
+      .catch(function(err){ showToast(patchErrorMessage(err)); });
     if (kind==='carrier'){ onDraftCarrierChange(val); } else { onDraftCustomerChange(val); }
   });
 }
@@ -572,12 +572,12 @@ function renderBulkBar(){
 function bulkSetCustomer(customerId){
   return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { customer_id: customerId }); }))
     .then(function(){ clearSelection(); return loadQueue(); })
-    .catch(function(){ showToast('Update failed'); });
+    .catch(function(err){ showToast(patchErrorMessage(err)); });
 }
 function bulkSetCarrier(carrierId){
   return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { carrier_id: carrierId }); }))
     .then(function(){ clearSelection(); return loadQueue(); })
-    .catch(function(){ showToast('Update failed'); });
+    .catch(function(err){ showToast(patchErrorMessage(err)); });
 }
 
 // Ensure the customer/carrier pick lists are loaded before opening a picker.
@@ -679,7 +679,17 @@ function patchDraft(id, patch){
   var body=Object.assign({ email: brokerEmail }, patch);
   return fetch(BROKER_API_BASE+'/draft-loads/'+id, {
     method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
-  }).then(function(r){ if(r&&r.ok===false) throw new Error('patch failed'); return r.json(); });
+  }).then(function(r){
+    if (r&&r.ok===false) return r.json().then(function(b){ throw (b||{}); });
+    return r.json();
+  });
+}
+// Prefer the backend's specific gate reason (mapped through REASON_TEXT) over its raw
+// error string, falling back to a generic message when neither is present — e.g. a
+// carrier PATCH rejected for hiring-decision/DNU (see carrierIsBlocked above).
+function patchErrorMessage(err){
+  var reason = err && err.reason;
+  return (reason && REASON_TEXT[reason]) || (err && err.error) || 'Update failed';
 }
 
 function applyGroup(raw, value, ids, remember, kind){
@@ -695,7 +705,7 @@ function applyGroup(raw, value, ids, remember, kind){
       }).then(function(r){ if(r&&r.ok===false) throw new Error('alias failed'); return r.json(); });
     }
   }).then(function(){ return loadQueue(); })
-    .catch(function(){ showToast('Update failed'); });
+    .catch(function(err){ showToast(patchErrorMessage(err)); });
 }
 
 function customerOptions(selectedId, candidates){
@@ -710,10 +720,25 @@ function customerOptions(selectedId, candidates){
   });
   return '<option value="">— pick a customer —</option>'+opts;
 }
+// Short label suffix flagging a carrier's hiring-decision/DNU status in the picker.
+// '' for a clean, approved carrier. Mirrors index.html's carrierStatusSuffix.
+function carrierStatusSuffix(c){
+  if (c.dnu) return ' · DNU';
+  if (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution'){
+    return ' · ' + (c.hiring_decision || 'Not Reviewed');
+  }
+  return '';
+}
+// Whether a carrier should be presented as blocked (disabled option). Courtesy only —
+// the backend PATCH/submit gate is the real enforcement.
+function carrierIsBlocked(c){
+  return !!c.dnu || (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution');
+}
 function carrierOptions(selectedId){
   var opts='<option value="">— pick a carrier —</option>';
   __state.carriers.forEach(function(c){
-    opts+='<option value="'+esc(c.vendor_id)+'"'+(c.vendor_id===selectedId?' selected':'')+'>'+esc(c.carrier_name)+(c.mc?' (MC '+esc(c.mc)+')':'')+(c.dnu?' · DNU':'')+'</option>';
+    var blocked = carrierIsBlocked(c);
+    opts+='<option value="'+esc(c.vendor_id)+'"'+(c.vendor_id===selectedId?' selected':'')+(blocked?' disabled':'')+'>'+esc(c.carrier_name)+(c.mc?' (MC '+esc(c.mc)+')':'')+esc(carrierStatusSuffix(c))+'</option>';
   });
   return opts;
 }
@@ -804,6 +829,8 @@ var REASON_TEXT = {
   customer_not_on_account:'customer not on your account',
   customer_not_approved:'customer not credit-approved',
   carrier_not_on_account:'carrier not on your account',
+  carrier_not_approved:'carrier not approved for hire',
+  carrier_dnu:'carrier is on your Do Not Use list',
   customer_docs:'customer docs needed', carrier_docs:'carrier docs needed',
   customer_reference_number:'missing customer ref #', customer_rate:'missing customer rate',
   carrier_rate:'missing carrier rate', carrier_factoring_invoice:'missing carrier invoice',

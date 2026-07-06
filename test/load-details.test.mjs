@@ -163,6 +163,34 @@ test('carrier combobox results show the same status suffix and a blocked class',
   assert.ok(!v1Row.classList.contains('combo-blocked'), 'approved row should not carry a blocked class');
 });
 
+test('mousedown on a blocked combobox row does not select the carrier', async () => {
+  const dom = makeB2Dom((url) =>
+    Promise.resolve({ ok: true, json: () => Promise.resolve(
+      String(url).includes('/tms-carriers')
+        ? { carriers: [
+            { vendor_id: 'v1', carrier_name: 'Good Carrier', mc: '111', hiring_decision: 'Approve', dnu: false },
+            { vendor_id: 'v3', carrier_name: 'Blocked Carrier', mc: '333', hiring_decision: 'Approve', dnu: true }
+          ] }
+        : { customers: [] }
+    )})
+  );
+  const w = dom.window;
+  // The mousedown handler is wired up inside the window 'load' listener (unlike
+  // loadCarriers' own inline change listener), so wait for it before dispatching.
+  await new Promise((resolve) => w.addEventListener('load', resolve, { once: true }));
+  await w.loadCarriers();
+  w.renderCarrierResults('');
+  const list = w.document.getElementById('carrier-list');
+  const sel = w.document.getElementById('carrier-select');
+  const v3Row = list.querySelector('.combo-opt[data-vid="v3"]');
+  v3Row.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
+  assert.strictEqual(sel.value, '', 'blocked carrier should not be selected');
+
+  const v1Row = list.querySelector('.combo-opt[data-vid="v1"]');
+  v1Row.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
+  assert.strictEqual(sel.value, 'v1', 'non-blocked carrier should still be selectable');
+});
+
 test('selecting a carrier shows its payment terms (no extra fetch)', async () => {
   let fetchCount = 0;
   const dom = makeB2Dom((url) => {

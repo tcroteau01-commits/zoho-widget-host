@@ -1246,6 +1246,10 @@ window.addEventListener('load', function () {
     // mousedown (before the input blur) so the pick registers and then closes the list.
     carrierList.addEventListener('mousedown', function (e) {
       var opt = e.target && e.target.closest ? e.target.closest('.combo-opt') : null;
+      if (opt && opt.classList.contains('combo-blocked')) {
+        e.preventDefault();
+        return;
+      }
       if (opt && opt.getAttribute('data-vid') !== null) {
         e.preventDefault();
         selectCarrierFromSearch(opt.getAttribute('data-vid'));

@@ -118,6 +118,51 @@ test('loadCarriers populates carrier select and stores rows for terms lookup', a
   assert.ok(w._carriers.some(c => c.vendor_id === 'v3'), 'v3 should be in _carriers');
 });
 
+test('carrier options show a status suffix and are disabled for non-approved/DNU carriers', async () => {
+  const dom = makeB2Dom((url) =>
+    Promise.resolve({ ok: true, json: () => Promise.resolve(
+      String(url).includes('/tms-carriers')
+        ? { carriers: [
+            { vendor_id: 'v1', carrier_name: 'Good Carrier', mc: '111', hiring_decision: 'Approve', dnu: false },
+            { vendor_id: 'v2', carrier_name: 'Unreviewed Carrier', mc: '222', hiring_decision: 'Not Reviewed', dnu: false },
+            { vendor_id: 'v3', carrier_name: 'Blocked Carrier', mc: '333', hiring_decision: 'Approve', dnu: true }
+          ] }
+        : { customers: [] }
+    )})
+  );
+  const w = dom.window;
+  await w.loadCarriers();
+  const opts = [...w.document.querySelectorAll('#carrier-select option')];
+  const v1 = opts.find(o => o.value === 'v1');
+  const v2 = opts.find(o => o.value === 'v2');
+  const v3 = opts.find(o => o.value === 'v3');
+  assert.strictEqual(v1.disabled, false, 'approved carrier should not be disabled');
+  assert.strictEqual(v2.disabled, true, 'unreviewed carrier should be disabled');
+  assert.match(v2.textContent, /Not Reviewed/);
+  assert.strictEqual(v3.disabled, true, 'DNU carrier should be disabled');
+  assert.match(v3.textContent, /DNU/);
+});
+
+test('carrier combobox results show the same status suffix and a blocked class', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ carriers: [] }) }));
+  const w = dom.window;
+  w._carriers = [
+    { vendor_id: 'v1', carrier_name: 'Good Carrier', mc: '111', hiring_decision: 'Approve', dnu: false },
+    { vendor_id: 'v2', carrier_name: 'Unreviewed Carrier', mc: '222', hiring_decision: 'Not Reviewed', dnu: false },
+    { vendor_id: 'v3', carrier_name: 'Blocked Carrier', mc: '333', hiring_decision: 'Approve', dnu: true }
+  ];
+  w.renderCarrierResults('');
+  const list = w.document.getElementById('carrier-list');
+  const v1Row = list.querySelector('.combo-opt[data-vid="v1"]');
+  const v2Row = list.querySelector('.combo-opt[data-vid="v2"]');
+  const v3Row = list.querySelector('.combo-opt[data-vid="v3"]');
+  assert.match(v2Row.textContent, /Not Reviewed/);
+  assert.match(v3Row.textContent, /DNU/);
+  assert.ok(v2Row.classList.contains('combo-blocked'), 'unreviewed row should carry a blocked class');
+  assert.ok(v3Row.classList.contains('combo-blocked'), 'DNU row should carry a blocked class');
+  assert.ok(!v1Row.classList.contains('combo-blocked'), 'approved row should not carry a blocked class');
+});
+
 test('selecting a carrier shows its payment terms (no extra fetch)', async () => {
   let fetchCount = 0;
   const dom = makeB2Dom((url) => {
@@ -357,13 +402,34 @@ test('submit posts /funding-submit with the raw field payload then uploads both 
   assert.strictEqual(seen.filter(s => s.url.includes('/upload-doc')).length, 2);
 });
 
-test('submit failure keeps the form and surfaces an error (no record id)', async () => {
+test('submit failure keeps the form and surfaces the backend error message (no record id)', async () => {
   const dom = makeB2Dom(() => Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({ error: 'x' }) }));
   const w = dom.window;
   w._collectFields = () => ({ customer_id: 'c9' });
   w._mergedPdfs = () => Promise.resolve({ customer: null, carrier: null });
   await w.submitLoad();
+  assert.match(w.document.getElementById('submit-status').textContent, /x/);
+});
+
+test('submit failure with no backend error message falls back to the generic message', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: null, carrier: null });
+  await w.submitLoad();
   assert.match(w.document.getElementById('submit-status').textContent, /error|failed|try again/i);
+});
+
+test('/funding-submit rejection surfaces the specific gate reason from the backend', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({
+    error: 'This carrier\'s hiring decision is "Hold" — complete the Confirm checklist.',
+    reason: 'carrier_not_approved'
+  })}));
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: null, carrier: null });
+  await w.submitLoad();
+  assert.match(w.document.getElementById('submit-status').textContent, /complete the Confirm checklist/);
 });
 
 test('record created but an upload fails surfaces a non-lost-work message with the record id', async () => {

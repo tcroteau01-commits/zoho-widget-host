@@ -222,6 +222,7 @@ textarea { resize: vertical; min-height: 90px; }
 .combo-opt:hover, .combo-opt.active { background: #fff7e9; }
 .combo-opt .co-name { font-weight: 600; color: #222; }
 .combo-opt .co-sub { font-size: 12px; color: #777; margin-top: 1px; }
+.combo-opt.combo-blocked .co-name { color: #999; }
 .combo-empty { padding: 10px 12px; color: #999; font-size: 13px; }
 .uploader b { color: #666; display: block; margin-bottom: 3px; }
 .uploader input[type=file] { display: none; }
@@ -578,6 +579,25 @@ function loadCustomers() {
     });
 }
 
+// Short label suffix flagging a carrier's hiring-decision/DNU status wherever it's
+// rendered (plain select + searchable combobox). '' for a clean, funding-eligible carrier.
+function carrierStatusSuffix(c) {
+  if (c.dnu) return ' · DNU';
+  if (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution') {
+    return ' · ' + (c.hiring_decision || 'Not Reviewed');
+  }
+  return '';
+}
+window.carrierStatusSuffix = carrierStatusSuffix;
+
+// Whether a carrier should be presented as blocked (disabled option / blocked combo row).
+// Courtesy only — /funding-submit is the real gate, this just steers brokers away
+// from picking a carrier that would get rejected on submit.
+function carrierIsBlocked(c) {
+  return !!c.dnu || (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution');
+}
+window.carrierIsBlocked = carrierIsBlocked;
+
 function loadCarriers() {
   var err = document.getElementById('carrier-error');
   if (err) err.textContent = '';
@@ -588,7 +608,8 @@ function loadCarriers() {
       var sel = document.getElementById('carrier-select');
       sel.innerHTML = '<option value="">Select a carrier…</option>' +
         window._carriers.map(function (c) {
-          return '<option value="' + esc(c.vendor_id) + '">' + esc(c.carrier_name || '') + '</option>';
+          return '<option value="' + esc(c.vendor_id) + '"' + (carrierIsBlocked(c) ? ' disabled' : '') + '>' +
+            esc(c.carrier_name || '') + esc(carrierStatusSuffix(c)) + '</option>';
         }).join('');
       // Attach the change listener after the select is populated
       // (safe to call multiple times; browsers ignore duplicate identical listeners
@@ -685,8 +706,9 @@ function renderCarrierResults(query) {
       var sub = [];
       if (c.mc) sub.push('MC ' + esc(c.mc));
       if (c.dot) sub.push('DOT ' + esc(c.dot));
-      return '<div class="combo-opt" data-vid="' + esc(c.vendor_id) + '">' +
-        '<div class="co-name">' + esc(c.carrier_name || '') + '</div>' +
+      var blocked = carrierIsBlocked(c);
+      return '<div class="combo-opt' + (blocked ? ' combo-blocked' : '') + '" data-vid="' + esc(c.vendor_id) + '">' +
+        '<div class="co-name">' + esc(c.carrier_name || '') + esc(carrierStatusSuffix(c)) + '</div>' +
         (sub.length ? '<div class="co-sub">' + sub.join(' · ') + '</div>' : '') +
       '</div>';
     }).join('');
@@ -1430,7 +1452,10 @@ function submitLoad() {
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok || !res.j || !res.j.record_id) {
-          if (statusEl) statusEl.textContent = 'Submission failed. Your entries are kept — please try again.';
+          // Prefer the backend's specific gate/rejection message (e.g. the
+          // hiring-decision block reason) over the generic fallback when present.
+          if (statusEl) statusEl.textContent = (res.j && res.j.error)
+            || 'Submission failed. Your entries are kept — please try again.';
           if (btn) btn.disabled = false;
           return;
         }

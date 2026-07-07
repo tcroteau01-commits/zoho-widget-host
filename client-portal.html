@@ -144,7 +144,8 @@ var API_BASE = global.OPERFI_PORTAL_API_BASE || 'https://operfi-broker-api.onren
 var STATUS_PATH = '/application-status';   // GET ?token=&pin= → curated application + documents
 var UPLOAD_PATH = '/application-upload';   // POST ?token= (multipart doc_type + file + pin)
 var LOOKUP_PATH = '/application-lookup';   // POST {usdot,email} → { link } (recovery)
-var LOGIN_PATH = '/portal-login';          // POST {usdot,email,pin} → curated status + token (general link, no ?token)
+var OTP_START_PATH = '/portal-otp-start';   // POST {usdot,email} → { masked_phone } (texts a Verify code)
+var OTP_VERIFY_PATH = '/portal-otp-verify'; // POST {usdot,email,code} → curated status + token
 
 // Client-facing stage labels; each maps to a real Application_Status value.
 var STEPS = ['Submitted', 'In Review', 'Underwriting', 'Approved', 'Signed'];
@@ -335,41 +336,45 @@ function param(name){ try { return new URL(global.location.href).searchParams.ge
 function getToken(){ return param('token'); }
 function setBanner(kind, html){ var b = el('banner'); if (!b) return; if (!kind) { b.className = 'banner'; b.innerHTML = ''; return; } b.className = 'banner show ' + kind; b.innerHTML = html; }
 
-var STATE = { mode: 'live', token: '', data: null, usdot: '', email: '', pin: '' };
+var STATE = { mode: 'live', token: '', data: null, usdot: '', email: '', code: '', maskedPhone: '' };
 
 function loadStatus(token) {
   if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
   var url = API_BASE + STATUS_PATH + '?token=' + encodeURIComponent(token) +
     (STATE.usdot ? '&usdot=' + encodeURIComponent(STATE.usdot) : '') +
-    (STATE.email ? '&email=' + encodeURIComponent(STATE.email) : '') +
-    (STATE.pin ? '&pin=' + encodeURIComponent(STATE.pin) : '');
+    (STATE.email ? '&email=' + encodeURIComponent(STATE.email) : '');
   fetch(url)
     .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
     .then(function (res) {
       var j = res.j || {};
       if (res.status === 200 && (j.businessName || j.status)) { STATE.data = j; renderStatus(j, false); return; }
-      if (j.error === 'verify_required') { renderPinPrompt(''); return; }
-      if (j.error === 'verify_invalid') {
-        STATE.pin = '';
-        var n = j.attemptsLeft;
-        renderPinPrompt('That didn’t match — check your USDOT, email, and PIN. ' + (n != null ? n + ' attempt' + (n === 1 ? '' : 's') + ' left.' : ''));
-        return;
-      }
-      if (j.error === 'pin_locked') {
-        STATE.pin = '';
-        renderPinPrompt('Too many attempts. Try again in about ' + Math.ceil((j.retryAfter || 900) / 60) + ' minutes.', true);
-        return;
-      }
-      renderPinPrompt('Your link expired — enter your USDOT, email, and PIN to continue.');   // re-verify by identity + PIN
+      if (j.error === 'verify_required') { renderOtpRequest(''); return; }
+      renderOtpRequest('Your link has expired — verify your identity to continue.');   // re-verify by OTP
     })
     .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
 }
 
-// General-link login (no ?token): resolve USDOT + email + PIN to an application + a signed token.
-function portalLogin() {
+// OTP step 1 — request a code: match USDOT + applied email, Twilio Verify texts a code to the number on file.
+function otpStart() {
   if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
-  fetch(API_BASE + LOGIN_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usdot: STATE.usdot, email: STATE.email, pin: STATE.pin }) })
+  fetch(API_BASE + OTP_START_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usdot: STATE.usdot, email: STATE.email }) })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
+    .then(function (res) {
+      var j = res.j || {};
+      if (res.status === 200 && j.ok) { STATE.maskedPhone = j.masked_phone || ''; renderOtpEnter(''); return; }
+      if (j.error === 'no_match') { renderOtpRequest('We couldn’t find an application matching that USDOT and email. Please double-check both.'); return; }
+      if (j.error === 'no_phone') { renderOtpRequest('No mobile number is on file for this application. Please contact your OperFi rep.'); return; }
+      renderOtpRequest('We couldn’t send a code right now. Please try again in a moment.');
+    })
+    .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
+}
+
+// OTP step 2 — check the code: on success mint a signed token and load the application.
+function otpVerify() {
+  if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
+  fetch(API_BASE + OTP_VERIFY_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usdot: STATE.usdot, email: STATE.email, code: STATE.code }) })
     .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
     .then(function (res) {
       var j = res.j || {};
@@ -377,48 +382,58 @@ function portalLogin() {
         if (j.token) STATE.token = j.token;   // reuse the token-gated path for uploads/refresh
         STATE.data = j; renderStatus(j, false); return;
       }
-      if (j.error === 'pin_not_set') { renderPinPrompt('Enter your USDOT, email, and PIN. Don’t have your PIN? Contact your OperFi rep.'); return; }
-      if (j.error === 'verify_invalid') {
-        STATE.pin = '';
-        var n = j.attemptsLeft;
-        renderPinPrompt('That didn’t match — check your USDOT, email, and PIN. ' + (n != null ? n + ' attempt' + (n === 1 ? '' : 's') + ' left.' : ''));
-        return;
-      }
-      if (j.error === 'pin_locked') {
-        STATE.pin = '';
-        renderPinPrompt('Too many attempts. Try again in about ' + Math.ceil((j.retryAfter || 900) / 60) + ' minutes.', true);
-        return;
-      }
-      renderPinPrompt('Enter your USDOT, email, and a 4-digit PIN.');
+      STATE.code = '';
+      renderOtpEnter('That code didn’t match or has expired. Check it, or resend a new one.');
     })
-    .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
+    .catch(function () { renderRecovery('We couldn’t verify the code right now. Please try again.'); });
 }
 
-// Retrieval gate — requires USDOT + applied email + the 4-digit PIN (verified server-side).
-function renderPinPrompt(msg, locked) {
+// Retrieval gate step 1 — USDOT + applied email; we text a one-time code to the number on file.
+function renderOtpRequest(msg) {
   setBanner();
-  var dis = locked ? ' disabled' : '';
   el('content').innerHTML =
     '<div class="card"><div class="card-title">Access your documents</div>' +
-    '<div class="summ">Enter your USDOT, the email you applied with, and your 4-digit PIN.</div>' +
-    '<div class="field"><label>USDOT</label><input id="pinUsdot" inputmode="numeric" autocomplete="off" placeholder="e.g. 4366362"' + dis + '></div>' +
-    '<div class="field"><label>Email</label><input id="pinEmail" type="email" autocomplete="off" placeholder="The email you applied with"' + dis + '></div>' +
-    '<div class="field"><label>4-digit PIN</label><input id="pinInput" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••"' + dis + '></div>' +
-    '<button class="btn orange" id="pinBtn"' + dis + '>Access my documents</button>' +
+    '<div class="summ">Enter your USDOT and the email you applied with. We’ll text a one-time code to the mobile number on file.</div>' +
+    '<div class="field"><label>USDOT</label><input id="pinUsdot" inputmode="numeric" autocomplete="off" placeholder="e.g. 4366362"></div>' +
+    '<div class="field"><label>Email</label><input id="pinEmail" type="email" autocomplete="off" placeholder="The email you applied with"></div>' +
+    '<button class="btn orange" id="otpSendBtn">Text me a code</button>' +
     (msg ? '<div class="toast err" style="margin-top:8px">' + esc(msg) + '</div>' : '') +
-    '<div class="muted" style="margin-top:12px;font-size:11.5px">Don’t have your PIN? Contact your OperFi rep.</div></div>';
-  var btn = el('pinBtn'), pinEl = el('pinInput');
+    '<div class="muted" style="margin-top:12px;font-size:11.5px">Need help? Contact your OperFi rep.</div></div>';
+  var btn = el('otpSendBtn');
   function submit() {
     var u = (el('pinUsdot') && el('pinUsdot').value || '').replace(/\D/g, '');
     var em = (el('pinEmail') && el('pinEmail').value || '').trim();
-    var p = (pinEl && pinEl.value || '').replace(/\D/g, '');
-    if (!u || !em || p.length !== 4) { renderPinPrompt('Enter your USDOT, email, and a 4-digit PIN.'); return; }
-    STATE.usdot = u; STATE.email = em; STATE.pin = p;
-    // With a signed link, verify against the token; on the general link (no token), look up by identity.
-    if (STATE.token) loadStatus(STATE.token); else portalLogin();
+    if (!u || !em) { renderOtpRequest('Enter your USDOT and the email you applied with.'); return; }
+    STATE.usdot = u; STATE.email = em;
+    setBanner(); el('content').innerHTML = '<div class="card"><div class="summ">Sending your code…</div></div>';
+    otpStart();
   }
   if (btn) btn.addEventListener('click', submit);
-  if (pinEl) pinEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  var emEl = el('pinEmail'); if (emEl) emEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+}
+
+// Retrieval gate step 2 — enter the texted one-time code.
+function renderOtpEnter(msg) {
+  setBanner();
+  el('content').innerHTML =
+    '<div class="card"><div class="card-title">Enter your code</div>' +
+    '<div class="summ">We texted a 6-digit code to ' + (STATE.maskedPhone ? '<b>' + esc(STATE.maskedPhone) + '</b>' : 'the number on file') + '. Enter it below to continue.</div>' +
+    '<div class="field"><label>6-digit code</label><input id="otpInput" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••"></div>' +
+    '<button class="btn orange" id="otpVerifyBtn">Verify &amp; access</button>' +
+    (msg ? '<div class="toast err" style="margin-top:8px">' + esc(msg) + '</div>' : '') +
+    '<div class="muted" style="margin-top:12px;font-size:11.5px"><a href="#" id="otpResend">Resend code</a> · <a href="#" id="otpBack">Use a different USDOT / email</a></div></div>';
+  var vbtn = el('otpVerifyBtn'), codeEl = el('otpInput');
+  function submit() {
+    var c = (codeEl && codeEl.value || '').replace(/\D/g, '');
+    if (c.length < 4) { renderOtpEnter('Enter the code we texted you.'); return; }
+    STATE.code = c;
+    setBanner(); el('content').innerHTML = '<div class="card"><div class="summ">Verifying…</div></div>';
+    otpVerify();
+  }
+  if (vbtn) vbtn.addEventListener('click', submit);
+  if (codeEl) codeEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  var rs = el('otpResend'); if (rs) rs.addEventListener('click', function (e) { e.preventDefault(); setBanner(); el('content').innerHTML = '<div class="card"><div class="summ">Resending your code…</div></div>'; otpStart(); });
+  var bk = el('otpBack'); if (bk) bk.addEventListener('click', function (e) { e.preventDefault(); STATE.code = ''; renderOtpRequest(''); });
 }
 
 function renderStatus(data, isDemo) {
@@ -584,7 +599,7 @@ function uploadDocs(docType, files, btn) {
     });
   }
   return next(0).then(function () {
-    if (needVerify) { renderPinPrompt('Please re-enter your USDOT, email, and PIN to continue.'); return; }
+    if (needVerify) { renderOtpRequest('Please verify your identity again to continue.'); return; }
     if (done) {
       upToast('ok', '✓ ' + done + ' file' + (done === 1 ? '' : 's') + ' uploaded for ' + docType + (failed ? (' · ' + failed + ' failed') : '') + '.');
       loadStatus(STATE.token);   // refresh once after the whole batch
@@ -604,7 +619,6 @@ function postFile(docType, file) {
   fd.append('file', file);
   if (STATE.usdot) fd.append('usdot', STATE.usdot);
   if (STATE.email) fd.append('email', STATE.email);
-  if (STATE.pin) fd.append('pin', STATE.pin);
   return fetch(API_BASE + UPLOAD_PATH + '?token=' + encodeURIComponent(STATE.token), { method: 'POST', body: fd })
     .then(function (r) { return r.json().catch(function () { return {}; }); });
 }
@@ -661,7 +675,7 @@ function boot() {
   STATE.token = token;
   // No ?token → this is the general link: ask for USDOT + email + PIN and log in by identity.
   // (Never set a PIN? The login returns pin_not_set and routes to the set-PIN form.)
-  if (!token) { renderPinPrompt(''); return; }
+  if (!token) { renderOtpRequest(''); return; }
   loadStatus(token);
 }
 
@@ -671,7 +685,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
 // expose for tests
 global.OFCP = OFCP;
-global._OFCP_dom = { getToken: getToken, renderStatus: renderStatus, renderRecovery: renderRecovery, renderPinPrompt: renderPinPrompt, portalLogin: portalLogin, boot: boot, DEMO_STATUS: DEMO_STATUS };
+global._OFCP_dom = { getToken: getToken, renderStatus: renderStatus, renderRecovery: renderRecovery, renderOtpRequest: renderOtpRequest, otpStart: otpStart, boot: boot, DEMO_STATUS: DEMO_STATUS };
 
 })(typeof window !== 'undefined' ? window : this);
 </script>

@@ -42,3 +42,7 @@ test('.decision-option top-aligns its content instead of vertically centering, s
   assert.match(html, /\.decision-option\s*\{[^}]*align-items:\s*center;/);
   assert.doesNotMatch(html, /\.decision-option\s*\{[^}]*justify-content:\s*center;/);
 });
+
+test('.decision-option sets min-width: 0 so its longest label (e.g. "Approve with Caution") cannot force its grid column wider than the other three equal 1fr columns', () => {
+  assert.match(html, /\.decision-option\s*\{[^}]*min-width:\s*0;/);
+});

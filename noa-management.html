@@ -467,6 +467,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <div id="lor-bank-inputs">
             <div class="field-grid">
               <div class="field">
+                <label class="field-label">Funding Type <span class="req">*</span></label>
+                <div class="filter-pills" id="lor-funding-type-choice">
+                  <label><input type="radio" name="lor-funding-type" value="Quick Pay"> Quick Pay</label>
+                  <label><input type="radio" name="lor-funding-type" value="Standard Net 30"> Standard Net 30</label>
+                </div>
+              </div>
+              <div class="field">
                 <label class="field-label">Bank Name <span class="req">*</span></label>
                 <input class="field-input" id="lor-bank-name" placeholder="e.g. Wells Fargo">
               </div>
@@ -482,6 +489,15 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
                 <label class="field-label">Routing Number <span class="req">*</span></label>
                 <input class="field-input" id="lor-routing-number" placeholder="9-digit routing number">
               </div>
+            </div>
+            <div class="field" style="margin-top:14px;">
+              <label class="field-label">Banking Document <span class="req">*</span></label>
+              <div class="dropzone" id="dropzone-bank-doc">
+                <div class="dropzone-icon">&#128206;</div>
+                <div class="dropzone-text">Drag a voided check or bank letter here or click to browse</div>
+                <div class="dropzone-sub">Proof of account ownership. PDF, DOC, or image.</div>
+              </div>
+              <input type="file" id="file-bank-doc" class="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
             </div>
           </div>
           <div id="lor-paylink-note" class="gate-note hidden">
@@ -586,22 +602,25 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
   </div>
 
-  <div class="version-stamp">v2026-07-06.3</div>
+  <div class="version-stamp">v2026-07-06.4</div>
 
 </div>
 
 <script>
 function resetSelectedFiles() {
-  selectedDocFile = null; selectedNewNoaFile = null; selectedLorFile = null;
-  ['file-main','file-newfactor','file-lor'].forEach(function(id){ var i = document.getElementById(id); if (i) try { i.value = ''; } catch (_) {} });
+  selectedDocFile = null; selectedNewNoaFile = null; selectedLorFile = null; selectedBankDocFile = null;
+  ['file-main','file-newfactor','file-lor','file-bank-doc'].forEach(function(id){ var i = document.getElementById(id); if (i) try { i.value = ''; } catch (_) {} });
   var DEFAULT_TEXT = { 'dropzone-main': 'Drag NOA here or click to browse',
                        'dropzone-newfactor': 'Drag NOA here or click to browse',
-                       'dropzone-lor': 'Drag LOR here or click to browse' };
+                       'dropzone-lor': 'Drag LOR here or click to browse',
+                       'dropzone-bank-doc': 'Drag a voided check or bank letter here or click to browse' };
   Object.keys(DEFAULT_TEXT).forEach(function(id){
     var z = document.getElementById(id); if (!z) return;
     z.classList.remove('has-file');
     var t = z.querySelector('.dropzone-text'); if (t) t.textContent = DEFAULT_TEXT[id];
   });
+  selectedFundingType = null;
+  Array.prototype.forEach.call(document.querySelectorAll('[name="lor-funding-type"]'), function (r) { r.checked = false; });
 }
 function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); if (typeof selectType === 'function' && !selectedType) selectType('NOA Update'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
 function showList()  { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-list').classList.remove('hidden'); window.scrollTo(0,0); if (typeof loadStatus === 'function') loadStatus(); }
@@ -935,6 +954,8 @@ var selectedNewFactoringId = null;
 var selectedDocFile = null;
 var selectedNewNoaFile = null;
 var selectedLorFile = null;
+var selectedFundingType = null;   // LOR "Yes bank" Funding Type radio (Quick Pay / Standard Net 30)
+var selectedBankDocFile = null;   // LOR "Yes bank" proof-of-account-ownership upload (Banking_Document_Upload)
 var newCarrierLookup = null;   // { carrier, existing_vendor } of the last successful NEW-carrier lookup
 var selectedPayTerm = null;   // carrier's current pay term, captured from the on-file panel
 var selectedFactoringCompanyId = null;   // carrier's current factor id, captured from the on-file panel (LOR Update has no dropdown for it)
@@ -1155,6 +1176,7 @@ function buildNoaPayload() {
       var biz = val('lor-business-name'); if (biz) d.Business_Name_Listed_on_Account = biz;
       var acct = val('lor-account-number'); if (acct) d.Account_Number = acct;
       var rt = val('lor-routing-number'); if (rt) d.Routing_Number = rt;
+      if (selectedFundingType) d.Funding_Type = selectedFundingType;
     }
   }
   if (selectedType === 'Add New Carrier') {
@@ -1195,6 +1217,9 @@ function uploadNoaDoc(recordId) {
     if (selectedNewNoaFile) jobs.push([selectedNewNoaFile, 'New_NOA']);
   } else if (selectedDocFile) {
     jobs.push([selectedDocFile, 'NOA_or_LOR_Upload']);
+  }
+  if (selectedType === 'LOR Update' && lorBankChoice === 'yes' && selectedBankDocFile) {
+    jobs.push([selectedBankDocFile, 'Banking_Document_Upload']);
   }
   return jobs.reduce(function (chain, job) {
     return chain.then(function () { return _postDoc(recordId, job[0], job[1]); });
@@ -1345,10 +1370,15 @@ function wireForm() {
   Array.prototype.forEach.call(document.querySelectorAll('#lor-bank-choice [data-bank]'), function (b) {
     b.onclick = function () { setLorBankChoice(b.getAttribute('data-bank')); };
   });
+  // Wire LOR Funding Type radios
+  Array.prototype.forEach.call(document.querySelectorAll('[name="lor-funding-type"]'), function (r) {
+    r.addEventListener('change', function () { if (r.checked) selectedFundingType = r.value; });
+  });
   // Wire dropzones
   wireDropzone('dropzone-main', 'file-main', function (f) { selectedDocFile = f; });
   wireDropzone('dropzone-newfactor', 'file-newfactor', function (f) { selectedNewNoaFile = f; });
   wireDropzone('dropzone-lor', 'file-lor', function (f) { selectedLorFile = f; });
+  wireDropzone('dropzone-bank-doc', 'file-bank-doc', function (f) { selectedBankDocFile = f; });
   // Wire submit button
   var submitBtn = document.getElementById('noa-submit-btn');
   if (submitBtn) { submitBtn.onclick = submitNoa; }

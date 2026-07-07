@@ -586,7 +586,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
   </div>
 
-  <div class="version-stamp">v2026-07-06.1</div>
+  <div class="version-stamp">v2026-07-06.2</div>
 
 </div>
 
@@ -936,6 +936,7 @@ var selectedNewNoaFile = null;
 var selectedLorFile = null;
 var newCarrierLookup = null;   // { carrier, existing_vendor } of the last successful NEW-carrier lookup
 var selectedPayTerm = null;   // carrier's current pay term, captured from the on-file panel
+var selectedFactoringCompanyId = null;   // carrier's current factor id, captured from the on-file panel (LOR Update has no dropdown for it)
 var selectedCarrierName = '';  // selected carrier's name, for the confirmation screen
 
 function applyGating(p) {
@@ -947,6 +948,7 @@ function applyGating(p) {
 
 function showOnFile(carrier) {
   if (carrier && carrier.pay_term) selectedPayTerm = carrier.pay_term;
+  if (carrier && carrier.factoring_company_id) selectedFactoringCompanyId = carrier.factoring_company_id;
   if (carrier && carrier.carrier_name) selectedCarrierName = carrier.carrier_name;
   var panel = document.getElementById('noa-onfile');
   var grid = panel ? panel.querySelector('.onfile-grid') : null;
@@ -1128,6 +1130,10 @@ function buildNoaPayload() {
     // on-user-input that API addRecords doesn't fire). Send the carrier's current
     // pay term, which the on-file panel already shows.
     if (selectedPayTerm) d.Carrier_Payment_Terms = selectedPayTerm;
+    // Same on-validate also requires Factoring_Company (the factor being released
+    // from) but LOR Update has no dropdown for it -- send the carrier's current
+    // factor id, captured from the on-file panel.
+    if (selectedFactoringCompanyId) d.Factoring_Company = selectedFactoringCompanyId;
     d.Bank_Document_Upload = (lorBankChoice === 'no') ? 'No' : 'Yes';
     if (lorBankChoice === 'yes') {
       var bn = val('lor-bank-name'); if (bn) d.Bank_Name = bn;

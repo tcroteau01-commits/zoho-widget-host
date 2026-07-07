@@ -775,7 +775,7 @@ function dnuActionsHtml(globalDnu) {
   }
   return (
     '<button class="btn ghost" data-dnu-override-start>Send Anyway (Admin Override)</button>' +
-    '<div class="dnu-override-panel" data-dnu-override-panel style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
+    '<div data-dnu-override-panel style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
       '<select class="select" data-dnu-override-type>' +
         '<option value="full">Onboarding Link (full)</option>' +
         '<option value="pay">Vendor Pay Link only</option>' +
@@ -1140,7 +1140,7 @@ function openModal(type) {
       'Look up the carrier by DOT or MC above before sending a link.');
     return;
   }
-  if (lookupResult.global_dnu && !dnuOverrideArmed) {
+  if (lookupResult.global_dnu === true && !dnuOverrideArmed) {
     return;
   }
   currentModalType = type;

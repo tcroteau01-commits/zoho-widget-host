@@ -40,3 +40,17 @@ test('LOR Update payload includes Carrier_Payment_Terms (the form-required pay t
   const d = window.buildNoaPayload();
   assert.equal(d.Carrier_Payment_Terms, 'Factoring Company');
 });
+
+// Bug C: the form's on-validate also requires Factoring_Company for LOR Update
+// (recording which factor the carrier is being released from), but LOR Update
+// has no dropdown for it — so it must be sent from the captured on-file value.
+test('LOR Update payload includes Factoring_Company (the form-required current factor)', () => {
+  const { window } = makeWidget();
+  window.selectedType = 'LOR Update';
+  window.selectedVendorId = '1001';
+  window.selectedPayTerm = 'Factoring Company';
+  window.selectedFactoringCompanyId = 'f1';
+  window.lorBankChoice = 'no';
+  const d = window.buildNoaPayload();
+  assert.equal(d.Factoring_Company, 'f1');
+});

@@ -139,6 +139,16 @@ test('on-file panel omits banking rows when not present (factoring only)', () =>
   assert.doesNotMatch(t, /Bank Name/);
 });
 
+// Bug: LOR Update has no Factoring Company dropdown (the carrier's existing
+// factor is shown read-only), so buildNoaPayload has no selection to read from.
+// showOnFile must capture the current factor's Creator ID off the on-file
+// panel the same way it already captures selectedPayTerm.
+test('showOnFile captures the current factor id for LOR Update to submit later', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ factoring_company: 'Triumph Business Capital', factoring_company_id: 'f1', pay_term: 'Factoring Company' });
+  assert.equal(window.selectedFactoringCompanyId, 'f1');
+});
+
 test('opening the form defaults to NOA Update so Submission_Type is always set', () => {
   const { window } = makeWidget();
   window.selectedType = null;

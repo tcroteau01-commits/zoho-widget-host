@@ -69,6 +69,10 @@
   }
   .search-input:focus { border-color: var(--of-orange); outline: none;
     box-shadow: 0 0 0 3px rgba(249,115,22,0.12); }
+  .exact-toggle {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+    color: var(--of-gray-700); white-space: nowrap; cursor: pointer;
+  }
   .btn-export {
     padding: 8px 14px; font-size: 12px; font-weight: 600;
     border: 1px solid var(--of-gray-200); background: white;
@@ -373,6 +377,7 @@
       // Loads tab
       loadsFilters: { dateRange: 'this_month', dateFrom: '', dateTo: '',
                       debtorId: '', vendor: '', loadId: '', arStatus: 'all' },
+      loadsExact: false,
       loadsData: null, loadsLoading: false, loadsExportOpen: false,
       selectedLoadId: null,
       loadPreview: null, loadPreviewLoading: false, loadPreviewError: null,
@@ -384,6 +389,7 @@
       // Fees tab
       feesFilters: { dateRange: 'this_month', dateFrom: '', dateTo: '',
                      feeType: '', loadId: '' },
+      feesExact: false,
       feesData: null, feesLoading: false, feesExportOpen: false,
       expandedFeeGroups: {},
       // Allow ?clientId=N for standalone test
@@ -510,6 +516,7 @@
           }).join('') +
         '</select>' +
         '<input id="feesLoadId" class="search-input" type="text" placeholder="Load ID..." value="' + esc(f.loadId) + '">' +
+        '<label class="exact-toggle"><input type="checkbox" id="feesExact"' + (state.feesExact ? ' checked' : '') + '> Exact match</label>' +
         '<div class="export-wrap">' +
           '<button id="feesExportBtn" class="btn-export">Export &#9660;</button>' +
           (state.feesExportOpen ?
@@ -520,22 +527,65 @@
         '</div>' +
       '</div>';
 
-      var t = (d && d.totals) ? d.totals : { count: 0, amount: 0 };
-      html += '<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr)">' +
-        '<div class="kpi-card accent"><div class="kpi-label">Transactions</div>' +
-          '<div class="kpi-value">' + (t.count || 0) + '</div></div>' +
-        '<div class="kpi-card"><div class="kpi-label">Total fees</div>' +
-          '<div class="kpi-value">' + fmtMoney(t.amount) + '</div></div>' +
-      '</div>';
+      // KPI + table render independently of the toolbar above, so typing in
+      // the Load ID box never recreates (or steals focus from) the input.
+      html += '<div id="feesResultsWrap"></div>';
+      return html;
+    }
+
+    // loadId matching against already-fetched fee transactions —
+    // case-insensitive partial match by default, exact (===) when checked.
+    function feesQueryActive(f) {
+      return !!f.loadId;
+    }
+    function matchesFeeTxn(x, f, exact) {
+      var lq = (f.loadId || '').trim().toLowerCase();
+      if (!lq) return true;
+      var lv = String(x.loadNumber || x.loadId || '').toLowerCase();
+      return exact ? lv === lq : lv.indexOf(lq) !== -1;
+    }
+    function filterFeeGroups(groups, f, exact) {
+      if (!feesQueryActive(f)) return groups || [];
+      return (groups || []).map(function (g) {
+        var txns = (g.transactions || []).filter(function (x) { return matchesFeeTxn(x, f, exact); });
+        if (!txns.length) return null;
+        var subtotal = txns.reduce(function (s, x) { return s + (Number(x.amount) || 0); }, 0);
+        return { glCode: g.glCode, feeType: g.feeType, count: txns.length, subtotal: subtotal, transactions: txns };
+      }).filter(Boolean);
+    }
+
+    function renderFeesResults() {
+      var wrap = document.getElementById('feesResultsWrap');
+      if (!wrap) return;
+      var d = state.feesData;
+      var f = state.feesFilters;
+      var exact = state.feesExact;
 
       if (state.feesLoading) {
-        html += '<div class="loading">Loading fees...</div>';
-      } else if (!d || !d.groups || d.groups.length === 0) {
-        html += '<div class="empty">No fees in this range.</div>';
+        wrap.innerHTML = '<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr)">' +
+          '<div class="kpi-card accent"><div class="kpi-label">Transactions</div><div class="kpi-value">-</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Total fees</div><div class="kpi-value">-</div></div>' +
+        '</div><div class="loading">Loading fees...</div>';
+        return;
+      }
+
+      var groups = filterFeeGroups((d && d.groups) || [], f, exact);
+      var totalCount = 0, totalAmount = 0;
+      groups.forEach(function (g) { totalCount += g.count || 0; totalAmount += Number(g.subtotal) || 0; });
+
+      var html = '<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr)">' +
+        '<div class="kpi-card accent"><div class="kpi-label">Transactions</div>' +
+          '<div class="kpi-value">' + totalCount + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">Total fees</div>' +
+          '<div class="kpi-value">' + fmtMoney(totalAmount) + '</div></div>' +
+      '</div>';
+
+      if (!groups.length) {
+        html += '<div class="empty">No fees match the current filters.</div>';
       } else {
         html += '<table class="fees"><tbody>';
-        for (var i = 0; i < d.groups.length; i++) {
-          var g = d.groups[i];
+        for (var i = 0; i < groups.length; i++) {
+          var g = groups[i];
           var key = g.glCode;
           var expanded = !!state.expandedFeeGroups[key];
           html += '<tr class="group' + (expanded ? ' expanded' : '') + '" data-fee-key="' + esc(key) + '">' +
@@ -560,11 +610,32 @@
             }
           }
         }
-        html += '<tr class="total-row"><td>TOTAL FEES PAID (' + (t.count || 0) + ' txns)</td>' +
-          '<td class="amt">' + fmtMoneyDec(t.amount) + '</td></tr>';
+        html += '<tr class="total-row"><td>TOTAL FEES PAID (' + totalCount + ' txns)</td>' +
+          '<td class="amt">' + fmtMoneyDec(totalAmount) + '</td></tr>';
         html += '</tbody></table>';
       }
-      return html;
+      wrap.innerHTML = html;
+      bindFeesResultHandlers();
+    }
+
+    function bindFeesResultHandlers() {
+      // Group accordion toggle
+      document.querySelectorAll('#feesResultsWrap table.fees tr.group').forEach(function (tr) {
+        tr.addEventListener('click', function (e) {
+          if (e.target.classList.contains('load-link')) return;
+          var key = tr.getAttribute('data-fee-key');
+          if (state.expandedFeeGroups[key]) delete state.expandedFeeGroups[key];
+          else state.expandedFeeGroups[key] = true;
+          renderFeesResults();
+        });
+      });
+      // Load # links inside expanded groups
+      document.querySelectorAll('#feesResultsWrap table.fees .load-link').forEach(function (el) {
+        el.addEventListener('click', function (e) {
+          e.stopPropagation();
+          openLoadDetail(el.getAttribute('data-load-id'));
+        });
+      });
     }
 
     function handleFeesData(data) {
@@ -638,11 +709,18 @@
         state.feesFilters.feeType = e.target.value;
         fetchFees();
       });
+      // Load ID search — client-side against already-fetched fee groups, so
+      // typing never triggers a re-fetch or a full-shell re-render (which
+      // was wiping focus out of the box mid-keystroke).
       var lidInp = document.getElementById('feesLoadId');
       if (lidInp) lidInp.addEventListener('input', function (e) {
         state.feesFilters.loadId = e.target.value;
-        if (state._feesLoadIdDebounce) clearTimeout(state._feesLoadIdDebounce);
-        state._feesLoadIdDebounce = setTimeout(fetchFees, 300);
+        renderFeesResults();
+      });
+      var exactChk = document.getElementById('feesExact');
+      if (exactChk) exactChk.addEventListener('change', function (e) {
+        state.feesExact = !!e.target.checked;
+        renderFeesResults();
       });
       var expBtn = document.getElementById('feesExportBtn');
       if (expBtn) expBtn.addEventListener('click', function (e) {
@@ -659,23 +737,9 @@
           renderShell();
         });
       });
-      // Group accordion toggle
-      document.querySelectorAll('table.fees tr.group').forEach(function (tr) {
-        tr.addEventListener('click', function (e) {
-          if (e.target.classList.contains('load-link')) return;
-          var key = tr.getAttribute('data-fee-key');
-          if (state.expandedFeeGroups[key]) delete state.expandedFeeGroups[key];
-          else state.expandedFeeGroups[key] = true;
-          renderShell();
-        });
-      });
-      // Load # links inside expanded groups
-      document.querySelectorAll('table.fees .load-link').forEach(function (el) {
-        el.addEventListener('click', function (e) {
-          e.stopPropagation();
-          openLoadDetail(el.getAttribute('data-load-id'));
-        });
-      });
+      // KPI + table render independently of this shell — accordion toggle
+      // and Load # link clicks are (re)bound inside renderFeesResults().
+      renderFeesResults();
     }
 
     function renderMarginsTab() {
@@ -877,6 +941,7 @@
           ' placeholder="Vendor name..." value="' + esc(f.vendor) + '">' +
         '<input id="loadsLoadId" class="search-input" type="text"' +
           ' placeholder="Load ID..." value="' + esc(f.loadId) + '">' +
+        '<label class="exact-toggle"><input type="checkbox" id="loadsExact"' + (state.loadsExact ? ' checked' : '') + '> Exact match</label>' +
         '<select id="loadsAR" class="seg-control" style="min-width:120px">' +
           ['all','open','closed'].map(function (s) {
             return '<option value="' + s + '"' +
@@ -893,31 +958,81 @@
         '</div>' +
       '</div>';
 
-      // KPI strip
-      var t = (d && d.totals) ? d.totals : { count: 0, purchaseAmount: 0, margin: 0, marginPct: null };
-      html += '<div class="kpi-grid">' +
+      // KPI + table render independently of the toolbar above, so typing in
+      // the vendor/load-id boxes never recreates (or steals focus from) the
+      // search inputs. See renderLoadsResults().
+      html += '<div id="loadsResultsWrap"></div>';
+      return html;
+    }
+
+    // vendor/loadId matching against already-fetched loads — case-insensitive
+    // partial match by default, exact (===) when the toggle is checked.
+    function loadsQueryActive(f) {
+      return !!(f.vendor || f.loadId);
+    }
+    function matchesLoadRow(r, f, exact) {
+      var vq = (f.vendor || '').trim().toLowerCase();
+      var lq = (f.loadId || '').trim().toLowerCase();
+      if (vq) {
+        var vv = String(r.vendorName || '').toLowerCase();
+        if (exact ? vv !== vq : vv.indexOf(vq) === -1) return false;
+      }
+      if (lq) {
+        var lv = String(r.loadNumber || '').toLowerCase();
+        if (exact ? lv !== lq : lv.indexOf(lq) === -1) return false;
+      }
+      return true;
+    }
+    function filterLoadsRows(rows, f, exact) {
+      if (!loadsQueryActive(f)) return rows || [];
+      return (rows || []).filter(function (r) { return matchesLoadRow(r, f, exact); });
+    }
+
+    function renderLoadsResults() {
+      var wrap = document.getElementById('loadsResultsWrap');
+      if (!wrap) return;
+      var d = state.loadsData;
+      var f = state.loadsFilters;
+      var exact = state.loadsExact;
+
+      if (state.loadsLoading) {
+        wrap.innerHTML = '<div class="kpi-grid">' +
+          '<div class="kpi-card accent"><div class="kpi-label">Loads</div><div class="kpi-value">-</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Purchase</div><div class="kpi-value">-</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Margin</div><div class="kpi-value">-</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Margin %</div><div class="kpi-value">-</div></div>' +
+        '</div><div class="loading">Loading loads...</div>';
+        return;
+      }
+
+      var rows = filterLoadsRows((d && d.loads) || [], f, exact);
+      var totals = { count: rows.length, purchaseAmount: 0, margin: 0 };
+      rows.forEach(function (r) {
+        totals.purchaseAmount += Number(r.purchaseAmount) || 0;
+        totals.margin += Number(r.margin) || 0;
+      });
+      totals.marginPct = totals.purchaseAmount ? (totals.margin / totals.purchaseAmount) * 100 : null;
+
+      var html = '<div class="kpi-grid">' +
         '<div class="kpi-card accent"><div class="kpi-label">Loads</div>' +
-          '<div class="kpi-value">' + (t.count || 0) + '</div></div>' +
+          '<div class="kpi-value">' + totals.count + '</div></div>' +
         '<div class="kpi-card"><div class="kpi-label">Purchase</div>' +
-          '<div class="kpi-value">' + fmtMoney(t.purchaseAmount) + '</div></div>' +
+          '<div class="kpi-value">' + fmtMoney(totals.purchaseAmount) + '</div></div>' +
         '<div class="kpi-card"><div class="kpi-label">Margin</div>' +
-          '<div class="kpi-value">' + fmtMoney(t.margin) + '</div></div>' +
+          '<div class="kpi-value">' + fmtMoney(totals.margin) + '</div></div>' +
         '<div class="kpi-card"><div class="kpi-label">Margin %</div>' +
-          '<div class="kpi-value">' + fmtPct(t.marginPct) + '</div></div>' +
+          '<div class="kpi-value">' + fmtPct(totals.marginPct) + '</div></div>' +
       '</div>';
 
-      // Table
-      if (state.loadsLoading) {
-        html += '<div class="loading">Loading loads...</div>';
-      } else if (!d || !d.loads || d.loads.length === 0) {
-        html += '<div class="empty">No loads in this range.</div>';
+      if (!rows.length) {
+        html += '<div class="empty">No loads match the current filters.</div>';
       } else {
         html += '<table class="loads"><thead><tr>' +
           '<th class="first">Buy Date</th><th class="left">Load #</th><th class="left">Debtor</th>' +
           '<th class="left">Vendor</th><th>Purchase</th><th>Margin</th><th class="last">Margin %</th>' +
         '</tr></thead><tbody>';
-        for (var i = 0; i < d.loads.length; i++) {
-          var r = d.loads[i];
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
           html += '<tr data-load-id="' + esc(r.loadId) + '">' +
             '<td class="first" data-label="Buy Date">' + esc(r.buyDate || '') + '</td>' +
             '<td class="left" data-label="Load #">' + esc(r.loadNumber || '') + '</td>' +
@@ -929,12 +1044,17 @@
           '</tr>';
         }
         html += '<tr class="totals"><td class="first" colspan="4">TOTAL</td>' +
-          '<td>' + fmtMoneyDec(t.purchaseAmount) + '</td>' +
-          '<td>' + fmtMoneyDec(t.margin) + '</td>' +
-          '<td class="last">' + fmtPct(t.marginPct) + '</td></tr>';
+          '<td>' + fmtMoneyDec(totals.purchaseAmount) + '</td>' +
+          '<td>' + fmtMoneyDec(totals.margin) + '</td>' +
+          '<td class="last">' + fmtPct(totals.marginPct) + '</td></tr>';
         html += '</tbody></table>';
       }
-      return html;
+      wrap.innerHTML = html;
+      document.querySelectorAll('#loadsResultsWrap table.loads tbody tr[data-load-id]').forEach(function (tr) {
+        tr.addEventListener('click', function () {
+          openLoadDetail(tr.getAttribute('data-load-id'));
+        });
+      });
     }
 
     function uniqueDebtorsFromLoads(loads) {
@@ -1061,19 +1181,23 @@
         state.loadsFilters.debtorId = e.target.value;
         fetchLoads();
       });
-      // Vendor search (debounced)
+      // Vendor / Load ID search — client-side against already-fetched loads,
+      // so typing never triggers a re-fetch or a full-shell re-render
+      // (which was wiping focus out of the box mid-keystroke).
       var venInp = document.getElementById('loadsVendor');
       if (venInp) venInp.addEventListener('input', function (e) {
         state.loadsFilters.vendor = e.target.value;
-        if (state._loadsVendorDebounce) clearTimeout(state._loadsVendorDebounce);
-        state._loadsVendorDebounce = setTimeout(fetchLoads, 300);
+        renderLoadsResults();
       });
-      // Load ID search
       var lidInp = document.getElementById('loadsLoadId');
       if (lidInp) lidInp.addEventListener('input', function (e) {
         state.loadsFilters.loadId = e.target.value;
-        if (state._loadsLoadIdDebounce) clearTimeout(state._loadsLoadIdDebounce);
-        state._loadsLoadIdDebounce = setTimeout(fetchLoads, 300);
+        renderLoadsResults();
+      });
+      var exactChk = document.getElementById('loadsExact');
+      if (exactChk) exactChk.addEventListener('change', function (e) {
+        state.loadsExact = !!e.target.checked;
+        renderLoadsResults();
       });
       // AR status
       var arSel = document.getElementById('loadsAR');
@@ -1096,12 +1220,9 @@
           renderShell();
         });
       });
-      // Row clicks -> open detail panel (Task 15)
-      document.querySelectorAll('table.loads tbody tr[data-load-id]').forEach(function (tr) {
-        tr.addEventListener('click', function () {
-          openLoadDetail(tr.getAttribute('data-load-id'));
-        });
-      });
+      // KPI + table render independently of this shell — row clicks are
+      // bound inside renderLoadsResults() every time it redraws the table.
+      renderLoadsResults();
     }
 
     function openExport(scope, format) {

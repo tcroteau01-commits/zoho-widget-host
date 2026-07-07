@@ -65,6 +65,10 @@
     outline: none;
   }
   .search-input:focus { border-color: var(--of-orange); box-shadow: 0 0 0 3px rgba(249,115,22,0.12); }
+  .exact-toggle {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+    color: var(--of-gray-700); white-space: nowrap; cursor: pointer;
+  }
   .seg-control {
     display: inline-flex; background: var(--of-gray-100); border-radius: 8px; padding: 3px;
     border: 1px solid var(--of-gray-200);
@@ -496,6 +500,7 @@
       receipts: null,
       receiptsLoading: false,
       receiptsFilters: { dateRange: 'this_week', dateFrom: '', dateTo: '', debtorId: '', loadId: '', invoiceNo: '' },
+      receiptsExact: false,
       receiptsView: 'summary',
       expandedSummary: {},
       receiptsExportOpen: false
@@ -674,30 +679,120 @@
         '</select>' +
         '<input id="rcptLoad" class="search-input" type="text" placeholder="Search Load ID…" value="' + esc(f.loadId) + '">' +
         '<input id="rcptInv" class="search-input" type="text" placeholder="Search Invoice #…" value="' + esc(f.invoiceNo) + '">' +
+        '<label class="exact-toggle"><input type="checkbox" id="rcptExact"' + (state.receiptsExact ? ' checked' : '') + '> Exact match</label>' +
         '<div class="export-wrap">' +
           '<button id="receiptsExportBtn" class="btn-export">Export <span style="font-size:9px;">&#9660;</span></button>' +
           (state.receiptsExportOpen ? renderReceiptsExportMenu() : '') +
         '</div>' +
       '</div>';
 
-      // KPI strip — count depends on view
-      var totals = (r && r.totals) ? r.totals : { count: 0, amount: 0, summaryCount: 0 };
-      var displayCount = view === 'summary' ? (totals.summaryCount || 0) : (totals.count || 0);
-      var displayLabel = view === 'summary' ? 'Receipts in range' : 'Transactions in range';
-      html += '<div class="kpi-grid">' +
-        kpiCard(true, displayLabel, String(displayCount), '') +
-        kpiCard(false, 'Total received', fmtMoney(totals.amount || 0), '') +
-      '</div>';
-
-      // Table — dispatch on view
-      if (state.receiptsLoading) {
-        html += '<div class="rcpt-loading">Loading receipts…</div>';
-      } else if (view === 'summary') {
-        html += renderReceiptsSummaryTable();
-      } else {
-        html += renderReceiptsDetailTable();
-      }
+      // KPI + table are re-rendered independently of the toolbar above, so
+      // typing in the search boxes never touches (and never steals focus
+      // from) the inputs themselves. See renderReceiptsResults().
+      html += '<div id="rcptResultsWrap"></div>';
       return html;
+    }
+
+    // loadId/invoiceNo matching against already-fetched rows — case-insensitive
+    // partial match by default, exact (===) when the toggle is checked.
+    function receiptQueryActive(f) {
+      return !!(f.loadId || f.invoiceNo);
+    }
+    function matchesReceiptRow(row, f, exact) {
+      var lq = (f.loadId || '').trim().toLowerCase();
+      var iq = (f.invoiceNo || '').trim().toLowerCase();
+      if (lq) {
+        var lv = String(row.loadId || '').toLowerCase();
+        if (exact ? lv !== lq : lv.indexOf(lq) === -1) return false;
+      }
+      if (iq) {
+        var iv = String(row.invoiceNo || '').toLowerCase();
+        if (exact ? iv !== iq : iv.indexOf(iq) === -1) return false;
+      }
+      return true;
+    }
+    function filterReceiptsDetail(rows, f, exact) {
+      if (!receiptQueryActive(f)) return rows || [];
+      return (rows || []).filter(function (row) { return matchesReceiptRow(row, f, exact); });
+    }
+    function filterReceiptsSummary(groups, f, exact) {
+      if (!receiptQueryActive(f)) return groups || [];
+      return (groups || []).filter(function (g) {
+        return (g.invoices || []).some(function (inv) { return matchesReceiptRow(inv, f, exact); });
+      });
+    }
+
+    function renderReceiptsResults() {
+      var wrap = document.getElementById('rcptResultsWrap');
+      if (!wrap) return;
+      var f = state.receiptsFilters;
+      var exact = state.receiptsExact;
+      var view = state.receiptsView;
+      var displayLabel = view === 'summary' ? 'Receipts in range' : 'Transactions in range';
+
+      if (state.receiptsLoading) {
+        wrap.innerHTML = '<div class="kpi-grid">' +
+          kpiCard(true, displayLabel, '-', '') +
+          kpiCard(false, 'Total received', '-', '') +
+        '</div><div class="rcpt-loading">Loading receipts…</div>';
+        return;
+      }
+
+      var r = state.receipts;
+      var html = '';
+      if (view === 'summary') {
+        var groups = filterReceiptsSummary((r && r.summary) || [], f, exact);
+        var amt = 0; groups.forEach(function (g) { amt += Number(g.amount) || 0; });
+        html += '<div class="kpi-grid">' +
+          kpiCard(true, displayLabel, String(groups.length), '') +
+          kpiCard(false, 'Total received', fmtMoney(amt), '') +
+        '</div>' + renderReceiptsSummaryTable(groups);
+      } else {
+        var rows = filterReceiptsDetail((r && r.receipts) || [], f, exact);
+        var amt2 = 0; rows.forEach(function (row) { amt2 += Number(row.amount) || 0; });
+        html += '<div class="kpi-grid">' +
+          kpiCard(true, displayLabel, String(rows.length), '') +
+          kpiCard(false, 'Total received', fmtMoney(amt2), '') +
+        '</div>' + renderReceiptsDetailTable(rows);
+      }
+      wrap.innerHTML = html;
+      bindReceiptsResultHandlers();
+    }
+
+    function bindReceiptsResultHandlers() {
+      // Summary row clicks → toggle accordion
+      document.querySelectorAll('table.receipts.summary tbody tr.summary-row').forEach(function (tr) {
+        tr.addEventListener('click', function () {
+          var key = tr.getAttribute('data-key');
+          if (!key) return;
+          if (state.expandedSummary[key]) delete state.expandedSummary[key];
+          else state.expandedSummary[key] = true;
+          renderReceiptsResults();
+        });
+      });
+      // Nested invoice "Load XXXX" cell clicks → open load preview
+      document.querySelectorAll('table.invoices-nested td.link[data-action="load"]').forEach(function (cell) {
+        cell.addEventListener('click', function (e) {
+          e.stopPropagation();  // don't collapse the accordion
+          var loadId = cell.getAttribute('data-load');
+          var debtorName = cell.getAttribute('data-debtor-name') || '';
+          if (loadId && typeof openLoadPreview === 'function') openLoadPreview(loadId, debtorName);
+        });
+      });
+      // Detail-view row clicks: Load ID cell → load preview; row body → customer detail
+      document.querySelectorAll('table.receipts.detail tbody tr[data-debtor]').forEach(function (tr) {
+        tr.addEventListener('click', function (e) {
+          var loadCell = e.target.closest('td.link[data-action="load"]');
+          if (loadCell && typeof openLoadPreview === 'function') {
+            var dbCell = tr.querySelectorAll('td')[3];
+            var dbName = dbCell ? dbCell.textContent : '';
+            openLoadPreview(tr.getAttribute('data-load'), dbName);
+          } else {
+            var dbId = tr.getAttribute('data-debtor');
+            if (dbId && typeof openDetail === 'function') openDetail(dbId);
+          }
+        });
+      });
     }
 
     function dateRangeToFromTo(rangeKey) {
@@ -752,18 +847,18 @@
       return out;
     }
 
-    function renderReceiptsSummaryTable() {
-      var r = state.receipts;
-      if (!r || !r.summary || r.summary.length === 0) {
+    function renderReceiptsSummaryTable(groups) {
+      if (!groups || groups.length === 0) {
         return '<div class="rcpt-empty">No receipts in this range.</div>';
       }
+      var totalAmt = 0; groups.forEach(function (g) { totalAmt += Number(g.amount) || 0; });
       var html = '<table class="receipts summary"><thead><tr>' +
         '<th></th>' +
         '<th class="first">Date</th><th>Pmt #</th><th>Debtor</th>' +
         '<th class="num"># Invoices</th><th class="num last">Amount</th>' +
       '</tr></thead><tbody>';
-      for (var i = 0; i < r.summary.length; i++) {
-        var g = r.summary[i];
+      for (var i = 0; i < groups.length; i++) {
+        var g = groups[i];
         var key = (g.debtorId || '') + '|' + (g.pmtNumber || '');
         var expanded = !!state.expandedSummary[key];
         html += '<tr class="summary-row' + (expanded ? ' expanded' : '') + '" data-key="' + esc(key) + '" data-debtor="' + esc(g.debtorId) + '">' +
@@ -793,22 +888,22 @@
         }
       }
       html += '<tr class="total-row"><td class="first" colspan="5"><strong>Total</strong></td>' +
-        '<td class="num last"><strong>' + fmtMoney((r.totals || {}).amount) + '</strong></td></tr>';
+        '<td class="num last"><strong>' + fmtMoney(totalAmt) + '</strong></td></tr>';
       html += '</tbody></table>';
       return html;
     }
 
-    function renderReceiptsDetailTable() {
-      var r = state.receipts;
-      if (!r || !r.receipts || r.receipts.length === 0) {
+    function renderReceiptsDetailTable(rows) {
+      if (!rows || rows.length === 0) {
         return '<div class="rcpt-empty">No receipts in this range.</div>';
       }
+      var totalAmt = 0; rows.forEach(function (row) { totalAmt += Number(row.amount) || 0; });
       var html = '<table class="receipts detail"><thead><tr>' +
         '<th class="first">Date</th><th>Invoice #</th><th>Load ID</th><th>Debtor</th>' +
         '<th>Note</th><th>Check #</th><th class="num">Age</th><th class="num last">Amount</th>' +
       '</tr></thead><tbody>';
-      for (var i = 0; i < r.receipts.length; i++) {
-        var row = r.receipts[i];
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
         html += '<tr data-debtor="' + esc(row.debtorId) + '" data-load="' + esc(row.loadId) + '">' +
           '<td class="first">' + esc(row.date || '') + '</td>' +
           '<td>' + esc(row.invoiceNo || '') + '</td>' +
@@ -821,7 +916,7 @@
         '</tr>';
       }
       html += '<tr class="total-row"><td class="first" colspan="7"><strong>Total</strong></td>' +
-        '<td class="num last"><strong>' + fmtMoney((r.totals || {}).amount) + '</strong></td></tr>';
+        '<td class="num last"><strong>' + fmtMoney(totalAmt) + '</strong></td></tr>';
       html += '</tbody></table>';
       return html;
     }
@@ -986,18 +1081,23 @@
           state.receiptsFilters.debtorId = e.target.value;
           fetchReceipts();
         });
-        // Load / invoice search (debounced)
+        // Load / invoice search — client-side against already-fetched rows,
+        // so typing never triggers a re-fetch or a full-shell re-render
+        // (which was wiping focus out of the box mid-keystroke).
         var loadInp = document.getElementById('rcptLoad');
         if (loadInp) loadInp.addEventListener('input', function (e) {
           state.receiptsFilters.loadId = e.target.value;
-          if (state._rcptDebounce) clearTimeout(state._rcptDebounce);
-          state._rcptDebounce = setTimeout(fetchReceipts, 300);
+          renderReceiptsResults();
         });
         var invInp = document.getElementById('rcptInv');
         if (invInp) invInp.addEventListener('input', function (e) {
           state.receiptsFilters.invoiceNo = e.target.value;
-          if (state._rcptDebounce) clearTimeout(state._rcptDebounce);
-          state._rcptDebounce = setTimeout(fetchReceipts, 300);
+          renderReceiptsResults();
+        });
+        var exactChk = document.getElementById('rcptExact');
+        if (exactChk) exactChk.addEventListener('change', function (e) {
+          state.receiptsExact = !!e.target.checked;
+          renderReceiptsResults();
         });
         // Export menu toggle (Task 11 wires the click-through)
         var expBtn = document.getElementById('receiptsExportBtn');
@@ -1005,42 +1105,6 @@
           e.stopPropagation();
           state.receiptsExportOpen = !state.receiptsExportOpen;
           renderSummary();
-        });
-        // Summary row clicks → toggle accordion
-        document.querySelectorAll('table.receipts.summary tbody tr.summary-row').forEach(function (tr) {
-          tr.addEventListener('click', function (e) {
-            var key = tr.getAttribute('data-key');
-            if (!key) return;
-            if (state.expandedSummary[key]) {
-              delete state.expandedSummary[key];
-            } else {
-              state.expandedSummary[key] = true;
-            }
-            renderSummary();
-          });
-        });
-        // Nested invoice "Load XXXX" cell clicks → open load preview
-        document.querySelectorAll('table.invoices-nested td.link[data-action="load"]').forEach(function (cell) {
-          cell.addEventListener('click', function (e) {
-            e.stopPropagation();  // don't collapse the accordion
-            var loadId = cell.getAttribute('data-load');
-            var debtorName = cell.getAttribute('data-debtor-name') || '';
-            if (loadId && typeof openLoadPreview === 'function') openLoadPreview(loadId, debtorName);
-          });
-        });
-        // Detail-view row clicks: Load ID cell → load preview; row body → customer detail
-        document.querySelectorAll('table.receipts.detail tbody tr[data-debtor]').forEach(function (tr) {
-          tr.addEventListener('click', function (e) {
-            var loadCell = e.target.closest('td.link[data-action="load"]');
-            if (loadCell && typeof openLoadPreview === 'function') {
-              var dbCell = tr.querySelectorAll('td')[3];
-              var dbName = dbCell ? dbCell.textContent : '';
-              openLoadPreview(tr.getAttribute('data-load'), dbName);
-            } else {
-              var dbId = tr.getAttribute('data-debtor');
-              if (dbId && typeof openDetail === 'function') openDetail(dbId);
-            }
-          });
         });
         // Export menu item clicks
         document.querySelectorAll('[data-export]').forEach(function (b) {
@@ -1053,6 +1117,9 @@
             renderSummary();
           });
         });
+        // Results (KPI + table) render independently of this shell so the
+        // search inputs above are never recreated while the user is typing.
+        renderReceiptsResults();
       }
 
       if (state.currentTab === 'open-ar') {

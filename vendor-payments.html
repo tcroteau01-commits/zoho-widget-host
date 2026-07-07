@@ -33,6 +33,8 @@
   .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
   .search { flex: 1; max-width: 280px; padding: 9px 12px; border: 1px solid var(--of-gray-300); border-radius: 8px; font-size: 13px; font-family: inherit; }
   .search:focus { outline: none; border-color: var(--of-orange); box-shadow: 0 0 0 3px rgba(249,115,22,0.12); }
+  .exact-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--of-gray-700); white-space: nowrap; cursor: pointer; }
+  .match-note { font-size: 10px; color: var(--of-gray-500); font-weight: 400; text-transform: none; letter-spacing: normal; margin-top: 2px; }
   .btn-pdf { background: #fff; border: 1px solid var(--of-gray-300); border-radius: 8px; padding: 9px 14px; font-size: 13px; font-weight: 700; color: var(--of-gray-700); cursor: pointer; font-family: inherit; }
   .btn-pdf:hover { background: var(--of-gray-50); }
 
@@ -277,6 +279,7 @@
     var html = '' +
       '<div class="toolbar">' +
         '<input class="search" id="open-search" placeholder="Search vendor, load, USDOT…" />' +
+        exactToggle('open-exact') +
         (state.seeAll ? clientSelect('open-client', rows) : '') +
         factorSelect('open-factor', rows) +
         '<button class="btn-pdf" id="open-refresh" title="Pull fresh terms/factor data (use after the daily payment run)">↻ Refresh</button>' +
@@ -290,6 +293,7 @@
       '<div id="open-table-wrap"></div>';
     document.getElementById('panel-open').innerHTML = html;
     document.getElementById('open-search').addEventListener('input', renderOpenTable);
+    document.getElementById('open-exact').addEventListener('change', renderOpenTable);
     document.getElementById("open-factor").addEventListener('change', renderOpenTable);
     if (state.seeAll) document.getElementById('open-client').addEventListener('change', renderOpenTable);
     document.getElementById('open-refresh').addEventListener('click', function () { fetchOpenAP(true); });
@@ -299,10 +303,11 @@
 
   function renderOpenTable() {
     var q = (document.getElementById('open-search').value || '').toLowerCase();
+    var exact = !!(document.getElementById('open-exact') || {}).checked;
     var fsel = (document.getElementById('open-factor') || {}).value || '__all';
     var csel = (document.getElementById('open-client') || {}).value || '__all';
     var filtered = (state.openRows || []).filter(function (r) {
-      return matchesSearch(r, q) && matchesFactor(r, fsel) && matchesClient(r, csel);
+      return matchesSearch(r, q, exact) && matchesFactor(r, fsel) && matchesClient(r, csel);
     });
     var today = new Date();
     var rowsHtml = filtered.map(function (r) {
@@ -315,7 +320,7 @@
       return '' +
         '<tr data-id="' + escapeHtml(r['_id'] || '') + '">' +
         (state.seeAll ? '<td data-label="Client">' + escapeHtml(r['Client'] || '') + '</td>' : '') +
-        '<td data-label="Load #">' + escapeHtml(r['Load #'] || '') + '</td>' +
+        '<td data-label="Load #">' + escapeHtml(r['Load #'] || '') + searchMatchNote(r, q, exact) + '</td>' +
         '<td data-label="Debtor">' + escapeHtml(r['Debtor'] || '') + '</td>' +
         '<td data-label="Vendor">' + vendor + '</td>' +
         '<td data-label="Factor">' + factorLabel(r) + '</td>' +
@@ -355,13 +360,33 @@
     });
     return Object.keys(set).sort();
   }
-  function matchesSearch(r, q) {
-    if (!q) return true;
-    var hay = [r['Vendor Name'], r['USDOT'], r['Load #'], r['Invoice #'],
-               r['Vendor Invoice #'], r['PO #'], r['Other Reference']].map(function (x) {
-      return String(x || '').toLowerCase();
-    });
-    return hay.some(function (s) { return s.indexOf(q) !== -1; });
+  // Order matters: fields already visible in the results table (Load #, Vendor
+  // Name) are checked first, so a row that also happens to match a hidden
+  // identifier (USDOT, PO #, etc.) still reports its visible match first.
+  var SEARCH_FIELDS = ['Load #', 'Vendor Name', 'USDOT', 'Invoice #', 'Vendor Invoice #', 'PO #', 'Other Reference'];
+  var VISIBLE_SEARCH_FIELDS = { 'Load #': true, 'Vendor Name': true };
+  function matchedSearchField(r, q, exact) {
+    if (!q) return null;
+    for (var i = 0; i < SEARCH_FIELDS.length; i++) {
+      var field = SEARCH_FIELDS[i];
+      var val = String(r[field] || '').toLowerCase();
+      if (!val) continue;
+      if (exact ? val === q : val.indexOf(q) !== -1) return field;
+    }
+    return null;
+  }
+  function matchesSearch(r, q, exact) {
+    return !q || !!matchedSearchField(r, q, exact);
+  }
+  // When a hit is on a field not shown in the table (USDOT, Invoice #, PO #,
+  // Other Reference), annotate the row so the match is never a mystery.
+  function searchMatchNote(r, q, exact) {
+    var field = matchedSearchField(r, q, exact);
+    if (!field || VISIBLE_SEARCH_FIELDS[field]) return '';
+    return '<div class="match-note">matched: ' + escapeHtml(field) + ' ' + escapeHtml(r[field]) + '</div>';
+  }
+  function exactToggle(id) {
+    return '<label class="exact-toggle"><input type="checkbox" id="' + id + '" checked> Exact match</label>';
   }
   function matchesFactor(r, sel) {
     if (!sel || sel === '__all') return true;
@@ -549,6 +574,7 @@
         '<input type="date" id="hist-from" value="' + d.from + '" />' +
         '<input type="date" id="hist-to" value="' + d.to + '" />' +
         '<input class="search" id="hist-search" placeholder="Search vendor, load, USDOT…" />' +
+        exactToggle('hist-exact') +
         (state.seeAll ? clientSelect('hist-client', state.historyRows) : '') +
         factorSelect('hist-factor', state.historyRows) +
         '<button class="btn-pdf" id="hist-refresh" title="Pull fresh terms/factor data (use after the daily payment run)">↻ Refresh</button>' +
@@ -563,6 +589,7 @@
     document.getElementById('hist-from').addEventListener('change', onHistDateChange);
     document.getElementById('hist-to').addEventListener('change', onHistDateChange);
     document.getElementById('hist-search').addEventListener('input', renderHistoryTable);
+    document.getElementById('hist-exact').addEventListener('change', renderHistoryTable);
     document.getElementById('hist-factor').addEventListener('change', renderHistoryTable);
     if (state.seeAll) document.getElementById('hist-client').addEventListener('change', renderHistoryTable);
     document.getElementById('hist-refresh').addEventListener('click', function () { doHistoryFetch(true); });
@@ -645,10 +672,11 @@
 
   function renderHistoryTable() {
     var q = (document.getElementById('hist-search').value || '').toLowerCase();
+    var exact = !!(document.getElementById('hist-exact') || {}).checked;
     var fsel = (document.getElementById('hist-factor') || {}).value || '__all';
     var csel = (document.getElementById('hist-client') || {}).value || '__all';
     var filtered = (state.historyRows || []).filter(function (r) {
-      return matchesSearch(r, q) && matchesFactor(r, fsel) && matchesClient(r, csel);
+      return matchesSearch(r, q, exact) && matchesFactor(r, fsel) && matchesClient(r, csel);
     });
     var rowsHtml = filtered.map(function (r) {
       var vendor = r['Vendor Name'] ? escapeHtml(r['Vendor Name']) :
@@ -656,7 +684,7 @@
       return '' +
         '<tr data-id="' + escapeHtml(r['_id'] || '') + '">' +
         (state.seeAll ? '<td data-label="Client">' + escapeHtml(r['Client'] || '') + '</td>' : '') +
-        '<td data-label="Load #">' + escapeHtml(r['Load #'] || '') + '</td>' +
+        '<td data-label="Load #">' + escapeHtml(r['Load #'] || '') + searchMatchNote(r, q, exact) + '</td>' +
         '<td data-label="Debtor">' + escapeHtml(r['Debtor'] || '') + '</td>' +
         '<td data-label="Vendor">' + vendor + '</td>' +
         '<td data-label="Factor">' + factorLabel(r) + '</td>' +

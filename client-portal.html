@@ -354,16 +354,16 @@ function loadStatus(token) {
     .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });
 }
 
-// OTP step 1 — request a code: match USDOT + applied email, Twilio Verify texts a code to the number on file.
+// OTP step 1 — request a code: match by USDOT, Twilio Verify texts a code to the number on file.
 function otpStart() {
   if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
   fetch(API_BASE + OTP_START_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usdot: STATE.usdot, email: STATE.email }) })
+    body: JSON.stringify({ usdot: STATE.usdot }) })
     .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
     .then(function (res) {
       var j = res.j || {};
       if (res.status === 200 && j.ok) { STATE.maskedPhone = j.masked_phone || ''; renderOtpEnter(''); return; }
-      if (j.error === 'no_match') { renderOtpRequest('We couldn’t find an application matching that USDOT and email. Please double-check both.'); return; }
+      if (j.error === 'no_match') { renderOtpRequest('We couldn’t find an application for that USDOT. Please double-check it.'); return; }
       if (j.error === 'no_phone') { renderOtpRequest('No mobile number is on file for this application. Please contact your OperFi rep.'); return; }
       renderOtpRequest('We couldn’t send a code right now. Please try again in a moment.');
     })
@@ -374,7 +374,7 @@ function otpStart() {
 function otpVerify() {
   if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
   fetch(API_BASE + OTP_VERIFY_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usdot: STATE.usdot, email: STATE.email, code: STATE.code }) })
+    body: JSON.stringify({ usdot: STATE.usdot, code: STATE.code }) })
     .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
     .then(function (res) {
       var j = res.j || {};
@@ -388,28 +388,26 @@ function otpVerify() {
     .catch(function () { renderRecovery('We couldn’t verify the code right now. Please try again.'); });
 }
 
-// Retrieval gate step 1 — USDOT + applied email; we text a one-time code to the number on file.
+// Retrieval gate step 1 — USDOT only; we text a one-time code to the number on file.
 function renderOtpRequest(msg) {
   setBanner();
   el('content').innerHTML =
     '<div class="card"><div class="card-title">Access your documents</div>' +
-    '<div class="summ">Enter your USDOT and the email you applied with. We’ll text a one-time code to the mobile number on file.</div>' +
+    '<div class="summ">Enter your USDOT. We’ll text a one-time code to the mobile number on file.</div>' +
     '<div class="field"><label>USDOT</label><input id="pinUsdot" inputmode="numeric" autocomplete="off" placeholder="e.g. 4366362"></div>' +
-    '<div class="field"><label>Email</label><input id="pinEmail" type="email" autocomplete="off" placeholder="The email you applied with"></div>' +
     '<button class="btn orange" id="otpSendBtn">Text me a code</button>' +
     (msg ? '<div class="toast err" style="margin-top:8px">' + esc(msg) + '</div>' : '') +
     '<div class="muted" style="margin-top:12px;font-size:11.5px">Need help? Contact your OperFi rep.</div></div>';
   var btn = el('otpSendBtn');
   function submit() {
     var u = (el('pinUsdot') && el('pinUsdot').value || '').replace(/\D/g, '');
-    var em = (el('pinEmail') && el('pinEmail').value || '').trim();
-    if (!u || !em) { renderOtpRequest('Enter your USDOT and the email you applied with.'); return; }
-    STATE.usdot = u; STATE.email = em;
+    if (!u) { renderOtpRequest('Enter your USDOT.'); return; }
+    STATE.usdot = u;
     setBanner(); el('content').innerHTML = '<div class="card"><div class="summ">Sending your code…</div></div>';
     otpStart();
   }
   if (btn) btn.addEventListener('click', submit);
-  var emEl = el('pinEmail'); if (emEl) emEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  var uEl = el('pinUsdot'); if (uEl) uEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
 }
 
 // Retrieval gate step 2 — enter the texted one-time code.
@@ -421,7 +419,7 @@ function renderOtpEnter(msg) {
     '<div class="field"><label>6-digit code</label><input id="otpInput" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••"></div>' +
     '<button class="btn orange" id="otpVerifyBtn">Verify &amp; access</button>' +
     (msg ? '<div class="toast err" style="margin-top:8px">' + esc(msg) + '</div>' : '') +
-    '<div class="muted" style="margin-top:12px;font-size:11.5px"><a href="#" id="otpResend">Resend code</a> · <a href="#" id="otpBack">Use a different USDOT / email</a></div></div>';
+    '<div class="muted" style="margin-top:12px;font-size:11.5px"><a href="#" id="otpResend">Resend code</a> · <a href="#" id="otpBack">Use a different USDOT</a></div></div>';
   var vbtn = el('otpVerifyBtn'), codeEl = el('otpInput');
   function submit() {
     var c = (codeEl && codeEl.value || '').replace(/\D/g, '');

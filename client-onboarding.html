@@ -334,14 +334,6 @@ body.show-contacts .contacts-only { display: block; }
       <div class="field" id="mailingWrap" style="display:none"><label>Mailing Business Address <span class="req">*</span></label><input type="text" id="opMailing" placeholder="Street, City, State, ZIP"></div>
 
       <div class="divider"></div>
-      <div class="section-h">Document Portal PIN</div>
-      <div class="hint" style="margin-bottom:12px">Create a 4-digit PIN. You'll use it (with your secure link) to access your document upload portal after you submit.</div>
-      <div class="row2">
-        <div class="field"><label>Create PIN <span class="req">*</span></label><input type="password" id="opPin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••" data-req><div class="ferr" data-err="opPin">Create a 4-digit portal PIN.</div></div>
-        <div class="field"><label>Confirm PIN <span class="req">*</span></label><input type="password" id="opPinConfirm" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••" data-req><div class="ferr" data-err="opPinConfirm">Your PINs do not match.</div></div>
-      </div>
-
-      <div class="divider"></div>
       <div class="section-h">Factoring History</div>
       <div class="field">
         <label>Do you currently or previously work with a factoring company? <span class="req">*</span></label>
@@ -1038,8 +1030,6 @@ function validateAll(s) {
     req(o2.first && o2.last, 'owner', 'A second owner is required because Owner 1 holds under 100%.');
   }
   if (s.vet) req(s.govxVerified || (s.govxDegraded && s.govxCode), 'govxCode', 'Verify your GovX code to continue (use the Verify button).');
-  req(/^\d{4}$/.test(s.pin || ''), 'opPin', 'Create a 4-digit portal PIN.');
-  req((s.pin || '') === (s.pinConfirm || ''), 'opPinConfirm', 'Your PINs do not match.');
   req(s.termsAccepted, 'terms', 'You must accept the Terms & Conditions.');
   if (s.authority === 'broker') req(s.appFeePaid, 'appFee', 'You must authorize the $150 due-diligence application fee.');
   return { ok: errors.length === 0, errors: errors };
@@ -1234,7 +1224,6 @@ function readState() {
     businessPhone: val('opPhone'), adminEmail: val('opEmail'), smsPhone: val('opSmsPhone'), altPhone: val('opAltPhone'),
     opsEmail: val('opOpsEmail'), acctEmail: val('opAcctEmail'), officeManager: val('opOfficeMgr'),
     physicalAddress: val('opPhysical'), mailingAddress: sameAddr ? val('opPhysical') : val('opMailing'),
-    pin: val('opPin'), pinConfirm: val('opPinConfirm'),
     creditIssues: creditIssues, creditExplanation: val('opCreditExpl'),
     term: UI.term, recourse: UI.recourse, qp: UI.qp,
     termsAccepted: UI.termsAccepted, appFeePaid: UI.appFeePaid,
@@ -1321,8 +1310,6 @@ function validateStep(step) {
     if (einRequired(val('opFormation'))) need('opEIN');
     needPhone('opPhone'); needEmail('opEmail'); needPhoneOpt('opAltPhone'); need('opPhysical'); need('opMonthly');
     if (!$('sameAddrChip').classList.contains('sel')) need('opMailing');
-    if (!/^\d{4}$/.test(val('opPin'))) fail($('opPin'), 'opPin');
-    if (val('opPin') !== val('opPinConfirm')) fail($('opPinConfirm'), 'opPinConfirm');
     if (UI.authority === 'broker') { needEmail('opOpsEmail'); needEmail('opAcctEmail'); }
     else {
       need('opTrucks'); need('opDrivers');
@@ -1562,7 +1549,6 @@ function prefillTestData() {
     set('opPhone', '6235551212'); set('opEmail', 'test@example.com'); set('opSmsPhone', '6235551212');
     set('opPhysical', '123 Main St, Glendale, AZ 85301');
     set('opMonthly', '$22,000'); set('opTrucks', '2'); set('opDrivers', '2');
-    set('opPin', '1234'); set('opPinConfirm', '1234');
     var eq = document.querySelector('#equipChips .chip[data-equip="Dry Van"]');
     if (eq && !eq.classList.contains('sel')) eq.click();
     var blk = document.querySelector('#ownerList .owner-block');
@@ -1638,8 +1624,7 @@ function buildSubmitBody(s) {
     owners: buildOwnerPayloads(s, null),
     related: s.authority === 'broker' ? kids.related : [],
     customers: s.authority === 'broker' ? kids.customers : [],
-    contacts: kids.contacts,
-    pin: s.pin || ''   // backend hashes + stores as Portal_PIN_Hash (never plaintext)
+    contacts: kids.contacts
   };
 }
 

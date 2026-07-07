@@ -1,0 +1,39 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const html = fs.readFileSync(path.resolve('carrier-profile.html'), 'utf8');
+function boot() {
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+  return dom.window;
+}
+
+test('decision boxes no longer render a description line', () => {
+  const w = boot();
+  const descs = w.document.querySelectorAll('#cp-decision-options .decision-option-desc');
+  assert.equal(descs.length, 0);
+});
+
+test('decision boxes still expose an icon + name for all four decisions, in order', () => {
+  const w = boot();
+  const opts = w.document.querySelectorAll('#cp-decision-options .decision-option');
+  assert.equal(opts.length, 4);
+  const names = Array.from(opts).map((o) => o.querySelector('.decision-option-name').textContent);
+  assert.deepEqual(names, ['Approve', 'Approve with Caution', 'Hold', 'Decline']);
+  opts.forEach((o) => assert.ok(o.querySelector('.decision-option-icon'), 'icon missing'));
+});
+
+test('each decision box keeps its data-decision attribute for click wiring', () => {
+  const w = boot();
+  const opts = w.document.querySelectorAll('#cp-decision-options .decision-option');
+  const decisions = Array.from(opts).map((o) => o.getAttribute('data-decision'));
+  assert.deepEqual(decisions, ['Approve', 'Approve with Caution', 'Hold', 'Decline']);
+});
+
+test('.decision-option-desc CSS rule is removed and remaining boxes get more vertical padding', () => {
+  assert.doesNotMatch(html, /\.decision-option-desc\s*\{/);
+  assert.match(html, /\.decision-option\s*\{[^}]*padding:\s*20px 14px;/);
+  assert.match(html, /\.decision-option-name\s*\{[^}]*font-size:\s*14px;/);
+});

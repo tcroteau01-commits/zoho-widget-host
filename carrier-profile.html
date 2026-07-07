@@ -431,14 +431,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 .decision-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
 .decision-option {
-  border: 2px solid var(--of-beige-line); border-radius: 10px; padding: 14px;
+  border: 2px solid var(--of-beige-line); border-radius: 10px; padding: 20px 14px;
   cursor: pointer; transition: all 0.15s; background: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
 }
 .decision-option:hover { border-color: var(--of-charcoal); }
 .decision-option.selected { border-color: var(--of-amber); background: #fff8e1; }
-.decision-option-name { font-size: 13px; font-weight: 700; color: var(--of-charcoal); margin-bottom: 4px; }
-.decision-option-desc { font-size: 11px; color: var(--of-gray-700); line-height: 1.4; }
-.decision-option-icon { font-size: 18px; margin-bottom: 6px; display: block; }
+.decision-option-name { font-size: 14px; font-weight: 700; color: var(--of-charcoal); }
+.decision-option-icon { font-size: 18px; margin-bottom: 8px; display: block; }
 .decision-option.good .decision-option-icon { color: var(--of-green); }
 .decision-option.warn .decision-option-icon { color: var(--of-amber); }
 .decision-option.amber .decision-option-icon { color: var(--of-amber-text); }
@@ -708,22 +708,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <div class="decision-option good" data-decision="Approve">
           <span class="decision-option-icon">✓</span>
           <div class="decision-option-name">Approve</div>
-          <div class="decision-option-desc">Clean profile, normal use.</div>
         </div>
         <div class="decision-option warn" data-decision="Approve with Caution">
           <span class="decision-option-icon">◐</span>
           <div class="decision-option-name">Approve with Caution</div>
-          <div class="decision-option-desc">Saw flags, accepting risk. Notes required.</div>
         </div>
         <div class="decision-option amber" data-decision="Hold">
           <span class="decision-option-icon">⏸</span>
           <div class="decision-option-name">Hold</div>
-          <div class="decision-option-desc">Need more info. Pauses use.</div>
         </div>
         <div class="decision-option bad" data-decision="Decline">
           <span class="decision-option-icon">✕</span>
           <div class="decision-option-name">Decline</div>
-          <div class="decision-option-desc">Won't use. Adds to your DNU list.</div>
         </div>
       </div>
       <label class="modal-notes-label">Decision Notes <span class="req">*</span></label>
@@ -810,45 +806,53 @@ window.addEventListener('message', function(e) {
   if (changed && vendorId && brokerEmail) loadProfile();
 });
 
-// CP1 — carrier switcher: type-to-search (reuses /noa-carriers) and reload the
-// page with the chosen carrier without going back to the Vendors list.
-var _cpSwitchTimer = null, _cpSwitchCache = {};
+// CP1 — carrier switcher: fetch the account's linked carriers once (mirrors Load
+// Details' /tms-carriers pattern in index.html) and filter client-side on every
+// keystroke, no per-query network round trip. Unlike Load Details, nothing here is
+// disabled/blocked — DNU'd and non-approved carriers stay fully searchable and
+// clickable, because Carrier Profile is where a broker is meant to look up *why* a
+// carrier is DNU'd, not a place that tenders loads to them.
+var _cpCarriers = [];
+
+function loadCarrierSwitchList() {
+  return fetch(BROKER_API_BASE + '/tms-carriers?email=' + encodeURIComponent(brokerEmail))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (data) { _cpCarriers = data.carriers || []; })
+    .catch(function () { _cpCarriers = []; });
+}
+
+// Mirrors Load Details' carrierStatusSuffix (index.html) — duplicated locally since
+// each Creator widget page is a standalone script with no shared module.
+function cpCarrierStatusSuffix(c) {
+  if (c.dnu) return ' · DNU';
+  if (c.hiring_decision !== 'Approve' && c.hiring_decision !== 'Approve with Caution') {
+    return ' · ' + (c.hiring_decision || 'Not Reviewed');
+  }
+  return '';
+}
+
+function cpFilterCarriers(q) {
+  q = String(q || '').trim().toLowerCase();
+  if (!q) return _cpCarriers;
+  return _cpCarriers.filter(function (c) {
+    return String(c.carrier_name || '').toLowerCase().indexOf(q) !== -1 ||
+           String(c.mc || '').toLowerCase().indexOf(q) !== -1 ||
+           String(c.dot || '').toLowerCase().indexOf(q) !== -1;
+  });
+}
 
 function wireCarrierSwitch() {
   var input = document.getElementById('cp-switch-input');
   if (!input || input._cpBound) return;
   input._cpBound = true;
-  input.addEventListener('input', function () {
-    var v = input.value;
-    clearTimeout(_cpSwitchTimer);
-    _cpSwitchTimer = setTimeout(function () { cpSwitchSearch(v); }, 250);
-  });
-  input.addEventListener('focus', function () {
-    if (input.value.trim().length >= 2) cpSwitchSearch(input.value);
-  });
+  input.addEventListener('input', function () { cpRenderSwitch(cpFilterCarriers(input.value)); });
+  input.addEventListener('focus', function () { cpRenderSwitch(cpFilterCarriers(input.value)); });
   // Close the results when clicking outside the switcher.
   document.addEventListener('click', function (e) {
     var sw = document.querySelector('.cp-switch');
     var box = document.getElementById('cp-switch-results');
     if (sw && box && !sw.contains(e.target)) box.style.display = 'none';
   });
-}
-
-function cpSwitchSearch(q) {
-  q = (q || '').trim();
-  var box = document.getElementById('cp-switch-results');
-  if (!box) return;
-  if (q.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
-  if (_cpSwitchCache[q]) { cpRenderSwitch(_cpSwitchCache[q]); return; }
-  fetch(BROKER_API_BASE + '/noa-carriers?email=' + encodeURIComponent(brokerEmail) +
-        '&q=' + encodeURIComponent(q))
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      var list = (data && data.carriers) || [];
-      _cpSwitchCache[q] = list;
-      cpRenderSwitch(list);
-    })
-    .catch(function () { /* leave dropdown as-is on a transient error */ });
 }
 
 function cpRenderSwitch(list) {
@@ -861,7 +865,7 @@ function cpRenderSwitch(list) {
   }
   box.innerHTML = list.map(function (c) {
     return '<div class="cp-switch-item" data-vid="' + esc(String(c.vendor_id)) + '">' +
-      '<div class="nm">' + esc(c.carrier_name || '—') + '</div>' +
+      '<div class="nm">' + esc(c.carrier_name || '—') + esc(cpCarrierStatusSuffix(c)) + '</div>' +
       '<div class="mt">MC ' + esc(c.mc || '—') + ' · DOT ' + esc(c.dot || '—') + '</div>' +
     '</div>';
   }).join('');
@@ -883,7 +887,13 @@ function cpSwitchTo(vid) {
   loadProfile(true);
 }
 
-if (typeof window !== 'undefined') { window.cpRenderSwitch = cpRenderSwitch; window.cpSwitchTo = cpSwitchTo; }
+if (typeof window !== 'undefined') {
+  window.loadCarrierSwitchList = loadCarrierSwitchList;
+  window.cpCarrierStatusSuffix = cpCarrierStatusSuffix;
+  window.cpFilterCarriers = cpFilterCarriers;
+  window.cpRenderSwitch = cpRenderSwitch;
+  window.cpSwitchTo = cpSwitchTo;
+}
 
 function boot() {
   if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
@@ -894,6 +904,7 @@ function boot() {
   function gotParams(params) {
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) { showError('Could not identify broker', 'login user missing'); return; }
+    loadCarrierSwitchList();
     if (!vendorId) {
       // No Vendor_ID yet — wait briefly for the parent's postMessage; its listener
       // calls loadProfile() when the params arrive.

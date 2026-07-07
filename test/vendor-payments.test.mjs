@@ -346,16 +346,19 @@ test('refresh forces &refresh=1 on the fetch URLs', () => {
   assert.match(HTML, /doHistoryFetch\(true\)/);
 });
 
-// ── Exact-match-by-default search with matched-field annotation ───────────────
+// ── Partial-match-by-default search with matched-field annotation ─────────────
+// (Exact match was the default through PR #122; reversed after live feedback
+// that a full Load # visible in the list wasn't found because "Exact match"
+// silently required an exact string. Partial match is now the default and
+// "Exact match" is an opt-in narrowing toggle.)
 
-test('exact-match toggle helper exists and defaults checked, wired into both toolbars', () => {
+test('exact-match toggle helper exists and defaults unchecked, wired into both toolbars', () => {
   assert.match(HTML, /function exactToggle/);
-  assert.match(HTML, /checked/);
   assert.match(HTML, /exactToggle\('open-exact'\)/);
   assert.match(HTML, /exactToggle\('hist-exact'\)/);
 });
 
-test('default exact search on Open AP excludes a substring-only USDOT match', async () => {
+test('default partial-match search on Open AP includes a substring-only USDOT match, annotated', async () => {
   const rows = [
     Object.assign({}, MOCK_ROW, { _id: 'exact', 'Load #': '7538' }),
     Object.assign({}, MOCK_ROW, { _id: 'substr', 'Load #': '9959', 'USDOT': '4275381' })
@@ -374,17 +377,21 @@ test('default exact search on Open AP excludes a substring-only USDOT match', as
   w.dispatchEvent(new w.Event('load'));
   await waitFor(() => w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]').length === 2);
 
-  assert.equal(w.document.getElementById('open-exact').checked, true, 'exact-match checkbox must default to checked');
+  assert.equal(w.document.getElementById('open-exact').checked, false, 'exact-match checkbox must default to unchecked (partial match)');
 
   const search = w.document.getElementById('open-search');
   search.value = '7538';
   search.dispatchEvent(new w.Event('input'));
 
-  const ids = Array.from(w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]')).map(tr => tr.dataset.id);
-  assert.deepEqual(ids, ['exact'], 'exact mode must only return the row whose Load # equals the query, not the USDOT substring match');
+  const trs = Array.from(w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]'));
+  const ids = trs.map(tr => tr.dataset.id).sort();
+  assert.deepEqual(ids, ['exact', 'substr'], 'default partial mode must return both the exact and substring matches');
+
+  const substrRow = trs.find(tr => tr.dataset.id === 'substr');
+  assert.match(substrRow.textContent, /matched:\s*USDOT/i, 'the substring-only match must be annotated with the field it matched on');
 });
 
-test('unchecking exact match reveals the substring match and annotates which field matched', async () => {
+test('checking exact match narrows to only the row whose field equals the query', async () => {
   const rows = [
     Object.assign({}, MOCK_ROW, { _id: 'exact', 'Load #': '7538' }),
     Object.assign({}, MOCK_ROW, { _id: 'substr', 'Load #': '9959', 'USDOT': '4275381' })
@@ -408,13 +415,9 @@ test('unchecking exact match reveals the substring match and annotates which fie
   search.dispatchEvent(new w.Event('input'));
 
   const exactBox = w.document.getElementById('open-exact');
-  exactBox.checked = false;
+  exactBox.checked = true;
   exactBox.dispatchEvent(new w.Event('change'));
 
-  const trs = Array.from(w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]'));
-  const ids = trs.map(tr => tr.dataset.id).sort();
-  assert.deepEqual(ids, ['exact', 'substr'], 'fuzzy mode must return both the exact and substring matches');
-
-  const substrRow = trs.find(tr => tr.dataset.id === 'substr');
-  assert.match(substrRow.textContent, /matched:\s*USDOT/i, 'the substring-only match must be annotated with the field it matched on');
+  const ids = Array.from(w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]')).map(tr => tr.dataset.id);
+  assert.deepEqual(ids, ['exact'], 'exact mode must only return the row whose Load # equals the query, not the USDOT substring match');
 });

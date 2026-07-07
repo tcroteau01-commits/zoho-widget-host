@@ -431,14 +431,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 .decision-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
 .decision-option {
-  border: 2px solid var(--of-beige-line); border-radius: 10px; padding: 14px;
+  border: 2px solid var(--of-beige-line); border-radius: 10px; padding: 20px 14px;
   cursor: pointer; transition: all 0.15s; background: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
 }
 .decision-option:hover { border-color: var(--of-charcoal); }
 .decision-option.selected { border-color: var(--of-amber); background: #fff8e1; }
-.decision-option-name { font-size: 13px; font-weight: 700; color: var(--of-charcoal); margin-bottom: 4px; }
-.decision-option-desc { font-size: 11px; color: var(--of-gray-700); line-height: 1.4; }
-.decision-option-icon { font-size: 18px; margin-bottom: 6px; display: block; }
+.decision-option-name { font-size: 14px; font-weight: 700; color: var(--of-charcoal); }
+.decision-option-icon { font-size: 18px; margin-bottom: 8px; display: block; }
 .decision-option.good .decision-option-icon { color: var(--of-green); }
 .decision-option.warn .decision-option-icon { color: var(--of-amber); }
 .decision-option.amber .decision-option-icon { color: var(--of-amber-text); }
@@ -708,22 +708,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <div class="decision-option good" data-decision="Approve">
           <span class="decision-option-icon">✓</span>
           <div class="decision-option-name">Approve</div>
-          <div class="decision-option-desc">Clean profile, normal use.</div>
         </div>
         <div class="decision-option warn" data-decision="Approve with Caution">
           <span class="decision-option-icon">◐</span>
           <div class="decision-option-name">Approve with Caution</div>
-          <div class="decision-option-desc">Saw flags, accepting risk. Notes required.</div>
         </div>
         <div class="decision-option amber" data-decision="Hold">
           <span class="decision-option-icon">⏸</span>
           <div class="decision-option-name">Hold</div>
-          <div class="decision-option-desc">Need more info. Pauses use.</div>
         </div>
         <div class="decision-option bad" data-decision="Decline">
           <span class="decision-option-icon">✕</span>
           <div class="decision-option-name">Decline</div>
-          <div class="decision-option-desc">Won't use. Adds to your DNU list.</div>
         </div>
       </div>
       <label class="modal-notes-label">Decision Notes <span class="req">*</span></label>

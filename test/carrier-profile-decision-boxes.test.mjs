@@ -34,6 +34,11 @@ test('each decision box keeps its data-decision attribute for click wiring', () 
 
 test('.decision-option-desc CSS rule is removed and remaining boxes get more vertical padding', () => {
   assert.doesNotMatch(html, /\.decision-option-desc\s*\{/);
-  assert.match(html, /\.decision-option\s*\{[^}]*padding:\s*20px 14px;/);
+  assert.match(html, /\.decision-option\s*\{[^}]*padding:\s*20px 10px;/);
   assert.match(html, /\.decision-option-name\s*\{[^}]*font-size:\s*14px;/);
+});
+
+test('.decision-option top-aligns its content instead of vertically centering, so a wrapped title (e.g. "Approve with Caution") cannot push its icon out of line with the other boxes', () => {
+  assert.match(html, /\.decision-option\s*\{[^}]*align-items:\s*center;/);
+  assert.doesNotMatch(html, /\.decision-option\s*\{[^}]*justify-content:\s*center;/);
 });

@@ -169,6 +169,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   animation: noaspin 0.6s linear infinite; }
 @keyframes noaspin { to { transform: rotate(360deg); } }
 .field-input:focus, .field-select:focus { border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232,160,32,0.12); }
+.radio-row { display: flex; align-items: center; gap: 20px; min-height: 40px; }
+.radio-row label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #222; cursor: pointer; }
 
 /* Type-to-search carrier results */
 .search-results { border: 1px solid #e6e3da; border-top: none; border-radius: 0 0 8px 8px; max-height: 220px; overflow-y: auto; }
@@ -465,14 +467,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
             </div>
           </div>
           <div id="lor-bank-inputs">
-            <div class="field-grid">
-              <div class="field">
-                <label class="field-label">Funding Type <span class="req">*</span></label>
-                <div class="filter-pills" id="lor-funding-type-choice">
-                  <label><input type="radio" name="lor-funding-type" value="Quick Pay"> Quick Pay</label>
-                  <label><input type="radio" name="lor-funding-type" value="Standard Net 30"> Standard Net 30</label>
-                </div>
+            <div class="field" style="margin-bottom:14px;">
+              <label class="field-label">Funding Type <span class="req">*</span></label>
+              <div class="radio-row" id="lor-funding-type-choice">
+                <label><input type="radio" name="lor-funding-type" value="Quick Pay"> Quick Pay</label>
+                <label><input type="radio" name="lor-funding-type" value="Standard Net 30"> Standard Net 30</label>
               </div>
+            </div>
+            <div class="field-grid">
               <div class="field">
                 <label class="field-label">Bank Name <span class="req">*</span></label>
                 <input class="field-input" id="lor-bank-name" placeholder="e.g. Wells Fargo">
@@ -602,7 +604,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
   </div>
 
-  <div class="version-stamp">v2026-07-06.4</div>
+  <div class="version-stamp">v2026-07-06.5</div>
 
 </div>
 

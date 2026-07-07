@@ -421,3 +421,49 @@ test('checking exact match narrows to only the row whose field equals the query'
   const ids = Array.from(w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]')).map(tr => tr.dataset.id);
   assert.deepEqual(ids, ['exact'], 'exact mode must only return the row whose Load # equals the query, not the USDOT substring match');
 });
+
+// ── Payment History factor/client dropdown populates after data loads ─────────
+// Regression for: the History tab built its "All factors"/"All clients"
+// <select>s from state.historyRows BEFORE the fetch that populates
+// state.historyRows had run, so the dropdown was permanently stuck showing
+// only "All factors" even once real rows (with real Factoring Company
+// values) had loaded. Root cause: renderHistoryShell() runs synchronously
+// before doHistoryFetch(); the fetch completion handler only re-rendered the
+// table, never the toolbar's <select>s.
+
+test('Payment History factor dropdown populates once history rows load, not just "All factors"', async () => {
+  const historyRows = [
+    Object.assign({}, MOCK_ROW, { _id: 'h1', 'Factoring Company': '', _av_resolved: true }),
+    Object.assign({}, MOCK_ROW, { _id: 'h2', 'Factoring Company': 'OTR SOLUTIONS' }),
+    Object.assign({}, MOCK_ROW, { _id: 'h3', 'Factoring Company': 'RTS FINANCIAL SERVICES' })
+  ];
+  const dom = makeWidget();
+  const w = dom.window;
+  w.fetch = (url) => {
+    if (String(url).includes('/vendor-payments/history')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          accountName: 'Test Co', rows: historyRows,
+          totals: { paymentCount: 3, totalPaid: 2550, carriersPaid: 3 }
+        })
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+
+  w.document.getElementById('tab-history').dispatchEvent(new w.Event('click', { bubbles: true }));
+
+  await waitFor(() => w.document.querySelectorAll('#hist-table-wrap tbody tr[data-id]').length === 3);
+
+  const fsel = w.document.getElementById('hist-factor');
+  const optionValues = Array.from(fsel.options).map(o => o.value);
+  assert.deepEqual(optionValues.sort(), ['Direct', 'OTR SOLUTIONS', 'RTS FINANCIAL SERVICES', '__all'].sort(),
+    'factor dropdown must include every distinct factor from the loaded rows, not just "All factors"');
+
+  fsel.value = 'OTR SOLUTIONS';
+  fsel.dispatchEvent(new w.Event('change'));
+  const filteredIds = Array.from(w.document.querySelectorAll('#hist-table-wrap tbody tr[data-id]')).map(tr => tr.dataset.id);
+  assert.deepEqual(filteredIds, ['h2'], 'selecting a factor from the (now populated) dropdown must actually filter the table');
+});

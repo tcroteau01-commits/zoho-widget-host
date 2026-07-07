@@ -398,24 +398,47 @@
     (rows || []).forEach(function (r) { if (r['Client']) set[r['Client']] = true; });
     return Object.keys(set).sort();
   }
-  function clientSelect(id, rows) {
-    var opts = ['<option value="__all">All clients</option>'].concat(
+  function clientOptionsHtml(rows) {
+    return ['<option value="__all">All clients</option>'].concat(
       distinctClients(rows).map(function (c) {
         return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
       })).join('');
-    return '<select class="search" id="' + id + '">' + opts + '</select>';
+  }
+  function clientSelect(id, rows) {
+    return '<select class="search" id="' + id + '">' + clientOptionsHtml(rows) + '</select>';
   }
   function matchesClient(r, sel) {
     if (!sel || sel === '__all') return true;
     return (r['Client'] || '') === sel;
   }
   // id="open-factor" and id="hist-factor" are injected by factorSelect below
-  function factorSelect(id, rows) {
-    var opts = ['<option value="__all">All factors</option>'].concat(
+  function factorOptionsHtml(rows) {
+    return ['<option value="__all">All factors</option>'].concat(
       distinctFactors(rows).map(function (f) {
         return '<option value="' + escapeHtml(f) + '">' + escapeHtml(f) + '</option>';
       })).join('');
-    return '<select class="search" id="' + id + '">' + opts + '</select>';
+  }
+  function factorSelect(id, rows) {
+    return '<select class="search" id="' + id + '">' + factorOptionsHtml(rows) + '</select>';
+  }
+  // History's factor/client <select>s are first built in renderHistoryShell()
+  // BEFORE the initial fetch has populated state.historyRows (so they start
+  // with zero options besides "All..."). Call this after every data load to
+  // refresh the option lists in place without rebuilding the whole toolbar
+  // (which would also blow away in-progress search text).
+  function refreshHistoryFilterOptions() {
+    var fsel = document.getElementById('hist-factor');
+    if (fsel) {
+      var curF = fsel.value;
+      fsel.innerHTML = factorOptionsHtml(state.historyRows);
+      if (Array.prototype.some.call(fsel.options, function (o) { return o.value === curF; })) fsel.value = curF;
+    }
+    var csel = document.getElementById('hist-client');
+    if (csel) {
+      var curC = csel.value;
+      csel.innerHTML = clientOptionsHtml(state.historyRows);
+      if (Array.prototype.some.call(csel.options, function (o) { return o.value === curC; })) csel.value = curC;
+    }
   }
   function fmtMoney(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
@@ -636,12 +659,14 @@
       state.seeAll = !!data.seeAll;
       state.historyRows = data.rows || [];
       renderHistoryKpis(data.totals || {});
+      refreshHistoryFilterOptions();
       renderHistoryTable();
       return;
     }
     if (isLocalTest()) {
       state.historyRows = MOCK_HISTORY_ROWS;
       renderHistoryKpis(mockTotals(MOCK_HISTORY_ROWS, 'history'));
+      refreshHistoryFilterOptions();
       renderHistoryTable();
       return;
     }
@@ -654,6 +679,7 @@
         state.seeAll = !!data.seeAll;
         state.historyRows = data.rows || [];
         renderHistoryKpis(data.totals || {});
+        refreshHistoryFilterOptions();
         renderHistoryTable();
       })
       .catch(function (e) {

@@ -345,3 +345,76 @@ test('refresh forces &refresh=1 on the fetch URLs', () => {
   assert.match(HTML, /fetchOpenAP\(true\)/);
   assert.match(HTML, /doHistoryFetch\(true\)/);
 });
+
+// ── Exact-match-by-default search with matched-field annotation ───────────────
+
+test('exact-match toggle helper exists and defaults checked, wired into both toolbars', () => {
+  assert.match(HTML, /function exactToggle/);
+  assert.match(HTML, /checked/);
+  assert.match(HTML, /exactToggle\('open-exact'\)/);
+  assert.match(HTML, /exactToggle\('hist-exact'\)/);
+});
+
+test('default exact search on Open AP excludes a substring-only USDOT match', async () => {
+  const rows = [
+    Object.assign({}, MOCK_ROW, { _id: 'exact', 'Load #': '7538' }),
+    Object.assign({}, MOCK_ROW, { _id: 'substr', 'Load #': '9959', 'USDOT': '4275381' })
+  ];
+  const dom = makeWidget();
+  const w = dom.window;
+  w.fetch = (url) => {
+    if (String(url).includes('/vendor-payments/open')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ accountName: 'Test Co', rows, totals: { openLoads: 2, totalOwed: 1700, carrierCount: 2 } })
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(() => w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]').length === 2);
+
+  assert.equal(w.document.getElementById('open-exact').checked, true, 'exact-match checkbox must default to checked');
+
+  const search = w.document.getElementById('open-search');
+  search.value = '7538';
+  search.dispatchEvent(new w.Event('input'));
+
+  const ids = Array.from(w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]')).map(tr => tr.dataset.id);
+  assert.deepEqual(ids, ['exact'], 'exact mode must only return the row whose Load # equals the query, not the USDOT substring match');
+});
+
+test('unchecking exact match reveals the substring match and annotates which field matched', async () => {
+  const rows = [
+    Object.assign({}, MOCK_ROW, { _id: 'exact', 'Load #': '7538' }),
+    Object.assign({}, MOCK_ROW, { _id: 'substr', 'Load #': '9959', 'USDOT': '4275381' })
+  ];
+  const dom = makeWidget();
+  const w = dom.window;
+  w.fetch = (url) => {
+    if (String(url).includes('/vendor-payments/open')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ accountName: 'Test Co', rows, totals: { openLoads: 2, totalOwed: 1700, carrierCount: 2 } })
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(() => w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]').length === 2);
+
+  const search = w.document.getElementById('open-search');
+  search.value = '7538';
+  search.dispatchEvent(new w.Event('input'));
+
+  const exactBox = w.document.getElementById('open-exact');
+  exactBox.checked = false;
+  exactBox.dispatchEvent(new w.Event('change'));
+
+  const trs = Array.from(w.document.querySelectorAll('#open-table-wrap tbody tr[data-id]'));
+  const ids = trs.map(tr => tr.dataset.id).sort();
+  assert.deepEqual(ids, ['exact', 'substr'], 'fuzzy mode must return both the exact and substring matches');
+
+  const substrRow = trs.find(tr => tr.dataset.id === 'substr');
+  assert.match(substrRow.textContent, /matched:\s*USDOT/i, 'the substring-only match must be annotated with the field it matched on');
+});

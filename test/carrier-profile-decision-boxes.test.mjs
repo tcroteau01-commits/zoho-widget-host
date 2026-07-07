@@ -46,3 +46,24 @@ test('.decision-option top-aligns its content instead of vertically centering, s
 test('.decision-option sets min-width: 0 so its longest label (e.g. "Approve with Caution") cannot force its grid column wider than the other three equal 1fr columns', () => {
   assert.match(html, /\.decision-option\s*\{[^}]*min-width:\s*0;/);
 });
+
+test('each decision box carries its removed explanation as a data-tooltip and a title attribute (hover bubble + mobile/screen-reader fallback)', () => {
+  const w = boot();
+  const opts = w.document.querySelectorAll('#cp-decision-options .decision-option');
+  const expected = [
+    'Clean profile, normal use.',
+    'Saw flags, accepting risk. Notes required.',
+    'Need more info. Pauses use.',
+    "Won't use. Adds to your DNU list.",
+  ];
+  const tooltips = Array.from(opts).map((o) => o.getAttribute('data-tooltip'));
+  const titles = Array.from(opts).map((o) => o.getAttribute('title'));
+  assert.deepEqual(tooltips, expected);
+  assert.deepEqual(titles, expected);
+});
+
+test('the hover tooltip bubble is CSS-only: hidden by default, revealed on :hover, sourced from data-tooltip', () => {
+  assert.match(html, /\.decision-option::after\s*\{[^}]*content:\s*attr\(data-tooltip\);/);
+  assert.match(html, /\.decision-option::after\s*\{[^}]*opacity:\s*0;/);
+  assert.match(html, /\.decision-option:hover::after,\s*\.decision-option:hover::before\s*\{[^}]*opacity:\s*1;/);
+});

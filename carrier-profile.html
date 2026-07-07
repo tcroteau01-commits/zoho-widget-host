@@ -431,6 +431,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 .decision-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
 .decision-option {
+  position: relative;
   border: 2px solid var(--of-beige-line); border-radius: 10px; padding: 20px 10px;
   cursor: pointer; transition: all 0.15s; background: #fff; min-width: 0;
   display: flex; flex-direction: column; align-items: center; text-align: center;
@@ -443,6 +444,28 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .decision-option.warn .decision-option-icon { color: var(--of-amber); }
 .decision-option.amber .decision-option-icon { color: var(--of-amber-text); }
 .decision-option.bad  .decision-option-icon { color: var(--of-red); }
+/* CP2 — hover tooltip bubble (icon+title stay bare; the explanation that used
+   to sit under the title now only surfaces on hover, via a CSS-only bubble
+   sourced from data-tooltip). title="" mirrors the same text so touch/mobile
+   users still get it (long-press) and screen readers can announce it. */
+.decision-option::after {
+  content: attr(data-tooltip);
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  width: 150px; text-align: left;
+  background: var(--of-charcoal); color: #fff; font-size: 11px; font-weight: 500; line-height: 1.4;
+  padding: 8px 10px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.15s ease;
+  z-index: 30;
+}
+.decision-option::before {
+  content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--of-charcoal);
+  opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.15s ease;
+  z-index: 30;
+}
+.decision-option:hover::after, .decision-option:hover::before { opacity: 1; visibility: visible; }
+.decision-option:first-child::after { left: 0; transform: none; }
+.decision-option:last-child::after { left: auto; right: 0; transform: none; }
 
 .modal-notes-label { font-size: 11px; font-weight: 700; color: var(--of-charcoal); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block; }
 .modal-notes-label .req { color: var(--of-red); margin-left: 4px; }
@@ -705,19 +728,19 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
     <div class="rail-card">
       <div class="decision-options" id="cp-decision-options">
-        <div class="decision-option good" data-decision="Approve">
+        <div class="decision-option good" data-decision="Approve" data-tooltip="Clean profile, normal use." title="Clean profile, normal use.">
           <span class="decision-option-icon">✓</span>
           <div class="decision-option-name">Approve</div>
         </div>
-        <div class="decision-option warn" data-decision="Approve with Caution">
+        <div class="decision-option warn" data-decision="Approve with Caution" data-tooltip="Saw flags, accepting risk. Notes required." title="Saw flags, accepting risk. Notes required.">
           <span class="decision-option-icon">◐</span>
           <div class="decision-option-name">Approve with Caution</div>
         </div>
-        <div class="decision-option amber" data-decision="Hold">
+        <div class="decision-option amber" data-decision="Hold" data-tooltip="Need more info. Pauses use." title="Need more info. Pauses use.">
           <span class="decision-option-icon">⏸</span>
           <div class="decision-option-name">Hold</div>
         </div>
-        <div class="decision-option bad" data-decision="Decline">
+        <div class="decision-option bad" data-decision="Decline" data-tooltip="Won't use. Adds to your DNU list." title="Won't use. Adds to your DNU list.">
           <span class="decision-option-icon">✕</span>
           <div class="decision-option-name">Decline</div>
         </div>

@@ -54,3 +54,22 @@ test('LOR Update payload includes Factoring_Company (the form-required current f
   const d = window.buildNoaPayload();
   assert.equal(d.Factoring_Company, 'f1');
 });
+
+// Bug D: the native form also requires Banking_Document_Upload (proof of
+// account ownership, separate from the NOA/LOR doc) whenever
+// Bank_Document_Upload == "Yes", but uploadNoaDoc never sent it anywhere.
+test('uploadNoaDoc uploads the banking document for LOR Update when bank details are entered', async () => {
+  const { window } = makeWidget();
+  const calls = [];
+  window.fetch = (u, opts) => { calls.push([String(u), opts]); return Promise.resolve({ json: () => Promise.resolve({ ok: true }) }); };
+  window.selectedType = 'LOR Update';
+  window.lorBankChoice = 'yes';
+  window.selectedDocFile = new window.File(['x'], 'lor.pdf', { type: 'application/pdf' });
+  window.selectedBankDocFile = new window.File(['y'], 'voided-check.pdf', { type: 'application/pdf' });
+  await window.uploadNoaDoc('rec_1');
+  const bankUpload = calls.find((c) => {
+    const fd = c[1] && c[1].body;
+    return fd && fd.get && fd.get('field_name') === 'Banking_Document_Upload';
+  });
+  assert.ok(bankUpload, 'must upload the banking document to Banking_Document_Upload');
+});

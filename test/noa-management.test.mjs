@@ -515,6 +515,23 @@ test('LOR "Yes bank" shows inputs and payload includes bank fields + Bank_Docume
   assert.equal(d.Bank_Name, 'Wells Fargo');
 });
 
+// Bug: the native form also requires Funding_Type ("Quick Pay"/"Standard Net
+// 30") whenever Bank_Document_Upload == "Yes", but the widget's Bank Details
+// section had no way to collect it at all -- submission failed with
+// "Funding Type is required."
+test('LOR "Yes bank" payload includes Funding_Type from the selected radio', () => {
+  const { window } = makeWidget();
+  window.selectType('LOR Update');
+  window.selectedType = 'LOR Update';
+  window.selectedVendorId = '1001';
+  window.setLorBankChoice('yes');
+  window.wireForm();
+  window.document.querySelector('[name="lor-funding-type"][value="Quick Pay"]').checked = true;
+  window.document.querySelector('[name="lor-funding-type"][value="Quick Pay"]').dispatchEvent(new window.Event('change'));
+  const d = window.buildNoaPayload();
+  assert.equal(d.Funding_Type, 'Quick Pay');
+});
+
 test('buildNoaPayload includes USDOT_Search for Add New Carrier', () => {
   const { window } = makeWidget();
   window.selectedType = 'Add New Carrier';

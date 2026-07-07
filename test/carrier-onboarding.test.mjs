@@ -172,14 +172,18 @@ test('history table has an Actions column header', async () => {
 });
 
 // ── OB3.1: search-first send flow ─────────────────────────────────────────────
-function makeLookupWidget(carrier) {
+function makeLookupWidget(carrier, opts) {
   // carrier: object returned as lookupResult.carrier (null = not found)
+  // opts.admin: stub window.OPERFI_IMP so isAdminSession() is true
+  // opts.globalDnu: /carrier-lookup response includes global_dnu: true
+  opts = opts || {};
   const posts = [];
   const dom = new JSDOM(HTML, {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     url: 'https://tcroteau01-commits.github.io/carrier-onboarding.html',
     beforeParse(window) {
+      if (opts.admin) window.OPERFI_IMP = { target: () => 'client@acme.com' };
       window.ZOHO = { CREATOR: {
         UTIL: { getInitParams: () => Promise.resolve({ loginUser: 'broker@test.com' }) },
         init: () => Promise.resolve() } };
@@ -188,7 +192,7 @@ function makeLookupWidget(carrier) {
         if (u.includes('/carrier-lookup')) {
           return Promise.resolve({ ok: true,
             text: () => Promise.resolve(''),
-            json: () => Promise.resolve({ carrier: carrier, existing_vendor: null }) });
+            json: () => Promise.resolve({ carrier: carrier, existing_vendor: null, global_dnu: !!opts.globalDnu }) });
         }
         if (u.includes('/broker-users')) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ self_contact_id: 'c1' }) });
@@ -372,7 +376,7 @@ test('already-a-vendor result shows the authority chip for a dual carrier', asyn
   assert.match(html, /double-broker/i);
 });
 
-test('global DNU renders a Do Not Use warning; Send stays enabled', async () => {
+test('global DNU renders a Do Not Use warning; Send is blocked (non-admin)', async () => {
   const dom = makeWidget({ [FULL]: [], [PAY]: [] });
   boot(dom.window);
   dom.window.renderLookupResult({
@@ -384,8 +388,11 @@ test('global DNU renders a Do Not Use warning; Send stays enabled', async () => 
   const el = dom.window.document.getElementById('lookup-result');
   assert.match(el.innerHTML, /Do Not Use/i);
   assert.match(el.innerHTML, /flagged this carrier as Do Not Use/i);
-  // warn, don't block: Send Onboarding Link still present
-  assert.ok(el.querySelector('[data-open-modal]'));
+  // DNU2: hard block for a non-admin — no clickable send button, just a disabled one
+  assert.ok(!el.querySelector('[data-open-modal]'), 'no clickable send button for a flagged carrier');
+  const blocked = el.querySelector('[data-dnu-blocked]');
+  assert.ok(blocked, 'blocked button present');
+  assert.equal(blocked.disabled, true);
 });
 
 test('no global DNU renders no Do Not Use warning', async () => {
@@ -413,4 +420,96 @@ test('global DNU and broker authority both warn', async () => {
   const html = dom.window.document.getElementById('lookup-result').innerHTML;
   assert.match(html, /Broker Authority/i);
   assert.match(html, /flagged this carrier as Do Not Use/i);
+});
+
+test('global DNU + non-admin: no working send path exists (result card + static cards)', async () => {
+  const dom = makeLookupWidget(
+    { dot_number: '444', carrier_name: 'BAD ACTOR LLC', email_address: '' },
+    { globalDnu: true }
+  );
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal], [data-dnu-blocked]');
+  await runLookup(w);
+
+  const blocked = w.document.querySelector('[data-dnu-blocked]');
+  assert.ok(blocked, 'blocked button present in result card');
+  assert.equal(blocked.disabled, true);
+  assert.ok(!w.document.querySelector('#lookup-result [data-open-modal]'),
+    'no clickable send button in the result card for a flagged carrier');
+
+  blocked.click(); // no listener attached; must not open the modal
+  assert.ok(!w.document.getElementById('modal-scrim').classList.contains('show'));
+
+  // static send-grid cards must also stay disabled for a flagged carrier
+  assert.equal(w.document.querySelector('[data-open-modal="full"]').disabled, true);
+  assert.equal(w.document.querySelector('[data-open-modal="pay"]').disabled, true);
+});
+
+test('clean lookup (no DNU) still re-enables the static send-grid buttons', async () => {
+  const dom = makeLookupWidget(
+    { dot_number: '111', carrier_name: 'CLEAN CO', email_address: '' },
+    { globalDnu: false }
+  );
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  assert.equal(w.document.querySelector('[data-open-modal="full"]').disabled, false);
+  assert.equal(w.document.querySelector('[data-open-modal="pay"]').disabled, false);
+});
+
+test('not-found-in-CarrierOK branch also honors global_dnu (blocked for non-admin)', async () => {
+  const dom = makeLookupWidget(null, { globalDnu: true });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '#lookup-input');
+  await runLookup(w);
+  const el = w.document.getElementById('lookup-result');
+  assert.match(el.innerHTML, /flagged this carrier as Do Not Use/i);
+  assert.ok(!el.querySelector('[data-open-modal]'), 'no clickable send button when the not-found branch is also flagged');
+  assert.ok(el.querySelector('[data-dnu-blocked]'));
+});
+
+test('global DNU + admin session: Send Anyway arms override and posts dnu_override+reason', async () => {
+  const dom = makeLookupWidget(
+    { dot_number: '444', carrier_name: 'BAD ACTOR LLC', email_address: 'bad@carrier.com' },
+    { admin: true, globalDnu: true }
+  );
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+
+  const startBtn = w.document.querySelector('[data-dnu-override-start]');
+  assert.ok(startBtn, 'override trigger present for admin session');
+  startBtn.click();
+
+  const reasonInput = w.document.querySelector('[data-dnu-override-reason]');
+  reasonInput.value = 'cleared by ops manager';
+  w.document.querySelector('[data-dnu-override-confirm]').click();
+
+  assert.ok(w.document.getElementById('modal-scrim').classList.contains('show'), 'modal opens once armed');
+  w.document.getElementById('modal-submit').click();
+  await new Promise(r => setTimeout(r, 30));
+
+  const posts = w._posts.filter(p => p.url.includes('/broker-send-onboarding-link'));
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].body.dnu_override, true);
+  assert.equal(posts[0].body.override_reason, 'cleared by ops manager');
+  assert.equal(String(posts[0].body.carrier_dot), '444');
+});
+
+test('global DNU + admin session: confirm without a reason does not arm the override', async () => {
+  const dom = makeLookupWidget(
+    { dot_number: '444', carrier_name: 'BAD ACTOR LLC', email_address: '' },
+    { admin: true, globalDnu: true }
+  );
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-dnu-override-start]').click();
+  w.document.querySelector('[data-dnu-override-confirm]').click(); // empty reason
+  assert.ok(!w.document.getElementById('modal-scrim').classList.contains('show'), 'modal must not open without a reason');
 });

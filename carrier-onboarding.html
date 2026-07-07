@@ -563,7 +563,7 @@ var FORMS = {
 // ── State ─────────────────────────────────────────────────────────────────
 var brokerEmail   = '';
 var brokerContactId = null;        // Current broker's own Contact ID (used for Contact_Name on the form)
-var lookupResult  = null;          // { carrier, existing_vendor } from last successful lookup
+var lookupResult  = null;          // { carrier, existing_vendor, global_dnu } from last successful lookup
 var historyRecords = [];           // Combined records from both reports
 var historySearch = '';
 var historyDateFilter = '30d';     // '7d' | '30d' | '90d' | 'all' | 'custom'
@@ -572,6 +572,8 @@ var historyDateTo = '';            // YYYY-MM-DD when filter is 'custom'
 var historyPage = 1;
 var HISTORY_PAGE_SIZE = 20;
 var currentModalType = null;       // 'full' or 'pay'
+var dnuOverrideArmed = false;      // set true only via the inline "Send Anyway" admin override flow
+var dnuOverrideReason = '';        // captured reason, sent as override_reason when armed
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
@@ -726,7 +728,9 @@ function runLookup() {
   }).then(function(payload) {
     btn.disabled = false;
     lookupResult = payload;
-    document.querySelectorAll('.send-card [data-open-modal]').forEach(function(b) { b.disabled = false; });
+    if (!payload.global_dnu) {
+      document.querySelectorAll('.send-card [data-open-modal]').forEach(function(b) { b.disabled = false; });
+    }
     renderLookupResult(payload, label);
   }).catch(function(err) {
     btn.disabled = false;
@@ -751,10 +755,76 @@ function showLookupError(title, msg) {
     '</div>';
 }
 
+function isAdminSession() {
+  try { return !!(window.OPERFI_IMP && window.OPERFI_IMP.target()); } catch (e) { return false; }
+}
+window.isAdminSession = isAdminSession;  // exposed for tests
+
+// Builds the actions-block HTML for a lookup result: normal Send button when clean,
+// a disabled blocked button for a non-admin on a flagged carrier, or an admin-only
+// "Send Anyway" override affordance. Shared by both renderLookupResult branches so
+// the DNU gate lives in exactly one place.
+function dnuActionsHtml(globalDnu) {
+  if (!globalDnu) {
+    return '<button class="btn primary" data-open-modal="full">Send Onboarding Link</button>';
+  }
+  if (!isAdminSession()) {
+    return '<button class="btn primary" disabled data-dnu-blocked>Blocked — Do Not Use</button>';
+  }
+  return (
+    '<button class="btn ghost" data-dnu-override-start>Send Anyway (Admin Override)</button>' +
+    '<div class="dnu-override-panel" data-dnu-override-panel style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
+      '<select class="select" data-dnu-override-type>' +
+        '<option value="full">Onboarding Link (full)</option>' +
+        '<option value="pay">Vendor Pay Link only</option>' +
+      '</select>' +
+      '<input class="input" type="text" placeholder="Reason for override (required)" data-dnu-override-reason>' +
+      '<button class="btn primary" data-dnu-override-confirm>Confirm Send Anyway</button>' +
+      '<div class="field-err" data-dnu-override-err>A reason is required to override.</div>' +
+    '</div>'
+  );
+}
+window.dnuActionsHtml = dnuActionsHtml;  // exposed for tests
+
+// Wires the buttons rendered by dnuActionsHtml into the given result-card element.
+function wireDnuActions(el, globalDnu) {
+  if (!globalDnu) {
+    var sendBtn = el.querySelector('[data-open-modal]');
+    if (sendBtn) sendBtn.addEventListener('click', function() { openModal('full'); });
+    return;
+  }
+  if (!isAdminSession()) return; // blocked button intentionally has no handler
+  var startBtn    = el.querySelector('[data-dnu-override-start]');
+  var panel       = el.querySelector('[data-dnu-override-panel]');
+  var typeSel     = el.querySelector('[data-dnu-override-type]');
+  var reasonInput = el.querySelector('[data-dnu-override-reason]');
+  var err         = el.querySelector('[data-dnu-override-err]');
+  var confirmBtn  = el.querySelector('[data-dnu-override-confirm]');
+  startBtn.addEventListener('click', function() {
+    panel.style.display = 'flex';
+    startBtn.style.display = 'none';
+  });
+  confirmBtn.addEventListener('click', function() {
+    var reason = reasonInput.value.trim();
+    if (!reason) {
+      err.classList.add('show');
+      reasonInput.classList.add('invalid');
+      return;
+    }
+    err.classList.remove('show');
+    reasonInput.classList.remove('invalid');
+    dnuOverrideArmed = true;
+    dnuOverrideReason = reason;
+    openModal(typeSel.value);
+  });
+}
+window.wireDnuActions = wireDnuActions;  // exposed for tests
+
 function renderLookupResult(payload, queryLabel) {
   var el = document.getElementById('lookup-result');
   var carrier = payload.carrier;
   var existing = payload.existing_vendor;
+  var globalDnu = payload.global_dnu === true;
 
   if (existing) {
     // Already a vendor
@@ -804,12 +874,11 @@ function renderLookupResult(payload, queryLabel) {
     el.innerHTML =
       '<div class="result-info">' +
         '<div class="result-name">' + esc(queryLabel) + ' not found in CarrierOK</div>' +
+        (globalDnu ? '<div class="result-detail error">⚠ OperFi has flagged this carrier as Do Not Use. Contact vendors@operfi.com before sending an onboarding link.</div>' : '') +
         '<div class="result-detail warning">We could not find this carrier in CarrierOK. You can still send an onboarding link — fill in the details manually below.</div>' +
       '</div>' +
-      '<div class="result-actions">' +
-        '<button class="btn primary" data-open-modal="full">Send Onboarding Link</button>' +
-      '</div>';
-    el.querySelector('[data-open-modal]').addEventListener('click', function() { openModal('full'); });
+      '<div class="result-actions">' + dnuActionsHtml(globalDnu) + '</div>';
+    wireDnuActions(el, globalDnu);
     return;
   }
 
@@ -834,7 +903,6 @@ function renderLookupResult(payload, queryLabel) {
     badges.push('<span class="status-badge red">No Active Authority</span>');
   }
   if (carrier.out_of_service) badges.push('<span class="status-badge red">Out of Service</span>');
-  var globalDnu = payload.global_dnu === true;
   if (globalDnu) badges.push('<span class="status-badge red">Do Not Use</span>');
   var dnuWarn = globalDnu
     ? 'OperFi has flagged this carrier as Do Not Use. Contact vendors@operfi.com before sending an onboarding link.'
@@ -854,10 +922,8 @@ function renderLookupResult(payload, queryLabel) {
       (authWarn ? '<div class="result-detail error">⚠ ' + esc(authWarn) + '</div>' : '') +
       '<div class="result-detail success">New carrier — not yet in your vendors. Send them an onboarding link below to get them set up.</div>' +
     '</div>' +
-    '<div class="result-actions">' +
-      '<button class="btn primary" data-open-modal="full">Send Onboarding Link</button>' +
-    '</div>';
-  el.querySelector('[data-open-modal]').addEventListener('click', function() { openModal('full'); });
+    '<div class="result-actions">' + dnuActionsHtml(globalDnu) + '</div>';
+  wireDnuActions(el, globalDnu);
 }
 window.renderLookupResult = renderLookupResult;  // exposed for tests
 
@@ -1072,6 +1138,9 @@ function openModal(type) {
       'Look up the carrier by DOT or MC above before sending a link.');
     return;
   }
+  if (lookupResult.global_dnu && !dnuOverrideArmed) {
+    return;
+  }
   currentModalType = type;
   resetModal();
 
@@ -1126,6 +1195,8 @@ function openModal(type) {
 function closeModal() {
   document.getElementById('modal-scrim').classList.remove('show');
   currentModalType = null;
+  dnuOverrideArmed = false;
+  dnuOverrideReason = '';
 }
 
 function resetModal() {
@@ -1224,6 +1295,10 @@ function submitModal() {
   if (lookupResult && lookupResult.carrier) {
     if (lookupResult.carrier.dot_number) body.carrier_dot = lookupResult.carrier.dot_number;
     if (lookupResult.carrier.mc_number)  body.carrier_mc  = lookupResult.carrier.mc_number;
+  }
+  if (dnuOverrideArmed) {
+    body.dnu_override = true;
+    body.override_reason = dnuOverrideReason;
   }
 
   fetch(BROKER_API_BASE + '/broker-send-onboarding-link', {

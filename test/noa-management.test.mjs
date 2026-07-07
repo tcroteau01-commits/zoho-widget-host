@@ -149,6 +149,23 @@ test('showOnFile captures the current factor id for LOR Update to submit later',
   assert.equal(window.selectedFactoringCompanyId, 'f1');
 });
 
+// The Vendor record's Factoring_Company is a plain-text display name, not a
+// lookup -- All_Vendors never carries a usable Creator ID for it. Fall back to
+// matching the carrier's factor name against the already-loaded
+// /factoring-companies list (fetched for the assign-role dropdowns anyway) so
+// LOR Update still gets a usable id even when the backend can't supply one.
+test('showOnFile resolves the factor id by name when the backend has no id', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ companies: [
+    { id: 'f9', name: 'Triumph Business Capital' },
+    { id: 'f2', name: 'OTR Solutions' },
+  ] }) });
+  await window.loadFactoringCompanies();
+  window.showOnFile({ factoring_company: 'Triumph Business Capital', pay_term: 'Factoring Company' });
+  assert.equal(window.selectedFactoringCompanyId, 'f9');
+});
+
 test('opening the form defaults to NOA Update so Submission_Type is always set', () => {
   const { window } = makeWidget();
   window.selectedType = null;
@@ -404,6 +421,22 @@ test('selectType NOA Update shows factoring + upload, hides bank/new-factor/usdo
   assert.equal(hidden('noa-bank-fields'), true);
   assert.equal(hidden('noa-new-factor'), true);
   assert.equal(hidden('noa-usdot-search'), true);
+});
+
+// Bug: the "Choose this option if the carrier originally selected Quick Pay or
+// their NOA was not correct" note is NOA-Update-specific guidance, but it was
+// static HTML with no type-conditional logic -- it showed for every type.
+test('type-note (NOA-Update-specific guidance) only shows for NOA Update', () => {
+  const { window } = makeWidget();
+  const hidden = () => window.document.getElementById('type-note').classList.contains('hidden');
+  window.selectType('NOA Update');
+  assert.equal(hidden(), false);
+  window.selectType('LOR Update');
+  assert.equal(hidden(), true);
+  window.selectType('Factoring Company Change');
+  assert.equal(hidden(), true);
+  window.selectType('Add New Carrier');
+  assert.equal(hidden(), true);
 });
 
 test('selectType Factoring Company Change shows new-factor only (no duplicate factoring/upload)', () => {

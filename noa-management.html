@@ -384,7 +384,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <!-- Form card (NOA Update flow shown as example) -->
     <div class="card">
 
-      <div class="type-note">
+      <div class="type-note" id="type-note">
         Choose this option if the carrier originally selected Quick Pay or their NOA was not correct.
       </div>
 
@@ -586,7 +586,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
   </div>
 
-  <div class="version-stamp">v2026-07-06.2</div>
+  <div class="version-stamp">v2026-07-06.3</div>
 
 </div>
 
@@ -717,6 +717,7 @@ function loadFactoringCompanies() {
     .then(function(r){ return r.json(); })
     .then(function(data){
       var companies = (data && data.companies) || [];
+      loadedFactoringCompanies = companies;
       _fillFactoringSelect('noa-factoring-select', companies, function(v){ selectedFactoringId = v; });
       _fillFactoringSelect('fc-change-select', companies, function(v){ selectedNewFactoringId = v; });
     });
@@ -937,6 +938,7 @@ var selectedLorFile = null;
 var newCarrierLookup = null;   // { carrier, existing_vendor } of the last successful NEW-carrier lookup
 var selectedPayTerm = null;   // carrier's current pay term, captured from the on-file panel
 var selectedFactoringCompanyId = null;   // carrier's current factor id, captured from the on-file panel (LOR Update has no dropdown for it)
+var loadedFactoringCompanies = [];   // {id,name} list from /factoring-companies -- also used to resolve a factor id by name, since Vendors.Factoring_Company is plain text, not a lookup
 var selectedCarrierName = '';  // selected carrier's name, for the confirmation screen
 
 function applyGating(p) {
@@ -948,7 +950,16 @@ function applyGating(p) {
 
 function showOnFile(carrier) {
   if (carrier && carrier.pay_term) selectedPayTerm = carrier.pay_term;
-  if (carrier && carrier.factoring_company_id) selectedFactoringCompanyId = carrier.factoring_company_id;
+  if (carrier && carrier.factoring_company_id) {
+    selectedFactoringCompanyId = carrier.factoring_company_id;
+  } else if (carrier && carrier.factoring_company) {
+    // Vendors.Factoring_Company is a plain-text display name, not a lookup, so
+    // the backend usually can't supply an id -- resolve it by name instead.
+    var match = loadedFactoringCompanies.filter(function (fc) {
+      return fc.name && fc.name.trim().toLowerCase() === carrier.factoring_company.trim().toLowerCase();
+    })[0];
+    if (match) selectedFactoringCompanyId = match.id;
+  }
   if (carrier && carrier.carrier_name) selectedCarrierName = carrier.carrier_name;
   var panel = document.getElementById('noa-onfile');
   var grid = panel ? panel.querySelector('.onfile-grid') : null;
@@ -1096,6 +1107,10 @@ function selectType(t) {
   // upload section label: LOR uploads an LOR, others an NOA
   var ut = document.getElementById('sec-upload-title');
   if (ut) ut.textContent = (t === 'LOR Update') ? 'Upload LOR Document' : 'Upload NOA Document';
+  // this guidance is NOA-Update-specific ("originally selected Quick Pay or
+  // their NOA was not correct") -- it showed for every type before
+  var tn = document.getElementById('type-note');
+  if (tn) tn.classList.toggle('hidden', t !== 'NOA Update');
   // reflect active type card
   Array.prototype.forEach.call(document.querySelectorAll('#view-form .type-card'), function(card){
     card.classList.toggle('active', card.getAttribute('data-type') === t);

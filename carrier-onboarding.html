@@ -730,6 +730,8 @@ function runLookup() {
     lookupResult = payload;
     if (!payload.global_dnu) {
       document.querySelectorAll('.send-card [data-open-modal]').forEach(function(b) { b.disabled = false; });
+    } else {
+      document.querySelectorAll('.send-card [data-open-modal]').forEach(function(b) { b.disabled = true; });
     }
     renderLookupResult(payload, label);
   }).catch(function(err) {

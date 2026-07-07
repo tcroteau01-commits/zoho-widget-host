@@ -172,12 +172,14 @@ test('history table has an Actions column header', async () => {
 });
 
 // ── OB3.1: search-first send flow ─────────────────────────────────────────────
-function makeLookupWidget(carrier, opts) {
-  // carrier: object returned as lookupResult.carrier (null = not found)
+function makeLookupWidget(carrier, opts, carrier2, opts2) {
+  // carrier: object returned as lookupResult.carrier (null = not found) on first lookup
   // opts.admin: stub window.OPERFI_IMP so isAdminSession() is true
   // opts.globalDnu: /carrier-lookup response includes global_dnu: true
+  // carrier2, opts2: optional second carrier/opts for sequential lookups in the same widget
   opts = opts || {};
   const posts = [];
+  let lookupCount = 0;
   const dom = new JSDOM(HTML, {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
@@ -190,9 +192,13 @@ function makeLookupWidget(carrier, opts) {
       window.fetch = (url, init) => {
         const u = String(url);
         if (u.includes('/carrier-lookup')) {
+          lookupCount++;
+          const isSecond = lookupCount > 1 && carrier2;
+          const c = isSecond ? carrier2 : carrier;
+          const o = isSecond ? (opts2 || {}) : opts;
           return Promise.resolve({ ok: true,
             text: () => Promise.resolve(''),
-            json: () => Promise.resolve({ carrier: carrier, existing_vendor: null, global_dnu: !!opts.globalDnu }) });
+            json: () => Promise.resolve({ carrier: c, existing_vendor: null, global_dnu: !!o.globalDnu }) });
         }
         if (u.includes('/broker-users')) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ self_contact_id: 'c1' }) });
@@ -457,6 +463,36 @@ test('clean lookup (no DNU) still re-enables the static send-grid buttons', asyn
   await runLookup(w);
   assert.equal(w.document.querySelector('[data-open-modal="full"]').disabled, false);
   assert.equal(w.document.querySelector('[data-open-modal="pay"]').disabled, false);
+});
+
+test('static send-grid buttons re-disable after a flagged lookup follows a clean one', async () => {
+  const dom = makeLookupWidget(
+    { dot_number: '111', carrier_name: 'CLEAN CO', email_address: '' },
+    { globalDnu: false },
+    { dot_number: '222', carrier_name: 'BAD CO', email_address: '' },
+    { globalDnu: true }
+  );
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+
+  // First lookup: clean carrier
+  await runLookup(w);
+  assert.equal(w.document.querySelector('[data-open-modal="full"]').disabled, false,
+    'buttons enabled after clean lookup');
+  assert.equal(w.document.querySelector('[data-open-modal="pay"]').disabled, false,
+    'buttons enabled after clean lookup');
+
+  // Second lookup: flagged carrier in the SAME widget
+  w.document.getElementById('lookup-input').value = '222';
+  w.document.getElementById('lookup-btn').click();
+  await waitFor(w, '#lookup-result .result-name', 500);
+  await new Promise(r => setTimeout(r, 20));
+
+  assert.equal(w.document.querySelector('[data-open-modal="full"]').disabled, true,
+    'buttons re-disabled after flagged lookup');
+  assert.equal(w.document.querySelector('[data-open-modal="pay"]').disabled, true,
+    'buttons re-disabled after flagged lookup');
 });
 
 test('not-found-in-CarrierOK branch also honors global_dnu (blocked for non-admin)', async () => {

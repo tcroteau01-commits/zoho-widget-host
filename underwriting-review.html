@@ -158,6 +158,22 @@ tr:last-child td { border-bottom:none; }
 .add-wrap { margin-top:12px; padding-top:12px; border-top:1px dashed var(--of-beige-line); }
 .add-form { margin-top:10px; }
 .add-form .fld { margin-bottom:10px; }
+/* Client agreement (Zoho Sign) — matches .fld/.card tokens for a uniform look. */
+.agr-section { border-top:1px solid var(--of-beige-line); margin-top:16px; padding-top:14px; }
+.agr-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.agr-head .h { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; color:var(--of-gray-500); }
+.agr-note { font-size:11px; color:var(--of-gray-500); margin:8px 0; }
+.agr-refresh { display:block; text-align:center; margin-top:10px; font-size:11px; font-weight:600; color:var(--of-gray-500); text-decoration:none; }
+.agr-refresh:hover { color:var(--of-orange); }
+.agr-panel { margin-top:12px; background:var(--of-beige-soft); border:1px solid var(--of-beige-line); border-radius:10px; padding:14px; }
+.agr-panel-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; color:var(--of-gray-500); margin-bottom:10px; }
+.agr-row { margin-bottom:12px; }
+.agr-row .lbl { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; color:var(--of-gray-700); margin-bottom:5px; }
+.agr-row .lbl .src { font-weight:600; text-transform:none; letter-spacing:0; color:var(--of-gray-500); }
+.agr-row input { width:100%; padding:10px 12px; border:1.5px solid var(--of-beige-line); border-radius:9px; font-size:13px; font-family:inherit; background:#fff; color:var(--of-charcoal); box-sizing:border-box; }
+.agr-row input:focus { outline:none; border-color:var(--of-orange); background:#fff; }
+.agr-row .agr-name { margin-bottom:6px; }
+.agr-actions { display:flex; gap:8px; margin-top:12px; }
 
 /* Intro dashboard */
 .dash-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--of-charcoal); margin:4px 2px 10px; }
@@ -389,6 +405,28 @@ tr:last-child td { border-bottom:none; }
             <button class="btn ghost block" id="btnSave">💾 Save progress</button>
           </div>
           <div style="font-size:11px;color:var(--of-gray-500);margin-top:10px;text-align:center">Approve requires all 6 gates green. Decision syncs to CRM Deal stage.</div>
+
+          <!-- Client agreement e-signature (Zoho Sign). Unlocks after an Approved decision. -->
+          <div id="agrSection" class="agr-section">
+            <div class="agr-head">
+              <div class="h">Client Agreement</div>
+              <span class="pill n" id="agrBadge">Not Sent</span>
+            </div>
+            <div id="agrHint" class="agr-note">Approve the client to send the agreement for e-signature.</div>
+            <button class="btn orange block" id="btnSendAgreement" style="display:none">✍ Send Agreement for Signature</button>
+            <a href="#" id="btnAgrRefresh" class="agr-refresh" style="display:none">↻ Refresh signature status</a>
+
+            <!-- Recipients panel (built from the template's signer roles) -->
+            <div id="agrPanel" class="agr-panel" style="display:none">
+              <div class="agr-panel-title">Who needs to sign?</div>
+              <div id="agrRows"></div>
+              <div id="agrPanelStatus" class="agr-note"></div>
+              <div class="agr-actions">
+                <button class="btn green sm" id="btnAgrConfirm" style="flex:1">Send for signature</button>
+                <button class="btn ghost sm" id="btnAgrCancel">Cancel</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="card">
@@ -443,6 +481,8 @@ var CHECKS_PATH = '/application-checks'; // GET ?usdot= → { fraud, ownership, 
 var QUEUE_PATH = '/applications';        // GET → { applications: [{ USDOT, Business_Name, Authority_Type, Application_Status, Submitted_At, Updated_At, Assigned_Underwriter, Buyout_Required, UCC_Issues, Decision_Date }] }  (Updated_At drives the "Stale (30d+)" bucket; confirm with Tom)
 var ADD_PATH = '/uw-add-record';         // POST { application_id, kind:'owner'|'customer'|'contact'|'related', record } → creates the linked child record  (confirm with Tom)
 var DOCREQ_PATH = '/sales-doc-request';  // POST { application_id, document_type, source } → creates a Document (Status='Requested'); shown on the client portal  (confirm with Tom)
+var AGR_ROLES_PATH = '/agreement-roles'; // GET ?usdot= → { roles:[{action_id,role_name}], suggestions:[{name,email,source}] } from the Zoho Sign template
+var AGR_SEND_PATH = '/send-agreement';   // POST { application_id, usdot, recipients:[{action_id,name,email}], resend? } → sends the agreement for e-signature
 
 // ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
@@ -752,7 +792,30 @@ function recordHasContent(kind, rec){
   return true;
 }
 
+// ── Client agreement (Zoho Sign) pure logic ──────────────────────────────────
+// Derive the agreement state off the Application record for the badge + button gating.
+function agreementBadge(app){
+  var a = app || {};
+  var status = a.Agreement_Status || (a.Sign_Request_Id ? 'Sent' : 'Not Sent');
+  var cls = { 'Signed':'g', 'Sent':'a', 'Viewed':'a', 'Declined':'r', 'Recalled':'r', 'Expired':'r', 'Not Sent':'n' }[status] || 'a';
+  var sent = !!a.Sign_Request_Id || /^(sent|viewed|signed|declined|recalled|expired)$/i.test(status || '');
+  return { status: status, cls: cls, sent: sent, signed: /signed/i.test(status || '') };
+}
+// Build the /send-agreement recipients payload from the template roles + entered name/email pairs.
+// Returns { recipients, missing } so the UI can block the send until every signer has an email.
+function buildAgreementRecipients(roles, inputs){
+  var recipients = [], missing = [];
+  (roles || []).forEach(function(role, i){
+    var v = (inputs && inputs[i]) || {};
+    var email = String(v.email || '').trim();
+    if (!email){ missing.push(role.role_name || ('Signer ' + (i + 1))); return; }
+    recipients.push({ action_id: role.action_id, name: String(v.name || '').trim(), email: email });
+  });
+  return { recipients: recipients, missing: missing };
+}
+
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
+  agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
   STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
@@ -1084,6 +1147,113 @@ function renderGate() {
   $('btnApprove').disabled = !g.allPass;
   $('rbLimit').textContent = s.approvedCreditLimit || '—';
   $('rbRate').textContent = s.recommendedRate || '—';
+  renderAgreement();
+}
+
+// ── Client agreement e-signature (Zoho Sign) ─────────────────────────────────
+// The Send button unlocks once the decision is Approved. Once sent, the badge tracks status
+// (Sent → Viewed → Signed) read off the Application record; a webhook flips it server-side.
+function renderAgreement(){
+  var sec = $('agrSection'); if (!sec) return;
+  if (!MODEL){ sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  var b = agreementBadge(MODEL.application || {});
+  var badge = $('agrBadge');
+  badge.className = 'pill ' + b.cls;
+  badge.textContent = b.status;
+  var approved = (readState().decision === 'Approved') || /approved/i.test((MODEL.review && MODEL.review.Decision2) || '');
+  var btn = $('btnSendAgreement'), hint = $('agrHint'), refresh = $('btnAgrRefresh');
+  if (b.signed){
+    btn.style.display = 'block'; btn.textContent = '✓ Agreement signed'; btn.disabled = true;
+    hint.style.display = 'none'; refresh.style.display = 'none';
+  } else if (b.sent){
+    btn.style.display = 'block'; btn.textContent = '↻ Resend agreement'; btn.disabled = false;
+    hint.style.display = 'none'; refresh.style.display = 'inline';
+  } else if (approved){
+    btn.style.display = 'block'; btn.textContent = '✍ Send Agreement for Signature'; btn.disabled = false;
+    hint.style.display = 'none'; refresh.style.display = 'none';
+  } else {
+    btn.style.display = 'none'; hint.style.display = 'block'; refresh.style.display = 'none';
+  }
+}
+
+// Open the "who signs" panel — fetch the template's signer roles + prefill suggestions.
+function openAgreementPanel(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var panel = $('agrPanel'), pstat = $('agrPanelStatus');
+  $('agrRows').innerHTML = ''; pstat.textContent = 'Loading signer roles…'; panel.style.display = 'block';
+  var usdot = (MODEL.application && MODEL.application.USDOT) || '';
+  if (MODEL._demo || typeof fetch !== 'function'){
+    buildAgreementRows([{ action_id:'demo-1', role_name:'Owner 1 & Guarantor' }],
+      [{ name:(MODEL.owners && MODEL.owners[0] ? ((MODEL.owners[0].First_Name1 || '') + ' ' + (MODEL.owners[0].Last_Name1 || '')).trim() : ''), email:'', source:'Primary owner' }]);
+    pstat.textContent = 'Demo mode — no live Sign template. (OperFi countersigns automatically.)';
+    return;
+  }
+  fetch(API_BASE + AGR_ROLES_PATH + '?usdot=' + encodeURIComponent(usdot))
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status)); return j; }); })
+    .then(function(j){
+      if (!j.roles || !j.roles.length){ pstat.textContent = 'No signer roles found on the agreement template.'; return; }
+      buildAgreementRows(j.roles, j.suggestions || []); pstat.textContent = '';
+    })
+    .catch(function(e){ pstat.textContent = 'Could not load signer roles: ' + (e && e.message ? e.message : e); });
+}
+
+// One name+email input pair per template role, prefilled by index from the suggestions.
+function buildAgreementRows(roles, suggestions){
+  MODEL._agrRoles = roles;   // remembered so sendAgreement can pair inputs back to action_ids
+  $('agrRows').innerHTML = roles.map(function(role, i){
+    var s = suggestions[i] || {};
+    return '<div class="agr-row">' +
+      '<span class="lbl">' + escHtml(role.role_name || ('Signer ' + (i + 1))) + (s.source ? ' <span class="src">· ' + escHtml(s.source) + '</span>' : '') + '</span>' +
+      '<input class="agr-name" type="text" placeholder="Full name" value="' + escHtml(s.name || '') + '">' +
+      '<input class="agr-email" type="email" placeholder="Email" value="' + escHtml(s.email || '') + '">' +
+    '</div>';
+  }).join('');
+}
+
+function sendAgreement(){
+  if (!MODEL) return;
+  var inputs = qsa('.agr-row', $('agrRows')).map(function(el){
+    return { name:(el.querySelector('.agr-name') || {}).value || '', email:(el.querySelector('.agr-email') || {}).value || '' };
+  });
+  var built = buildAgreementRecipients(MODEL._agrRoles || [], inputs);
+  if (built.missing.length){ $('agrPanelStatus').textContent = 'Enter an email for: ' + built.missing.join(', '); return; }
+  var resend = agreementBadge(MODEL.application || {}).sent;
+  $('btnAgrConfirm').disabled = true; $('agrPanelStatus').textContent = 'Sending…';
+  if (MODEL._demo || typeof fetch !== 'function'){
+    MODEL.application.Sign_Request_Id = 'demo-req'; MODEL.application.Agreement_Status = 'Sent';
+    $('agrPanel').style.display = 'none'; $('btnAgrConfirm').disabled = false; renderAgreement();
+    showStatus('✓ Demo: agreement would be sent to ' + built.recipients.length + ' signer(s).', 'success'); return;
+  }
+  fetch(API_BASE + AGR_SEND_PATH, { method:'POST', headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ application_id: MODEL.appId, usdot:(MODEL.application && MODEL.application.USDOT) || '', recipients: built.recipients, resend: resend }) })
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok || !j.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status)); return j; }); })
+    .then(function(j){
+      MODEL.application.Sign_Request_Id = j.request_id || MODEL.application.Sign_Request_Id;
+      MODEL.application.Agreement_Status = j.status || 'Sent';
+      $('agrPanel').style.display = 'none'; $('btnAgrConfirm').disabled = false; renderAgreement();
+      showStatus(j.alreadySent ? 'Agreement was already sent (request ' + j.request_id + ').'
+                               : '✓ Agreement sent for signature. The client has been emailed by Zoho Sign and texted an OperFi heads-up.', 'success');
+    })
+    .catch(function(e){ $('btnAgrConfirm').disabled = false; $('agrPanelStatus').textContent = 'Send failed: ' + (e && e.message ? e.message : e); });
+}
+
+// Re-read the Application to pick up a webhook status change (Sent → Viewed → Signed).
+function refreshAgreementStatus(ev){
+  if (ev && ev.preventDefault) ev.preventDefault();
+  if (!MODEL || !MODEL.application || typeof fetch !== 'function') return;
+  var link = $('btnAgrRefresh'); link.textContent = '↻ Checking…';
+  fetch(API_BASE + '/application-by-usdot?usdot=' + encodeURIComponent(MODEL.application.USDOT || ''))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      link.textContent = '↻ Refresh signature status';
+      if (j && j.application){
+        MODEL.application.Agreement_Status = j.application.Agreement_Status || MODEL.application.Agreement_Status;
+        MODEL.application.Sign_Request_Id = j.application.Sign_Request_Id || MODEL.application.Sign_Request_Id;
+        renderAgreement();
+      }
+    })
+    .catch(function(){ link.textContent = '↻ Refresh signature status'; });
 }
 
 function showStatus(msg, type){ var el=$('statusMsg'); el.textContent=msg; el.className='status-msg show '+type; }
@@ -1635,6 +1805,10 @@ function boot() {
   $('btnApprove').addEventListener('click', function(){ submit('Approved'); });
   $('btnDecline').addEventListener('click', function(){ submit('Denied'); });
   $('btnSave').addEventListener('click', function(){ submit(null); });
+  if ($('btnSendAgreement')) $('btnSendAgreement').addEventListener('click', openAgreementPanel);
+  if ($('btnAgrConfirm')) $('btnAgrConfirm').addEventListener('click', sendAgreement);
+  if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){ $('agrPanel').style.display = 'none'; });
+  if ($('btnAgrRefresh')) $('btnAgrRefresh').addEventListener('click', refreshAgreementStatus);
   $('btnBack').addEventListener('click', showDashboard);
 
   // Open directly from ?usdot= if present; otherwise show the intro dashboard (all applications

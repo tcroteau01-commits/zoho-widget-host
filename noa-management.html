@@ -958,7 +958,9 @@ var selectedNewNoaFile = null;
 var selectedLorFile = null;
 var selectedFundingType = null;   // LOR "Yes bank" Funding Type radio (Quick Pay / Standard Net 30)
 var selectedBankDocFile = null;   // LOR "Yes bank" proof-of-account-ownership upload (Banking_Document_Upload)
-var newCarrierLookup = null;   // { carrier, existing_vendor } of the last successful NEW-carrier lookup
+var newCarrierLookup = null;   // { carrier, existing_vendor, global_dnu } of the last successful NEW-carrier lookup
+var dnuOverrideArmed = false;      // set true only via the inline "Send Anyway" admin override flow
+var dnuOverrideReason = '';        // captured reason, sent as override_reason when armed
 var selectedPayTerm = null;   // carrier's current pay term, captured from the on-file panel
 var selectedFactoringCompanyId = null;   // carrier's current factor id, captured from the on-file panel (LOR Update has no dropdown for it)
 var loadedFactoringCompanies = [];   // {id,name} list from /factoring-companies -- also used to resolve a factor id by name, since Vendors.Factoring_Company is plain text, not a lookup
@@ -1031,6 +1033,10 @@ function setLorBankChoice(choice) {
   });
 }
 
+function isAdminSession() {
+  try { return !!(window.OPERFI_IMP && window.OPERFI_IMP.target()); } catch (e) { return false; }
+}
+
 function renderNewCarrierResult(payload, queryLabel) {
   var el = document.getElementById('new-carrier-result');
   if (!el) return;
@@ -1081,13 +1087,47 @@ function renderNewCarrierResult(payload, queryLabel) {
                                  : '<span><b>Insurance:</b> Not on File</span>') +
     '</div>' +
     (globalDnu ? '<div class="nc-detail" style="color:#a31818;font-weight:600;">⚠ OperFi has flagged this carrier as Do Not Use. Contact vendors@operfi.com before onboarding.</div>' : '') +
+    (globalDnu && !isAdminSession() ? '<div class="nc-detail" style="color:#a31818;font-weight:600;">This carrier cannot be added. Contact vendors@operfi.com.</div>' : '') +
+    (globalDnu && isAdminSession() ?
+      '<button class="btn ghost" data-dnu-override-start>Send Anyway (Admin Override)</button>' +
+      '<div data-dnu-override-panel style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
+        '<input class="input" type="text" placeholder="Reason for override (required)" data-dnu-override-reason>' +
+        '<button class="btn primary" data-dnu-override-confirm>Confirm Send Anyway</button>' +
+        '<div class="field-err" data-dnu-override-err>A reason is required to override.</div>' +
+      '</div>'
+      : '') +
     '<div class="nc-detail">New carrier. Select an approved factoring company and attach the NOA below, then submit.</div>';
+  if (globalDnu && isAdminSession()) {
+    var startBtn    = el.querySelector('[data-dnu-override-start]');
+    var panel       = el.querySelector('[data-dnu-override-panel]');
+    var reasonInput = el.querySelector('[data-dnu-override-reason]');
+    var err         = el.querySelector('[data-dnu-override-err]');
+    var confirmBtn  = el.querySelector('[data-dnu-override-confirm]');
+    startBtn.addEventListener('click', function() {
+      panel.style.display = 'flex';
+      startBtn.style.display = 'none';
+    });
+    confirmBtn.addEventListener('click', function() {
+      var reason = reasonInput.value.trim();
+      if (!reason) {
+        err.classList.add('show');
+        reasonInput.classList.add('invalid');
+        return;
+      }
+      err.classList.remove('show');
+      reasonInput.classList.remove('invalid');
+      dnuOverrideArmed = true;
+      dnuOverrideReason = reason;
+    });
+  }
 }
 
 function lookupNewCarrier() {
   var input = document.getElementById('new-carrier-usdot');
   var dot = input ? String(input.value || '').trim() : '';
   newCarrierLookup = null;
+  dnuOverrideArmed = false;
+  dnuOverrideReason = '';
   var el = document.getElementById('new-carrier-result');
   if (!dot) {
     if (el) { el.className = 'nc-result warning'; el.classList.remove('hidden');
@@ -1230,10 +1270,15 @@ function uploadNoaDoc(recordId) {
 
 function runEngine(recordId) {
   if (!recordId) return Promise.resolve();
+  var body = { email: brokerEmail, record_id: recordId };
+  if (dnuOverrideArmed) {
+    body.dnu_override = true;
+    body.override_reason = dnuOverrideReason;
+  }
   return fetch(BROKER_API_BASE + '/noa-submit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: brokerEmail, record_id: recordId })
+    body: JSON.stringify(body)
   }).then(function(r){ return r.json(); });
 }
 
@@ -1247,6 +1292,10 @@ function submitNoa() {
     }
     if (!selectedFactoringId) {
       if (fb) fb.textContent = 'Select an approved factoring company for this carrier.';
+      return;
+    }
+    if (newCarrierLookup.global_dnu === true && !dnuOverrideArmed) {
+      if (fb) fb.textContent = 'This carrier is flagged as Do Not Use by OperFi. Contact vendors@operfi.com before adding them, or use Send Anyway if you are an OperFi admin.';
       return;
     }
   }
@@ -1311,6 +1360,8 @@ function submitNoa() {
             fail('Submitted, but processing failed: ' + (engRes.message || engRes.status || 'engine error'));
             return;
           }
+          dnuOverrideArmed = false;
+          dnuOverrideReason = '';
           if (typeof showTrack === 'function') showTrack();
         });
     })

@@ -156,3 +156,117 @@ test('lookupNewCarrier shows no DNU warning for a clean carrier', async () => {
   const card = w.document.getElementById('new-carrier-result');
   assert.doesNotMatch(card.textContent, /flagged this carrier as Do Not Use/i);
 });
+
+function mockFetchCapture(window, response) {
+  const calls = [];
+  window.fetch = (url, init) => {
+    // The Add New Carrier flow fires an /upload-doc call (FormData body, not JSON) before
+    // /noa-submit (JSON body) -- only attempt JSON.parse on string bodies, so the FormData
+    // call doesn't throw and short-circuit the chain before /noa-submit is reached.
+    let body = null;
+    if (init && init.body && typeof init.body === 'string') {
+      try { body = JSON.parse(init.body); } catch (e) { body = init.body; }
+    }
+    calls.push({ url: String(url), body });
+    return Promise.resolve({ json: () => Promise.resolve(response) });
+  };
+  return calls;
+}
+
+test('renderNewCarrierResult: global DNU + non-admin shows a blocked message', () => {
+  const w = boot();
+  w.renderNewCarrierResult({
+    carrier: { dot_number: '4380302', carrier_name: 'BLUESKY LOGISTICS INC', authority_active: true },
+    existing_vendor: null,
+    global_dnu: true,
+  }, 'DOT 4380302');
+  const el = w.document.getElementById('new-carrier-result');
+  assert.match(el.innerHTML, /Do Not Use/i);
+  assert.match(el.innerHTML, /flagged this carrier as Do Not Use/i);
+  assert.doesNotMatch(el.innerHTML, /Send Anyway/i);
+});
+
+test('renderNewCarrierResult: global DNU + admin session shows the override affordance', () => {
+  const w = boot();
+  w.OPERFI_IMP = { target: () => 'client@acme.com' };
+  w.renderNewCarrierResult({
+    carrier: { dot_number: '4380302', carrier_name: 'BLUESKY LOGISTICS INC', authority_active: true },
+    existing_vendor: null,
+    global_dnu: true,
+  }, 'DOT 4380302');
+  const el = w.document.getElementById('new-carrier-result');
+  assert.match(el.innerHTML, /Send Anyway/i);
+});
+
+test('submitNoa blocks Add New Carrier for a flagged carrier without an override', async () => {
+  const w = boot();
+  let addRecordsCalled = false;
+  w.ZOHO.CREATOR.DATA.addRecords = () => { addRecordsCalled = true; return Promise.resolve({ code: 3000, result: [{ ID: 'rec_1' }] }); };
+  w.selectedType = 'Add New Carrier';
+  w.selectedFactoringId = 'fac_99';
+  w.selectedDocFile = { name: 'noa.pdf' };
+  w.newCarrierLookup = {
+    carrier: { dot_number: '4380302', carrier_name: 'BLUESKY LOGISTICS INC' },
+    existing_vendor: null,
+    global_dnu: true,
+  };
+
+  await w.submitNoa();
+
+  assert.equal(addRecordsCalled, false, 'addRecords must not be called for a blocked, non-overridden submit');
+  const fb = w.document.getElementById('noa-submit-feedback');
+  assert.match(fb.textContent, /Do Not Use/i);
+});
+
+test('submitNoa proceeds and posts the override to /noa-submit once armed', async () => {
+  const w = boot();
+  w.OPERFI_IMP = { target: () => 'client@acme.com' };
+  w.selectedType = 'Add New Carrier';
+  w.selectedFactoringId = 'fac_99';
+  w.selectedDocFile = new w.File(['x'], 'noa.pdf', { type: 'application/pdf' });   // required: submitNoa's doc-attachment check runs before the DNU gate; a real File/Blob is needed so uploadNoaDoc's FormData.append doesn't throw
+  w.newCarrierLookup = {
+    carrier: { dot_number: '4380302', carrier_name: 'BLUESKY LOGISTICS INC' },
+    existing_vendor: null,
+    global_dnu: true,
+  };
+  w.renderNewCarrierResult(w.newCarrierLookup, 'DOT 4380302');
+
+  const reasonInput = w.document.querySelector('[data-dnu-override-reason]');
+  reasonInput.value = 'cleared by ops manager';
+  w.document.querySelector('[data-dnu-override-confirm]').click();
+  assert.equal(w.dnuOverrideArmed, true);
+
+  const calls = mockFetchCapture(w, {});
+  await w.submitNoa();
+
+  const engineCall = calls.find(c => c.url.includes('/noa-submit'));
+  assert.ok(engineCall, '/noa-submit was called');
+  assert.equal(engineCall.body.dnu_override, true);
+  assert.equal(engineCall.body.override_reason, 'cleared by ops manager');
+});
+
+test('confirming the override with an empty reason does not arm it', () => {
+  const w = boot();
+  w.OPERFI_IMP = { target: () => 'client@acme.com' };
+  w.renderNewCarrierResult({
+    carrier: { dot_number: '4380302', carrier_name: 'BLUESKY LOGISTICS INC' },
+    existing_vendor: null,
+    global_dnu: true,
+  }, 'DOT 4380302');
+
+  w.document.querySelector('[data-dnu-override-confirm]').click();
+  assert.equal(w.dnuOverrideArmed, false);
+});
+
+test('a fresh lookupNewCarrier call resets dnuOverrideArmed/dnuOverrideReason', async () => {
+  const w = boot();
+  w.dnuOverrideArmed = true;
+  w.dnuOverrideReason = 'stale reason';
+  w.document.getElementById('new-carrier-usdot').value = '2727315';
+  mockFetchOnce(w, { carrier: { dot_number: '2727315', carrier_name: 'ROADRUNNER LOGISTICS' }, existing_vendor: null });
+
+  await w.lookupNewCarrier();
+
+  assert.equal(w.dnuOverrideArmed, false);
+  assert.equal(w.dnuOverrideReason, '');
+});

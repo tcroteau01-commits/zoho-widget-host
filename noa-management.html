@@ -1089,11 +1089,11 @@ function renderNewCarrierResult(payload, queryLabel) {
     (globalDnu ? '<div class="nc-detail" style="color:#a31818;font-weight:600;">⚠ OperFi has flagged this carrier as Do Not Use. Contact vendors@operfi.com before onboarding.</div>' : '') +
     (globalDnu && !isAdminSession() ? '<div class="nc-detail" style="color:#a31818;font-weight:600;">This carrier cannot be added. Contact vendors@operfi.com.</div>' : '') +
     (globalDnu && isAdminSession() ?
-      '<button class="btn ghost" data-dnu-override-start>Send Anyway (Admin Override)</button>' +
+      '<button class="btn" data-dnu-override-start>Send Anyway (Admin Override)</button>' +
       '<div data-dnu-override-panel style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
-        '<input class="input" type="text" placeholder="Reason for override (required)" data-dnu-override-reason>' +
+        '<input class="field-input" type="text" placeholder="Reason for override (required)" data-dnu-override-reason>' +
         '<button class="btn primary" data-dnu-override-confirm>Confirm Send Anyway</button>' +
-        '<div class="field-err" data-dnu-override-err>A reason is required to override.</div>' +
+        '<div data-dnu-override-err style="display:none;color:#a31818;font-weight:600;">A reason is required to override.</div>' +
       '</div>'
       : '') +
     '<div class="nc-detail">New carrier. Select an approved factoring company and attach the NOA below, then submit.</div>';
@@ -1110,12 +1110,10 @@ function renderNewCarrierResult(payload, queryLabel) {
     confirmBtn.addEventListener('click', function() {
       var reason = reasonInput.value.trim();
       if (!reason) {
-        err.classList.add('show');
-        reasonInput.classList.add('invalid');
+        err.style.display = 'block';
         return;
       }
-      err.classList.remove('show');
-      reasonInput.classList.remove('invalid');
+      err.style.display = 'none';
       dnuOverrideArmed = true;
       dnuOverrideReason = reason;
     });

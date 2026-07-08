@@ -412,17 +412,17 @@ tr:last-child td { border-bottom:none; }
               <div class="h">Client Agreement</div>
               <span class="pill n" id="agrBadge">Not Sent</span>
             </div>
-            <div id="agrHint" class="agr-note">Approve the client to send the agreement for e-signature.</div>
-            <button class="btn orange block" id="btnSendAgreement" style="display:none">✍ Send Agreement for Signature</button>
+            <div id="agrHint" class="agr-note">Approve the client to prepare the agreement for e-signature.</div>
+            <button class="btn orange block" id="btnSendAgreement" style="display:none">✍ Prepare Agreement</button>
             <a href="#" id="btnAgrRefresh" class="agr-refresh" style="display:none">↻ Refresh signature status</a>
 
             <!-- Recipients panel (built from the template's signer roles) -->
             <div id="agrPanel" class="agr-panel" style="display:none">
               <div class="agr-panel-title">Who needs to sign?</div>
               <div id="agrRows"></div>
-              <div id="agrPanelStatus" class="agr-note"></div>
+              <div id="agrPanelStatus" class="agr-note">You'll review the prefilled agreement in Zoho Sign and click Send there — nothing goes to the client yet.</div>
               <div class="agr-actions">
-                <button class="btn green sm" id="btnAgrConfirm" style="flex:1">Send for signature</button>
+                <button class="btn green sm" id="btnAgrConfirm" style="flex:1">Prepare &amp; review</button>
                 <button class="btn ghost sm" id="btnAgrCancel">Cancel</button>
               </div>
             </div>
@@ -482,7 +482,8 @@ var QUEUE_PATH = '/applications';        // GET → { applications: [{ USDOT, Bu
 var ADD_PATH = '/uw-add-record';         // POST { application_id, kind:'owner'|'customer'|'contact'|'related', record } → creates the linked child record  (confirm with Tom)
 var DOCREQ_PATH = '/sales-doc-request';  // POST { application_id, document_type, source } → creates a Document (Status='Requested'); shown on the client portal  (confirm with Tom)
 var AGR_ROLES_PATH = '/agreement-roles'; // GET ?usdot= → { roles:[{action_id,role_name}], suggestions:[{name,email,source}] } from the Zoho Sign template
-var AGR_SEND_PATH = '/send-agreement';   // POST { application_id, usdot, recipients:[{action_id,name,email}], resend? } → sends the agreement for e-signature
+var AGR_SEND_PATH = '/send-agreement';   // POST { application_id, usdot, recipients:[{action_id,name,email}], resend? } → prepares a Zoho Sign DRAFT, returns { request_id, status:'Draft', send_url }
+var AGR_URL_PATH = '/agreement-send-url'; // GET ?usdot= → { send_url } — a FRESH Zoho Sign review url for the current draft (embed url expires ~2 min)
 
 // ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
@@ -794,12 +795,18 @@ function recordHasContent(kind, rec){
 
 // ── Client agreement (Zoho Sign) pure logic ──────────────────────────────────
 // Derive the agreement state off the Application record for the badge + button gating.
+// prepared = a draft exists (awaiting the underwriter's review + send); sent = it has gone to the
+// client (or beyond).
 function agreementBadge(app){
   var a = app || {};
-  var status = a.Agreement_Status || (a.Sign_Request_Id ? 'Sent' : 'Not Sent');
-  var cls = { 'Signed':'g', 'Sent':'a', 'Viewed':'a', 'Declined':'r', 'Recalled':'r', 'Expired':'r', 'Not Sent':'n' }[status] || 'a';
-  var sent = !!a.Sign_Request_Id || /^(sent|viewed|signed|declined|recalled|expired)$/i.test(status || '');
-  return { status: status, cls: cls, sent: sent, signed: /signed/i.test(status || '') };
+  var status = a.Agreement_Status || (a.Sign_Request_Id ? 'Draft' : 'Not Sent');
+  var cls = { 'Signed':'g', 'Sent':'a', 'Viewed':'a', 'Draft':'b', 'Declined':'r', 'Recalled':'r', 'Expired':'r', 'Not Sent':'n' }[status] || 'a';
+  return {
+    status: status, cls: cls,
+    prepared: /^draft$/i.test(status),
+    sent: /^(sent|viewed|signed|declined|recalled|expired)$/i.test(status || ''),
+    signed: /signed/i.test(status || '')
+  };
 }
 // Build the /send-agreement recipients payload from the template roles + entered name/email pairs.
 // Returns { recipients, missing } so the UI can block the send until every signer has an email.
@@ -1151,8 +1158,9 @@ function renderGate() {
 }
 
 // ── Client agreement e-signature (Zoho Sign) ─────────────────────────────────
-// The Send button unlocks once the decision is Approved. Once sent, the badge tracks status
-// (Sent → Viewed → Signed) read off the Application record; a webhook flips it server-side.
+// Flow: approve → Prepare Agreement (creates a Zoho Sign DRAFT) → the underwriter opens Zoho Sign's
+// review screen, completes/edits the prefilled fields, and clicks Send there. Status then tracks
+// Draft → Sent → Viewed → Signed, flipped server-side by the webhook and read off the Application.
 function renderAgreement(){
   var sec = $('agrSection'); if (!sec) return;
   if (!MODEL){ sec.style.display = 'none'; return; }
@@ -1169,12 +1177,42 @@ function renderAgreement(){
   } else if (b.sent){
     btn.style.display = 'block'; btn.textContent = '↻ Resend agreement'; btn.disabled = false;
     hint.style.display = 'none'; refresh.style.display = 'inline';
+  } else if (b.prepared){
+    // Draft exists — the underwriter still needs to review + send it in Zoho Sign.
+    btn.style.display = 'block'; btn.textContent = '▶ Open review & send'; btn.disabled = false;
+    hint.style.display = 'none'; refresh.style.display = 'inline';
   } else if (approved){
-    btn.style.display = 'block'; btn.textContent = '✍ Send Agreement for Signature'; btn.disabled = false;
+    btn.style.display = 'block'; btn.textContent = '✍ Prepare Agreement'; btn.disabled = false;
     hint.style.display = 'none'; refresh.style.display = 'none';
   } else {
     btn.style.display = 'none'; hint.style.display = 'block'; refresh.style.display = 'none';
   }
+}
+
+// The primary button: open the review screen for an existing draft, else open the recipients panel.
+function agreementPrimaryClick(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  if (agreementBadge(MODEL.application || {}).prepared) return openAgreementReview();
+  openAgreementPanel();
+}
+
+// Open Zoho Sign's review-and-send screen in a new tab. A blank tab is opened synchronously (inside
+// the click) to dodge popup blockers, then pointed at a freshly-minted send_url (which expires ~2m).
+function openAgreementReview(){
+  if (!MODEL || !MODEL.application) return;
+  var usdot = MODEL.application.USDOT || '';
+  if (MODEL._demo || typeof fetch !== 'function'){
+    showStatus('Demo: this would open the Zoho Sign review screen in a new tab.', 'success'); return;
+  }
+  var win = global.open ? global.open('', '_blank') : null;
+  showStatus('Opening the Zoho Sign review screen…', 'loading');
+  fetch(API_BASE + AGR_URL_PATH + '?usdot=' + encodeURIComponent(usdot))
+    .then(function(r){ return r.json().catch(function(){ return {}; }); })
+    .then(function(j){
+      if (j && j.send_url){ if (win) win.location = j.send_url; else global.open(j.send_url, '_blank'); clearStatus(); }
+      else { if (win) win.close(); showStatus('Could not open the review screen — try Prepare Agreement again.', 'error'); }
+    })
+    .catch(function(e){ if (win) win.close(); showStatus('Could not open review: ' + (e && e.message ? e.message : e), 'error'); });
 }
 
 // Open the "who signs" panel — fetch the template's signer roles + prefill suggestions.
@@ -1211,7 +1249,9 @@ function buildAgreementRows(roles, suggestions){
   }).join('');
 }
 
-function sendAgreement(){
+// Prepare the agreement as a Zoho Sign DRAFT, then open the review-and-send screen in a new tab.
+// Nothing goes to the client here — the underwriter reviews the prefilled doc + clicks Send in Zoho.
+function prepareAgreement(){
   if (!MODEL) return;
   var inputs = qsa('.agr-row', $('agrRows')).map(function(el){
     return { name:(el.querySelector('.agr-name') || {}).value || '', email:(el.querySelector('.agr-email') || {}).value || '' };
@@ -1219,23 +1259,26 @@ function sendAgreement(){
   var built = buildAgreementRecipients(MODEL._agrRoles || [], inputs);
   if (built.missing.length){ $('agrPanelStatus').textContent = 'Enter an email for: ' + built.missing.join(', '); return; }
   var resend = agreementBadge(MODEL.application || {}).sent;
-  $('btnAgrConfirm').disabled = true; $('agrPanelStatus').textContent = 'Sending…';
+  $('btnAgrConfirm').disabled = true; $('agrPanelStatus').textContent = 'Preparing…';
   if (MODEL._demo || typeof fetch !== 'function'){
-    MODEL.application.Sign_Request_Id = 'demo-req'; MODEL.application.Agreement_Status = 'Sent';
+    MODEL.application.Sign_Request_Id = 'demo-req'; MODEL.application.Agreement_Status = 'Draft';
     $('agrPanel').style.display = 'none'; $('btnAgrConfirm').disabled = false; renderAgreement();
-    showStatus('✓ Demo: agreement would be sent to ' + built.recipients.length + ' signer(s).', 'success'); return;
+    showStatus('✓ Demo: draft prepared for ' + built.recipients.length + ' signer(s). Live, the Zoho Sign review screen opens in a new tab.', 'success'); return;
   }
+  // Reserve a tab inside the click gesture so the popup isn't blocked; point it at the review url.
+  var win = global.open ? global.open('', '_blank') : null;
   fetch(API_BASE + AGR_SEND_PATH, { method:'POST', headers:{ 'Content-Type':'application/json' },
     body: JSON.stringify({ application_id: MODEL.appId, usdot:(MODEL.application && MODEL.application.USDOT) || '', recipients: built.recipients, resend: resend }) })
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok || !j.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status)); return j; }); })
     .then(function(j){
       MODEL.application.Sign_Request_Id = j.request_id || MODEL.application.Sign_Request_Id;
-      MODEL.application.Agreement_Status = j.status || 'Sent';
+      MODEL.application.Agreement_Status = j.status || 'Draft';
       $('agrPanel').style.display = 'none'; $('btnAgrConfirm').disabled = false; renderAgreement();
-      showStatus(j.alreadySent ? 'Agreement was already sent (request ' + j.request_id + ').'
-                               : '✓ Agreement sent for signature. The client has been emailed by Zoho Sign and texted an OperFi heads-up.', 'success');
+      if (j.send_url){ if (win) win.location = j.send_url; else global.open(j.send_url, '_blank'); }
+      else if (win) win.close();
+      showStatus('✓ Draft prepared. Review the prefilled fields and click Send in the Zoho Sign tab. (The client is notified only after you send.)', 'success');
     })
-    .catch(function(e){ $('btnAgrConfirm').disabled = false; $('agrPanelStatus').textContent = 'Send failed: ' + (e && e.message ? e.message : e); });
+    .catch(function(e){ if (win) win.close(); $('btnAgrConfirm').disabled = false; $('agrPanelStatus').textContent = 'Could not prepare: ' + (e && e.message ? e.message : e); });
 }
 
 // Re-read the Application to pick up a webhook status change (Sent → Viewed → Signed).
@@ -1805,8 +1848,8 @@ function boot() {
   $('btnApprove').addEventListener('click', function(){ submit('Approved'); });
   $('btnDecline').addEventListener('click', function(){ submit('Denied'); });
   $('btnSave').addEventListener('click', function(){ submit(null); });
-  if ($('btnSendAgreement')) $('btnSendAgreement').addEventListener('click', openAgreementPanel);
-  if ($('btnAgrConfirm')) $('btnAgrConfirm').addEventListener('click', sendAgreement);
+  if ($('btnSendAgreement')) $('btnSendAgreement').addEventListener('click', agreementPrimaryClick);
+  if ($('btnAgrConfirm')) $('btnAgrConfirm').addEventListener('click', prepareAgreement);
   if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){ $('agrPanel').style.display = 'none'; });
   if ($('btnAgrRefresh')) $('btnAgrRefresh').addEventListener('click', refreshAgreementStatus);
   $('btnBack').addEventListener('click', showDashboard);

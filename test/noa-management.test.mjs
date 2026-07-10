@@ -778,3 +778,34 @@ test('on-file panel shows no authority chip for a carrier', () => {
   window.showOnFile({ authority_class: 'carrier', factoring_company: 'F', pay_term: 'Net 30' });
   assert.doesNotMatch(window.document.getElementById('noa-onfile').innerHTML, /double-broker|not a carrier/i);
 });
+
+test('on-file panel shows a Not-Verified warning line for a Denied current factor', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ factoring_company: 'We Win Capital LLC', factor_status: 'Denied', pay_term: 'Factoring Company' });
+  const html = window.document.getElementById('noa-onfile').innerHTML;
+  assert.match(html, /Not-Verified/);
+});
+
+test('on-file panel shows no factor warning for an Approved or absent factor_status', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ factoring_company: 'OTR Solutions', factor_status: 'Approved', pay_term: 'Net 30' });
+  assert.doesNotMatch(window.document.getElementById('noa-onfile').innerHTML, /Not-Verified/);
+  window.showOnFile({ factoring_company: 'OTR Solutions', pay_term: 'Net 30' }); // factor_status absent entirely
+  assert.doesNotMatch(window.document.getElementById('noa-onfile').innerHTML, /Not-Verified/);
+});
+
+test('on-file panel composes the factor warning with the authority warning when both apply', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ authority_class: 'dual', factoring_company: 'We Win Capital LLC', factor_status: 'Pending', pay_term: 'Net 30' });
+  const html = window.document.getElementById('noa-onfile').innerHTML;
+  assert.match(html, /double-broker/i);
+  assert.match(html, /Not-Verified/);
+});
+
+test('showOnFile clears a stale factor warning on re-render', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ factoring_company: 'We Win Capital LLC', factor_status: 'Denied', pay_term: 'Net 30' });
+  window.showOnFile({ factoring_company: 'OTR Solutions', factor_status: 'Approved', pay_term: 'Net 30' });
+  const warns = window.document.querySelectorAll('.onfile-factor-warn');
+  assert.equal(warns.length, 0);
+});

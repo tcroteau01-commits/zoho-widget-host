@@ -428,7 +428,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
             <select id="noa-factoring-select" class="field-select">
               <option value="">Select a factoring company&hellip;</option>
             </select>
-            <div class="field-help">Only Approved factoring companies are listed. Don't see yours? Contact <a href="mailto:vendors@operfi.com" style="color:#b86e00; font-weight:600; text-decoration:none;">vendors@operfi.com</a>.</div>
+            <div class="field-help">Not-Verified factors are shown grayed out. Don't see yours at all? Contact <a href="mailto:vendors@operfi.com" style="color:#b86e00; font-weight:600; text-decoration:none;">vendors@operfi.com</a>.</div>
           </div>
         </div>
       </div>
@@ -726,7 +726,12 @@ function _fillFactoringSelect(id, companies, onchange) {
   companies.forEach(function(fc){
     var opt = document.createElement('option');
     opt.value = fc.id;
-    opt.textContent = fc.name;
+    if (fc.factor_status && fc.factor_status !== 'Approved') {
+      opt.disabled = true;
+      opt.textContent = '⚠ ' + fc.name + ' (Not-Verified)';
+    } else {
+      opt.textContent = fc.name;
+    }
     sel.appendChild(opt);
   });
   sel.onchange = function(){ onchange(sel.value); };

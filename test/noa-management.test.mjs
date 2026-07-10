@@ -304,6 +304,30 @@ test('loadFactoringCompanies populates the factoring dropdown', async () => {
   assert.match(sel.textContent, /OTR Solutions/);
 });
 
+test('loadFactoringCompanies grays out and labels non-Approved factors in both assign-role selects', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ companies: [
+    { id: 'f1', name: 'OTR Solutions', factor_status: 'Approved' },
+    { id: 'f2', name: 'We Win Capital LLC', factor_status: 'Denied' },
+    { id: 'f3', name: '1. Testing Factoring Company', factor_status: 'Pending' },
+  ] }) });
+  await window.loadFactoringCompanies();
+  ['noa-factoring-select', 'fc-change-select'].forEach(function (id) {
+    var sel = window.document.getElementById(id);
+    var opts = Array.from(sel.querySelectorAll('option'));
+    var approved = opts.find(function (o) { return o.value === 'f1'; });
+    var denied = opts.find(function (o) { return o.value === 'f2'; });
+    var pending = opts.find(function (o) { return o.value === 'f3'; });
+    assert.equal(approved.disabled, false);
+    assert.equal(approved.textContent, 'OTR Solutions');
+    assert.equal(denied.disabled, true);
+    assert.match(denied.textContent, /Not-Verified/);
+    assert.equal(pending.disabled, true);
+    assert.match(pending.textContent, /Not-Verified/);
+  });
+});
+
 test('Verified filter shows only verified carriers', () => {
   const { window } = makeWidget();
   window.statusPayload = STATUS;

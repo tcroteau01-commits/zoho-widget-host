@@ -529,6 +529,7 @@ textarea { resize: vertical; min-height: 90px; }
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
 var brokerEmail = '';
 var _pendingDraftId = '';  // set during init when reopening via ?draftId=
+var _pendingVendorId = ''; // set during init when arriving via View Vendors' Submit Invoice
 
 // In-memory file store keyed by input id (read by the merge pipeline below).
 var fileStore = {};
@@ -544,6 +545,7 @@ function resolveEmail() {
     var go = function (params) {
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
       _pendingDraftId = _resolveDraftId(params);
+      _pendingVendorId = _resolveVendorId(params);
       if (typeof onReady === 'function') onReady();
     };
     if (p && typeof p.then === 'function') { p.then(go); } else { go(p); }
@@ -842,6 +844,14 @@ function onReady() {
   if (_pendingDraftId) {
     Promise.all([custLoad, carrLoad]).then(function () {
       reopenDraft(_pendingDraftId);
+    });
+  }
+
+  // Preselect the carrier handed off from View Vendors' Submit Invoice action,
+  // once the carrier dropdown has populated with real <option>s.
+  if (_pendingVendorId) {
+    carrLoad.then(function () {
+      selectCarrierFromSearch(_pendingVendorId);
     });
   }
 }
@@ -1662,6 +1672,20 @@ function _resolveDraftId(params) {
   // (Creator hash-route query params don't reach getInitParams). Clear after read.
   if (!id) {
     try { id = sessionStorage.getItem('draftId'); if (id) sessionStorage.removeItem('draftId'); } catch (e) {}
+  }
+  return id || '';
+}
+
+// Resolve a carrier to preselect from init params or the URL query string.
+function _resolveVendorId(params) {
+  var id = params && params.vendorId;
+  if (!id) {
+    try { id = new URLSearchParams(location.search).get('Vendor_ID'); } catch (e) {}
+  }
+  // Handoff from View Vendors' Submit Invoice action: the id is stashed in
+  // sessionStorage (Creator hash-route query params don't reach the widget).
+  if (!id) {
+    try { id = sessionStorage.getItem('loadDetailsVendorId'); if (id) sessionStorage.removeItem('loadDetailsVendorId'); } catch (e) {}
   }
   return id || '';
 }

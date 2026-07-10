@@ -912,6 +912,45 @@ test('panel: Submit Invoice is disabled for Hold', async () => {
   assert.ok(inv.disabled);
 });
 
+// ── Submit Invoice -> Load Details Vendor_ID handoff ─────────────────────────
+//
+// Load Details reads Creator hash-route query params via a sessionStorage bridge
+// (the same pattern already proven for Draft Loads' Edit handoff), because Creator
+// swallows ?query params on `#Page:X` navigation before they reach the widget SDK.
+
+test('panel: Submit Invoice stashes Vendor_ID to sessionStorage for the Load Details handoff', async () => {
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously', pretendToBeVisual: true,
+    url: 'https://tcroteau01-commits.github.io/view-vendors.html'
+  });
+  const w = dom.window;
+  w.ZOHO = { CREATOR: { UTIL: { getInitParams: () => ({ loginUser: 'broker@test.com' }) }, init: () => Promise.resolve() } };
+  w.OperFiAV = { carrierBadge: () => {}, customerCredit: () => {} };
+  w.fetch = makeFetch([{ ID: 'VND777', Vendor_Name: 'Acme Trucking', Hiring_Decision: 'Approve' }]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  const inv = w.document.getElementById('p-invoice');
+  inv.click();
+  assert.strictEqual(w.sessionStorage.getItem('loadDetailsVendorId'), 'VND777');
+});
+
+test('row action: Submit Invoice stashes Vendor_ID to sessionStorage for the Load Details handoff', async () => {
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously', pretendToBeVisual: true,
+    url: 'https://tcroteau01-commits.github.io/view-vendors.html'
+  });
+  const w = dom.window;
+  w.ZOHO = { CREATOR: { UTIL: { getInitParams: () => ({ loginUser: 'broker@test.com' }) }, init: () => Promise.resolve() } };
+  w.OperFiAV = { carrierBadge: () => {}, customerCredit: () => {} };
+  w.fetch = makeFetch([{ ID: 'VND888', Vendor_Name: 'Acme Trucking', Hiring_Decision: 'Approve' }]);
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  const btn = w.document.querySelector('.row-action');
+  btn.click();
+  assert.strictEqual(w.sessionStorage.getItem('loadDetailsVendorId'), 'VND888');
+});
+
 test('row action: DNU blocks invoicing even when Hiring_Decision=Approve', async () => {
   const w = await bootOne({ ID: 'dnu1', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' });
   const btn = w.document.querySelector('.row-action');

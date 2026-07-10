@@ -809,3 +809,27 @@ test('showOnFile clears a stale factor warning on re-render', () => {
   const warns = window.document.querySelectorAll('.onfile-factor-warn');
   assert.equal(warns.length, 0);
 });
+
+test('showOnFile with both warnings toggling independently clears only the stale one', () => {
+  const { window } = makeWidget();
+  // Step 1: Both conditions true (dual authority + Denied factor)
+  window.showOnFile({ authority_class: 'dual', factoring_company: 'We Win Capital LLC', factor_status: 'Denied', pay_term: 'Net 30' });
+  let authWarns = window.document.querySelectorAll('.onfile-auth-warn');
+  let factWarns = window.document.querySelectorAll('.onfile-factor-warn');
+  assert.equal(authWarns.length, 1, 'both warnings should render initially');
+  assert.equal(factWarns.length, 1, 'both warnings should render initially');
+
+  // Step 2: Only authority condition true (factor_status now Approved)
+  window.showOnFile({ authority_class: 'dual', factoring_company: 'OTR Solutions', factor_status: 'Approved', pay_term: 'Net 30' });
+  authWarns = window.document.querySelectorAll('.onfile-auth-warn');
+  factWarns = window.document.querySelectorAll('.onfile-factor-warn');
+  assert.equal(authWarns.length, 1, 'auth warning should remain after factor warning clears');
+  assert.equal(factWarns.length, 0, 'factor warning should clear when status is Approved');
+
+  // Step 3: Only factor condition true (authority_class now absent)
+  window.showOnFile({ factoring_company: 'We Win Capital LLC', factor_status: 'Denied', pay_term: 'Net 30' });
+  authWarns = window.document.querySelectorAll('.onfile-auth-warn');
+  factWarns = window.document.querySelectorAll('.onfile-factor-warn');
+  assert.equal(authWarns.length, 0, 'auth warning should clear when authority_class is absent');
+  assert.equal(factWarns.length, 1, 'factor warning should return when status is Denied again');
+});

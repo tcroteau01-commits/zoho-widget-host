@@ -399,6 +399,7 @@ tr:last-child td { border-bottom:none; }
           <div class="fld"><label>Underwriting Notes <span style="color:var(--of-gray-500);font-weight:600;text-transform:none;letter-spacing:0">· internal</span></label><textarea id="uwNotes" rows="3"></textarea></div>
           <div class="fld"><label>Message to Client <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· shown on portal</span></label><textarea id="uwClientMsg" rows="2" placeholder="e.g. Your insurance certificate expired — please re-upload a current COI."></textarea></div>
           <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
+          <div class="fld"><label>Insurance Expiration <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· syncs to CRM on approve</span></label><input type="date" id="uwInsExp"></div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
             <button class="btn green block" id="btnApprove">✓ Approve</button>
             <button class="btn red block" id="btnDecline">✕ Decline</button>
@@ -1031,9 +1032,12 @@ function runChecks(app) {
     .catch(function () { return null; });
 }
 
-function saveReview(payload, existingId) {
+function saveReview(payload, existingId, insuranceExpiration) {
   if (typeof fetch !== 'function') { console.log('DEMO save — Underwriting_Review payload:', JSON.stringify(payload, null, 2)); return Promise.resolve({ demo:true }); }
   var body = { application_id: payload[APPLICATION_LOOKUP] || '', review_id: existingId || '', review: payload };
+  // Sent OUTSIDE `review` so it can't fail the Creator write; backend pushes it to the CRM Account
+  // (matched by USDOT) only on an Approved decision.
+  if (insuranceExpiration) body.insurance_expiration = insuranceExpiration;
   return fetch(API_BASE + '/uw-review-save', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   }).then(function (r) {
@@ -1127,7 +1131,8 @@ function readState() {
     recommendedRate: $('uwRate').value,
     buyoutRequired: $('tgBuyout').classList.contains('on'),
     buyoutFactor: $('uwBuyoutFactor').value,
-    estimatedBuyoutDate: $('uwBuyoutDate').value
+    estimatedBuyoutDate: $('uwBuyoutDate').value,
+    insuranceExpiration: ($('uwInsExp') && $('uwInsExp').value) || ''
   };
 }
 
@@ -1875,12 +1880,16 @@ function submit(forceDecision) {
   if (!v.ok) { showStatus('Cannot save: ' + v.errors[0], 'error'); return; }
   showStatus('Saving decision…', 'loading');
   var payload = buildReviewPayload(s, MODEL.appId);
-  saveReview(payload, MODEL.reviewId).then(function(res){
+  saveReview(payload, MODEL.reviewId, s.insuranceExpiration).then(function(res){
     if (res && res.demo) { showStatus('✓ Demo: decision "'+payload.Decision2+'" validated and Underwriting_Review payload logged to the console.', 'success'); }
     else {
       // Capture the new/again review id so the next save UPDATES the same record (no duplicates).
       if (res && res.review_id) MODEL.reviewId = res.review_id;
-      showStatus('✓ Saved. Decision "'+payload.Decision2+'" written to Underwriting_Review for USDOT '+MODEL.application.USDOT+'.', 'success');
+      var msg = '✓ Saved. Decision "'+payload.Decision2+'" written to Underwriting_Review for USDOT '+MODEL.application.USDOT+'.';
+      // Surface the CRM insurance-expiration sync outcome (only meaningful on an Approved decision).
+      if (res && res.crmSynced) msg += ' Insurance expiration synced to CRM.';
+      else if (res && res.crmError && s.insuranceExpiration && payload.Decision2 === 'Approved') msg += ' (CRM insurance sync skipped: '+res.crmError+'.)';
+      showStatus(msg, 'success');
     }
   }).catch(function(e){ showStatus('Save failed: ' + (e && e.message ? e.message : e), 'error'); });
 }

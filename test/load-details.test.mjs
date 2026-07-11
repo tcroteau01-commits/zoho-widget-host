@@ -619,6 +619,46 @@ test('_resolveDraftId still prefers an explicit param over sessionStorage', () =
   assert.strictEqual(w._resolveDraftId({ draftId: '900' }), '900');
 });
 
+// ── Vendor_ID handoff from View Vendors' Submit Invoice action ────────────────
+
+test('_resolveVendorId reads sessionStorage.loadDetailsVendorId (View Vendors handoff) and clears it', () => {
+  const w = makeStorageDom().window;
+  w.sessionStorage.setItem('loadDetailsVendorId', 'VND777');
+  const id = w._resolveVendorId({});
+  assert.strictEqual(id, 'VND777');
+  assert.strictEqual(w.sessionStorage.getItem('loadDetailsVendorId'), null, 'loadDetailsVendorId cleared after read');
+});
+
+test('_resolveVendorId still prefers an explicit param over sessionStorage', () => {
+  const w = makeStorageDom().window;
+  w.sessionStorage.setItem('loadDetailsVendorId', 'VND777');
+  assert.strictEqual(w._resolveVendorId({ vendorId: 'VND900' }), 'VND900');
+});
+
+test('onReady preselects the carrier once carriers load, when a Vendor_ID handoff is pending', async () => {
+  // Drives the real boot path end-to-end (sessionStorage set before the page's
+  // own 'load' listener fires resolveEmail() -> onReady()), same as production,
+  // rather than poking _pendingVendorId directly.
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously', pretendToBeVisual: true,
+    url: 'https://tcroteau01-commits.github.io/index.html'
+  });
+  const w = dom.window;
+  w.fetch = (url) => {
+    if (String(url).includes('/tms-carriers')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        carriers: [{ vendor_id: 'v1', carrier_name: 'Acme Trucking', hiring_decision: 'Approve' }]
+      }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ customers: [] }) });
+  };
+  w.ZOHO = { CREATOR: { UTIL: { getInitParams: () => ({ loginUser: 'b@x.com' }) }, init: () => Promise.resolve() } };
+  w.OperFiAV = { carrierBadge: () => {}, customerCredit: () => {} };
+  w.sessionStorage.setItem('loadDetailsVendorId', 'v1');
+  await new Promise(function (r) { setTimeout(r, 100); });
+  assert.strictEqual(w.document.getElementById('carrier-select').value, 'v1');
+});
+
 test('reopening a draft whose customer is not approved shows a clear warning (no silent blank)', () => {
   const w = makeStorageDom().window;
   const sel = w.document.getElementById('customer-select');

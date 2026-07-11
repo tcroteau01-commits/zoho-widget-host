@@ -614,7 +614,12 @@ function renderList() {
       e.stopPropagation();
       if (btn.classList.contains('disabled')) return;
       var action = btn.dataset.action;
-      if (action === 'invoice') navigateParent('#Page:Load_Details');
+      if (action === 'invoice') {
+        var rowEl = btn.closest('.row');
+        var rec = rowEl ? allRecords[parseInt(rowEl.dataset.idx, 10)] : null;
+        if (rec) { try { sessionStorage.setItem('loadDetailsVendorId', String(rec.ID)); } catch (e) {} }
+        navigateParent('#Page:Load_Details' + (rec ? '?Vendor_ID=' + encodeURIComponent(rec.ID) : ''));
+      }
     });
   });
 }
@@ -820,7 +825,10 @@ function renderPanel() {
   document.getElementById('p-close').addEventListener('click', closePanel);
   var inv = document.getElementById('p-invoice');
   if (inv && !inv.disabled) inv.addEventListener('click', function() {
-    stashCarrierProfileTarget(r.ID, '');
+    // Load Details reads the carrier via a sessionStorage bridge, not the URL
+    // query string (Creator hash-route params don't reach the widget SDK) —
+    // same handoff pattern already used by Draft Loads' Edit action.
+    try { sessionStorage.setItem('loadDetailsVendorId', String(r.ID)); } catch (e) {}
     navigateParent('#Page:Load_Details?Vendor_ID=' + encodeURIComponent(r.ID));
   });
   var prof = document.getElementById('p-profile');

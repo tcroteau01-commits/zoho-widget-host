@@ -614,11 +614,13 @@ function renderList() {
       e.stopPropagation();
       if (btn.classList.contains('disabled')) return;
       var action = btn.dataset.action;
+      var rowEl = btn.closest('.row');
+      var rec = rowEl ? allRecords[parseInt(rowEl.dataset.idx, 10)] : null;
       if (action === 'invoice') {
-        var rowEl = btn.closest('.row');
-        var rec = rowEl ? allRecords[parseInt(rowEl.dataset.idx, 10)] : null;
         if (rec) { try { sessionStorage.setItem('loadDetailsVendorId', String(rec.ID)); } catch (e) {} }
         navigateParent('#Page:Load_Details' + (rec ? '?Vendor_ID=' + encodeURIComponent(rec.ID) : ''));
+      } else if (action === 'reqinvoice') {
+        if (rec) requestInvoice(rec, btn);
       }
     });
   });
@@ -674,6 +676,9 @@ function rowHtml(r, idx) {
       '<div>' +
         '<button class="row-action' + (actionDisabled ? ' disabled' : '') + '" data-action="invoice"' +
         (actionTitle ? ' title="' + esc(actionTitle) + '"' : '') + '>' + esc(actionLabel) + '</button>' +
+        '<button class="row-action' + (isDnu ? ' disabled' : '') + '" data-action="reqinvoice" style="margin-top:6px;" title="' +
+        (isDnu ? 'Vendor is marked Do Not Use.' : 'Email this carrier a secure link to submit their invoice') +
+        '">Request Invoice</button>' +
       '</div>' +
       '<div class="chev cell-chev">›</div>' +
     '</div>';
@@ -727,9 +732,14 @@ function renderPanel() {
   var invoiceBtn = canInvoice
     ? '<button class="btn primary" id="p-invoice">Submit Invoice</button>'
     : '<button class="btn" id="p-invoice" disabled title="You must approve this carrier before invoicing">Submit Invoice</button>';
+  var isDnuPanel = s.key === 'dnu';
+  var reqInvBtn = isDnuPanel
+    ? '<button class="btn" id="p-reqinv" disabled title="Vendor is marked Do Not Use.">Request Invoice</button>'
+    : '<button class="btn" id="p-reqinv" title="Email this carrier a secure link to submit their invoice">Request Invoice</button>';
   var footerActions =
     '<button class="btn" id="p-profile">View Full Profile</button>' +
     '<button class="btn" id="p-noa">NOA / LOR</button>' +
+    reqInvBtn +
     invoiceBtn;
 
   var html = '' +
@@ -830,6 +840,10 @@ function renderPanel() {
     // same handoff pattern already used by Draft Loads' Edit action.
     try { sessionStorage.setItem('loadDetailsVendorId', String(r.ID)); } catch (e) {}
     navigateParent('#Page:Load_Details?Vendor_ID=' + encodeURIComponent(r.ID));
+  });
+  var reqInv = document.getElementById('p-reqinv');
+  if (reqInv && !reqInv.disabled) reqInv.addEventListener('click', function() {
+    requestInvoice(r, reqInv);
   });
   var prof = document.getElementById('p-profile');
   if (prof) prof.addEventListener('click', function() {
@@ -1108,6 +1122,33 @@ function loadVendorRedFlags(rec, force) {
         vvPanelCtx.profileError = true;
         refreshVettingPane();
       }
+    });
+}
+
+// Email the carrier a secure no-login invoice-upload link. When the carrier
+// submits, the backend creates a Draft Load with this carrier prefilled
+// (INVREQ1). DNU carriers are blocked server-side too — the disabled button
+// here is courtesy UX, /invoice-request/create-link is the real gate.
+function requestInvoice(rec, btn) {
+  var original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  return fetch(BROKER_API_BASE + '/invoice-request/create-link?email=' + encodeURIComponent(brokerEmail) +
+               '&vendor_id=' + encodeURIComponent(rec.ID) + '&send=1')
+    .then(function (res) { return res.json().then(function (p) { return { ok: res.ok, p: p }; }); })
+    .then(function (r) {
+      if (r.ok && r.p && r.p.emailed) {
+        btn.textContent = 'Request sent ✓';
+      } else {
+        btn.textContent = 'Send failed';
+        btn.title = (r.p && (r.p.email_error || r.p.error)) || 'Could not send the request.';
+      }
+      setTimeout(function () { btn.textContent = original; btn.disabled = false; }, 4000);
+    })
+    .catch(function () {
+      btn.textContent = 'Send failed';
+      btn.title = 'Network error.';
+      setTimeout(function () { btn.textContent = original; btn.disabled = false; }, 4000);
     });
 }
 

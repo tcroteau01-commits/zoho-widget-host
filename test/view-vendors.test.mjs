@@ -993,3 +993,83 @@ test('vetting pane: Payment Change flag fires even when Hiring_Decision is Appro
   const strip = w.document.getElementById('vv-redflags');
   assert.match(strip.textContent, /Payment change pending/);
 });
+
+// ── Request Invoice (INVREQ1): email the carrier a no-login upload link ─────
+
+async function bootOneWithFetchSpy(rec, extraFetch) {
+  const dom = makeDom();
+  const w = dom.window;
+  const calls = [];
+  w.fetch = (url, opts) => {
+    calls.push({ url: String(url), opts });
+    if (String(url).includes('/invoice-request/create-link')) {
+      return (extraFetch || (() => Promise.resolve({ ok: true,
+        json: () => Promise.resolve({ url: 'https://x/invoice-request.html?token=t', emailed: true }) })))();
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ records: [rec] }) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  return { w, calls };
+}
+
+test('row: Request Invoice button exists and is enabled even for Hold (unlike Submit Invoice)', async () => {
+  const { w } = await bootOneWithFetchSpy({ ID: 'r1', Vendor_Name: 'Hold Co', Hiring_Decision: 'Hold' });
+  const btn = w.document.querySelector('.row-action[data-action="reqinvoice"]');
+  assert.ok(btn, 'Request Invoice row button exists');
+  assert.ok(!btn.classList.contains('disabled'), 'enabled for Hold');
+});
+
+test('row: Request Invoice is disabled for DNU with an explanatory title', async () => {
+  const { w } = await bootOneWithFetchSpy({ ID: 'r2', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' });
+  const btn = w.document.querySelector('.row-action[data-action="reqinvoice"]');
+  assert.ok(btn.classList.contains('disabled'));
+  assert.match(btn.getAttribute('title'), /do not use/i);
+});
+
+test('row: clicking Request Invoice calls create-link with vendor_id and send=1', async () => {
+  const { w, calls } = await bootOneWithFetchSpy({ ID: 'r3', Vendor_Name: 'Acme', Hiring_Decision: 'Approve' });
+  w.document.querySelector('.row-action[data-action="reqinvoice"]').click();
+  await new Promise(r => setTimeout(r, 30));
+  const c = calls.find(c => c.url.includes('/invoice-request/create-link'));
+  assert.ok(c, 'create-link called');
+  assert.match(c.url, /vendor_id=r3/);
+  assert.match(c.url, /send=1/);
+});
+
+test('row: successful send shows confirmation on the button', async () => {
+  const { w } = await bootOneWithFetchSpy({ ID: 'r4', Vendor_Name: 'Acme', Hiring_Decision: 'Approve' });
+  const btn = w.document.querySelector('.row-action[data-action="reqinvoice"]');
+  btn.click();
+  await new Promise(r => setTimeout(r, 30));
+  assert.match(btn.textContent, /sent/i);
+});
+
+test('row: email_error is surfaced, not silent', async () => {
+  const { w } = await bootOneWithFetchSpy(
+    { ID: 'r5', Vendor_Name: 'Acme', Hiring_Decision: 'Approve' },
+    () => Promise.resolve({ ok: true,
+      json: () => Promise.resolve({ url: 'u', emailed: false, email_error: 'No carrier email on file.' }) }));
+  const btn = w.document.querySelector('.row-action[data-action="reqinvoice"]');
+  btn.click();
+  await new Promise(r => setTimeout(r, 30));
+  assert.match(btn.textContent, /failed/i);
+  assert.match(btn.getAttribute('title'), /no carrier email/i);
+});
+
+test('panel: Request Invoice button exists, enabled for Not Reviewed, and calls create-link', async () => {
+  const { w, calls } = await bootOneWithFetchSpy({ ID: 'p1', Vendor_Name: 'NotRev Co', Hiring_Decision: 'Not Reviewed' });
+  w.document.querySelector('.row').click();
+  const btn = w.document.getElementById('p-reqinv');
+  assert.ok(btn, 'panel Request Invoice exists');
+  assert.ok(!btn.disabled, 'enabled for Not Reviewed');
+  btn.click();
+  await new Promise(r => setTimeout(r, 30));
+  assert.ok(calls.some(c => c.url.includes('/invoice-request/create-link') && c.url.includes('vendor_id=p1')));
+});
+
+test('panel: Request Invoice is disabled for DNU', async () => {
+  const { w } = await bootOneWithFetchSpy({ ID: 'p2', Vendor_Name: 'DNU Co', DO_NOT_USE: true, Hiring_Decision: 'Approve' });
+  w.document.querySelector('.row').click();
+  assert.ok(w.document.getElementById('p-reqinv').disabled);
+});

@@ -304,6 +304,30 @@ test('loadFactoringCompanies populates the factoring dropdown', async () => {
   assert.match(sel.textContent, /OTR Solutions/);
 });
 
+test('loadFactoringCompanies grays out and labels non-Approved factors in both assign-role selects', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@op.com';
+  window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ companies: [
+    { id: 'f1', name: 'OTR Solutions', factor_status: 'Approved' },
+    { id: 'f2', name: 'We Win Capital LLC', factor_status: 'Denied' },
+    { id: 'f3', name: '1. Testing Factoring Company', factor_status: 'Pending' },
+  ] }) });
+  await window.loadFactoringCompanies();
+  ['noa-factoring-select', 'fc-change-select'].forEach(function (id) {
+    var sel = window.document.getElementById(id);
+    var opts = Array.from(sel.querySelectorAll('option'));
+    var approved = opts.find(function (o) { return o.value === 'f1'; });
+    var denied = opts.find(function (o) { return o.value === 'f2'; });
+    var pending = opts.find(function (o) { return o.value === 'f3'; });
+    assert.equal(approved.disabled, false);
+    assert.equal(approved.textContent, 'OTR Solutions');
+    assert.equal(denied.disabled, true);
+    assert.match(denied.textContent, /Not-Verified/);
+    assert.equal(pending.disabled, true);
+    assert.match(pending.textContent, /Not-Verified/);
+  });
+});
+
 test('Verified filter shows only verified carriers', () => {
   const { window } = makeWidget();
   window.statusPayload = STATUS;
@@ -753,4 +777,59 @@ test('on-file panel shows no authority chip for a carrier', () => {
   const { window } = makeWidget();
   window.showOnFile({ authority_class: 'carrier', factoring_company: 'F', pay_term: 'Net 30' });
   assert.doesNotMatch(window.document.getElementById('noa-onfile').innerHTML, /double-broker|not a carrier/i);
+});
+
+test('on-file panel shows a Not-Verified warning line for a Denied current factor', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ factoring_company: 'We Win Capital LLC', factor_status: 'Denied', pay_term: 'Factoring Company' });
+  const html = window.document.getElementById('noa-onfile').innerHTML;
+  assert.match(html, /Not-Verified/);
+});
+
+test('on-file panel shows no factor warning for an Approved or absent factor_status', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ factoring_company: 'OTR Solutions', factor_status: 'Approved', pay_term: 'Net 30' });
+  assert.doesNotMatch(window.document.getElementById('noa-onfile').innerHTML, /Not-Verified/);
+  window.showOnFile({ factoring_company: 'OTR Solutions', pay_term: 'Net 30' }); // factor_status absent entirely
+  assert.doesNotMatch(window.document.getElementById('noa-onfile').innerHTML, /Not-Verified/);
+});
+
+test('on-file panel composes the factor warning with the authority warning when both apply', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ authority_class: 'dual', factoring_company: 'We Win Capital LLC', factor_status: 'Pending', pay_term: 'Net 30' });
+  const html = window.document.getElementById('noa-onfile').innerHTML;
+  assert.match(html, /double-broker/i);
+  assert.match(html, /Not-Verified/);
+});
+
+test('showOnFile clears a stale factor warning on re-render', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ factoring_company: 'We Win Capital LLC', factor_status: 'Denied', pay_term: 'Net 30' });
+  window.showOnFile({ factoring_company: 'OTR Solutions', factor_status: 'Approved', pay_term: 'Net 30' });
+  const warns = window.document.querySelectorAll('.onfile-factor-warn');
+  assert.equal(warns.length, 0);
+});
+
+test('showOnFile with both warnings toggling independently clears only the stale one', () => {
+  const { window } = makeWidget();
+  // Step 1: Both conditions true (dual authority + Denied factor)
+  window.showOnFile({ authority_class: 'dual', factoring_company: 'We Win Capital LLC', factor_status: 'Denied', pay_term: 'Net 30' });
+  let authWarns = window.document.querySelectorAll('.onfile-auth-warn');
+  let factWarns = window.document.querySelectorAll('.onfile-factor-warn');
+  assert.equal(authWarns.length, 1, 'both warnings should render initially');
+  assert.equal(factWarns.length, 1, 'both warnings should render initially');
+
+  // Step 2: Only authority condition true (factor_status now Approved)
+  window.showOnFile({ authority_class: 'dual', factoring_company: 'OTR Solutions', factor_status: 'Approved', pay_term: 'Net 30' });
+  authWarns = window.document.querySelectorAll('.onfile-auth-warn');
+  factWarns = window.document.querySelectorAll('.onfile-factor-warn');
+  assert.equal(authWarns.length, 1, 'auth warning should remain after factor warning clears');
+  assert.equal(factWarns.length, 0, 'factor warning should clear when status is Approved');
+
+  // Step 3: Only factor condition true (authority_class now absent)
+  window.showOnFile({ factoring_company: 'We Win Capital LLC', factor_status: 'Denied', pay_term: 'Net 30' });
+  authWarns = window.document.querySelectorAll('.onfile-auth-warn');
+  factWarns = window.document.querySelectorAll('.onfile-factor-warn');
+  assert.equal(authWarns.length, 0, 'auth warning should clear when authority_class is absent');
+  assert.equal(factWarns.length, 1, 'factor warning should return when status is Denied again');
 });

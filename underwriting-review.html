@@ -174,6 +174,13 @@ tr:last-child td { border-bottom:none; }
 .agr-row input:focus { outline:none; border-color:var(--of-orange); background:#fff; }
 .agr-row .agr-name { margin-bottom:6px; }
 .agr-actions { display:flex; gap:8px; margin-top:12px; }
+/* Packet chooser (template) + California addendum, shown above Prepare Agreement. */
+.agr-config { background:var(--of-beige-soft); border:1px solid var(--of-beige-line); border-radius:10px; padding:13px 14px; margin:4px 0 12px; }
+.ca-row { display:flex; align-items:flex-start; gap:10px; padding-top:12px; margin-top:12px; border-top:1px dashed var(--of-beige-line); cursor:pointer; }
+.ca-box { width:18px; height:18px; border-radius:5px; border:1.5px solid var(--of-beige-line); background:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#fff; flex-shrink:0; margin-top:1px; }
+.ca-box.on { background:var(--of-green); border-color:var(--of-green); }
+.ca-txt .t { font-size:13px; font-weight:700; color:var(--of-charcoal); }
+.ca-txt .s { display:block; font-size:11px; color:var(--of-gray-500); margin-top:2px; line-height:1.4; }
 
 /* Intro dashboard */
 .dash-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--of-charcoal); margin:4px 2px 10px; }
@@ -414,6 +421,28 @@ tr:last-child td { border-bottom:none; }
               <span class="pill n" id="agrBadge">Not Sent</span>
             </div>
             <div id="agrHint" class="agr-note">Approve the client to prepare the agreement for e-signature.</div>
+
+            <!-- Packet chooser (which Zoho Sign template) + California addendum. Visible when a draft
+                 can be prepared; drives /send-agreement's packet_type + california. -->
+            <div id="agrConfig" class="agr-config" style="display:none">
+              <div class="fld" style="margin-bottom:0">
+                <label>Packet type</label>
+                <select id="agrPacket">
+                  <option value="broker_1">Broker (1 signer) + NOA</option>
+                  <option value="broker_2">Broker (2 signers) + NOA</option>
+                  <option value="carrier_1" selected>Carrier (1 signer) + NOA</option>
+                  <option value="carrier_2">Carrier (2 signers) + NOA</option>
+                </select>
+              </div>
+              <div class="ca-row" id="agrCaRow">
+                <span class="ca-box" id="agrCaBox"></span>
+                <span class="ca-txt">
+                  <span class="t">California deal</span>
+                  <span class="s">Adds the California addendum document to the packet.</span>
+                </span>
+              </div>
+            </div>
+
             <button class="btn orange block" id="btnSendAgreement" style="display:none">✍ Prepare Agreement</button>
             <a href="#" id="btnAgrRefresh" class="agr-refresh" style="display:none">↻ Refresh signature status</a>
 
@@ -1175,23 +1204,36 @@ function renderAgreement(){
   badge.className = 'pill ' + b.cls;
   badge.textContent = b.status;
   var approved = (readState().decision === 'Approved') || /approved/i.test((MODEL.review && MODEL.review.Decision2) || '');
-  var btn = $('btnSendAgreement'), hint = $('agrHint'), refresh = $('btnAgrRefresh');
+  var btn = $('btnSendAgreement'), hint = $('agrHint'), refresh = $('btnAgrRefresh'), cfg = $('agrConfig');
+  // Packet chooser is only meaningful when a NEW draft can be created (first prepare, or a resend);
+  // once a draft is open for review or the deal is signed the packet is locked in, so hide it.
+  var showCfg = false;
   if (b.signed){
     btn.style.display = 'block'; btn.textContent = '✓ Agreement signed'; btn.disabled = true;
     hint.style.display = 'none'; refresh.style.display = 'none';
   } else if (b.sent){
     btn.style.display = 'block'; btn.textContent = '↻ Resend agreement'; btn.disabled = false;
-    hint.style.display = 'none'; refresh.style.display = 'inline';
+    hint.style.display = 'none'; refresh.style.display = 'inline'; showCfg = true;
   } else if (b.prepared){
     // Draft exists — the underwriter still needs to review + send it in Zoho Sign.
     btn.style.display = 'block'; btn.textContent = '▶ Open review & send'; btn.disabled = false;
     hint.style.display = 'none'; refresh.style.display = 'inline';
   } else if (approved){
     btn.style.display = 'block'; btn.textContent = '✍ Prepare Agreement'; btn.disabled = false;
-    hint.style.display = 'none'; refresh.style.display = 'none';
+    hint.style.display = 'none'; refresh.style.display = 'none'; showCfg = true;
   } else {
     btn.style.display = 'none'; hint.style.display = 'block'; refresh.style.display = 'none';
   }
+  if (cfg) cfg.style.display = showCfg ? 'block' : 'none';
+}
+
+// Read the packet chooser: { packet_type, california }. Defaults to the Carrier(1) packet, CA off.
+function agreementPacketConfig(){
+  var sel = $('agrPacket'), box = $('agrCaBox');
+  return {
+    packet_type: (sel && sel.value) || 'carrier_1',
+    california: !!(box && box.classList.contains('on'))
+  };
 }
 
 // The primary button: open the review screen for an existing draft, else open the recipients panel.
@@ -1232,7 +1274,8 @@ function openAgreementPanel(){
     pstat.textContent = 'Demo mode — no live Sign template. (OperFi countersigns automatically.)';
     return;
   }
-  fetch(API_BASE + AGR_ROLES_PATH + '?usdot=' + encodeURIComponent(usdot))
+  var pkt = agreementPacketConfig().packet_type;
+  fetch(API_BASE + AGR_ROLES_PATH + '?usdot=' + encodeURIComponent(usdot) + '&packet_type=' + encodeURIComponent(pkt))
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status)); return j; }); })
     .then(function(j){
       if (!j.roles || !j.roles.length){ pstat.textContent = 'No signer roles found on the agreement template.'; return; }
@@ -1264,16 +1307,17 @@ function prepareAgreement(){
   var built = buildAgreementRecipients(MODEL._agrRoles || [], inputs);
   if (built.missing.length){ $('agrPanelStatus').textContent = 'Enter an email for: ' + built.missing.join(', '); return; }
   var resend = agreementBadge(MODEL.application || {}).sent;
+  var pkt = agreementPacketConfig();
   $('btnAgrConfirm').disabled = true; $('agrPanelStatus').textContent = 'Preparing…';
   if (MODEL._demo || typeof fetch !== 'function'){
     MODEL.application.Sign_Request_Id = 'demo-req'; MODEL.application.Agreement_Status = 'Draft';
     $('agrPanel').style.display = 'none'; $('btnAgrConfirm').disabled = false; renderAgreement();
-    showStatus('✓ Demo: draft prepared for ' + built.recipients.length + ' signer(s). Live, the Zoho Sign review screen opens in a new tab.', 'success'); return;
+    showStatus('✓ Demo: ' + pkt.packet_type + (pkt.california ? ' + CA addendum' : '') + ' draft prepared for ' + built.recipients.length + ' signer(s). Live, the Zoho Sign review screen opens in a new tab.', 'success'); return;
   }
   // Reserve a tab inside the click gesture so the popup isn't blocked; point it at the review url.
   var win = global.open ? global.open('', '_blank') : null;
   fetch(API_BASE + AGR_SEND_PATH, { method:'POST', headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({ application_id: MODEL.appId, usdot:(MODEL.application && MODEL.application.USDOT) || '', recipients: built.recipients, resend: resend }) })
+    body: JSON.stringify({ application_id: MODEL.appId, usdot:(MODEL.application && MODEL.application.USDOT) || '', recipients: built.recipients, resend: resend, packet_type: pkt.packet_type, california: pkt.california }) })
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok || !j.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status)); return j; }); })
     .then(function(j){
       MODEL.application.Sign_Request_Id = j.request_id || MODEL.application.Sign_Request_Id;
@@ -1856,6 +1900,10 @@ function boot() {
   if ($('btnSendAgreement')) $('btnSendAgreement').addEventListener('click', agreementPrimaryClick);
   if ($('btnAgrConfirm')) $('btnAgrConfirm').addEventListener('click', prepareAgreement);
   if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){ $('agrPanel').style.display = 'none'; });
+  if ($('agrCaRow')) $('agrCaRow').addEventListener('click', function(){
+    var box = $('agrCaBox'); if (!box) return;
+    box.textContent = box.classList.toggle('on') ? '✓' : '';
+  });
   if ($('btnAgrRefresh')) $('btnAgrRefresh').addEventListener('click', refreshAgreementStatus);
   $('btnBack').addEventListener('click', showDashboard);
 

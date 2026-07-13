@@ -412,7 +412,7 @@ tr:last-child td { border-bottom:none; }
             <button class="btn red block" id="btnDecline">✕ Decline</button>
             <button class="btn ghost block" id="btnSave">💾 Save progress</button>
           </div>
-          <div style="font-size:11px;color:var(--of-gray-500);margin-top:10px;text-align:center">Approve requires all 6 gates green. Decision syncs to CRM Deal stage.</div>
+          <div id="approveGateNote" style="font-size:11px;color:var(--of-gray-500);margin-top:10px;text-align:center">Approve requires all 6 gates green. Decision syncs to CRM Deal stage.</div>
 
           <!-- Client agreement e-signature (Zoho Sign). Unlocks after an Approved decision. -->
           <div id="agrSection" class="agr-section">
@@ -505,6 +505,10 @@ var APPLICATION_LOOKUP = 'Application'; // 1:1 lookup on Underwriting_Review (ha
 var FORM_REVIEW = 'Underwriting_Review';
 // Creator report names (from the .ds reports block) used for live reads.
 var RPT = { application: 'Application_Report', owner: 'Owner_Report', document: 'Document_Report', review: 'Underwriting_Review_Report' };
+// "For now" (Diego 2026-07-13): keep the Approval Gate card visible as an informational checklist,
+// but don't let it BLOCK approving — Approve stays clickable and saves regardless of gate status.
+// Flip back to true to restore hard gating.
+var UW_REQUIRE_GATES = false;
 // Backend (operfi-broker-api) that returns the automated check results stored at submit time.
 var API_BASE = global.OPERFI_UW_API_BASE || 'https://operfi-broker-api.onrender.com';
 var CHECKS_PATH = '/application-checks'; // GET ?usdot= → { fraud, ownership, ucc, risk, checkedAt }  (confirm with Tom)
@@ -740,9 +744,11 @@ function computeGate(s, ctx) {
   return gates;
 }
 
-function validateDecision(s, ctx) {
+function validateDecision(s, ctx, opts) {
+  opts = opts || {};
+  var requireGates = opts.requireGates !== false;   // default true (preserves strict behavior + tests)
   var errors = [];
-  if (s.decision === 'Approved') {
+  if (s.decision === 'Approved' && requireGates) {
     if (!s.authorityVerified) errors.push('Authority must be verified to approve.');
     if (!s.ownershipVerified) errors.push('Ownership must be verified to approve.');
     if (!s.uccChecked) errors.push('UCC must be checked & cleared to approve.');
@@ -1185,7 +1191,11 @@ function renderGate() {
   }).join('');
   $('gateCount').textContent = g.passedCount + ' / 6';
   $('kGates').textContent = g.passedCount + ' / 6';
-  $('btnApprove').disabled = !g.allPass;
+  // Gates are informational "for now" (UW_REQUIRE_GATES): Approve stays clickable regardless.
+  $('btnApprove').disabled = UW_REQUIRE_GATES ? !g.allPass : false;
+  if ($('approveGateNote')) $('approveGateNote').textContent = UW_REQUIRE_GATES
+    ? 'Approve requires all 6 gates green. Decision syncs to CRM Deal stage.'
+    : 'Decision syncs to CRM Deal stage.';
   $('rbLimit').textContent = s.approvedCreditLimit || '—';
   $('rbRate').textContent = s.recommendedRate || '—';
   renderAgreement();
@@ -1203,7 +1213,9 @@ function renderAgreement(){
   var badge = $('agrBadge');
   badge.className = 'pill ' + b.cls;
   badge.textContent = b.status;
-  var approved = (readState().decision === 'Approved') || /approved/i.test((MODEL.review && MODEL.review.Decision2) || '');
+  // Reveal on a COMMITTED approval (the green Approve button / a loaded Approved application), not on
+  // a mere Decision-dropdown change. submit() stamps MODEL.review.Decision2 on a validated click.
+  var approved = /approved/i.test((MODEL.review && MODEL.review.Decision2) || '') || (MODEL.application && MODEL.application.Application_Status === 'Approved');
   var btn = $('btnSendAgreement'), hint = $('agrHint'), refresh = $('btnAgrRefresh'), cfg = $('agrConfig');
   // Packet chooser is only meaningful when a NEW draft can be created (first prepare, or a resend);
   // once a draft is open for review or the deal is signed the packet is locked in, so hide it.
@@ -1924,8 +1936,13 @@ function submit(forceDecision) {
   if (!MODEL) { showStatus('Open an application first.', 'error'); return; }
   var s = readState();
   if (forceDecision) { s.decision = forceDecision; $('uwDecision').value = forceDecision; }
-  var v = validateDecision(s, ctx());
+  var v = validateDecision(s, ctx(), { requireGates: UW_REQUIRE_GATES });
   if (!v.ok) { showStatus('Cannot save: ' + v.errors[0], 'error'); return; }
+  // Reflect the committed decision locally so the Client Agreement section reveals on the Approve
+  // BUTTON (a committed decision), not on a mere dropdown change. Denied/other hide it again.
+  MODEL.review = MODEL.review || {};
+  MODEL.review.Decision2 = s.decision;
+  renderAgreement();
   showStatus('Saving decision…', 'loading');
   var payload = buildReviewPayload(s, MODEL.appId);
   saveReview(payload, MODEL.reviewId, s.insuranceExpiration).then(function(res){

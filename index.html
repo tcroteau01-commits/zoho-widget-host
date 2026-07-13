@@ -1395,10 +1395,10 @@ function _uploadDocsSequential(recordId, pdfs) {
 // uploaded. This is the deliberate signal the Triumph audit Flow fires on, so the
 // record always has its documents before the audit reads it. Best-effort: we always
 // finalize (even on a failed upload) so the load still proceeds into FV's pipeline.
-function _finalizeFunding(recordId) {
+function _finalizeFunding(recordId, docsOk) {
   return fetch(BROKER_API_BASE + '/funding-finalize', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: brokerEmail, record_id: recordId }) })
+      body: JSON.stringify({ email: brokerEmail, record_id: recordId, docs_ok: !!docsOk }) })
     .then(function (r) { return r.ok; }).catch(function () { return false; });
 }
 
@@ -1438,7 +1438,7 @@ function resetFormAfterSubmit(recordId, uploadIssue) {
   if (banner) {
     banner.className = 'post-submit-banner ' + (uploadIssue ? 'warn' : 'ok');
     banner.innerHTML = uploadIssue
-      ? '✓ Load ' + esc(loadLabel) + ' submitted — but a document failed to upload. Re-upload it from Submission History or contact OperFi.'
+      ? '✓ Load ' + esc(loadLabel) + ' couldn’t finish uploading its paperwork — it’s saved in <strong>Draft Loads</strong>. Open it there, attach your documents, and re-submit.'
       : '✓ Load ' + esc(loadLabel) + ' submitted and is in your Submission History. The form is cleared for your next load.';
     banner.style.display = '';
   }
@@ -1486,7 +1486,7 @@ function submitLoad() {
           // Flip the record to "Processing" so the audit Flow fires with the docs
           // present. Always finalize so the load enters FV's pipeline even if an
           // upload failed; the banner warns about any failure.
-          return _finalizeFunding(recordId).then(function () {
+          return _finalizeFunding(recordId, failed === 0).then(function () {
             // Clear the form back to step 1 and confirm up top — prevents resubmitting
             // the same load now that the record exists.
             resetFormAfterSubmit(recordId, failed > 0);

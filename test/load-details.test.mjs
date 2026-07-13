@@ -564,6 +564,58 @@ test('an upload returning HTTP 200 with a non-3000 Creator code is treated as fa
   assert.match(t, /upload/i);
 });
 
+test('a failed doc upload calls /funding-finalize with docs_ok:false', async () => {
+  let finalizeBody = null;
+  const dom = makeB2Dom((url, opts) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_910', warnings: [] }) });
+    if (String(url).includes('/upload-doc'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3105, message: 'record locked' }) });
+    if (String(url).includes('/funding-finalize')) { finalizeBody = JSON.parse(opts.body);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, status: 'Draft' }) }); }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: null });
+  await w.submitLoad();
+  assert.ok(finalizeBody, '/funding-finalize was not called');
+  assert.strictEqual(finalizeBody.docs_ok, false);
+});
+
+test('a successful submit calls /funding-finalize with docs_ok:true', async () => {
+  let finalizeBody = null;
+  const dom = makeB2Dom((url, opts) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_911', warnings: [] }) });
+    if (String(url).includes('/funding-finalize')) { finalizeBody = JSON.parse(opts.body);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, status: 'Processing' }) }); }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: new w.Blob(['y']) });
+  await w.submitLoad();
+  assert.strictEqual(finalizeBody.docs_ok, true);
+});
+
+test('the failed-upload banner points the broker to Draft Loads', async () => {
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_912', warnings: [] }) });
+    if (String(url).includes('/upload-doc'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3105 }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, status: 'Draft' }) });
+  });
+  const w = dom.window;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: null });
+  await w.submitLoad();
+  const t = w.document.getElementById('post-submit-banner').textContent;
+  assert.match(t, /Draft Loads/);
+  assert.doesNotMatch(t, /Submission History/);
+});
+
 // ── Task 22: Save-as-Draft manual feeder + draft reopen ───────────────────────
 
 test('there is a Save as Draft button next to Submit', () => {

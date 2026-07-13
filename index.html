@@ -1391,10 +1391,12 @@ function _uploadDocsSequential(recordId, pdfs) {
   return chain.then(function () { return failed; });
 }
 
-// Promote the record from "Pending Docs" to "Processing" once its docs are
-// uploaded. This is the deliberate signal the Triumph audit Flow fires on, so the
-// record always has its documents before the audit reads it. Best-effort: we always
-// finalize (even on a failed upload) so the load still proceeds into FV's pipeline.
+// Finalize the record based on the upload outcome. With docs_ok true (all docs
+// uploaded) it promotes "Pending Docs" -> "Processing", the deliberate signal the
+// Triumph audit Flow fires on, so the record always has its documents before the
+// audit reads it. With docs_ok false (a failed upload) it demotes the record to
+// "Draft" instead, keeping a doc-less load out of FV/Triumph and recoverable in
+// Draft Loads.
 function _finalizeFunding(recordId, docsOk) {
   return fetch(BROKER_API_BASE + '/funding-finalize', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1483,9 +1485,9 @@ function submitLoad() {
         // Only the failure paths below re-enable it for retry.
         if (pdfs.customer || pdfs.carrier) setStatus('Uploading documents…');
         return _uploadDocsSequential(recordId, pdfs).then(function (failed) {
-          // Flip the record to "Processing" so the audit Flow fires with the docs
-          // present. Always finalize so the load enters FV's pipeline even if an
-          // upload failed; the banner warns about any failure.
+          // Finalize with the upload outcome: all docs uploaded promotes to
+          // "Processing" and fires the audit Flow; any failure demotes the record to
+          // "Draft" (recoverable in Draft Loads), and the banner directs the broker there.
           return _finalizeFunding(recordId, failed === 0).then(function () {
             // Clear the form back to step 1 and confirm up top — prevents resubmitting
             // the same load now that the record exists.

@@ -1031,9 +1031,15 @@ function indRow(label,source,value,cls){
     '<span class="ind-pill '+(cls||'neutral')+'">'+esc(value)+'</span></div>';
 }
 function _revocationCount(co){
-  var h=(co&&co.authority_history)||[],n=0;
-  for(var i=0;i<h.length;i++){ if((h[i].dispensation_action_desc||'')==='Revoked') n++; }
-  return n;
+  var h=(co&&co.authority_history)||[];
+  if(h.length){
+    var n=0;
+    for(var i=0;i<h.length;i++){ if((h[i].dispensation_action_desc||'')==='Revoked') n++; }
+    return n;
+  }
+  // fmcsa has no authority_history; use the current-status revocation count.
+  var t=co&&co.total_revocations;
+  return (t==null||t==='')?0:(parseInt(t,10)||0);
 }
 function _authorityAge(co){
   var h=(co&&co.authority_history)||[],earliest=null;
@@ -1419,6 +1425,7 @@ function renderInsurance(p){
   var hist=Array.isArray(co.insurance_history)?co.insurance_history.slice():[];
   hist.sort(function(a,b){ return String(b.effective_date||'').localeCompare(String(a.effective_date||'')); });
   var h0=hist[0]||{};
+  var hasHist=hist.length>0;
   var liab=_money(co.insurance_liability_limit||h0.minimum_coverage_amount||h0.liability_limit);
   var cargo=_money(co.insurance_cargo_limit||h0.cargo_limit);
   var covType=co.insurance_type||(cargo?'Liability + Cargo':(liab?'Liability':''));
@@ -1427,15 +1434,22 @@ function renderInsurance(p){
   var pend=!!co.pending_insurance_cancellation;
   var cancel=_num(co.insurance_cancel_count);
   var hazmat=!!co.hazardous_material;
-  el.innerHTML=
+  var rows=
     indRow('Coverage Type','FMCSA',covType||'—','neutral')+
     indRow('Liability Limit','FMCSA',liab||'—',liab?'good':'neutral')+
-    indRow('Cargo Limit','FMCSA',cargo||'—',cargo?'good':'neutral')+
-    indRow('Insurance Carrier','FMCSA',carrier||'—','neutral')+
-    indRow('Effective Date','FMCSA',eff||'—','neutral')+
+    indRow('Cargo Limit','FMCSA',cargo||'—',cargo?'good':'neutral');
+  if(hasHist){
+    rows+=
+      indRow('Insurance Carrier','FMCSA',carrier||'—','neutral')+
+      indRow('Effective Date','FMCSA',eff||'—','neutral');
+  }
+  rows+=
     indRow('Pending Cancellation','FMCSA',pend?'⚠ Yes':'No',pend?'warn':'good')+
-    indRow('Cancel Count (lifetime)','FMCSA',cancel!=null?String(cancel):'—',cancel>0?'warn':'good')+
     indRow('Hazmat Coverage','OperFi',hazmat?'Required':'N/A (no hazmat)','neutral');
+  if(cancel!=null && cancel>0){
+    rows+=indRow('Cancel Count (lifetime)','FMCSA',String(cancel),'warn');
+  }
+  el.innerHTML=rows;
   var _insBad=(p.carrierok&&p.carrierok.indicator_insurance===false); setAccPill('cp-acc-insurance-pill', _insBad?'flag':(p.carrierok&&p.carrierok.pending_insurance_cancellation?'caution':'clean'), _insBad?'Flag':(p.carrierok&&p.carrierok.pending_insurance_cancellation?'Caution':'Clean'));
 }
 

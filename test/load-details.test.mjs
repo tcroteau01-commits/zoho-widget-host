@@ -616,6 +616,52 @@ test('the failed-upload banner points the broker to Draft Loads', async () => {
   assert.doesNotMatch(t, /Submission History/);
 });
 
+test('a finalize that never lands does NOT show the "submitted" banner (Missions strand)', async () => {
+  // Docs upload fine, but finalize keeps failing (Render down / demote row-lock).
+  // The record is still stranded at Pending Docs, so the broker must be pointed at
+  // Draft Loads, NEVER told the load reached Submission History.
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_920', warnings: [] }) });
+    if (String(url).includes('/upload-doc'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });  // uploads OK
+    if (String(url).includes('/funding-finalize'))
+      return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({ ok: false }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });
+  });
+  const w = dom.window;
+  w._FINALIZE_RETRY_MS = 0;  // skip backoff
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: new w.Blob(['y']) });
+  await w.submitLoad();
+  const t = w.document.getElementById('post-submit-banner').textContent;
+  assert.match(t, /Draft Loads/);
+  assert.doesNotMatch(t, /Submission History/);
+});
+
+test('finalize is retried when the first call fails', async () => {
+  let finalizeCalls = 0;
+  const dom = makeB2Dom((url) => {
+    if (String(url).includes('/funding-submit'))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, record_id: 'rec_921', warnings: [] }) });
+    if (String(url).includes('/funding-finalize')) {
+      finalizeCalls++;
+      // Fail the first attempt, succeed on the second.
+      if (finalizeCalls < 2) return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({}) });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, status: 'Processing' }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 3000 }) });
+  });
+  const w = dom.window;
+  w._FINALIZE_RETRY_MS = 0;
+  w._collectFields = () => ({ customer_id: 'c9' });
+  w._mergedPdfs = () => Promise.resolve({ customer: new w.Blob(['x']), carrier: new w.Blob(['y']) });
+  await w.submitLoad();
+  assert.ok(finalizeCalls >= 2, 'finalize was not retried after a failure');
+  const t = w.document.getElementById('post-submit-banner').textContent;
+  assert.match(t, /Submission History/, 'a retried-and-succeeded finalize should confirm clean submit');
+});
+
 // ── Task 22: Save-as-Draft manual feeder + draft reopen ───────────────────────
 
 test('there is a Save as Draft button next to Submit', () => {

@@ -1397,11 +1397,24 @@ function _uploadDocsSequential(recordId, pdfs) {
 // audit reads it. With docs_ok false (a failed upload) it demotes the record to
 // "Draft" instead, keeping a doc-less load out of FV/Triumph and recoverable in
 // Draft Loads.
-function _finalizeFunding(recordId, docsOk) {
+function _finalizeFunding(recordId, docsOk, _attempt) {
+  // Retry on failure: finalize is what moves the record OFF the 'Pending Docs'
+  // holding status (to Processing, or to Draft when docsOk is false). If it never
+  // succeeds the load strands at Pending Docs — the exact Missions Logistics failure.
+  // Render can cold-start, so a first-call timeout is expected; try a few times
+  // before giving up. Returns true only when the record actually left Pending Docs.
+  _attempt = _attempt || 1;
   return fetch(BROKER_API_BASE + '/funding-finalize', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: brokerEmail, record_id: recordId, docs_ok: !!docsOk }) })
-    .then(function (r) { return r.ok; }).catch(function () { return false; });
+    .then(function (r) { return r.ok; }).catch(function () { return false; })
+    .then(function (ok) {
+      if (ok || _attempt >= 3) return ok;
+      var base = (typeof window !== 'undefined' && window._FINALIZE_RETRY_MS != null)
+        ? window._FINALIZE_RETRY_MS : 1500;  // tests set 0 to skip the backoff
+      return new Promise(function (res) { setTimeout(res, base * _attempt); })
+        .then(function () { return _finalizeFunding(recordId, docsOk, _attempt + 1); });
+    });
 }
 
 // After a created funding record, wipe the form back to a clean step 1 so the SAME
@@ -1488,10 +1501,18 @@ function submitLoad() {
           // Finalize with the upload outcome: all docs uploaded promotes to
           // "Processing" and fires the audit Flow; any failure demotes the record to
           // "Draft" (recoverable in Draft Loads), and the banner directs the broker there.
-          return _finalizeFunding(recordId, failed === 0).then(function () {
+          var docsOk = (failed === 0);
+          return _finalizeFunding(recordId, docsOk).then(function (finalizeOk) {
+            // Only claim a clean submit when the record actually left "Pending Docs":
+            // all docs uploaded AND finalize promoted it to Processing. If a doc failed,
+            // or finalize never landed (record still stranded at Pending Docs), send the
+            // broker to Draft Loads — the backend sweep surfaces a stranded record there
+            // within a couple minutes. Prevents the false "submitted" banner that hid the
+            // Missions Logistics strand.
+            var cleanSuccess = docsOk && finalizeOk;
             // Clear the form back to step 1 and confirm up top — prevents resubmitting
             // the same load now that the record exists.
-            resetFormAfterSubmit(recordId, failed > 0);
+            resetFormAfterSubmit(recordId, !cleanSuccess);
           });
         });
       });

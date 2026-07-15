@@ -839,9 +839,9 @@ test('showOnFile shows a labeled Bank Details row marked ON FILE when banking pr
   window.showOnFile({ carrier_name: 'WAGNER', factoring_company: 'OTR', pay_term: 'Quick Pay - LOR',
     bank_name: 'Wells Fargo', account_last4: '****1234', routing_number: '121000248' });
   const panel = window.document.getElementById('noa-onfile');
-  // The status is a proper labeled grid row, not a floating full-width warning.
-  const ok = panel.querySelector('.onfile-row .val.bank-ok');
-  assert.ok(ok, 'on-file status renders as an aligned .onfile-row value');
+  // The status is an aligned key/value cell in the grid, not a floating line.
+  const ok = panel.querySelector('.onfile-grid .val.bank-ok');
+  assert.ok(ok, 'on-file status renders as an aligned .onfile-grid value');
   assert.match(ok.textContent, /on file/i);
   assert.match(panel.textContent, /Bank Details/);
   assert.match(panel.textContent, /Wells Fargo/);
@@ -853,8 +853,8 @@ test('showOnFile shows a labeled Bank Details row marked NOT on file when absent
   const { window } = makeWidget();
   window.showOnFile({ carrier_name: 'WAGNER', factoring_company: 'OTR', pay_term: 'Quick Pay - LOR' });
   const panel = window.document.getElementById('noa-onfile');
-  const missing = panel.querySelector('.onfile-row .val.bank-missing');
-  assert.ok(missing, 'not-on-file status renders as an aligned .onfile-row value');
+  const missing = panel.querySelector('.onfile-grid .val.bank-missing');
+  assert.ok(missing, 'not-on-file status renders as an aligned .onfile-grid value');
   assert.match(missing.textContent, /not on file/i);
   assert.match(panel.textContent, /Bank Details/);
 });

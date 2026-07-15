@@ -204,12 +204,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   padding: 16px 18px; margin-top: 8px;
 }
 .onfile-label { font-size: 11px; font-weight: 700; color: #272727; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px; }
-.onfile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; }
-.onfile-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
-.onfile-row .lbl { color: #888; font-weight: 500; }
-.onfile-row .val { color: #272727; font-weight: 600; }
-.onfile-row .val.bank-ok { color: #2e7d32; }
-.onfile-row .val.bank-missing { color: #c62828; }
+.onfile-grid { display: grid; grid-template-columns: max-content 1fr; gap: 9px 20px; align-items: baseline; font-size: 13px; }
+.onfile-grid .lbl { color: #888; font-weight: 500; white-space: nowrap; }
+.onfile-grid .val { color: #272727; font-weight: 600; }
+.onfile-grid .val.bank-ok { color: #2e7d32; font-weight: 700; }
+.onfile-grid .val.bank-missing { color: #c62828; font-weight: 700; }
+.onfile-grid .bank-divider { padding-top: 11px; margin-top: 2px; border-top: 1px solid #ececde; }
 .onfile-auth-warn,.onfile-factor-warn{background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:8px;padding:8px 12px;font-weight:700;margin-bottom:10px;}
 .stale-warn {
   background: #fff4e0; border: 1px solid #f0d9a8; border-left: 4px solid #e8a020;
@@ -261,13 +261,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .kpi-row { grid-template-columns: 1fr 1fr; }
   .type-grid, .type-grid.gated { grid-template-columns: 1fr 1fr; }
   .field-grid { grid-template-columns: 1fr; }
-  .onfile-grid { grid-template-columns: 1fr; }
   .tbl thead { display: none; }
 }
 @media (max-width: 640px) {
   html, body { overflow-x: hidden; }
   .page { max-width: 100%; padding: 16px 12px 40px; box-sizing: border-box; }
-  .kpi-row, .type-grid, .type-grid.gated, .field-grid, .onfile-grid { grid-template-columns: 1fr !important; }
+  .kpi-row, .type-grid, .type-grid.gated, .field-grid { grid-template-columns: 1fr !important; }
   .field-input, .field-select, input, select, textarea { font-size: 16px; width: 100%; box-sizing: border-box; }
   .btn { min-height: 44px; }
   .btn-group { flex-direction: column; }
@@ -1015,9 +1014,13 @@ function showOnFile(carrier) {
     factorWarn.textContent = '⚠ Current factor is Not-Verified';
     panel.insertBefore(factorWarn, panel.firstChild);
   }
-  function onfileRow(label, value, valClass) {
-    return '<div class="onfile-row"><span class="lbl">' + label + ':</span> <span class="val' +
-      (valClass ? ' ' + valClass : '') + '">' + esc(value) + '</span></div>';
+  // Aligned key/value list: label cell + value cell as direct grid children,
+  // so every value sits in one tidy column next to its label (no space-between
+  // float). `divider` draws a hairline above the Bank Details row.
+  function onfileCell(label, value, valClass, divider) {
+    var d = divider ? ' bank-divider' : '';
+    return '<span class="lbl' + d + '">' + label + '</span>' +
+      '<span class="val' + (valClass ? ' ' + valClass : '') + d + '">' + esc(value) + '</span>';
   }
   // Carrier + pay-term context.
   var topRows = [
@@ -1033,11 +1036,10 @@ function showOnFile(carrier) {
     ['Routing Number', carrier.routing_number]
   ].filter(function (r) { return r[1]; });
   var hasBank = !!(carrier.bank_name || carrier.account_last4 || carrier.routing_number);
-  // "Bank Details" is its own labeled, aligned row (not a floating full-width
-  // warning) so it reads as a distinct field, not part of the factoring line.
-  var html = topRows.map(function (r) { return onfileRow(r[0], r[1]); }).join('');
-  html += onfileRow('Bank Details', hasBank ? '✓ On file' : '⚠ Not on file', hasBank ? 'bank-ok' : 'bank-missing');
-  html += bankRows.map(function (r) { return onfileRow(r[0], r[1]); }).join('');
+  // "Bank Details" is its own labeled row, divided off from the factoring line.
+  var html = topRows.map(function (r) { return onfileCell(r[0], r[1]); }).join('');
+  html += onfileCell('Bank Details', hasBank ? '✓ On file' : '⚠ Not on file', hasBank ? 'bank-ok' : 'bank-missing', true);
+  html += bankRows.map(function (r) { return onfileCell(r[0], r[1]); }).join('');
   grid.innerHTML = html;
   panel.classList.remove('hidden');
 }

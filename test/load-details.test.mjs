@@ -74,12 +74,13 @@ function makeB2Dom(fetchImpl, { avStubs } = {}) {
   return dom;
 }
 
-test('loadCustomers fetches /tms-customers and keeps only approved', async () => {
+test('loadCustomers fetches /tms-customers and keeps only fundable customers', async () => {
   const dom = makeB2Dom((url) => {
     if (String(url).includes('/tms-customers')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({
         customers: [
           { customer_id: 'c9', customer_name: 'ACME', credit_decision: 'Approved' },
+          { customer_id: 'c7', customer_name: 'GAMMA', credit_decision: 'Credit Boost Requested' },
           { customer_id: 'c8', customer_name: 'BETA', credit_decision: 'Declined' }
         ]
       })});
@@ -90,6 +91,9 @@ test('loadCustomers fetches /tms-customers and keeps only approved', async () =>
   await w.loadCustomers();
   const opts = [...w.document.querySelectorAll('#customer-select option')].map(o => o.textContent);
   assert.ok(opts.some(t => /ACME/.test(t)), 'ACME (Approved) should be present');
+  // A boost customer is already approved with a limit and is only asking for more,
+  // so it stays selectable and funds against its existing limit.
+  assert.ok(opts.some(t => /GAMMA/.test(t)), 'GAMMA (Credit Boost Requested) should be present');
   assert.ok(!opts.some(t => /BETA/.test(t)), 'BETA (Declined) should be filtered out');
 });
 

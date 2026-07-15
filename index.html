@@ -560,6 +560,12 @@ function esc(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Credit_Decision values a load can be funded against. A boost customer is already
+// approved with a live limit and is only asking for more, so it stays selectable and
+// funds against its existing limit. Mirrors the backend's FUNDABLE_CREDIT_DECISIONS
+// (/funding-submit rejects anything else) and tms-load-detail.html's booking rule.
+var FUNDABLE_CREDIT_DECISIONS = ['Approved', 'Credit Boost Requested'];
+
 function loadCustomers() {
   var err = document.getElementById('customer-error');
   if (err) err.textContent = '';
@@ -567,7 +573,7 @@ function loadCustomers() {
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (data) {
       var approved = (data.customers || []).filter(function (c) {
-        return String(c.credit_decision || '').toLowerCase() === 'approved';
+        return FUNDABLE_CREDIT_DECISIONS.indexOf(String(c.credit_decision || '').trim()) !== -1;
       });
       var sel = document.getElementById('customer-select');
       sel.innerHTML = '<option value="">Select a customer…</option>' +

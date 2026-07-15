@@ -834,18 +834,27 @@ test('showOnFile with both warnings toggling independently clears only the stale
   assert.equal(factWarns.length, 1, 'factor warning should return when status is Denied again');
 });
 
-test('showOnFile marks bank details ON FILE when banking present', () => {
+test('showOnFile shows a labeled Bank Details row marked ON FILE when banking present', () => {
   const { window } = makeWidget();
   window.showOnFile({ carrier_name: 'WAGNER', factoring_company: 'OTR', pay_term: 'Quick Pay - LOR',
     bank_name: 'Wells Fargo', account_last4: '****1234', routing_number: '121000248' });
   const panel = window.document.getElementById('noa-onfile');
-  assert.match(panel.textContent, /on file/i);
+  // The status is a proper labeled grid row, not a floating full-width warning.
+  const ok = panel.querySelector('.onfile-row .val.bank-ok');
+  assert.ok(ok, 'on-file status renders as an aligned .onfile-row value');
+  assert.match(ok.textContent, /on file/i);
+  assert.match(panel.textContent, /Bank Details/);
   assert.match(panel.textContent, /Wells Fargo/);
+  // No leftover standalone status element from the old layout.
+  assert.equal(panel.querySelector('.onfile-bank-status'), null);
 });
 
-test('showOnFile flags bank details NOT on file when absent', () => {
+test('showOnFile shows a labeled Bank Details row marked NOT on file when absent', () => {
   const { window } = makeWidget();
   window.showOnFile({ carrier_name: 'WAGNER', factoring_company: 'OTR', pay_term: 'Quick Pay - LOR' });
   const panel = window.document.getElementById('noa-onfile');
-  assert.match(panel.textContent, /not on file/i);
+  const missing = panel.querySelector('.onfile-row .val.bank-missing');
+  assert.ok(missing, 'not-on-file status renders as an aligned .onfile-row value');
+  assert.match(missing.textContent, /not on file/i);
+  assert.match(panel.textContent, /Bank Details/);
 });

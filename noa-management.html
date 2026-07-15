@@ -208,6 +208,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .onfile-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
 .onfile-row .lbl { color: #888; font-weight: 500; }
 .onfile-row .val { color: #272727; font-weight: 600; }
+.onfile-row .val.bank-ok { color: #2e7d32; }
+.onfile-row .val.bank-missing { color: #c62828; }
 .onfile-auth-warn,.onfile-factor-warn{background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:8px;padding:8px 12px;font-weight:700;margin-bottom:10px;}
 .stale-warn {
   background: #fff4e0; border: 1px solid #f0d9a8; border-left: 4px solid #e8a020;
@@ -1013,27 +1015,30 @@ function showOnFile(carrier) {
     factorWarn.textContent = '⚠ Current factor is Not-Verified';
     panel.insertBefore(factorWarn, panel.firstChild);
   }
-  var rows = [
+  function onfileRow(label, value, valClass) {
+    return '<div class="onfile-row"><span class="lbl">' + label + ':</span> <span class="val' +
+      (valClass ? ' ' + valClass : '') + '">' + esc(value) + '</span></div>';
+  }
+  // Carrier + pay-term context.
+  var topRows = [
     ['Factoring Company', carrier.factoring_company],
-    ['Your Pay Term', carrier.pay_term],
+    ['Your Pay Term', carrier.pay_term]
+  ].filter(function (r) { return r[1]; });
+  if (!topRows.length) topRows = [['Factoring Company', '—'], ['Your Pay Term', '—']];
+  // On-file banking detail rows (only the fields we actually have).
+  var bankRows = [
     ['Bank Name', carrier.bank_name],
     ['Name on Account', carrier.name_on_account],
     ['Account Number', carrier.account_last4],
     ['Routing Number', carrier.routing_number]
-  ].filter(function (r) { return r[1]; });   // only fields we actually have
-  if (!rows.length) rows = [['Factoring Company', '—'], ['Your Pay Term', '—']];
-  grid.innerHTML = rows.map(function (r) {
-    return '<div class="onfile-row"><span class="lbl">' + r[0] + ':</span> <span class="val">' + esc(r[1]) + '</span></div>';
-  }).join('');
-  var existingBankStatus = panel.querySelector('.onfile-bank-status');
-  if (existingBankStatus) existingBankStatus.parentNode.removeChild(existingBankStatus);
+  ].filter(function (r) { return r[1]; });
   var hasBank = !!(carrier.bank_name || carrier.account_last4 || carrier.routing_number);
-  var bankStatus = document.createElement('div');
-  bankStatus.className = 'onfile-bank-status';
-  bankStatus.textContent = hasBank
-    ? '✓ Bank details on file'
-    : '⚠ Vendor bank details NOT on file';
-  grid.parentNode.insertBefore(bankStatus, grid.nextSibling);
+  // "Bank Details" is its own labeled, aligned row (not a floating full-width
+  // warning) so it reads as a distinct field, not part of the factoring line.
+  var html = topRows.map(function (r) { return onfileRow(r[0], r[1]); }).join('');
+  html += onfileRow('Bank Details', hasBank ? '✓ On file' : '⚠ Not on file', hasBank ? 'bank-ok' : 'bank-missing');
+  html += bankRows.map(function (r) { return onfileRow(r[0], r[1]); }).join('');
+  grid.innerHTML = html;
   panel.classList.remove('hidden');
 }
 

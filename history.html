@@ -1134,7 +1134,7 @@ function rowHtml(r, idx) {
       '</div>' +
       '<div>' +
         '<div class="cell-label">Submitted</div>' +
-        '<div class="cell-val">' + (added ? (isMidnight(added) ? '—' : fmtTime(added)) : '—') + '</div>' +
+        '<div class="cell-val">' + (added ? (isAppMidnight(r.Added_Time) ? '—' : fmtTime(added)) : '—') + '</div>' +
         (docCount > 0 ? '<div class="docs-ic">📎 ' + docCount + ' doc' + (docCount === 1 ? '' : 's') + '</div>' : '') +
       '</div>' +
       '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
@@ -1207,7 +1207,7 @@ function renderPanel() {
       '<div class="panel-eyebrow">Load Submission</div>' +
       '<div class="panel-customer">' + esc(displayCustomer(r)) + '</div>' +
       '<div class="panel-meta">' +
-        '<span>Submitted ' + (added ? fmtDateTime(added) : '—') + '</span>' +
+        '<span>Submitted ' + (added ? fmtDateTime(added, r.Added_Time) : '—') + '</span>' +
         '<span class="dot">·</span>' +
         '<span class="ref">Ref# ' + esc(r.Customer_Reference_Number || '—') + '</span>' +
         '<span class="dot">·</span>' +
@@ -1246,8 +1246,8 @@ function renderPanel() {
           field('Load / Rate Conf #', r.Load_Rate_Confirmation_Number) +
           field('Carrier Factoring Invoice #', r.Carrier_Factoring_Invoice) +
           field('Payment Terms', r.Payment_Terms) +
-          field('Submitted', added ? fmtDateTime(added) : null) +
-          (purchased ? field('Purchased', fmtDateTime(purchased)) : '') +
+          field('Submitted', added ? fmtDateTime(added, r.Added_Time) : null) +
+          (purchased ? field('Purchased', fmtDateTime(purchased, r.Purchase_Date)) : '') +
         '</div>' +
       '</div>' +
 
@@ -1354,8 +1354,8 @@ function timelineHtml(r) {
   var added = parseDate(r.Added_Time);
   var purchased = parseDate(r.Purchase_Date);
   var items = [];
-  items.push({ state: 'done', title: 'Submitted by broker', time: added ? fmtDateTime(added) : '—' });
-  items.push({ state: 'done', title: 'Documents received',  time: added ? fmtDateTime(added) : '—' });
+  items.push({ state: 'done', title: 'Submitted by broker', time: added ? fmtDateTime(added, r.Added_Time) : '—' });
+  items.push({ state: 'done', title: 'Documents received',  time: added ? fmtDateTime(added, r.Added_Time) : '—' });
   if (s.key === 'verifying-noa') {
     items.push({ state: 'problem', title: 'Verifying NOA with customer', time: 'In progress' });
   } else if (s.key === 'verifying-inv') {
@@ -1368,7 +1368,7 @@ function timelineHtml(r) {
     items.push({ state: 'done', title: 'Under review', time: 'Complete' });
   }
   if (s.key === 'purchased') {
-    items.push({ state: 'done', title: 'Purchased', time: purchased ? fmtDateTime(purchased) : '—' });
+    items.push({ state: 'done', title: 'Purchased', time: purchased ? fmtDateTime(purchased, r.Purchase_Date) : '—' });
   } else {
     items.push({ state: 'upcoming', title: 'Purchase decision', time: 'Pending' });
   }
@@ -1460,13 +1460,21 @@ function fmtTime(d) {
 function fmtDateShort(d) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-function isMidnight(d) {
-  return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
+// Bulk-imported records carry no real submit time — Added_Time is exactly midnight, or has no
+// time component at all. This keys off the RAW Creator string, not the parsed Date: Added_Time is
+// app-timezone (Phoenix) wall clock, so a parsed Date reads as 3:00 AM to an Eastern broker and a
+// Date-based check would silently stop matching.
+function isAppMidnight(v) {
+  if (typeof v !== 'string') return false;
+  var m = v.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+  if (!m) return false;
+  if (!m[4]) return true;
+  return m[4] === '00' && m[5] === '00' && m[6] === '00';
 }
-function fmtDateTime(d) {
+function fmtDateTime(d, raw) {
   // Bulk-imported records arrive at exactly midnight — no real timestamp.
-  // Show date only in that case so we don't display a meaningless "12:00 AM".
-  return isMidnight(d) ? fmtDateShort(d) : fmtDateShort(d) + ' · ' + fmtTime(d);
+  // Show date only in that case so we don't display a meaningless time.
+  return isAppMidnight(raw) ? fmtDateShort(d) : fmtDateShort(d) + ' · ' + fmtTime(d);
 }
 function dayHeaderLabel(d) {
   if (!d) return 'Unknown';
@@ -1494,7 +1502,7 @@ function exportCsv() {
     var marginPct = custRate > 0 ? ((custRate - carrRate) / custRate * 100).toFixed(1) : '';
     var added = parseDate(r.Added_Time);
     return [
-      added ? fmtDateTime(added) : '',
+      added ? fmtDateTime(added, r.Added_Time) : '',
       statusMeta(r).label,
       displayCustomer(r),
       r.Customer_Reference_Number || '',
@@ -1539,6 +1547,9 @@ function openDocViewer(recordId, slot, name) {
   });
 }
 
+window.parseDate = parseDate;
+window.isAppMidnight = isAppMidnight;
+window.fmtDateTime = fmtDateTime;
 window.docsGroupHtml = docsGroupHtml;
 window.openDocViewer = openDocViewer;
 window.statusMeta = statusMeta;

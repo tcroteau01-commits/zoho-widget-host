@@ -886,15 +886,20 @@ function loadQueue(){
     .catch(function(){ setText('sub','Could not load drafts.'); });
 }
 
+// Credit_Decision values a load can be funded against -- a boost customer is already
+// approved with a live limit and only asking for more. Mirrors index.html and the
+// backend's FUNDABLE_CREDIT_DECISIONS.
+var FUNDABLE_CREDIT_DECISIONS = ['Approved', 'Credit Boost Requested'];
+
 function loadPickLists(){
   if (!brokerEmail) return Promise.resolve();
   var c=fetch(BROKER_API_BASE+'/tms-customers?email='+encodeURIComponent(brokerEmail))
     .then(function(r){return r.json();}).then(function(p){
-      // Funding submit is Approved-only, so the draft customer pickers (bulk + inline)
-      // offer only credit-approved customers -- mirrors the Load Details form and the
-      // backend matcher. /tms-customers itself returns all (TMS booking allows more).
+      // Funding submit accepts only FUNDABLE_CREDIT_DECISIONS, so the draft customer
+      // pickers (bulk + inline) offer exactly that set -- mirrors the Load Details form
+      // and the backend matcher. /tms-customers itself returns all customers.
       __state.customers=(((p&&p.customers)||[]).filter(function(c){
-        return String(c.credit_decision||'').trim()==='Approved';
+        return FUNDABLE_CREDIT_DECISIONS.indexOf(String(c.credit_decision||'').trim())!==-1;
       }));
     }).catch(function(){});
   var v=fetch(BROKER_API_BASE+'/tms-carriers?email='+encodeURIComponent(brokerEmail))

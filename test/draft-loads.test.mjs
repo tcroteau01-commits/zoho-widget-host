@@ -44,8 +44,9 @@ function makeFetch(records) {
       body = { customers: [
         { customer_id: '1', customer_name: 'DINE SOUTH LLC', credit_decision: 'Approved' },
         { customer_id: '2', customer_name: 'PEPSICO INC', credit_decision: 'Approved' },
-        { customer_id: '9', customer_name: 'ABC SHIPPING', credit_decision: 'Credit Boost Requested' }
-      ], count: 3 };
+        { customer_id: '9', customer_name: 'ABC SHIPPING', credit_decision: 'Credit Boost Requested' },
+        { customer_id: '5', customer_name: 'NO DECISION CO', credit_decision: 'Awaiting Credit Decision' }
+      ], count: 4 };
     } else if (u.indexOf('/tms-carriers') !== -1) {
       body = { carriers: [
         { vendor_id: 'v1', carrier_name: 'SWIFT HAUL LLC', mc: '982341', dnu: false },
@@ -256,7 +257,7 @@ test('promptPick self-heals an empty customer list (the "nothing happens" fix)',
   assert.ok(window.__state.customers.length > 0, 'customers loaded into state');
 });
 
-test('customer picker offers only credit-approved customers (funding rule)', async () => {
+test('customer picker offers only fundable customers (funding rule)', async () => {
   const { window } = makeWidget();
   window.brokerEmail = 'b@x.com';
   window.renderQueue(DRAFTS);
@@ -264,11 +265,23 @@ test('customer picker offers only credit-approved customers (funding rule)', asy
   window.__state.customers = [];
   await window.promptPick('customer');
   // /tms-customers returns DINE SOUTH + PEPSICO (Approved) and ABC SHIPPING (Boost).
+  // Boost is fundable against the customer's existing approved limit, so it is offered.
   const names = window.__state.customers.map(c => c.customer_name);
   assert.ok(names.includes('DINE SOUTH LLC'));
-  assert.ok(!names.includes('ABC SHIPPING'), 'non-approved customer is filtered out');
+  assert.ok(names.includes('ABC SHIPPING'), 'boost customer is still fundable');
   const text = window.document.getElementById('bulk-sel').textContent;
-  assert.ok(text.indexOf('ABC SHIPPING') === -1, 'non-approved not offered in dropdown');
+  assert.ok(text.indexOf('ABC SHIPPING') !== -1, 'boost customer offered in dropdown');
+});
+
+test('customer picker still drops customers with no credit decision', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'b@x.com';
+  window.renderQueue(DRAFTS);
+  window.__state.selected = ['900'];
+  window.__state.customers = [];
+  await window.promptPick('customer');
+  const names = window.__state.customers.map(c => c.customer_name);
+  assert.ok(!names.includes('NO DECISION CO'), 'undecided customer is filtered out');
 });
 
 test('promptPick carrier self-heals an empty carrier list', async () => {

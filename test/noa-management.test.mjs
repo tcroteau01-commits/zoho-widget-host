@@ -833,3 +833,19 @@ test('showOnFile with both warnings toggling independently clears only the stale
   assert.equal(authWarns.length, 0, 'auth warning should clear when authority_class is absent');
   assert.equal(factWarns.length, 1, 'factor warning should return when status is Denied again');
 });
+
+test('showOnFile marks bank details ON FILE when banking present', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ carrier_name: 'WAGNER', factoring_company: 'OTR', pay_term: 'Quick Pay - LOR',
+    bank_name: 'Wells Fargo', account_last4: '****1234', routing_number: '121000248' });
+  const panel = window.document.getElementById('noa-onfile');
+  assert.match(panel.textContent, /on file/i);
+  assert.match(panel.textContent, /Wells Fargo/);
+});
+
+test('showOnFile flags bank details NOT on file when absent', () => {
+  const { window } = makeWidget();
+  window.showOnFile({ carrier_name: 'WAGNER', factoring_company: 'OTR', pay_term: 'Quick Pay - LOR' });
+  const panel = window.document.getElementById('noa-onfile');
+  assert.match(panel.textContent, /not on file/i);
+});

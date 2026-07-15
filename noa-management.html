@@ -1025,6 +1025,15 @@ function showOnFile(carrier) {
   grid.innerHTML = rows.map(function (r) {
     return '<div class="onfile-row"><span class="lbl">' + r[0] + ':</span> <span class="val">' + esc(r[1]) + '</span></div>';
   }).join('');
+  var existingBankStatus = panel.querySelector('.onfile-bank-status');
+  if (existingBankStatus) existingBankStatus.parentNode.removeChild(existingBankStatus);
+  var hasBank = !!(carrier.bank_name || carrier.account_last4 || carrier.routing_number);
+  var bankStatus = document.createElement('div');
+  bankStatus.className = 'onfile-bank-status';
+  bankStatus.textContent = hasBank
+    ? '✓ Bank details on file'
+    : '⚠ Vendor bank details NOT on file';
+  grid.parentNode.insertBefore(bankStatus, grid.nextSibling);
   panel.classList.remove('hidden');
 }
 

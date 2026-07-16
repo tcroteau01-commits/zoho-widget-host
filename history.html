@@ -198,7 +198,7 @@ html, body {
   border-radius: 10px;
   padding: 14px 16px;
   display: grid;
-  grid-template-columns: 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 96px;
+  grid-template-columns: 0.9fr 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 96px;
   gap: 16px;
   align-items: center;
   cursor: pointer;
@@ -1100,7 +1100,8 @@ function rowHtml(r, idx) {
   var docCount = totalDocCount(r);
 
   // See-all (admin/credit) prepends a Client column; widen the row grid by one column.
-  var rowStyle = allClients ? ' style="grid-template-columns:1.3fr 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 96px;"' : '';
+  // Load # leads here too, for consistency with the broker-facing row.
+  var rowStyle = allClients ? ' style="grid-template-columns:0.9fr 1.3fr 1.4fr 1.6fr 1fr 1fr 0.9fr 0.9fr 96px;"' : '';
   var clientCell = allClients
     ? '<div>' +
         '<div class="cell-label">Client</div>' +
@@ -1110,12 +1111,15 @@ function rowHtml(r, idx) {
 
   return '' +
     '<div class="row s-' + s.key + '"' + rowStyle + ' data-idx="' + idx + '">' +
+      '<div>' +
+        '<div class="cell-label">Load #</div>' +
+        '<div class="cell-val">' + esc(r.Load_Rate_Confirmation_Number || '—') + '</div>' +
+      '</div>' +
       clientCell +
       '<div>' +
         '<div class="cell-label">Customer</div>' +
         '<div class="cell-val">' + esc(displayCustomer(r)) + '</div>' +
         '<div class="cell-sub">Ref# ' + esc(r.Customer_Reference_Number || '—') + '</div>' +
-        '<div class="cell-sub">Load# ' + esc(r.Load_Rate_Confirmation_Number || '—') + '</div>' +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Carrier</div>' +

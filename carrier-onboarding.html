@@ -1390,11 +1390,17 @@ function parseDate(v) {
   return isNaN(d) ? null : d;
 }
 function fmtDateTime(d) {
+  // Added_Time is already Central wall clock (the funding-portal Creator app is US/Central), and
+  // parseDate builds a local-naive Date that round-trips those digits unchanged for any viewer.
+  // So we label the zone rather than convert. "CT" not "CST": US/Central observes DST.
+  // Midnight means a date-only value (bulk import) — show date only, which avoids a meaningless
+  // "12:00 AM" and keeps the CT label off calendar dates, which have no zone to label.
   var midnight = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
   var dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   if (midnight) return dateStr;
-  return dateStr + ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return dateStr + ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' CT';
 }
+window.fmtDateTime = fmtDateTime;  // exposed for tests
 function fmtRelative(d) {
   if (!d) return '';
   var diffMs = Date.now() - d.getTime();

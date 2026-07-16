@@ -1482,15 +1482,23 @@ function sortRecords(records, sortKey) {
 }
 window.sortRecords = sortRecords;  // exposed for tests (SORT2)
 function fmtTime(d) {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  // Added_Time is already Central wall clock (the funding-portal Creator app is US/Central), and
+  // parseDate builds a local-naive Date that round-trips those digits unchanged for any viewer.
+  // So we label the zone rather than convert. "CT" not "CST": US/Central observes DST.
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' CT';
 }
 function fmtDateShort(d) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 function fmtDateTime(d) {
+  // Midnight means a date-only value: a bulk import, or a date-only write like
+  // Credit_Decision_Date (a datetime field the backend stamps with a date-only format). Showing
+  // date only avoids a meaningless "12:00 AM", and is also what keeps the CT label off calendar
+  // dates, which have no zone to label.
   var midnight = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
   return midnight ? fmtDateShort(d) : fmtDateShort(d) + ' · ' + fmtTime(d);
 }
+window.fmtDateTime = fmtDateTime;  // exposed for tests
 function fmtRelative(d) {
   if (!d) return '';
   var diffMs = Date.now() - d.getTime();

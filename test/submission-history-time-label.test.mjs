@@ -27,15 +27,17 @@ test('the submitted time carries a CT zone label', () => {
   assert.match(row(w, '14-Jul-2026 10:34:16'), /10:34 AM CT/);
 });
 
-// The load-bearing guard. Added_Time is already Central wall clock, so we LABEL it rather than
-// convert it. parseDate builds a local-naive Date on purpose, which preserves these digits for
-// every viewer regardless of their own timezone. If someone later "fixes" parseDate to do a real
-// timezone conversion, the digits shift and this test fails — which is the point.
 test('the time digits are labeled, never shifted', () => {
   const w = makeDom();
   const html = row(w, '14-Jul-2026 10:34:16');
+  // This exact-digit assertion is the load-bearing guard. Added_Time is already Central wall
+  // clock, so we LABEL it rather than convert it; parseDate builds a local-naive Date on purpose,
+  // which preserves these digits for every viewer regardless of their own timezone. If someone
+  // later "fixes" parseDate into a real timezone conversion, the digits shift and this fails.
   assert.match(html, /cell-val">10:34 AM CT</);
-  assert.doesNotMatch(html, /12:34|8:34|9:34|11:34/); // any converted hour
+  // Spelled out because it is the most likely form of that regression: parsing Added_Time as an
+  // absolute instant makes 10:34 CDT render as 15:34 UTC.
+  assert.doesNotMatch(html, /3:34 PM/);
 });
 
 test('a late-evening time does not roll to another day or hour', () => {
@@ -50,18 +52,19 @@ test('the label is the DST-safe "CT", not "CST" or "CDT"', () => {
   assert.doesNotMatch(html, /CST|CDT/);
 });
 
+// Anchored to the Submitted cell rather than scanning the whole row: a bare /CT/ would false-fail
+// on any fixture with a carrier like "ACT TRANSPORT" or a Connecticut customer.
+const submittedCell = /Submitted<\/div><div class="cell-val">([^<]*)</;
+
 // Bulk-imported records have no real submit time — they must not gain a fabricated "12:00 AM CT".
 test('a midnight bulk-import row still renders an em dash, unlabeled', () => {
   const w = makeDom();
-  const html = row(w, '14-Jul-2026 00:00:00');
-  assert.match(html, /Submitted<\/div><div class="cell-val">—/);
-  assert.doesNotMatch(html, /12:00 AM/);
-  assert.doesNotMatch(html, /CT/);
+  const cell = row(w, '14-Jul-2026 00:00:00').match(submittedCell)[1];
+  assert.equal(cell, '—');
 });
 
 test('a missing Added_Time still renders an em dash, unlabeled', () => {
   const w = makeDom();
-  const html = w.rowHtml({ ...BASE }, 0);
-  assert.match(html, /Submitted<\/div><div class="cell-val">—/);
-  assert.doesNotMatch(html, /CT/);
+  const cell = w.rowHtml({ ...BASE }, 0).match(submittedCell)[1];
+  assert.equal(cell, '—');
 });

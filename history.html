@@ -1444,6 +1444,11 @@ function fmtMoney(n) {
 function parseDate(v) {
   if (!v) return null;
   // Zoho often returns "DD-MMM-YYYY HH:MM:SS"
+  // Those digits are the Creator app's wall clock, and the app (funding-portal) is US/Central.
+  // Building the Date from the local-naive constructor is DELIBERATE: it round-trips the digits
+  // back out through toLocale* unchanged, whatever timezone the viewer is in, so what we render
+  // is Central and fmtTime can simply label it "CT". Do NOT "fix" this into a real timezone
+  // conversion without also reworking fmtTime — otherwise the digits shift and the CT label lies.
   if (typeof v === 'string') {
     var m = v.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
     if (m) {
@@ -1459,7 +1464,10 @@ function startOfDay(d) { var x = new Date(d); x.setHours(0,0,0,0); return x; }
 function endOfDay(d)   { var x = new Date(d); x.setHours(23,59,59,999); return x; }
 function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function fmtTime(d) {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  // Added_Time is already Central wall clock, and parseDate preserves those digits verbatim
+  // (see the note there), so we label the zone rather than convert anything.
+  // "CT" not "CST": the app is US/Central, which observes DST and is CDT most of the year.
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' CT';
 }
 function fmtDateShort(d) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });

@@ -1444,6 +1444,13 @@ function formatPhone(v) {
 }
 function parseDate(v) {
   if (!v) return null;
+  // The digits are the Creator app's wall clock, and the app (funding-portal) is US/Central.
+  // Building the Date from the local-naive constructor is DELIBERATE: it round-trips the digits
+  // back out through toLocale* unchanged, whatever timezone the viewer is in, so what we render is
+  // Central and fmtDateTime can simply label it "CT". Do NOT "fix" this into a real timezone
+  // conversion without reworking that label — otherwise the digits shift and the CT label lies.
+  // NB: only the regex branch below is digit-preserving. The new Date(v) fallback parses an
+  // absolute instant and WOULD shift. Creator's dd-MMM-yyyy format always hits the regex.
   if (typeof v === 'string') {
     var m = v.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
     if (m) {
@@ -1499,6 +1506,7 @@ function fmtDateTime(d) {
   return midnight ? fmtDateShort(d) : fmtDateShort(d) + ' · ' + fmtTime(d);
 }
 window.fmtDateTime = fmtDateTime;  // exposed for tests
+window.parseDate = parseDate;      // exposed for tests
 function fmtRelative(d) {
   if (!d) return '';
   var diffMs = Date.now() - d.getTime();

@@ -1384,9 +1384,13 @@ function renderModel(m) {
   MODEL.manualCustomers = MODEL.manualCustomers || parseJsonList(_rv.Manual_Customers);
   MODEL.manualRelated   = MODEL.manualRelated   || parseJsonList(_rv.Manual_Related);
   MODEL.manualUcc       = MODEL.manualUcc       || parseJsonList(_rv.Manual_UCC);
-  // High Volume / High Risk flag (Underwriting Manual §9.2) — preserved across in-place re-renders.
+  // High Volume / High Risk flag (Underwriting Manual §9.2). The Underwriting_Review form has no
+  // High_Risk_Volume_Flag field, so DERIVE the flag from the presence of any requested §9.2 document
+  // (persisted as a Document record); fall back to the review field if it's ever added. Preserved
+  // across in-place re-renders.
   if (MODEL.highRiskVolume === undefined) {
-    MODEL.highRiskVolume = !!_rv.High_Risk_Volume_Flag;
+    MODEL.highRiskVolume = !!_rv.High_Risk_Volume_Flag ||
+      (m.documents || []).some(function(d){ return isHrvType(docType(d)) && !is8821(docType(d)); });
   }
   $('console').classList.add('show');
   $('modePill').textContent = LIVE ? 'Live' : 'Demo';
@@ -1878,17 +1882,23 @@ function applyHighRiskVolume(){
     return;
   }
   showStatus('Applying §9.2 requirements…', 'loading');
-  // Fire each client doc-request, then persist the flag on the review.
+  // Optimistic render: show the flag + expanded set (badge, §9.2 row chips, 8821 tracked row) IMMEDIATELY
+  // so the underwriter gets feedback right away. The flag persists via the requested Document records
+  // themselves (derived on load) — NOT a review save, which previously failed silently (the
+  // Underwriting_Review form has no High_Risk_Volume_Flag field) and left the reload — and thus every
+  // §9.2 document — never rendering. See buildReviewPayload / the load derivation above.
+  toRequest.forEach(function(doc){ if (!hasDocType(doc.type)) MODEL.documents.push([doc.type, 'Underwriting', 'Requested', '']); });
+  renderModel(MODEL);
+  // Fire each client doc-request (best-effort — one failure must not abort the rest), then reload so the
+  // requests come back as persisted Document records (real statuses + view links).
   Promise.all(toRequest.map(function(doc){
     return fetch(API_BASE + DOCREQ_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, document_type: doc.type, source: 'Underwriting' }) })
-      .then(function(r){ return r.json().catch(function(){ return {}; }); });
+      .then(function(r){ return r.json().catch(function(){ return {}; }); })
+      .catch(function(){ return {}; });
   })).then(function(){
-    return saveReview(buildReviewPayload(readState(), MODEL.appId), MODEL.reviewId);
-  }).then(function(res){
-    if (res && res.review_id) MODEL.reviewId = res.review_id;
     showStatus('✓ §9.2 expanded requirements applied — requested ' + toRequest.length + ' document(s) from the client. IRS 8821 handled by Underwriting.', 'success');
     load(MODEL.application.USDOT);
-  }).catch(function(e){ showStatus('Could not apply §9.2 requirements: ' + (e && e.message ? e.message : e), 'error'); });
+  }).catch(function(e){ showStatus('§9.2 requirements applied. A document request may not have gone through: ' + (e && e.message ? e.message : e) + ' — reopen the file to confirm.', 'error'); });
 }
 // Remove the flag (does not delete already-requested documents — clear those individually if needed).
 function clearHighRiskVolume(){

@@ -86,6 +86,7 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .hrv-suggest { background:var(--of-amber-soft); border:1px solid #f5e0a8; color:var(--of-amber-text); border-radius:8px; padding:8px 12px; font-size:12px; margin-bottom:8px; }
 .hrv-badge { background:#fdecec; border:1px solid #f5b8b8; color:var(--of-red); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:700; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .hrv-badge .hrv-clear { color:var(--of-gray-500); font-weight:700; cursor:pointer; background:none; border:none; font-size:12px; }
+.doc-92 { display:inline-block; font-size:10px; font-weight:700; color:var(--of-red); background:#fdecec; border:1px solid #f5b8b8; border-radius:4px; padding:0 5px; margin-left:6px; vertical-align:middle; }
 .btn.warn { background:#fff; color:var(--of-red); border:1.5px solid #f5b8b8; }
 .btn.warn:hover { background:#fdecec; }
 
@@ -1584,19 +1585,33 @@ function renderModel(m) {
   var docRec = reconcileDocs(docReq, m.documents);
   var viewLink = function(url){ return url ? ' <a href="'+url+'" target="_blank" rel="noopener" style="color:var(--of-blue-text,#1a5fb4);text-decoration:none;font-weight:600;margin-left:8px">View</a>' : ''; };
   var dt = '<tr><th>Document</th><th>Status</th></tr>';
+  var hrvChip = ' <span class="doc-92" title="Underwriting Manual §9.2 expanded requirement">§9.2</span>';
   docRec.checklist.forEach(function(c){
     var pill = c.verified ? '<span class="pill g">Verified</span>'
              : c.uploaded ? '<span class="pill b">Received</span>'
              : c.rejected ? '<span class="pill r">Rejected</span>'
              : '<span class="pill r">Needed</span>';
-    dt += '<tr><td>'+c.label+'</td><td>'+pill+(c.uploaded?viewLink(c.link):'')+'</td></tr>';
+    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link):'')+'</td></tr>';
   });
   (docRec.requested || []).forEach(function(rq){
-    dt += '<tr><td>'+rq.label+' <span style="color:var(--of-gray-500)">· requested</span></td><td><span class="pill a">Requested</span></td></tr>';
+    if (m.highRiskVolume && is8821(rq.type || rq.label)) return;   // 8821 shown as its own UW-handled row below
+    dt += '<tr><td>'+rq.label+(isHrvType(rq.type)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· requested</span></td><td><span class="pill a">Requested</span></td></tr>';
   });
   docRec.extras.forEach(function(e){
-    dt += '<tr><td>'+e.label+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span>'+viewLink(e.link)+'</td></tr>';
+    if (m.highRiskVolume && is8821(e.label)) return;               // dedup with the 8821 tracked row below
+    dt += '<tr><td>'+e.label+(isHrvType(e.label)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span>'+viewLink(e.link)+'</td></tr>';
   });
+  // §9.2: IRS Form 8821 is Underwriting-handled (wet signature) and never requested from the client —
+  // surface it as its own TRACKED row whenever the flag is applied, so the full §9.2 set is visible on
+  // the widget (the badge promises it's "tracked here"). Reflects an uploaded 8821 if one exists.
+  if (m.highRiskVolume) {
+    var doc8821 = (m.documents || []).filter(function(d){ return is8821(docType(d)); })
+      .sort(function(a,b){ return statusRank(docStatus(b)) - statusRank(docStatus(a)); })[0];
+    var up8821 = doc8821 && isUploadedStatus(docStatus(doc8821));
+    var pill8821 = up8821 ? '<span class="pill b">'+(docStatus(doc8821)||'Received')+'</span>'
+                          : '<span class="pill a">UW · wet signature</span>';
+    dt += '<tr><td>IRS Form 8821'+hrvChip+' <span style="color:var(--of-gray-500)">· Underwriting-handled</span></td><td>'+pill8821+(up8821?viewLink(docUrl(doc8821)):'')+'</td></tr>';
+  }
   $('docTable').innerHTML = dt;
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';
   $('kDocs').textContent = docRec.uploadedCount + ' / ' + docRec.total;
@@ -1826,6 +1841,10 @@ var HRV_DOCS = [
   { type: 'MCA subordination / payoff letters' },              // §9.2 conditional — always included
   { type: 'IRS Form 8821 (UW sends — wet signature)', clientUpload: false }
 ];
+// §9.2 tagging helpers: which document types belong to the expanded set (for the row chip), and the
+// IRS 8821 (Underwriting-handled, wet signature — surfaced as its own tracked row when flagged).
+function isHrvType(t){ var n = normType(t); return HRV_DOCS.some(function(d){ return normType(d.type) === n; }); }
+function is8821(t){ return /\b8821\b/.test(String(t == null ? '' : t)); }
 function trucksOf(a){ var n = parseInt((a && (a.Number_of_Trucks != null ? a.Number_of_Trucks : a.trucks)) || 0, 10); return isNaN(n) ? 0 : n; }
 function hasDocType(type){
   var t = normType(type);

@@ -115,21 +115,21 @@ test('deleteDraftRow does nothing when the confirm is cancelled', () => {
   assert.equal(calls.filter(c => c.opts && c.opts.method === 'DELETE').length, 0);
 });
 
-test('rowHtml surfaces the Load # alongside the customer Ref# for at-a-glance scanning', () => {
+test('rowHtml surfaces the Load # in its own leading column and keeps Ref# on the customer', () => {
   const w = makeDom();
   const html = w.rowHtml({ ID: '950', Purchase_Status: 'Processing',
     Customer_Reference_Number: 'PO-77', Load_Rate_Confirmation_Number: '9150',
     Customer_Rate: '2000', Carrier_Rate: '1700' }, 0);
   assert.match(html, /Ref#\s*PO-77/);   // customer ref stays
-  assert.match(html, /Load#\s*9150/);   // load number now visible without expanding
+  assert.match(html, /cell-label">Load #<\/div><div class="cell-val">9150/);   // load number in its own leading column
 });
 
 test('rowHtml shows an em dash for a missing Load # rather than "undefined"', () => {
   const w = makeDom();
   const html = w.rowHtml({ ID: '951', Purchase_Status: 'Processing',
     Customer_Reference_Number: 'PO-9', Customer_Rate: '2000', Carrier_Rate: '1700' }, 0);
-  assert.match(html, /Load#\s*—/);
-  assert.doesNotMatch(html, /Load#\s*undefined/);
+  assert.match(html, /cell-label">Load #<\/div><div class="cell-val">—/);
+  assert.doesNotMatch(html, /cell-val">undefined/);
 });
 
 test('rowHtml shows the carrier payment terms incl. factoring company in the list row', () => {

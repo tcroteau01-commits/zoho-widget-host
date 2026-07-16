@@ -1190,7 +1190,7 @@ function renderPanel() {
   var marginPct = custRate > 0 ? ((custRate - carrRate) / custRate * 100) : 0;
   var marginGood = marginPct >= 10;
   var added = parseDate(r.Added_Time);
-  var purchased = parseDate(r.Purchase_Date);
+  var purchased = parseCalendarDate(r.Purchase_Date);
 
   var prevDis = (openIndex <= 0) ? ' disabled' : '';
   var nextDis = (openIndex >= filteredRecords.length - 1) ? ' disabled' : '';
@@ -1352,7 +1352,7 @@ function docsGroupHtml(label, files, recordId, slot, legacy) {
 function timelineHtml(r) {
   var s = statusMeta(r);
   var added = parseDate(r.Added_Time);
-  var purchased = parseDate(r.Purchase_Date);
+  var purchased = parseCalendarDate(r.Purchase_Date);
   var items = [];
   items.push({ state: 'done', title: 'Submitted by broker', time: added ? fmtDateTime(added, r.Added_Time) : '—' });
   items.push({ state: 'done', title: 'Documents received',  time: added ? fmtDateTime(added, r.Added_Time) : '—' });
@@ -1437,15 +1437,41 @@ function parseMoney(v) {
 function fmtMoney(n) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Creator stores Added_Time as app-timezone wall clock. America/Phoenix is UTC-7 year-round and
+// never observes DST, so a fixed offset is correct — no zone table needed. Mirrors the backend's
+// FUNDING_APP_TZ (app.py:11274); if that env var is ever repointed, this must move with it.
+var APP_TZ_OFFSET_HOURS = 7;
+
 function parseDate(v) {
   if (!v) return null;
-  // Zoho often returns "DD-MMM-YYYY HH:MM:SS"
+  // Zoho returns "DD-MMM-YYYY HH:MM:SS" in app time (Phoenix), NOT in the viewer's zone.
+  // Build the instant through Date.UTC so the digits are read as Phoenix rather than local;
+  // toLocale* then renders the broker's own zone for free.
   if (typeof v === 'string') {
     var m = v.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
     if (m) {
       var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
-      return new Date(parseInt(m[3], 10), months[m[2]], parseInt(m[1], 10),
-        m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0, m[6] ? parseInt(m[6], 10) : 0);
+      return new Date(Date.UTC(
+        parseInt(m[3], 10), months[m[2]], parseInt(m[1], 10),
+        (m[4] ? parseInt(m[4], 10) : 0) + APP_TZ_OFFSET_HOURS,
+        m[5] ? parseInt(m[5], 10) : 0, m[6] ? parseInt(m[6], 10) : 0));
+    }
+  }
+  var d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+// Purchase_Date and friends are Creator `date` fields — calendar dates, not instants. A calendar
+// date has no timezone, so it must NOT get the app-timezone offset: shifting it renders the day
+// early for any viewer west of Phoenix (a Pacific broker in winter would read 13-Jan as 12-Jan).
+// Build local midnight so the day reads as written, in any zone. Tolerates a 00:00:00 time
+// component in case Creator sends one.
+function parseCalendarDate(v) {
+  if (!v) return null;
+  if (typeof v === 'string') {
+    var m = v.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})(?:\s+\d{2}:\d{2}:\d{2})?$/);
+    if (m) {
+      var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+      return new Date(parseInt(m[3], 10), months[m[2]], parseInt(m[1], 10));
     }
   }
   var d = new Date(v);
@@ -1455,7 +1481,7 @@ function startOfDay(d) { var x = new Date(d); x.setHours(0,0,0,0); return x; }
 function endOfDay(d)   { var x = new Date(d); x.setHours(23,59,59,999); return x; }
 function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function fmtTime(d) {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 }
 function fmtDateShort(d) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -1548,8 +1574,11 @@ function openDocViewer(recordId, slot, name) {
 }
 
 window.parseDate = parseDate;
+window.parseCalendarDate = parseCalendarDate;
 window.isAppMidnight = isAppMidnight;
 window.fmtDateTime = fmtDateTime;
+window.fmtTime = fmtTime;
+window.fmtDateShort = fmtDateShort;
 window.docsGroupHtml = docsGroupHtml;
 window.openDocViewer = openDocViewer;
 window.statusMeta = statusMeta;

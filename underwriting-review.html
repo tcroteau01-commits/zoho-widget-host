@@ -782,7 +782,7 @@ function buildReviewPayload(s, appId) {
     Client_Message: s.clientMessage || '',
     Manual_UCC: JSON.stringify(s.manualUcc || []),
     Manual_Owners: JSON.stringify(s.manualOwners || []),
-    Manual_Contacts: JSON.stringify(s.manualContacts || []),
+    Manual: JSON.stringify(s.manualContacts || []),   // Creator field link-name is "Manual" (display "Manual_Contacts")
     Manual_Customers: JSON.stringify(s.manualCustomers || []),
     Manual_Related: JSON.stringify(s.manualRelated || []),
     High_Risk_Volume_Flag: !!s.highRiskVolume,
@@ -1380,17 +1380,19 @@ function renderModel(m) {
   // object (no manual* set) → re-parses from the saved review.
   var _rv = m.review || {};
   MODEL.manualOwners    = MODEL.manualOwners    || parseJsonList(_rv.Manual_Owners);
-  MODEL.manualContacts  = MODEL.manualContacts  || parseJsonList(_rv.Manual_Contacts);
+  MODEL.manualContacts  = MODEL.manualContacts  || parseJsonList(_rv.Manual);   // link-name "Manual" (display "Manual_Contacts")
   MODEL.manualCustomers = MODEL.manualCustomers || parseJsonList(_rv.Manual_Customers);
   MODEL.manualRelated   = MODEL.manualRelated   || parseJsonList(_rv.Manual_Related);
   MODEL.manualUcc       = MODEL.manualUcc       || parseJsonList(_rv.Manual_UCC);
-  // High Volume / High Risk flag (Underwriting Manual §9.2). The Underwriting_Review form has no
-  // High_Risk_Volume_Flag field, so DERIVE the flag from the presence of any requested §9.2 document
-  // (persisted as a Document record); fall back to the review field if it's ever added. Preserved
-  // across in-place re-renders.
+  // High Volume / High Risk flag (Underwriting Manual §9.2). Trust the review's High_Risk_Volume_Flag
+  // field when it's present (Creator returns checkboxes as "true"/"false" strings) so the "Clear"
+  // button sticks; if the field is absent (a record from before it was added), DERIVE the flag from the
+  // presence of any requested §9.2 document. Preserved across in-place re-renders.
   if (MODEL.highRiskVolume === undefined) {
-    MODEL.highRiskVolume = !!_rv.High_Risk_Volume_Flag ||
-      (m.documents || []).some(function(d){ return isHrvType(docType(d)) && !is8821(docType(d)); });
+    var _hrv = _rv.High_Risk_Volume_Flag;
+    MODEL.highRiskVolume = (_hrv === true || _hrv === 'true') ? true
+      : (_hrv === false || _hrv === 'false') ? false
+      : (m.documents || []).some(function(d){ return isHrvType(docType(d)) && !is8821(docType(d)); });
   }
   $('console').classList.add('show');
   $('modePill').textContent = LIVE ? 'Live' : 'Demo';
@@ -1896,6 +1898,12 @@ function applyHighRiskVolume(){
       .then(function(r){ return r.json().catch(function(){ return {}; }); })
       .catch(function(){ return {}; });
   })).then(function(){
+    // Best-effort: persist the §9.2 flag on the review (High_Risk_Volume_Flag). A save hiccup must NOT
+    // hide the requested docs, so swallow errors — the flag also derives from the requested docs on load.
+    return saveReview(buildReviewPayload(readState(), MODEL.appId), MODEL.reviewId)
+      .then(function(res){ if (res && res.review_id) MODEL.reviewId = res.review_id; })
+      .catch(function(e){ if (global.console) console.warn('[§9.2] flag save failed (docs still requested):', e && e.message); });
+  }).then(function(){
     showStatus('✓ §9.2 expanded requirements applied — requested ' + toRequest.length + ' document(s) from the client. IRS 8821 handled by Underwriting.', 'success');
     load(MODEL.application.USDOT);
   }).catch(function(e){ showStatus('§9.2 requirements applied. A document request may not have gone through: ' + (e && e.message ? e.message : e) + ' — reopen the file to confirm.', 'error'); });

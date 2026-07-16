@@ -115,7 +115,7 @@ test('deleteDraftRow does nothing when the confirm is cancelled', () => {
   assert.equal(calls.filter(c => c.opts && c.opts.method === 'DELETE').length, 0);
 });
 
-test('rowHtml surfaces the Load # alongside the customer Ref# for at-a-glance scanning', () => {
+test('rowHtml surfaces the Load # in its own leading column and keeps Ref# on the customer', () => {
   const w = makeDom();
   const html = w.rowHtml({ ID: '950', Purchase_Status: 'Processing',
     Customer_Reference_Number: 'PO-77', Load_Rate_Confirmation_Number: '9150',

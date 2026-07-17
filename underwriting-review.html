@@ -37,7 +37,11 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .lookup-bar input:focus { outline:none; border-color:var(--of-orange); background:#fff; }
 .lookup-bar .hint { font-size:11px; color:var(--of-gray-500); width:100%; }
 
-.status-msg { padding:11px 16px; border-radius:8px; font-size:13px; font-weight:600; margin-bottom:14px; display:none; }
+/* Floating toast: fixed so the save/decision result is visible no matter where the underwriter has
+   scrolled (the Save button sits far below this element's old in-flow position at the page top). */
+.status-msg { position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:9999;
+  max-width:680px; width:calc(100% - 32px); box-shadow:0 6px 24px rgba(0,0,0,.18);
+  padding:11px 16px; border-radius:8px; font-size:13px; font-weight:600; display:none; }
 .status-msg.show { display:block; }
 .status-msg.success { background:var(--of-green-soft); color:var(--of-green-text); border:1px solid #a5d6a7; }
 .status-msg.error { background:var(--of-red-soft); color:var(--of-red-text); border:1px solid #ef9a9a; }

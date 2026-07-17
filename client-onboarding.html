@@ -347,8 +347,8 @@ body.show-contacts .contacts-only { display: block; }
         <div class="field"><label>Termination Date</label><input type="text" id="opTermDate" placeholder="MM/DD/YYYY"></div>
       </div>
 
-      <!-- Broker: related businesses + customer prescreen -->
-      <div class="broker-only">
+      <!-- Related businesses + customer prescreen — collected from carriers AND brokers -->
+      <div>
         <div class="divider"></div>
         <div class="section-h">Other Businesses &amp; Customers</div>
         <div class="field">
@@ -1616,14 +1616,15 @@ function submitApplication() {
 }
 
 // Assemble the submit payload. Children are sent WITHOUT the Application lookup — the backend
-// sets it after creating the Application. Broker-only subforms only go up in the broker flow.
+// sets it after creating the Application. Related businesses + customers are collected from
+// carriers AND brokers (the intake section is shown to everyone).
 function buildSubmitBody(s) {
   var kids = buildChildPayloads(s, null);
   return {
     application: buildApplicationPayload(s),
     owners: buildOwnerPayloads(s, null),
-    related: s.authority === 'broker' ? kids.related : [],
-    customers: s.authority === 'broker' ? kids.customers : [],
+    related: kids.related,
+    customers: kids.customers,
     contacts: kids.contacts
   };
 }

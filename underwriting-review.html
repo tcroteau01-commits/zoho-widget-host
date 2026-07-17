@@ -46,6 +46,11 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .status-msg.success { background:var(--of-green-soft); color:var(--of-green-text); border:1px solid #a5d6a7; }
 .status-msg.error { background:var(--of-red-soft); color:var(--of-red-text); border:1px solid #ef9a9a; }
 .status-msg.loading { background:var(--of-amber-soft); color:var(--of-amber-text); border:1px solid #ffe082; }
+/* Timestamped underwriting log: read-only history above the new-note entry box. */
+.notes-log { max-height:150px; overflow-y:auto; margin-bottom:6px; }
+.notes-log .nl-entry { padding:6px 9px; margin-bottom:6px; border-left:2px solid var(--of-amber,#e0a44e); background:#faf8f4; border-radius:0 5px 5px 0; }
+.notes-log .nl-head { display:block; font-size:11px; font-weight:700; color:#8a7d6a; margin-bottom:2px; letter-spacing:.02em; }
+.notes-log .nl-body { font-size:12.5px; line-height:1.5; white-space:pre-wrap; color:#3a3a3a; }
 
 .console { display:none; }
 .console.show { display:block; }
@@ -408,7 +413,9 @@ tr:last-child td { border-bottom:none; }
           <div class="fld"><label>Checklist Status</label>
             <select id="uwChecklist"><option>Not Started</option><option>In Progress</option><option>Complete</option></select>
           </div>
-          <div class="fld"><label>Underwriting Notes <span style="color:var(--of-gray-500);font-weight:600;text-transform:none;letter-spacing:0">· internal</span></label><textarea id="uwNotes" rows="3"></textarea></div>
+          <div class="fld"><label>Underwriting Log <span style="color:var(--of-gray-500);font-weight:600;text-transform:none;letter-spacing:0">· internal · timestamped</span></label>
+            <div id="uwNotesLog" class="notes-log"></div>
+            <textarea id="uwNoteEntry" rows="2" placeholder="Add a note… appended to the log with a timestamp when you Save / Approve / Decline."></textarea></div>
           <div class="fld"><label>Message to Client <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· shown on portal</span></label><textarea id="uwClientMsg" rows="2" placeholder="e.g. Your insurance certificate expired — please re-upload a current COI."></textarea></div>
           <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
           <div class="fld"><label>Insurance Expiration <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· syncs to CRM on approve</span></label><input type="date" id="uwInsExp"></div>
@@ -762,7 +769,7 @@ function validateDecision(s, ctx, opts) {
     if (s.fraudFlag === 'High') errors.push('Fraud Flag is High — resolve before approving.');
     if (!computeGate(s, ctx).allPass) errors.push('All 6 approval gates must be green.');
   }
-  if ((s.decision === 'Denied' || s.decision === 'More Information Needed') && !s.uwNotes) {
+  if ((s.decision === 'Denied' || s.decision === 'More Information Needed') && !(s.uwNotes || s.noteEntry)) {
     errors.push('Add an Underwriting note explaining the decision.');
   }
   return { ok: errors.length === 0, errors: errors };
@@ -794,6 +801,27 @@ function buildReviewPayload(s, appId) {
   };
   if (appId != null) p[APPLICATION_LOOKUP] = appId;
   return p;
+}
+
+// "07/17/2026 2:41 PM" — a compact, human timestamp for a note-log entry header.
+function formatStamp(d){
+  d = d || new Date();
+  function p2(n){ return (n < 10 ? '0' : '') + n; }
+  var h = d.getHours(), ap = h < 12 ? 'AM' : 'PM', h12 = h % 12; if (h12 === 0) h12 = 12;
+  return p2(d.getMonth()+1) + '/' + p2(d.getDate()) + '/' + d.getFullYear() +
+    ' ' + h12 + ':' + p2(d.getMinutes()) + ' ' + ap;
+}
+
+// Prepend a timestamped entry to the running underwriting log (newest-first). Returns the existing
+// log UNCHANGED when there's no new entry, so a background save (manual record / §9.2 flag) never
+// adds an empty entry and never wipes history. Pure — the widget persists the result as UW_Notes.
+function composeNotesLog(existingLog, entry, stamp, author){
+  entry = String(entry == null ? '' : entry).trim();
+  existingLog = String(existingLog == null ? '' : existingLog);
+  if (!entry) return existingLog;
+  var head = '[' + (stamp || '') + (author ? ' · ' + author : '') + ']';
+  var block = head + '\n' + entry;
+  return existingLog ? (block + '\n\n' + existingLog) : block;
 }
 
 // Rule-based system recommendation from the automated checks (fraud quick-glance + UCC).
@@ -863,6 +891,7 @@ function buildAgreementRecipients(roles, inputs){
 }
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
+  composeNotesLog: composeNotesLog, formatStamp: formatStamp,
   agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
@@ -1158,7 +1187,8 @@ function readState() {
     fraudFlag: $('uwFraudFlag').value,
     fraudNotes: $('uwFraudNotes').value,
     checklistStatus: $('uwChecklist').value,
-    uwNotes: $('uwNotes').value,
+    uwNotes: (MODEL && MODEL.notesLog) || '',   // the CURRENT persisted log; background saves re-send it unchanged
+    noteEntry: ($('uwNoteEntry') && $('uwNoteEntry').value) || '',   // the pending new entry, folded in on submit
     clientMessage: $('uwClientMsg').value,
     manualUcc: (MODEL && MODEL.manualUcc) || [],
     manualOwners: (MODEL && MODEL.manualOwners) || [],
@@ -1363,6 +1393,21 @@ function refreshAgreementStatus(ev){
       }
     })
     .catch(function(){ link.textContent = '↻ Refresh signature status'; });
+}
+
+// Render the timestamped log (newest-first) into the read-only history box above the entry field.
+function renderNotesLog(log){
+  var el = $('uwNotesLog'); if (!el) return;
+  log = String(log == null ? '' : log).trim();
+  if (!log){ el.innerHTML = ''; return; }
+  el.innerHTML = log.split(/\n\n+/).map(function(block){
+    var nl = block.indexOf('\n');
+    var head = nl === -1 ? '' : block.slice(0, nl);
+    var body = nl === -1 ? block : block.slice(nl + 1);
+    return /^\[.*\]$/.test(head)
+      ? '<div class="nl-entry"><span class="nl-head">' + escHtml(head) + '</span><span class="nl-body">' + escHtml(body) + '</span></div>'
+      : '<div class="nl-entry"><span class="nl-body">' + escHtml(block) + '</span></div>';
+  }).join('');
 }
 
 function showStatus(msg, type){ var el=$('statusMsg'); el.textContent=msg; el.className='status-msg show '+type; }
@@ -1637,7 +1682,9 @@ function renderModel(m) {
   $('uwFraudFlag').value = r.Fraud_Flag1 || 'None';
   $('uwFraudNotes').value = r.Fraud_Notes || '';
   $('uwChecklist').value = r.Checklist_Status1 || 'Not Started';
-  $('uwNotes').value = r.UW_Notes || '';
+  m.notesLog = r.UW_Notes || '';           // the running timestamped log persists in UW_Notes
+  renderNotesLog(m.notesLog);
+  if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
   $('uwClientMsg').value = r.Client_Message || '';
   $('uwDecisionDate').value = r.Decision_Date || '';
   $('uwLimit').value = r.Approved_Credit_Limit || '';
@@ -1985,13 +2032,21 @@ function submit(forceDecision) {
   MODEL.review.Decision2 = s.decision;
   renderAgreement();
   showStatus('Saving decision…', 'loading');
+  // Fold the pending note entry (if any) into the running timestamped log; persisted as UW_Notes.
+  var author = (MODEL.application && MODEL.application.Assigned_Underwriter) || '';
+  var newLog = composeNotesLog(s.uwNotes, s.noteEntry, formatStamp(new Date()), author);
+  s.uwNotes = newLog;
   var payload = buildReviewPayload(s, MODEL.appId);
   saveReview(payload, MODEL.reviewId, s.insuranceExpiration).then(function(res){
+    // Commit the log locally on any successful save (demo or live), and clear the entry box.
+    MODEL.notesLog = newLog; renderNotesLog(newLog); if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
     if (res && res.demo) { showStatus('✓ Demo: decision "'+payload.Decision2+'" validated and Underwriting_Review payload logged to the console.', 'success'); }
     else {
       // Capture the new/again review id so the next save UPDATES the same record (no duplicates).
       if (res && res.review_id) MODEL.reviewId = res.review_id;
       var msg = '✓ Saved. Decision "'+payload.Decision2+'" written to Underwriting_Review for USDOT '+MODEL.application.USDOT+'.';
+      // Surface the sales-pipeline stage move (Application_Status) written by the backend.
+      if (res && res.statusSynced && res.status) msg += ' Stage → '+res.status+'.';
       // Surface the CRM insurance-expiration sync outcome (only meaningful on an Approved decision).
       if (res && res.crmSynced) msg += ' Insurance expiration synced to CRM.';
       else if (res && res.crmError && s.insuranceExpiration && payload.Decision2 === 'Approved') msg += ' (CRM insurance sync skipped: '+res.crmError+'.)';

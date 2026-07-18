@@ -111,6 +111,13 @@
   }
   .kpi-value { font-size: 22px; font-weight: 600; color: var(--of-charcoal); }
 
+  /* Row-list truncation note (window has more loads than were shipped) */
+  .trunc-note {
+    margin-top: 10px; padding: 8px 12px; font-size: 12px; line-height: 1.5;
+    color: var(--of-gray-700); background: var(--of-gray-50);
+    border: 1px solid var(--of-gray-200); border-radius: 6px;
+  }
+
   /* Loads table */
   table.loads {
     width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px;
@@ -1005,7 +1012,11 @@
         return;
       }
 
-      var rows = filterLoadsRows((d && d.loads) || [], f, exact);
+      var allRows = (d && d.loads) || [];
+      var searchActive = loadsQueryActive(f);
+      var rows = filterLoadsRows(allRows, f, exact);
+
+      // Footer + table totals always reflect the rows actually shown.
       var totals = { count: rows.length, purchaseAmount: 0, margin: 0 };
       rows.forEach(function (r) {
         totals.purchaseAmount += Number(r.purchaseAmount) || 0;
@@ -1013,16 +1024,46 @@
       });
       totals.marginPct = totals.purchaseAmount ? (totals.margin / totals.purchaseAmount) * 100 : null;
 
+      // KPI cards: with no client-side search, use the server's full-window
+      // totals (accurate even when the row list is capped at 5000). Under a
+      // vendor/load search, mirror the filtered subset instead.
+      var serverTotals = (d && d.totals) || null;
+      var kpi;
+      if (!searchActive && serverTotals) {
+        kpi = {
+          count: (d.total != null ? d.total : (serverTotals.count || 0)),
+          purchaseAmount: Number(serverTotals.purchaseAmount) || 0,
+          margin: Number(serverTotals.margin) || 0,
+          marginPct: (serverTotals.marginPct == null ? null : serverTotals.marginPct),
+        };
+      } else {
+        kpi = totals;
+      }
+
       var html = '<div class="kpi-grid">' +
         '<div class="kpi-card accent"><div class="kpi-label">Loads</div>' +
-          '<div class="kpi-value">' + totals.count + '</div></div>' +
+          '<div class="kpi-value">' + Number(kpi.count).toLocaleString() + '</div></div>' +
         '<div class="kpi-card"><div class="kpi-label">Purchase</div>' +
-          '<div class="kpi-value">' + fmtMoney(totals.purchaseAmount) + '</div></div>' +
+          '<div class="kpi-value">' + fmtMoney(kpi.purchaseAmount) + '</div></div>' +
         '<div class="kpi-card"><div class="kpi-label">Margin</div>' +
-          '<div class="kpi-value">' + fmtMoney(totals.margin) + '</div></div>' +
+          '<div class="kpi-value">' + fmtMoney(kpi.margin) + '</div></div>' +
         '<div class="kpi-card"><div class="kpi-label">Margin %</div>' +
-          '<div class="kpi-value">' + fmtPct(totals.marginPct) + '</div></div>' +
+          '<div class="kpi-value">' + fmtPct(kpi.marginPct) + '</div></div>' +
       '</div>';
+
+      // Truncation note: the window holds more loads than were shipped to the
+      // browser. The KPI cards above still cover the whole window; only the row
+      // list is capped. Point the user to the escape hatches.
+      if (d && d.total != null && allRows.length < d.total) {
+        html += '<div class="trunc-note">Showing the newest ' +
+          allRows.length.toLocaleString() + ' of ' + Number(d.total).toLocaleString() +
+          ' loads in this window. The totals above cover all ' +
+          Number(d.total).toLocaleString() +
+          '. Narrow the date range, filter by debtor or vendor, or Export to see every row.' +
+          (searchActive ? ' Vendor and Load # search matches within the newest ' +
+            allRows.length.toLocaleString() + ' only.' : '') +
+        '</div>';
+      }
 
       if (!rows.length) {
         html += '<div class="empty">No loads match the current filters.</div>';
@@ -1133,6 +1174,10 @@
       if (f.vendor)   params.set('vendor',   f.vendor);
       if (f.loadId)   params.set('loadId',   f.loadId);
       if (f.arStatus) params.set('arStatus', f.arStatus);
+      // Pull the whole date window in one call (server caps at 5000). Vendor/
+      // Load # search and the KPI totals are computed client-side, so the widget
+      // needs the full windowed set, not the paginated default of 100.
+      params.set('pageSize', '5000');
 
       fetch(BROKER_API_BASE + '/loads?' + params.toString())
         .then(function (r) { return r.json(); })

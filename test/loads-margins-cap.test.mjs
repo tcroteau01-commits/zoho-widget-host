@@ -100,6 +100,59 @@ test('an active vendor/load search narrows the KPI cards to the matched subset',
   assert.equal(cards[1].textContent, '$100', 'search purchase is the subset, not the window total');
 });
 
+function manyLoads(n) {
+  const loads = [];
+  for (let i = 0; i < n; i++) {
+    loads.push({ loadId: String(i), loadNumber: String(i), buyDate: '2026-06-01',
+                 debtorId: '1', debtorName: 'ACME', vendorName: 'CARRIER ' + i,
+                 purchaseAmount: 100, margin: 15, marginPct: 15 });
+  }
+  return {
+    loads, total: n,
+    totals: { count: n, purchaseAmount: 100 * n, margin: 15 * n, marginPct: 15 },
+  };
+}
+
+test('the table pages at 50 rows and shows a pager', () => {
+  const w = makeDom();
+  const wrap = renderLoads(w, manyLoads(120));
+  const bodyRows = wrap.querySelectorAll('table.loads tbody tr[data-load-id]');
+  assert.equal(bodyRows.length, 50, 'only one page (50 rows) is rendered');
+  const pager = wrap.querySelector('.loads-pager');
+  assert.ok(pager, 'a pager is shown when there is more than one page');
+  assert.match(pager.textContent, /of 120/);
+  // KPI Loads card still reflects the whole set, not the page.
+  assert.equal(wrap.querySelectorAll('.kpi-card .kpi-value')[0].textContent, '120');
+});
+
+test('no pager when the whole result fits on one page', () => {
+  const w = makeDom();
+  const wrap = renderLoads(w, manyLoads(40));
+  assert.equal(wrap.querySelector('.loads-pager'), null);
+  assert.equal(wrap.querySelectorAll('table.loads tbody tr[data-load-id]').length, 40);
+});
+
+test('clicking a page button advances to the next set of rows', () => {
+  const w = makeDom();
+  const wrap = renderLoads(w, manyLoads(120));
+  const page2 = wrap.querySelector('.loads-pager button[data-page="2"]');
+  assert.ok(page2, 'page 2 button exists');
+  page2.click();
+  // re-query after the click re-renders into the same wrap
+  const wrap2 = w.document.getElementById('loadsResultsWrap');
+  const firstCell = wrap2.querySelector('table.loads tbody tr[data-load-id] td[data-label="Load #"]');
+  assert.equal(firstCell.textContent, '50', 'page 2 starts at the 51st row (index 50)');
+  assert.match(wrap2.querySelector('.pager-info').textContent, /Showing 51-100 of 120/);
+});
+
+test('a new fetch resets paging to page 1', () => {
+  const w = makeDom();
+  renderLoads(w, manyLoads(120));
+  w.state.loadsPage = 3;
+  w.handleLoadsData(manyLoads(120));
+  assert.equal(w.state.loadsPage, 1);
+});
+
 test('fetchLoads requests the whole window in one call (pageSize=5000)', () => {
   const w = makeDom();
   let capturedUrl = '';

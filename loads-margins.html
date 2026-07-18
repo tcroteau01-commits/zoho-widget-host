@@ -118,6 +118,26 @@
     border: 1px solid var(--of-gray-200); border-radius: 6px;
   }
 
+  /* Loads table pager (FactorView-style) */
+  .loads-pager {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 12px;
+  }
+  .pager-info { color: var(--of-gray-500); }
+  .pager-btns { display: inline-flex; gap: 2px; }
+  .pager-btn {
+    min-width: 26px; height: 26px; padding: 0 6px; border: 1px solid var(--of-gray-200);
+    background: #fff; color: var(--of-charcoal); font-size: 12px; cursor: pointer;
+    border-radius: 4px;
+  }
+  .pager-btn:hover:not(.disabled):not(.active) { background: var(--of-gray-50); }
+  .pager-btn.active {
+    background: var(--of-orange); border-color: var(--of-orange);
+    color: #fff; font-weight: 600; cursor: default;
+  }
+  .pager-btn.disabled { color: var(--of-gray-300); cursor: default; }
+  .pager-gap { padding: 0 4px; color: var(--of-gray-400); }
+
   /* Loads table */
   table.loads {
     width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px;
@@ -385,6 +405,7 @@
       loadsFilters: { dateRange: 'this_month', dateFrom: '', dateTo: '',
                       debtorId: '', vendor: '', loadId: '', arStatus: 'all' },
       loadsExact: false,
+      loadsPage: 1,
       loadsData: null, loadsLoading: false, loadsExportOpen: false,
       selectedLoadId: null,
       loadPreview: null, loadPreviewLoading: false, loadPreviewError: null,
@@ -995,6 +1016,38 @@
       return (rows || []).filter(function (r) { return matchesLoadRow(r, f, exact); });
     }
 
+    // Rows shown per page in the Loads table. The whole window is already in
+    // memory, so paging is client-side and instant (mirrors FactorView, whose
+    // header totals cover the full window while the grid pages).
+    var LOADS_PAGE_SIZE = 50;
+
+    // FactorView-style numbered pager for the Loads table.
+    function buildLoadsPager(pageNo, totalPages, totalRows, startIdx, shown) {
+      if (totalPages <= 1) return '';
+      var firstRow = startIdx + 1;
+      var lastRow = startIdx + shown;
+      function pgBtn(label, target, disabled, active) {
+        var cls = 'pager-btn' + (active ? ' active' : '') + (disabled ? ' disabled' : '');
+        var attrs = (disabled || active) ? '' : ' data-page="' + target + '"';
+        return '<button class="' + cls + '"' + attrs + '>' + label + '</button>';
+      }
+      var btns = pgBtn('&laquo;', 1, pageNo === 1, false) +
+                 pgBtn('&lsaquo;', pageNo - 1, pageNo === 1, false);
+      var win = 3;
+      var lo = Math.max(1, pageNo - win);
+      var hi = Math.min(totalPages, pageNo + win);
+      if (lo > 1) { btns += pgBtn('1', 1, false, false); if (lo > 2) btns += '<span class="pager-gap">...</span>'; }
+      for (var p = lo; p <= hi; p++) btns += pgBtn(String(p), p, false, p === pageNo);
+      if (hi < totalPages) { if (hi < totalPages - 1) btns += '<span class="pager-gap">...</span>'; btns += pgBtn(String(totalPages), totalPages, false, false); }
+      btns += pgBtn('&rsaquo;', pageNo + 1, pageNo === totalPages, false) +
+              pgBtn('&raquo;', totalPages, pageNo === totalPages, false);
+      return '<div class="loads-pager">' +
+        '<span class="pager-info">Showing ' + firstRow.toLocaleString() + '-' + lastRow.toLocaleString() +
+          ' of ' + totalRows.toLocaleString() + '</span>' +
+        '<span class="pager-btns">' + btns + '</span>' +
+      '</div>';
+    }
+
     function renderLoadsResults() {
       var wrap = document.getElementById('loadsResultsWrap');
       if (!wrap) return;
@@ -1051,15 +1104,14 @@
           '<div class="kpi-value">' + fmtPct(kpi.marginPct) + '</div></div>' +
       '</div>';
 
-      // Truncation note: the window holds more loads than were shipped to the
-      // browser. The KPI cards above still cover the whole window; only the row
-      // list is capped. Point the user to the escape hatches.
+      // Server-cap note: only fires when the window holds more loads than the
+      // 5000 the API ships in one call. The KPI cards + pages below still cover
+      // the newest 5000; the totals cover the whole window. Export gets all.
       if (d && d.total != null && allRows.length < d.total) {
-        html += '<div class="trunc-note">Showing the newest ' +
-          allRows.length.toLocaleString() + ' of ' + Number(d.total).toLocaleString() +
-          ' loads in this window. The totals above cover all ' +
-          Number(d.total).toLocaleString() +
-          '. Narrow the date range, filter by debtor or vendor, or Export to see every row.' +
+        html += '<div class="trunc-note">This window has ' + Number(d.total).toLocaleString() +
+          ' loads. The newest ' + allRows.length.toLocaleString() +
+          ' are shown across the pages below, and the totals above cover all ' +
+          Number(d.total).toLocaleString() + '. Export to get every row.' +
           (searchActive ? ' Vendor and Load # search matches within the newest ' +
             allRows.length.toLocaleString() + ' only.' : '') +
         '</div>';
@@ -1068,12 +1120,22 @@
       if (!rows.length) {
         html += '<div class="empty">No loads match the current filters.</div>';
       } else {
+        // Client-side paging over the in-memory window: page switches and
+        // vendor/load search are instant (no re-fetch). The footer TOTAL and the
+        // KPI cards cover the full set, not just the visible page.
+        var totalPages = Math.max(1, Math.ceil(rows.length / LOADS_PAGE_SIZE));
+        if (state.loadsPage > totalPages) state.loadsPage = totalPages;
+        if (state.loadsPage < 1) state.loadsPage = 1;
+        var pageNo = state.loadsPage;
+        var startIdx = (pageNo - 1) * LOADS_PAGE_SIZE;
+        var pageRows = rows.slice(startIdx, startIdx + LOADS_PAGE_SIZE);
+
         html += '<table class="loads"><thead><tr>' +
           '<th class="first">Buy Date</th><th class="left">Load #</th><th class="left">Debtor</th>' +
           '<th class="left">Vendor</th><th>Purchase</th><th>Margin</th><th class="last">Margin %</th>' +
         '</tr></thead><tbody>';
-        for (var i = 0; i < rows.length; i++) {
-          var r = rows[i];
+        for (var i = 0; i < pageRows.length; i++) {
+          var r = pageRows[i];
           html += '<tr data-load-id="' + esc(r.loadId) + '">' +
             '<td class="first" data-label="Buy Date">' + esc(r.buyDate || '') + '</td>' +
             '<td class="left" data-label="Load #">' + esc(r.loadNumber || '') + '</td>' +
@@ -1084,16 +1146,24 @@
             '<td class="last ' + (r.marginPct >= 0 ? 'pos' : 'neg') + '" data-label="Margin %">' + fmtPct(r.marginPct) + '</td>' +
           '</tr>';
         }
+        // TOTAL mirrors the KPI cards (the full window / filtered set), not the page.
         html += '<tr class="totals"><td class="first" colspan="4">TOTAL</td>' +
-          '<td>' + fmtMoneyDec(totals.purchaseAmount) + '</td>' +
-          '<td>' + fmtMoneyDec(totals.margin) + '</td>' +
-          '<td class="last">' + fmtPct(totals.marginPct) + '</td></tr>';
+          '<td>' + fmtMoneyDec(kpi.purchaseAmount) + '</td>' +
+          '<td>' + fmtMoneyDec(kpi.margin) + '</td>' +
+          '<td class="last">' + fmtPct(kpi.marginPct) + '</td></tr>';
         html += '</tbody></table>';
+        html += buildLoadsPager(pageNo, totalPages, rows.length, startIdx, pageRows.length);
       }
       wrap.innerHTML = html;
       document.querySelectorAll('#loadsResultsWrap table.loads tbody tr[data-load-id]').forEach(function (tr) {
         tr.addEventListener('click', function () {
           openLoadDetail(tr.getAttribute('data-load-id'));
+        });
+      });
+      document.querySelectorAll('#loadsResultsWrap .loads-pager button[data-page]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var p = parseInt(b.getAttribute('data-page'), 10);
+          if (!isNaN(p)) { state.loadsPage = p; renderLoadsResults(); }
         });
       });
     }
@@ -1146,6 +1216,7 @@
     function handleLoadsData(data) {
       state.loadsData = data;
       state.loadsLoading = false;
+      state.loadsPage = 1;
       renderShell();
     }
 
@@ -1232,16 +1303,19 @@
       var venInp = document.getElementById('loadsVendor');
       if (venInp) venInp.addEventListener('input', function (e) {
         state.loadsFilters.vendor = e.target.value;
+        state.loadsPage = 1;
         renderLoadsResults();
       });
       var lidInp = document.getElementById('loadsLoadId');
       if (lidInp) lidInp.addEventListener('input', function (e) {
         state.loadsFilters.loadId = e.target.value;
+        state.loadsPage = 1;
         renderLoadsResults();
       });
       var exactChk = document.getElementById('loadsExact');
       if (exactChk) exactChk.addEventListener('change', function (e) {
         state.loadsExact = !!e.target.checked;
+        state.loadsPage = 1;
         renderLoadsResults();
       });
       // AR status

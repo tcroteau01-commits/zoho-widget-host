@@ -553,13 +553,10 @@ function renderDetail(app, d) {
   var clientMsgNote = d.clientMessage
     ? '<div class="note client"><div class="who">Message to client <span class="role">shown on client portal</span></div><div class="txt">' + esc(d.clientMessage) + '</div></div>'
     : '';
-  var uwNote = d.uwNotes
-    ? '<div class="note uw"><div class="who">Underwriting <span class="role">UW</span></div><div class="txt">' + esc(d.uwNotes) + '</div>' + (d.uwWhen ? '<div class="when">' + esc(d.uwWhen) + '</div>' : '') + '</div>'
-    : '';
   var salesNotesHtml = (d.salesNotes || '').split('\n').filter(Boolean).map(function (ln) {
     return '<div class="note"><div class="txt">' + esc(ln) + '</div></div>';
   }).join('');
-  var notesBody = (clientMsgNote + uwNote + salesNotesHtml) || '<div class="muted" style="font-size:12.5px">No notes yet.</div>';
+  var notesBody = (clientMsgNote + salesNotesHtml) || '<div class="muted" style="font-size:12.5px">No notes yet.</div>';
 
   // Owners — a simple list of the declared owners' names.
   var owners = d.owners || [];

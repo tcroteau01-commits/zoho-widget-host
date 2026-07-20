@@ -137,6 +137,19 @@ tr:last-child td { border-bottom:none; }
 .btn { background:var(--of-charcoal); color:#fff; border:none; border-radius:7px; padding:8px 15px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; }
 .btn.ghost { background:#fff; border:1px solid var(--of-beige-line); color:var(--of-charcoal); }
 .btn.orange{background:var(--of-orange);} .btn.green{background:var(--of-green);} .btn.red{background:var(--of-red);}
+/* Approve/Decline confirmation dialog */
+.cf-backdrop { position:fixed; inset:0; background:rgba(20,20,22,.55); display:flex; align-items:center; justify-content:center; padding:20px; z-index:2147482000; }
+.cf-backdrop.hidden { display:none; }
+.cf-card { background:#fff; border-radius:14px; max-width:440px; width:100%; box-shadow:0 24px 60px rgba(0,0,0,.4); overflow:hidden; }
+.cf-head { display:flex; align-items:center; gap:12px; padding:20px 22px 6px; }
+.cf-icon { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+.cf-icon.approve { background:var(--of-green-soft); color:var(--of-green-text); }
+.cf-icon.decline { background:var(--of-red-soft); color:var(--of-red-text); }
+.cf-title { font-size:17px; font-weight:800; }
+.cf-sub { padding:6px 22px 4px; font-size:14px; color:var(--of-charcoal-soft); line-height:1.5; }
+.cf-sub b { color:var(--of-charcoal); }
+.cf-actions { display:flex; gap:10px; padding:16px 22px 20px; }
+.cf-actions .btn { flex:1; padding:11px; font-size:13px; }
 .btn.sm { padding:5px 11px; font-size:11px; } .btn.block { width:100%; padding:11px; font-size:13px; } .btn:disabled { opacity:0.45; cursor:not-allowed; }
 
 .recommendation { background:#fff; border:1px solid var(--of-beige-line); border-left:4px solid var(--of-amber); border-radius:12px; padding:16px 20px; margin-bottom:14px; display:none; }
@@ -413,10 +426,7 @@ tr:last-child td { border-bottom:none; }
           <div class="fld"><label>Checklist Status</label>
             <select id="uwChecklist"><option>Not Started</option><option>In Progress</option><option>Complete</option></select>
           </div>
-          <div class="fld"><label>Underwriting Log <span style="color:var(--of-gray-500);font-weight:600;text-transform:none;letter-spacing:0">· internal · timestamped</span></label>
-            <div id="uwNotesLog" class="notes-log"></div>
-            <textarea id="uwNoteEntry" rows="2" placeholder="Add a note… appended to the log with a timestamp when you Save / Approve / Decline."></textarea></div>
-          <div class="fld"><label>Message to Client <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· shown on portal</span></label><textarea id="uwClientMsg" rows="2" placeholder="e.g. Your insurance certificate expired — please re-upload a current COI."></textarea></div>
+          <div class="fld"><label>Note <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· shown on the client portal &amp; sales pipeline</span></label><textarea id="uwClientMsg" rows="3" placeholder="Write a note — it appears on the client's document portal and on the sales pipeline. Saved when you Save / Approve / Decline."></textarea></div>
           <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
           <div class="fld"><label>Insurance Expiration <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· syncs to CRM on approve</span></label><input type="date" id="uwInsExp"></div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
@@ -498,6 +508,17 @@ tr:last-child td { border-bottom:none; }
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="cf-backdrop hidden" id="cfBackdrop">
+  <div class="cf-card">
+    <div class="cf-head"><div class="cf-icon" id="cfIcon"></div><div class="cf-title" id="cfTitle"></div></div>
+    <div class="cf-sub" id="cfSub"></div>
+    <div class="cf-actions">
+      <button class="btn ghost" id="cfCancel">Cancel</button>
+      <button class="btn" id="cfGo"></button>
     </div>
   </div>
 </div>
@@ -2012,9 +2033,12 @@ function boot() {
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
   ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
   ['uwDecision','uwFraudFlag','uwChecklist','uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
-  $('btnApprove').addEventListener('click', function(){ submit('Approved'); });
-  $('btnDecline').addEventListener('click', function(){ submit('Denied'); });
-  $('btnSave').addEventListener('click', function(){ submit(null); });
+  $('btnApprove').addEventListener('click', function(){ confirmDecision('Approved'); });
+  $('btnDecline').addEventListener('click', function(){ confirmDecision('Denied'); });
+  $('btnSave').addEventListener('click', function(){ submit(null); });   // Save has no confirm — routine
+  $('cfCancel').addEventListener('click', closeConfirm);
+  $('cfBackdrop').addEventListener('mousedown', function(e){ if (e.target === $('cfBackdrop')) closeConfirm(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ var b = $('cfBackdrop'); if (b && !b.classList.contains('hidden')) closeConfirm(); } });
   if ($('btnSendAgreement')) $('btnSendAgreement').addEventListener('click', agreementPrimaryClick);
   if ($('btnAgrConfirm')) $('btnAgrConfirm').addEventListener('click', prepareAgreement);
   if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){ $('agrPanel').style.display = 'none'; });
@@ -2037,6 +2061,27 @@ function boot() {
 }
 
 function getQueryParam(name){ try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; } }
+
+function closeConfirm(){ var b = $('cfBackdrop'); if (b) b.classList.add('hidden'); }
+// Approve/Decline ask "are you sure?" first — they commit the decision + move the sales-pipeline
+// stage. Save progress skips this (routine). On "Yes" we run the normal submit(), which validates
+// and persists exactly as before.
+function confirmDecision(decision){
+  if (!MODEL) { showStatus('Open an application first.', 'error'); return; }
+  var app = MODEL.application || {};
+  var name = app.Business_Name || app.DBA || 'this application';
+  var approve = decision === 'Approved';
+  $('cfIcon').className = 'cf-icon ' + (approve ? 'approve' : 'decline');
+  $('cfIcon').textContent = approve ? '✓' : '✕';
+  $('cfTitle').textContent = (approve ? 'Approve' : 'Decline') + ' this application?';
+  $('cfSub').innerHTML = 'Are you sure you want to ' + (approve ? 'approve' : 'decline') +
+    ' <b>' + escHtml(name) + '</b>' + (app.USDOT ? ' (USDOT ' + escHtml(app.USDOT) + ')' : '') + '?';
+  var go = $('cfGo');
+  go.className = 'btn ' + (approve ? 'green' : 'red');
+  go.textContent = approve ? 'Yes, approve' : 'Yes, decline';
+  go.onclick = function(){ closeConfirm(); submit(decision); };
+  $('cfBackdrop').classList.remove('hidden');
+}
 
 function submit(forceDecision) {
   if (!MODEL) { showStatus('Open an application first.', 'error'); return; }

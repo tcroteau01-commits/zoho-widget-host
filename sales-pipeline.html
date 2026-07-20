@@ -68,6 +68,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .card-title .count { color: var(--of-gray-500); font-weight: 700; }
 
 /* pipeline list */
+.pipe-search { width: 100%; box-sizing: border-box; border: 1px solid var(--of-beige-line); border-radius: 8px; padding: 9px 12px; font-family: inherit; font-size: 13px; margin-bottom: 10px; background: #fff; }
 .list-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--of-beige-line); border-radius: 10px; margin-bottom: 8px; background: #fff; cursor: pointer; }
 .list-row:hover, .list-row.active { border-color: var(--of-orange); }
 .list-row.active { box-shadow: 0 0 0 2px rgba(232,160,32,0.18); }
@@ -157,7 +158,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <div class="card">
     <div class="card-title">My Pipeline <span class="count" id="pipeCount"></span></div>
+    <input type="search" id="pipeSearch" class="pipe-search" placeholder="Search by USDOT or business name…" autocomplete="off">
     <div id="pipeline"><div class="empty">Loading your pipeline…</div></div>
+    <div id="pipeNoMatch" class="empty" style="display:none">No applications match your search.</div>
   </div>
 
   <div id="detail"></div>
@@ -499,6 +502,24 @@ function renderPipeline(apps) {
   Array.prototype.forEach.call(el('pipeline').querySelectorAll('.list-row'), function (row) {
     row.addEventListener('click', function () { selectApp(parseInt(row.getAttribute('data-i'), 10)); });
   });
+  var ps = el('pipeSearch'); if (ps && ps.value) filterPipeline(ps.value);   // keep an active search applied across re-renders
+}
+
+// Live filter of the pipeline list by USDOT (digits) or business name. Client-side; row indices
+// (data-i → STATE.apps) are untouched, so selectApp still resolves correctly.
+function filterPipeline(q) {
+  q = String(q == null ? '' : q).trim().toLowerCase();
+  var qDigits = q.replace(/\D/g, '');
+  var shown = 0;
+  Array.prototype.forEach.call(el('pipeline').querySelectorAll('.list-row'), function (row) {
+    var a = STATE.apps[parseInt(row.getAttribute('data-i'), 10)] || {};
+    var usdot = String(a.USDOT || '').replace(/\D/g, '');
+    var name = String(a.Business_Name || '').toLowerCase();
+    var match = !q || (qDigits && usdot.indexOf(qDigits) !== -1) || (!!name && name.indexOf(q) !== -1);
+    row.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  var none = el('pipeNoMatch'); if (none) none.style.display = (q && shown === 0) ? 'block' : 'none';
 }
 
 function selectApp(i) {
@@ -664,6 +685,7 @@ function boot() {
     else if (res.unfiltered) setBanner('warn', 'Showing all applications — add a <b>' + SALES_ATTR + '</b> field on the Application form to scope this to your book.');
     renderKPIs(STATE.apps);
     renderPipeline(STATE.apps);
+    var ps = el('pipeSearch'); if (ps && !ps._bound) { ps._bound = true; ps.addEventListener('input', function () { filterPipeline(this.value); }); }
     if (STATE.apps.length) selectApp(0);
   }).catch(function (e) {
     setBanner('warn', 'Could not load the pipeline: ' + esc(e && e.message ? e.message : e));

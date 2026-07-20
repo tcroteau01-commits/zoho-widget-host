@@ -130,6 +130,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .notes { display: flex; flex-direction: column; gap: 10px; }
 .note { font-size: 12.5px; border-left: 3px solid var(--of-beige-line); padding: 4px 0 4px 12px; }
 .note.uw { border-left-color: var(--of-orange); }
+.note.client { border-left-color: var(--of-blue-text); }
 .note .who { font-weight: 700; font-size: 11px; }
 .note .who .role { font-weight: 600; color: var(--of-gray-500); margin-left: 6px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.4px; }
 .note .txt { color: var(--of-charcoal-soft); margin-top: 2px; line-height: 1.45; }
@@ -359,6 +360,7 @@ var DEMO_PIPELINE = [
       { First_Name1:'Marcus', Last_Name1:'Reyes', Title:'COO', Ownership_Percent:30, Owner_Sequence:3, Birthdate:'11/30/1982', SSN:'333-44-5555', Phone:'6025555566', Email:'marcus@eslingerlogistics.com', Address:'920 Vail St, Reno, NV' }
     ],
     Sales_Notes: '', UW_Notes: 'Need the Operating Agreement to verify ownership. Everything else looks on track.', UW_When: 'Jun 9, 2:16 PM',
+    Client_Message: 'Thanks for your application! We just need your Operating Agreement to finish verifying ownership — please upload it in your document center.',
     documents: [['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
       ['Voided Check','Prospect Upload','Received'],['Certificate of Insurance','Prospect Upload','Received'],
       ['W-9','Prospect Upload','Verified'],['SOS Filing','Staff Upload','Verified'],
@@ -434,7 +436,7 @@ function loadPipeline() {
 // Load the supporting records for one application (documents + UW note).
 function loadDetail(app) {
   if (STATE.mode === 'demo' || typeof fetch !== 'function') {
-    return Promise.resolve({ documents: app.documents || [], owners: app.owners || [], physicalAddress: app.loc || app.Physical_Address || '', uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', salesNotes: app.Sales_Notes || '' });
+    return Promise.resolve({ documents: app.documents || [], owners: app.owners || [], physicalAddress: app.loc || app.Physical_Address || '', uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', clientMessage: app.Client_Message || '', salesNotes: app.Sales_Notes || '' });
   }
   // Reuse /application-by-usdot (returns documents + owners + the latest Underwriting_Review).
   var usdot = String(app.USDOT || '');
@@ -445,9 +447,9 @@ function loadDetail(app) {
       var rev = j.review || {}, ap = j.application || {};
       var docs = (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; });
       var owners = (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, Owner_Sequence:o.Owner_Sequence, Birthdate:o.Birthdate, SSN:o.SSN, Phone:o.Phone, Email:o.Email, Address:o.Address }; });
-      return { documents: docs, owners: owners, physicalAddress: ap.Physical_Address || ap.loc || app.loc || '', uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', salesNotes: app[SALES_NOTES_FIELD] || '' };
+      return { documents: docs, owners: owners, physicalAddress: ap.Physical_Address || ap.loc || app.loc || '', uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', clientMessage: rev.Client_Message || '', salesNotes: app[SALES_NOTES_FIELD] || '' };
     })
-    .catch(function () { return { documents: [], owners: [], physicalAddress: app.loc || '', uwNotes: '', uwWhen: '', salesNotes: app[SALES_NOTES_FIELD] || '' }; });
+    .catch(function () { return { documents: [], owners: [], physicalAddress: app.loc || '', uwNotes: '', uwWhen: '', clientMessage: '', salesNotes: app[SALES_NOTES_FIELD] || '' }; });
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
@@ -546,13 +548,18 @@ function renderDetail(app, d) {
       '</div><div class="det">' + esc(e.status) + ' · additional</div></div>' + docView(e.link, e.label) + '</div>';
   }).join('');
 
+  // The underwriter's "Message to client" (Client_Message) — the same note the prospect sees on their
+  // portal. Surfaced here so Sales knows what the client has been told (read-only; Sales can't edit it).
+  var clientMsgNote = d.clientMessage
+    ? '<div class="note client"><div class="who">Message to client <span class="role">shown on client portal</span></div><div class="txt">' + esc(d.clientMessage) + '</div></div>'
+    : '';
   var uwNote = d.uwNotes
     ? '<div class="note uw"><div class="who">Underwriting <span class="role">UW</span></div><div class="txt">' + esc(d.uwNotes) + '</div>' + (d.uwWhen ? '<div class="when">' + esc(d.uwWhen) + '</div>' : '') + '</div>'
     : '';
   var salesNotesHtml = (d.salesNotes || '').split('\n').filter(Boolean).map(function (ln) {
     return '<div class="note"><div class="txt">' + esc(ln) + '</div></div>';
   }).join('');
-  var notesBody = (uwNote + salesNotesHtml) || '<div class="muted" style="font-size:12.5px">No notes yet.</div>';
+  var notesBody = (clientMsgNote + uwNote + salesNotesHtml) || '<div class="muted" style="font-size:12.5px">No notes yet.</div>';
 
   // Owners — a simple list of the declared owners' names.
   var owners = d.owners || [];

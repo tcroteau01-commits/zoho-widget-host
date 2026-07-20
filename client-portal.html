@@ -109,6 +109,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .cf-sub b { color: var(--of-charcoal); }
 .cf-actions { display: flex; gap: 10px; padding: 16px 22px 20px; }
 .cf-actions .btn { flex: 1; padding: 11px; font-size: 13px; }
+/* Add-another-document control */
+.addl { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--of-beige-line); }
+.addl-hint { font-size: 12px; color: var(--of-gray-500); margin: 8px 0; }
+.addl-in { width: 100%; border: 1px solid var(--of-beige-line); border-radius: 8px; padding: 9px 11px; font-family: inherit; font-size: 13px; margin-bottom: 8px; background: #fff; }
+.addl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.addl-row input[type=file] { flex: 1; min-width: 170px; font-size: 12.5px; }
 .btn.sm { padding: 6px 12px; font-size: 11px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -650,6 +656,21 @@ function renderStatus(data, isDemo) {
     '<div class="card"><div class="card-title">Your documents <span class="count" id="docCount">' + rec.uploadedCount + ' of ' + rec.total + ' received</span></div>' +
       '<div class="summ">Upload each document below. PDF or photo is fine — you can select multiple files at once for any item. You can come back to this page anytime to add the rest.</div>' +
       '<div id="docList">' + rows + requestedRows + extrasHtml + '</div>' +
+      // Let the client add a document that isn't on the checklist (their own extra doc).
+      '<div class="addl">' +
+        '<button type="button" class="btn ghost sm" id="addlToggle">+ Add another document</button>' +
+        '<div id="addlForm" style="display:none">' +
+          '<div class="addl-hint">Send us any document that isn’t already listed above.</div>' +
+          '<select id="addlType" class="addl-in">' +
+            '<option value="">Choose a type…</option>' +
+            ['Bank Statement', 'EIN Letter', 'Utility Bill', 'Articles of Formation', 'Operating Authority',
+             'Insurance Certificate', 'W-9', 'Proof of Service', 'Social Security Card'].map(function (t) { return '<option>' + t + '</option>'; }).join('') +
+          '</select>' +
+          '<input type="text" id="addlCustom" class="addl-in" placeholder="…or type a custom name (e.g. Equipment lease agreement)">' +
+          '<div class="addl-row"><input type="file" id="addlFile" accept="application/pdf,image/*" multiple>' +
+          '<button type="button" class="btn orange sm" id="addlUpload">Upload</button></div>' +
+        '</div>' +
+      '</div>' +
       '<div class="toast" id="upToast"></div></div>' +
 
     ownersHtml + contactsHtml + clienteleHtml + relatedHtml + uccHtml +
@@ -671,6 +692,22 @@ function renderStatus(data, isDemo) {
       if (input.files && input.files.length) uploadDocs(type, input.files, b);
     });
   });
+
+  // "Add another document" — the client sends an extra document not on the checklist.
+  var addlToggle = el('addlToggle'), addlForm = el('addlForm');
+  if (addlToggle && addlForm) addlToggle.addEventListener('click', function () {
+    addlForm.style.display = (addlForm.style.display === 'none') ? 'block' : 'none';
+  });
+  var addlUpload = el('addlUpload');
+  if (addlUpload) addlUpload.addEventListener('click', function () {
+    var custom = (el('addlCustom') && el('addlCustom').value || '').trim();
+    var type = (el('addlType') && el('addlType').value || '').trim();
+    var name = custom || type;
+    var files = el('addlFile') && el('addlFile').files;
+    if (!name) { upToast('err', 'Pick a document type or type a name first.'); return; }
+    if (!files || !files.length) { upToast('err', 'Choose at least one file first.'); return; }
+    uploadDocs(name, files, addlUpload, custom ? name : '');   // custom label → sent as `custom`
+  });
 }
 
 function upToast(kind, msg){ var t = el('upToast'); if (t) { t.className = 'toast ' + kind; t.textContent = msg; } }
@@ -679,7 +716,7 @@ function upToast(kind, msg){ var t = el('upToast'); if (t) { t.className = 'toas
 // attach several files (e.g. a multi-page insurance cert, or both sides of a license) to one line.
 // Each file is sent as its own Document record; we upload sequentially for clear progress and so a
 // PIN re-prompt stops the run cleanly, then refresh once at the end.
-function uploadDocs(docType, files, btn) {
+function uploadDocs(docType, files, btn, custom) {
   files = files ? Array.prototype.slice.call(files) : [];
   if (!files.length) { upToast('err', 'Choose at least one file first.'); return Promise.resolve(); }
   var n = files.length, label = n + ' file' + (n === 1 ? '' : 's');
@@ -698,7 +735,7 @@ function uploadDocs(docType, files, btn) {
   function next(i) {
     if (i >= n || needVerify) return Promise.resolve();
     upToast('', 'Uploading ' + docType + ' — file ' + (i + 1) + ' of ' + n + '…');
-    return postFile(docType, files[i]).then(function (p) {
+    return postFile(docType, files[i], custom).then(function (p) {
       if (p && p.ok) done++;
       else if (p && (p.error === 'verify_required' || p.error === 'verify_invalid' || p.error === 'pin_locked')) { needVerify = true; return; }
       else failed++;
@@ -719,10 +756,11 @@ function uploadDocs(docType, files, btn) {
 
 // Low-level single-file POST → resolves with the parsed JSON response (no re-render). Same
 // token + factor verification the backend already enforces for the portal.
-function postFile(docType, file) {
+function postFile(docType, file, custom) {
   if (!file) return Promise.resolve({ error: 'no_file' });
   var fd = new FormData();
   fd.append('doc_type', docType);
+  if (custom) fd.append('custom', custom);   // client-named additional doc (bypasses the type whitelist)
   fd.append('file', file);
   if (STATE.usdot) fd.append('usdot', STATE.usdot);
   if (STATE.email) fd.append('email', STATE.email);

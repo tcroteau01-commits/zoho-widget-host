@@ -96,7 +96,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .btn.orange { background: var(--of-orange); }
 .btn.ghost { background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal); }
 .btn.danger { background: var(--of-red); }
-.doc-del { background: none; border: 0; padding: 2px 7px; margin-left: 4px; cursor: pointer; color: var(--of-gray-500); font-size: 14px; line-height: 1; border-radius: 6px; vertical-align: middle; }
+.doc-del { display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; padding: 6px 7px; margin-left: 4px; cursor: pointer; color: var(--of-gray-500); line-height: 0; border-radius: 6px; vertical-align: middle; }
 .doc-del:hover { color: var(--of-red-text); background: var(--of-red-soft); }
 /* Remove-document confirmation dialog */
 .cf-backdrop { position: fixed; inset: 0; background: rgba(20,20,22,.55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 2147482000; }
@@ -371,7 +371,12 @@ if (typeof document !== 'undefined' && !document.__ofcpDocViewerBound) {
 // they added by mistake. Carries the signed doc token in data-*; one delegated listener opens a
 // confirm, then POSTs /application-doc-remove (soft-delete → the checklist slot reopens for re-upload).
 function docDelButton(token, label){
-  return token ? '<button type="button" class="doc-del" data-token="' + esc(token) + '" data-label="' + esc(label || 'this document') + '" title="Remove this document" aria-label="Remove this document">✕</button>' : '';
+  var icon = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<polyline points="3 6 5 6 21 6"></polyline>' +
+    '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+    '<path d="M10 11v6M14 11v6"></path>' +
+    '<path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>';
+  return token ? '<button type="button" class="doc-del" data-token="' + esc(token) + '" data-label="' + esc(label || 'this document') + '" title="Remove this document" aria-label="Remove this document">' + icon + '</button>' : '';
 }
 function ensureRemoveConfirm(){
   var bd = el('ofcpConfirm');

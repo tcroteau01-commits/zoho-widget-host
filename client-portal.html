@@ -95,6 +95,20 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .btn { background: var(--of-charcoal); color: #fff; border: none; border-radius: 7px; padding: 8px 15px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; letter-spacing: 0.3px; }
 .btn.orange { background: var(--of-orange); }
 .btn.ghost { background: #fff; border: 1px solid var(--of-beige-line); color: var(--of-charcoal); }
+.btn.danger { background: var(--of-red); }
+.doc-del { background: none; border: 0; padding: 2px 7px; margin-left: 4px; cursor: pointer; color: var(--of-gray-500); font-size: 14px; line-height: 1; border-radius: 6px; vertical-align: middle; }
+.doc-del:hover { color: var(--of-red-text); background: var(--of-red-soft); }
+/* Remove-document confirmation dialog */
+.cf-backdrop { position: fixed; inset: 0; background: rgba(20,20,22,.55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 2147482000; }
+.cf-backdrop.hidden { display: none; }
+.cf-card { background: #fff; border-radius: 14px; max-width: 420px; width: 100%; box-shadow: 0 24px 60px rgba(0,0,0,.4); overflow: hidden; }
+.cf-head { display: flex; align-items: center; gap: 12px; padding: 20px 22px 6px; }
+.cf-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; background: var(--of-red-soft); }
+.cf-title { font-size: 17px; font-weight: 800; }
+.cf-sub { padding: 6px 22px 4px; font-size: 14px; color: var(--of-charcoal-soft); line-height: 1.5; }
+.cf-sub b { color: var(--of-charcoal); }
+.cf-actions { display: flex; gap: 10px; padding: 16px 22px 20px; }
+.cf-actions .btn { flex: 1; padding: 11px; font-size: 13px; }
 .btn.sm { padding: 6px 12px; font-size: 11px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -212,11 +226,14 @@ function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'ver
 function reconcileDocs(required, documents) {
   required = required || [];
   documents = documents || [];
+  // A document the client removed (soft-deleted) doesn't count — the checklist slot reverts to
+  // "Needed" so they can re-upload the correct file.
+  documents = documents.filter(function (d) { return normType(d.Status || d.status) !== 'removed'; });
   var byType = {};
   documents.forEach(function (d) {
     var t = normType(d.Document_Type || d.type);
     var st = d.Status || d.status || '';
-    var entry = { status: st, link: d.WorkDrive_Link || d.link || '', uploadedAt: d.Uploaded_At || d.uploadedAt || '' };
+    var entry = { status: st, link: d.WorkDrive_Link || d.link || '', uploadedAt: d.Uploaded_At || d.uploadedAt || '', token: d.token || '' };
     if (!byType[t] || statusRank(st) > statusRank(byType[t].status)) byType[t] = entry;
   });
   var checklist = required.map(function (item) {
@@ -227,13 +244,13 @@ function reconcileDocs(required, documents) {
       uploaded: !!u && isUploadedStatus(u.status),
       verified: !!u && /verified/i.test(String(u.status)),
       rejected: !!u && /rejected/i.test(String(u.status)),
-      link: u ? u.link : '', uploadedAt: u ? u.uploadedAt : ''
+      link: u ? u.link : '', uploadedAt: u ? u.uploadedAt : '', token: u ? u.token : ''
     };
   });
   var reqTypes = {};
   required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
   var extras = documents.filter(function (d) { return !reqTypes[normType(d.Document_Type || d.type)] && isUploadedStatus(d.Status || d.status); })
-    .map(function (d) { return { label: d.Document_Type || d.type || 'Document', status: d.Status || d.status || 'Received', link: d.WorkDrive_Link || d.link || '' }; });
+    .map(function (d) { return { label: d.Document_Type || d.type || 'Document', status: d.Status || d.status || 'Received', link: d.WorkDrive_Link || d.link || '', token: d.token || '' }; });
   // Staff-requested docs that aren't in the base checklist and haven't been uploaded → render as
   // upload slots so the client can fulfill an underwriter's ad-hoc request.
   var requested = documents.filter(function (d) {
@@ -320,10 +337,10 @@ var DEMO_STATUS = {
     { securedParty: 'TBS Factoring Service', type: 'Factor', filed: '2024-11-02', action: 'LOR Required' }
   ],
   documents: [
-    { type: 'Signed Agreement', status: 'Verified', uploadedAt: 'Jun 8' },
-    { type: 'NOA', status: 'Received', uploadedAt: 'Jun 8' },
-    { type: 'Voided Check', status: 'Received', uploadedAt: 'Jun 8' },
-    { type: 'Drivers License - Brennan Eslinger', status: 'Verified', uploadedAt: 'Jun 8' },
+    { type: 'Signed Agreement', status: 'Verified', uploadedAt: 'Jun 8', token: 'demo:sa' },
+    { type: 'NOA', status: 'Received', uploadedAt: 'Jun 8', token: 'demo:noa' },
+    { type: 'Voided Check', status: 'Received', uploadedAt: 'Jun 8', token: 'demo:vc' },
+    { type: 'Drivers License - Brennan Eslinger', status: 'Verified', uploadedAt: 'Jun 8', token: 'demo:dl' },
     // staff-requested, not in the base checklist → should surface as upload slots:
     { type: 'Prior factor aging report', status: 'Requested' },
     { type: 'Equipment lease agreement', status: 'Requested' }
@@ -348,6 +365,64 @@ if (typeof document !== 'undefined' && !document.__ofcpDocViewerBound) {
     e.preventDefault();
     var url = btn.getAttribute('data-url');
     if (url && global.OperFiDocViewer) global.OperFiDocViewer.open({ url: url, filename: btn.getAttribute('data-filename') || 'Document' });
+  });
+}
+// Client delete: a small ✕ on an uploaded (not-yet-verified) document lets the client remove a file
+// they added by mistake. Carries the signed doc token in data-*; one delegated listener opens a
+// confirm, then POSTs /application-doc-remove (soft-delete → the checklist slot reopens for re-upload).
+function docDelButton(token, label){
+  return token ? '<button type="button" class="doc-del" data-token="' + esc(token) + '" data-label="' + esc(label || 'this document') + '" title="Remove this document" aria-label="Remove this document">✕</button>' : '';
+}
+function ensureRemoveConfirm(){
+  var bd = el('ofcpConfirm');
+  if (bd) return bd;
+  bd = document.createElement('div');
+  bd.id = 'ofcpConfirm';
+  bd.className = 'cf-backdrop hidden';
+  bd.innerHTML = '<div class="cf-card"><div class="cf-head"><div class="cf-icon">🗑</div>' +
+    '<div class="cf-title">Remove this document?</div></div>' +
+    '<div class="cf-sub" id="ofcpConfirmSub"></div>' +
+    '<div class="cf-actions"><button type="button" class="btn ghost" id="ofcpConfirmCancel">Cancel</button>' +
+    '<button type="button" class="btn danger" id="ofcpConfirmGo">Remove</button></div></div>';
+  document.body.appendChild(bd);
+  el('ofcpConfirmCancel').addEventListener('click', closeRemoveConfirm);
+  bd.addEventListener('mousedown', function (e){ if (e.target === bd) closeRemoveConfirm(); });
+  document.addEventListener('keydown', function (e){ if (e.key === 'Escape'){ var b = el('ofcpConfirm'); if (b && !b.classList.contains('hidden')) closeRemoveConfirm(); } });
+  return bd;
+}
+function closeRemoveConfirm(){ var b = el('ofcpConfirm'); if (b) b.classList.add('hidden'); }
+function confirmRemoveDoc(token, label){
+  var bd = ensureRemoveConfirm();
+  el('ofcpConfirmSub').innerHTML = 'Remove <b>' + esc(label) + '</b>? You’ll need to re-upload the correct file.';
+  el('ofcpConfirmGo').onclick = function (){ closeRemoveConfirm(); removeDoc(token, label); };
+  bd.classList.remove('hidden');
+}
+function removeDoc(token, label){
+  if (STATE.mode === 'demo' || typeof fetch !== 'function') {
+    STATE.data.documents = (STATE.data.documents || []).filter(function (d){ return (d.token || '') !== token; });
+    upToast('ok', 'Removed “' + label + '” (preview).');
+    renderStatus(STATE.data, true); return;
+  }
+  upToast('', 'Removing…');
+  var body = { doc: token };
+  if (STATE.usdot) body.usdot = STATE.usdot;
+  if (STATE.email) body.email = STATE.email;
+  fetch(API_BASE + '/application-doc-remove?token=' + encodeURIComponent(STATE.token), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  }).then(function (r){ return r.json().catch(function (){ return {}; }).then(function (j){ return { ok: r.ok, j: j }; }); })
+    .then(function (res){
+      if (res.ok && res.j && res.j.ok) { upToast('ok', 'Document removed — you can upload the correct file now.'); loadStatus(STATE.token); }
+      else if (res.j && (res.j.error === 'verify_required' || res.j.error === 'verify_invalid' || res.j.error === 'pin_locked')) { renderOtpRequest('Please verify your identity again to continue.'); }
+      else { upToast('err', (res.j && res.j.error) || 'Could not remove the document. Please try again.'); }
+    }).catch(function (){ upToast('err', 'Network error — please try again.'); });
+}
+if (typeof document !== 'undefined' && !document.__ofcpDelBound) {
+  document.__ofcpDelBound = true;
+  document.addEventListener('click', function (e){
+    var btn = e.target && e.target.closest ? e.target.closest('.doc-del') : null;
+    if (!btn) return;
+    e.preventDefault();
+    confirmRemoveDoc(btn.getAttribute('data-token'), btn.getAttribute('data-label') || 'this document');
   });
 }
 function param(name){ try { return new URL(global.location.href).searchParams.get(name) || ''; } catch (e) { return ''; } }
@@ -477,7 +552,8 @@ function renderStatus(data, isDemo) {
     var right;
     if (c.uploaded) {
       right = '<div class="doc-action">' + (c.verified ? '<span class="pill g">Verified</span>' : '<span class="pill a">Received</span>') +
-        (c.link ? ' ' + docViewButton(c.link, c.label) : '') + '</div>';
+        (c.link ? ' ' + docViewButton(c.link, c.label) : '') +
+        ((!c.verified && c.token) ? ' ' + docDelButton(c.token, c.label) : '') + '</div>';
     } else {
       right = '<div class="doc-action"><input type="file" class="doc-file" id="f-' + esc(c.key) + '" accept="application/pdf,image/*" multiple>' +
         '<button class="btn orange sm js-up" data-key="' + esc(c.key) + '" data-type="' + esc(c.type) + '">Upload</button></div>';
@@ -498,7 +574,8 @@ function renderStatus(data, isDemo) {
     ? '<div class="doc-row" style="border-top:1px dashed var(--of-beige-line)"></div>' + rec.extras.map(function (e) {
         return '<div class="doc-row"><div class="doc-main"><span class="doc-mark ok">✓</span><div><div class="doc-label">' + esc(e.label) +
           '</div><div class="doc-sub">' + esc(e.status) + ' · additional</div></div></div>' +
-          '<div class="doc-action">' + (e.link ? docViewButton(e.link, e.label) : '') + '</div></div>';
+          '<div class="doc-action">' + (e.link ? docViewButton(e.link, e.label) : '') +
+          ((!/verified/i.test(e.status) && e.token) ? ' ' + docDelButton(e.token, e.label) : '') + '</div></div>';
       }).join('')
     : '';
 
@@ -603,7 +680,7 @@ function uploadDocs(docType, files, btn) {
   // Demo / no-fetch: simulate each upload, then re-render once.
   if (STATE.mode === 'demo' || typeof fetch !== 'function') {
     files.forEach(function () {
-      STATE.data.documents = (STATE.data.documents || []).concat([{ type: docType, status: 'Received', uploadedAt: 'just now' }]);
+      STATE.data.documents = (STATE.data.documents || []).concat([{ type: docType, status: 'Received', uploadedAt: 'just now', token: 'demo:' + docType }]);
     });
     upToast('ok', 'Uploaded ' + label + ' for ' + docType + ' (preview).');
     renderStatus(STATE.data, true); return Promise.resolve();

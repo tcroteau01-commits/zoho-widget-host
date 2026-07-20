@@ -504,6 +504,8 @@ tr:last-child td { border-bottom:none; }
 
 <script src="https://static.zohocdn.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=4"></script>
 <script>
 /*
  * OperFi Underwriting Review widget — testable logic on window.OFUW.
@@ -890,7 +892,7 @@ function buildAgreementRecipients(roles, inputs){
   return { recipients: recipients, missing: missing };
 }
 
-var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
+var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
   composeNotesLog: composeNotesLog, formatStamp: formatStamp,
   agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
@@ -1418,6 +1420,22 @@ function initials(n){ return (n||'UW').split(' ').map(function(x){return x[0];})
 function maskSSN(ssn){ var s=String(ssn==null?'':ssn).replace(/[^0-9]/g,''); return s ? '•••-••-'+s.slice(-4) : ''; }
 // Escape prospect free-text (e.g. the credit explanation) before inserting as HTML.
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+// Document viewer: a "View" button carries the signed file URL + display name in data-*; one
+// delegated listener (bound once) opens the shared OperFiDocViewer modal — renders PDFs/images
+// in-page instead of force-downloading. See operfi-docviewer.js (loaded from app.operfi.com).
+function docViewButton(url, filename){
+  return url ? ' <button type="button" class="dv-view" data-url="'+escHtml(url)+'" data-filename="'+escHtml(filename||'Document')+'" style="background:none;border:0;padding:0;cursor:pointer;font:inherit;color:var(--of-blue-text,#1a5fb4);font-weight:600;margin-left:8px">View</button>' : '';
+}
+if (typeof document !== 'undefined' && !document.__ofuwDocViewerBound) {
+  document.__ofuwDocViewerBound = true;
+  document.addEventListener('click', function(e){
+    var btn = e.target && e.target.closest ? e.target.closest('.dv-view') : null;
+    if (!btn) return;
+    e.preventDefault();
+    var url = btn.getAttribute('data-url');
+    if (url && window.OperFiDocViewer) OperFiDocViewer.open({ url: url, filename: btn.getAttribute('data-filename') || 'Document' });
+  });
+}
 function kvRow(k,v){ return '<div class="row"><div class="k">'+k+'</div><div class="v">'+((v!=null&&v!=='')?v:'—')+'</div></div>'; }
 
 function renderModel(m) {
@@ -1638,7 +1656,7 @@ function renderModel(m) {
   // client's uploaded Document records matched in by type. Needed items stay visible.
   var docReq = requiredDocs(a);
   var docRec = reconcileDocs(docReq, m.documents);
-  var viewLink = function(url){ return url ? ' <a href="'+url+'" target="_blank" rel="noopener" style="color:var(--of-blue-text,#1a5fb4);text-decoration:none;font-weight:600;margin-left:8px">View</a>' : ''; };
+  var viewLink = function(url, filename){ return docViewButton(url, filename); };
   var dt = '<tr><th>Document</th><th>Status</th></tr>';
   var hrvChip = ' <span class="doc-92" title="Underwriting Manual §9.2 expanded requirement">§9.2</span>';
   docRec.checklist.forEach(function(c){
@@ -1646,7 +1664,7 @@ function renderModel(m) {
              : c.uploaded ? '<span class="pill b">Received</span>'
              : c.rejected ? '<span class="pill r">Rejected</span>'
              : '<span class="pill r">Needed</span>';
-    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link):'')+'</td></tr>';
+    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link, c.label):'')+'</td></tr>';
   });
   (docRec.requested || []).forEach(function(rq){
     if (m.highRiskVolume && is8821(rq.type || rq.label)) return;   // 8821 shown as its own UW-handled row below
@@ -1654,7 +1672,7 @@ function renderModel(m) {
   });
   docRec.extras.forEach(function(e){
     if (m.highRiskVolume && is8821(e.label)) return;               // dedup with the 8821 tracked row below
-    dt += '<tr><td>'+e.label+(isHrvType(e.label)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span>'+viewLink(e.link)+'</td></tr>';
+    dt += '<tr><td>'+e.label+(isHrvType(e.label)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span>'+viewLink(e.link, e.label)+'</td></tr>';
   });
   // §9.2: IRS Form 8821 is Underwriting-handled (wet signature) and never requested from the client —
   // surface it as its own TRACKED row whenever the flag is applied, so the full §9.2 set is visible on
@@ -1665,7 +1683,7 @@ function renderModel(m) {
     var up8821 = doc8821 && isUploadedStatus(docStatus(doc8821));
     var pill8821 = up8821 ? '<span class="pill b">'+(docStatus(doc8821)||'Received')+'</span>'
                           : '<span class="pill a">UW · wet signature</span>';
-    dt += '<tr><td>IRS Form 8821'+hrvChip+' <span style="color:var(--of-gray-500)">· Underwriting-handled</span></td><td>'+pill8821+(up8821?viewLink(docUrl(doc8821)):'')+'</td></tr>';
+    dt += '<tr><td>IRS Form 8821'+hrvChip+' <span style="color:var(--of-gray-500)">· Underwriting-handled</span></td><td>'+pill8821+(up8821?viewLink(docUrl(doc8821), 'IRS Form 8821'):'')+'</td></tr>';
   }
   $('docTable').innerHTML = dt;
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';

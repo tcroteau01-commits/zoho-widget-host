@@ -165,6 +165,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 <script src="https://static.zohocdn.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=4"></script>
 <script>
 /*
  * OperFi Sales Pipeline widget — testable logic on window.OFS.
@@ -340,7 +342,7 @@ var OFS = {
   deriveStage: deriveStage, statusPill: statusPill, computeKPIs: computeKPIs,
   pendingDocs: pendingDocs, isPendingDoc: isPendingDoc, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, estTerms: estTerms,
   filterMyPipeline: filterMyPipeline, buildNotePayload: buildNotePayload,
-  buildDocRequestPayload: buildDocRequestPayload,
+  buildDocRequestPayload: buildDocRequestPayload, docViewButton: docViewButton,
   SALES_ATTR: SALES_ATTR, SALES_NOTES_FIELD: SALES_NOTES_FIELD, APPLICATION_LOOKUP: APPLICATION_LOOKUP, STEPS: STEPS
 };
 global.OFS = OFS;
@@ -451,6 +453,22 @@ function loadDetail(app) {
 // ── Rendering ──────────────────────────────────────────────────────────────────
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function (c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+// Document viewer: "View" carries the signed file URL + display name in data-*; one delegated
+// listener (bound once) opens the shared OperFiDocViewer modal (renders PDFs/images in-page
+// instead of force-downloading). See operfi-docviewer.js (loaded from app.operfi.com).
+function docViewButton(url, filename){
+  return url ? '<button type="button" class="btn ghost sm dv-view" data-url="' + esc(url) + '" data-filename="' + esc(filename || 'Document') + '">View</button>' : '';
+}
+if (typeof document !== 'undefined' && !document.__ofsDocViewerBound) {
+  document.__ofsDocViewerBound = true;
+  document.addEventListener('click', function (e){
+    var btn = e.target && e.target.closest ? e.target.closest('.dv-view') : null;
+    if (!btn) return;
+    e.preventDefault();
+    var url = btn.getAttribute('data-url');
+    if (url && window.OperFiDocViewer) OperFiDocViewer.open({ url: url, filename: btn.getAttribute('data-filename') || 'Document' });
+  });
+}
 function setBanner(kind, html){ var b = el('banner'); if(!b) return; b.className = 'banner show ' + kind; b.innerHTML = html; }
 
 function renderKPIs(apps) {
@@ -516,16 +534,16 @@ function renderDetail(app, d) {
   // Full document checklist (same rules as the doc portal + underwriting tool): every required
   // doc with its status; uploaded ones show Received/Verified, still-needed ones keep a Nudge.
   var docRec = reconcileDocs(requiredDocs(app), d.documents);
-  var docView = function(url){ return url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="btn ghost sm">View</a>' : ''; };
+  var docView = function(url, filename){ return docViewButton(url, filename); };
   var docsHtml = docRec.checklist.map(function (c) {
     var det = c.verified ? 'Verified' : (c.uploaded ? 'Received' : (c.rejected ? 'Rejected — re-upload' : 'Needed'));
-    var action = c.uploaded ? docView(c.link) : '<button class="btn ghost sm js-nudge" data-doc="' + esc(c.type) + '">Nudge client</button>';
+    var action = c.uploaded ? docView(c.link, c.label) : '<button class="btn ghost sm js-nudge" data-doc="' + esc(c.type) + '">Nudge client</button>';
     return '<div class="chk"><span class="mark ' + (c.uploaded ? 'ok' : 'bad') + '">' + (c.uploaded ? '✓' : '○') + '</span>' +
       '<div class="chk-body"><div class="lbl">' + esc(c.label) + '</div><div class="det">' + det + '</div></div>' + action + '</div>';
   }).join('') +
   docRec.extras.map(function (e) {
     return '<div class="chk"><span class="mark ok">✓</span><div class="chk-body"><div class="lbl">' + esc(e.label) +
-      '</div><div class="det">' + esc(e.status) + ' · additional</div></div>' + docView(e.link) + '</div>';
+      '</div><div class="det">' + esc(e.status) + ' · additional</div></div>' + docView(e.link, e.label) + '</div>';
   }).join('');
 
   var uwNote = d.uwNotes

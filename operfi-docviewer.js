@@ -128,6 +128,7 @@
     state.scale = 1; state.pdf = null; state.kind = null;
     var myToken = ++state.loadToken;
     bd.querySelector('.opf-dv-title').textContent = opts.filename || 'Document';
+    var pgReset = bd.querySelector('.opf-dv-page'); if (pgReset) pgReset.textContent = ''; // clear stale page count (image/error views never set it)
     bodyEl().innerHTML = '<div class="opf-dv-loading">Loading…</div>';
     var dl = bd.querySelector('.opf-dv-download');
     dl.removeAttribute('href');

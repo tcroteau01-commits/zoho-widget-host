@@ -299,7 +299,7 @@ global.OFCP = OFCP;
 var DEMO_STATUS = {
   businessName: 'Brennan Eslinger Trucking LLC', status: 'Docs Requested', submittedAt: 'Jun 8, 2026',
   authorityType: 'Carrier', formationType: 'LLC', veteran: 'No',
-  clientMessage: 'Thanks for your application! A couple of follow-ups: your insurance certificate on file lists only one truck — please upload a current COI, and we still need a Driver’s License for each owner. Reach out with any questions.',
+  clientMessage: 'Thanks for your application! A couple of follow-ups: your insurance certificate on file lists only one truck — please upload a current COI, and we still need a Driver’s License for each owner. Reach out with any questions.\n\n— 06/09/2026 2:16 PM',
   owners: [
     { First_Name1: 'Brennan', Last_Name1: 'Eslinger', Title: 'CEO', Ownership_Percent: 40 },
     { First_Name1: 'Dana', Last_Name1: 'Whitfield', Title: 'CFO', Ownership_Percent: 30 },
@@ -509,10 +509,17 @@ function renderStatus(data, isDemo) {
       (rep.email ? '<a href="mailto:' + esc(rep.email) + '">' + esc(rep.email) + '</a>' : '') + '</div>'
     : '<div class="muted">Questions? Reply to your OperFi onboarding email and we’ll help.</div>';
 
-  // A message the underwriter typed for the client (shown prominently).
-  var msgHtml = data.clientMessage
+  // A note the underwriter typed for the client — shown at the bottom, with a simple date/time stamp.
+  // The note carries a trailing "— <MM/DD/YYYY h:mm AM>" stamp; split it off so it renders as its own line.
+  var _cm = String(data.clientMessage || '');
+  var _cmM = _cm.match(/\n*—\s(\d{1,2}\/\d{1,2}\/\d{4}\s\d{1,2}:\d{2}\s[AP]M)\s*$/);
+  var _cmText = _cmM ? _cm.slice(0, _cmM.index).replace(/\s+$/, '') : _cm;
+  var _cmStamp = _cmM ? _cmM[1] : '';
+  var msgHtml = _cmText
     ? '<div class="card" style="border-left:4px solid var(--of-amber)"><div class="card-title" style="border:none;padding-bottom:4px;margin-bottom:6px">A note from your underwriter</div>' +
-      '<div style="font-size:13.5px;line-height:1.55;white-space:pre-wrap">' + esc(data.clientMessage) + '</div></div>'
+      '<div style="font-size:13.5px;line-height:1.55;white-space:pre-wrap">' + esc(_cmText) + '</div>' +
+      (_cmStamp ? '<div style="margin-top:8px;font-size:11.5px;color:var(--of-gray-500)">' + esc(_cmStamp) + '</div>' : '') +
+      '</div>'
     : '';
 
   // Read-only records the underwriter has on file, for the client to review (no SSN/DOB).
@@ -550,8 +557,6 @@ function renderStatus(data, isDemo) {
       '<div class="hero-meta">' + (data.submittedAt ? 'Submitted ' + esc(data.submittedAt) : 'Application received') + '</div></div>' +
       '<div><span class="decision-state-pill ' + pill.cls + '">' + esc(pill.label) + '</span></div></div>' +
 
-    msgHtml +
-
     '<div class="card"><div class="card-title">Where it stands</div><div class="stepper">' + stepsHtml + '</div></div>' +
 
     (guidance ? '<div class="card" style="padding:0;border:none;background:none;margin-bottom:14px">' +
@@ -564,6 +569,8 @@ function renderStatus(data, isDemo) {
       '<div class="toast" id="upToast"></div></div>' +
 
     ownersHtml + contactsHtml + clienteleHtml + relatedHtml + uccHtml +
+
+    msgHtml +
 
     '<div class="card"><div class="card-title">Need a hand?</div>' + repHtml + '</div>';
 

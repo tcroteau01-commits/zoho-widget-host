@@ -847,6 +847,19 @@ function composeNotesLog(existingLog, entry, stamp, author){
   return existingLog ? (block + '\n\n' + existingLog) : block;
 }
 
+// The client note carries a trailing "— <MM/DD/YYYY h:mm AM>" stamp so the portal can show when it
+// was posted. Strip it for the edit box; re-apply on save, keeping the old time if the text is unchanged
+// (so a background save or a decision that didn't touch the note doesn't bump the timestamp).
+var CLIENT_STAMP_RE = /\n*—\s(\d{1,2}\/\d{1,2}\/\d{4}\s\d{1,2}:\d{2}\s[AP]M)\s*$/;
+function stripClientStamp(s){ return String(s == null ? '' : s).replace(CLIENT_STAMP_RE, '').replace(/\s+$/, ''); }
+function clientStampOf(s){ var m = String(s == null ? '' : s).match(CLIENT_STAMP_RE); return m ? m[1] : ''; }
+function stampClientMessage(boxText, prevStored, nowStamp){
+  var t = stripClientStamp(boxText);
+  if (!t) return '';
+  var stamp = (t === stripClientStamp(prevStored) && clientStampOf(prevStored)) ? clientStampOf(prevStored) : nowStamp;
+  return t + '\n\n— ' + stamp;
+}
+
 // Rule-based system recommendation from the automated checks (fraud quick-glance + UCC).
 // checks: { fraud: [{label,detail,status:'clear'|'warn'|'bad'}], ucc: [{securedParty,action}] }
 function computeRecommendation(checks) {
@@ -915,6 +928,7 @@ function buildAgreementRecipients(roles, inputs){
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
   composeNotesLog: composeNotesLog, formatStamp: formatStamp,
+  stampClientMessage: stampClientMessage, stripClientStamp: stripClientStamp, clientStampOf: clientStampOf,
   agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
@@ -1212,7 +1226,7 @@ function readState() {
     checklistStatus: $('uwChecklist').value,
     uwNotes: (MODEL && MODEL.notesLog) || '',   // the CURRENT persisted log; background saves re-send it unchanged
     noteEntry: ($('uwNoteEntry') && $('uwNoteEntry').value) || '',   // the pending new entry, folded in on submit
-    clientMessage: $('uwClientMsg').value,
+    clientMessage: (MODEL && MODEL.clientMessageStored) || '',   // the persisted (stamped) note; background saves re-send it unchanged. submit() recomputes from the box.
     manualUcc: (MODEL && MODEL.manualUcc) || [],
     manualOwners: (MODEL && MODEL.manualOwners) || [],
     manualContacts: (MODEL && MODEL.manualContacts) || [],
@@ -1724,7 +1738,8 @@ function renderModel(m) {
   m.notesLog = r.UW_Notes || '';           // the running timestamped log persists in UW_Notes
   renderNotesLog(m.notesLog);
   if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
-  $('uwClientMsg').value = r.Client_Message || '';
+  m.clientMessageStored = r.Client_Message || '';   // full stored value incl. the trailing "— <stamp>"
+  $('uwClientMsg').value = stripClientStamp(r.Client_Message);   // edit box shows clean text (no stamp)
   $('uwDecisionDate').value = r.Decision_Date || '';
   $('uwLimit').value = r.Approved_Credit_Limit || '';
   $('uwRate').value = r.Recommended_Rate || '';
@@ -2095,14 +2110,14 @@ function submit(forceDecision) {
   MODEL.review.Decision2 = s.decision;
   renderAgreement();
   showStatus('Saving decision…', 'loading');
-  // Fold the pending note entry (if any) into the running timestamped log; persisted as UW_Notes.
-  var author = (MODEL.application && MODEL.application.Assigned_Underwriter) || '';
-  var newLog = composeNotesLog(s.uwNotes, s.noteEntry, formatStamp(new Date()), author);
-  s.uwNotes = newLog;
+  // Stamp the client note with the current date/time (keeping the old time if the text is unchanged),
+  // so the client portal + sales pipeline can show when it was posted. Persisted as Client_Message.
+  var newClientMsg = stampClientMessage(($('uwClientMsg') && $('uwClientMsg').value) || '', MODEL.clientMessageStored || '', formatStamp(new Date()));
+  s.clientMessage = newClientMsg;
   var payload = buildReviewPayload(s, MODEL.appId);
   saveReview(payload, MODEL.reviewId, s.insuranceExpiration).then(function(res){
-    // Commit the log locally on any successful save (demo or live), and clear the entry box.
-    MODEL.notesLog = newLog; renderNotesLog(newLog); if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
+    // Commit the stamped note locally on any successful save (demo or live).
+    MODEL.clientMessageStored = newClientMsg;
     if (res && res.demo) { showStatus('✓ Demo: decision "'+payload.Decision2+'" validated and Underwriting_Review payload logged to the console.', 'success'); }
     else {
       // Capture the new/again review id so the next save UPDATES the same record (no duplicates).

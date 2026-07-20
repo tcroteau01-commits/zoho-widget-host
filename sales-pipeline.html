@@ -360,7 +360,7 @@ var DEMO_PIPELINE = [
       { First_Name1:'Marcus', Last_Name1:'Reyes', Title:'COO', Ownership_Percent:30, Owner_Sequence:3, Birthdate:'11/30/1982', SSN:'333-44-5555', Phone:'6025555566', Email:'marcus@eslingerlogistics.com', Address:'920 Vail St, Reno, NV' }
     ],
     Sales_Notes: '', UW_Notes: 'Need the Operating Agreement to verify ownership. Everything else looks on track.', UW_When: 'Jun 9, 2:16 PM',
-    Client_Message: 'Thanks for your application! We just need your Operating Agreement to finish verifying ownership — please upload it in your document center.',
+    Client_Message: 'Thanks for your application! We just need your Operating Agreement to finish verifying ownership — please upload it in your document center.\n\n— 06/09/2026 2:16 PM',
     documents: [['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
       ['Voided Check','Prospect Upload','Received'],['Certificate of Insurance','Prospect Upload','Received'],
       ['W-9','Prospect Upload','Verified'],['SOS Filing','Staff Upload','Verified'],
@@ -550,8 +550,13 @@ function renderDetail(app, d) {
 
   // The underwriter's "Message to client" (Client_Message) — the same note the prospect sees on their
   // portal. Surfaced here so Sales knows what the client has been told (read-only; Sales can't edit it).
-  var clientMsgNote = d.clientMessage
-    ? '<div class="note client"><div class="who">Message to client <span class="role">shown on client portal</span></div><div class="txt">' + esc(d.clientMessage) + '</div></div>'
+  // The note carries a trailing "— <MM/DD/YYYY h:mm AM>" stamp; split it off to show as a "when" line.
+  var _cm = String(d.clientMessage || '');
+  var _cmM = _cm.match(/\n*—\s(\d{1,2}\/\d{1,2}\/\d{4}\s\d{1,2}:\d{2}\s[AP]M)\s*$/);
+  var _cmText = _cmM ? _cm.slice(0, _cmM.index).replace(/\s+$/, '') : _cm;
+  var _cmStamp = _cmM ? _cmM[1] : '';
+  var clientMsgNote = _cmText
+    ? '<div class="note client"><div class="who">Message to client <span class="role">shown on client portal</span></div><div class="txt">' + esc(_cmText) + '</div>' + (_cmStamp ? '<div class="when">' + esc(_cmStamp) + '</div>' : '') + '</div>'
     : '';
   var salesNotesHtml = (d.salesNotes || '').split('\n').filter(Boolean).map(function (ln) {
     return '<div class="note"><div class="txt">' + esc(ln) + '</div></div>';

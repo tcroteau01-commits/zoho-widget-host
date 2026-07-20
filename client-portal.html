@@ -313,6 +313,8 @@ var OFCP = {
 global.OFCP = OFCP;
 
 // ── Demo data (?demo=1) ─────────────────────────────────────────────────────────
+// A sample file (data URL) so the demo's uploaded docs have something the View button can open.
+var DEMO_DOC = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='640' height='440'><rect width='640' height='440' fill='#f7f9fc'/><rect x='24' y='24' width='592' height='64' fill='#1c2130'/><text x='46' y='64' fill='#ffffff' font-family='Georgia,serif' font-size='23'>Sample Document · Preview</text><text x='46' y='150' fill='#1c2130' font-family='sans-serif' font-size='16'>This is a demo file so you can see the View button open a document.</text></svg>");
 var DEMO_STATUS = {
   businessName: 'Brennan Eslinger Trucking LLC', status: 'Docs Requested', submittedAt: 'Jun 8, 2026',
   authorityType: 'Carrier', formationType: 'LLC', veteran: 'No',
@@ -337,10 +339,10 @@ var DEMO_STATUS = {
     { securedParty: 'TBS Factoring Service', type: 'Factor', filed: '2024-11-02', action: 'LOR Required' }
   ],
   documents: [
-    { type: 'Signed Agreement', status: 'Verified', uploadedAt: 'Jun 8', token: 'demo:sa' },
-    { type: 'NOA', status: 'Received', uploadedAt: 'Jun 8', token: 'demo:noa' },
-    { type: 'Voided Check', status: 'Received', uploadedAt: 'Jun 8', token: 'demo:vc' },
-    { type: 'Drivers License - Brennan Eslinger', status: 'Verified', uploadedAt: 'Jun 8', token: 'demo:dl' },
+    { type: 'Signed Agreement', status: 'Verified', uploadedAt: 'Jun 8', token: 'demo:sa', link: DEMO_DOC },
+    { type: 'NOA', status: 'Received', uploadedAt: 'Jun 8', token: 'demo:noa', link: DEMO_DOC },
+    { type: 'Voided Check', status: 'Received', uploadedAt: 'Jun 8', token: 'demo:vc', link: DEMO_DOC },
+    { type: 'Drivers License - Brennan Eslinger', status: 'Verified', uploadedAt: 'Jun 8', token: 'demo:dl', link: DEMO_DOC },
     // staff-requested, not in the base checklist → should surface as upload slots:
     { type: 'Prior factor aging report', status: 'Requested' },
     { type: 'Equipment lease agreement', status: 'Requested' }
@@ -685,7 +687,7 @@ function uploadDocs(docType, files, btn) {
   // Demo / no-fetch: simulate each upload, then re-render once.
   if (STATE.mode === 'demo' || typeof fetch !== 'function') {
     files.forEach(function () {
-      STATE.data.documents = (STATE.data.documents || []).concat([{ type: docType, status: 'Received', uploadedAt: 'just now', token: 'demo:' + docType }]);
+      STATE.data.documents = (STATE.data.documents || []).concat([{ type: docType, status: 'Received', uploadedAt: 'just now', token: 'demo:' + docType, link: DEMO_DOC }]);
     });
     upToast('ok', 'Uploaded ' + label + ' for ' + docType + ' (preview).');
     renderStatus(STATE.data, true); return Promise.resolve();

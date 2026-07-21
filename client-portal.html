@@ -168,6 +168,7 @@ var UPLOAD_PATH = '/application-upload';   // POST ?token= (multipart doc_type +
 var LOOKUP_PATH = '/application-lookup';   // POST {usdot,email} → { link } (recovery)
 var OTP_START_PATH = '/portal-otp-start';   // POST {usdot,email} → { masked_phone } (texts a Verify code)
 var OTP_VERIFY_PATH = '/portal-otp-verify'; // POST {usdot,email,code} → curated status + token
+var SIGN_URL_PATH = '/application-sign-url'; // GET ?token= → { sign_url } (client's Zoho Sign signing session)
 
 // Client-facing stage labels; each maps to a real Application_Status value.
 var STEPS = ['Submitted', 'In Review', 'Underwriting', 'Approved', 'Signed'];
@@ -176,14 +177,18 @@ var STAGE_INDEX = { 'New': 0, 'In Review': 1, 'Docs Requested': 2, 'Underwriting
 // The OperFi Client Setup Checklist. `type` is the Creator Document_Type used to match uploads.
 // (5 of these types must be added to the Document_Type picklist in Creator — see README.)
 var BASE_DOCS = [
-  { key: 'factoring_agreement', label: 'OperFi Factoring Agreement', type: 'Signed Agreement' },
-  { key: 'noa',                 label: 'OperFi Notice of Assignment', type: 'NOA' },
   { key: 'operating_authority', label: 'Operating Authority',         type: 'Operating Authority' },
   { key: 'insurance',           label: 'Insurance Certificate',       type: 'Insurance Certificate' },
   { key: 'voided_check',        label: 'Voided Check (printed company name)', type: 'Voided Check' },
   { key: 'drivers_license',     label: "Driver's License (all owners)", type: 'Drivers License' },
   { key: 'w9',                  label: 'W-9',                          type: 'W-9' }
 ];
+
+// The OperFi Factoring Agreement + Notice of Assignment are E-SIGNED (Zoho Sign), not uploaded — they
+// live in the separate "Post-Approval" card (see postApprovalState + the Post-Approval section in
+// renderStatus). Their Document_Types are excluded from the upload checklist's extras/requested buckets
+// so a historical signed-copy upload never resurfaces as a stray upload row.
+var POST_APPROVAL_TYPES = { 'signed agreement': 1, 'noa': 1 };
 
 // ── Pure logic (unit-tested) ───────────────────────────────────────────────────
 
@@ -255,13 +260,14 @@ function reconcileDocs(required, documents) {
   });
   var reqTypes = {};
   required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
-  var extras = documents.filter(function (d) { return !reqTypes[normType(d.Document_Type || d.type)] && isUploadedStatus(d.Status || d.status); })
+  var extras = documents.filter(function (d) { var t = normType(d.Document_Type || d.type); return !reqTypes[t] && !POST_APPROVAL_TYPES[t] && isUploadedStatus(d.Status || d.status); })
     .map(function (d) { return { label: d.Document_Type || d.type || 'Document', status: d.Status || d.status || 'Received', link: d.WorkDrive_Link || d.link || '', token: d.token || '' }; });
   // Staff-requested docs that aren't in the base checklist and haven't been uploaded → render as
-  // upload slots so the client can fulfill an underwriter's ad-hoc request.
+  // upload slots so the client can fulfill an underwriter's ad-hoc request. (The e-signed
+  // Agreement/NOA are handled by the Post-Approval card, never as upload slots.)
   var requested = documents.filter(function (d) {
     var t = normType(d.Document_Type || d.type);
-    return !reqTypes[t] && !isUploadedStatus(d.Status || d.status) && isRequestedStatus(d.Status || d.status);
+    return !reqTypes[t] && !POST_APPROVAL_TYPES[t] && !isUploadedStatus(d.Status || d.status) && isRequestedStatus(d.Status || d.status);
   }).map(function (d) { var ty = d.Document_Type || d.type || 'Document'; return { key: slugType(ty), label: ty, type: ty }; });
   return {
     checklist: checklist, extras: extras, requested: requested,
@@ -311,9 +317,29 @@ function nextStep(stage, pendingCount) {
   }
 }
 
+// The "Post-Approval" e-signature step. The OperFi Factoring Agreement + NOA go out as ONE merged
+// Zoho Sign request, so a single Agreement_Status drives one shared card + one "Review & Sign" action.
+// Returns { state, active, note }:
+//   locked    — not approved yet → greyed, "available after approval" (default; reachable with no Sign)
+//   preparing — approved but the agreement isn't out for signature yet (empty/Not Sent/Draft) → greyed
+//   sign      — Sent/Viewed → ACTIVE, shows the "Review & Sign" button
+//   signed    — Signed → complete (green)
+//   declined  — Declined/Recalled → contact-your-rep note
+function postApprovalState(application) {
+  application = application || {};
+  var appStatus = String(application.Application_Status || application.status || '').trim();
+  var agr = String(application.Agreement_Status || application.agreementStatus || '').trim();
+  if (agr === 'Signed') return { state: 'signed', active: false, note: 'Signed — thank you! We’re activating your account.' };
+  if (agr === 'Declined' || agr === 'Recalled') return { state: 'declined', active: false, note: 'There was an issue with your agreement — your OperFi rep will reach out.' };
+  if (agr === 'Sent' || agr === 'Viewed') return { state: 'sign', active: true, note: 'Your agreement is ready — review and sign it below.' };
+  if (appStatus === 'Approved' || appStatus === 'Signed') return { state: 'preparing', active: false, note: 'You’re approved! Your agreement is being prepared — check back shortly.' };
+  return { state: 'locked', active: false, note: 'Available after approval — once you’re approved, your OperFi Factoring Agreement and Notice of Assignment will appear here to review and sign.' };
+}
+
 var OFCP = {
   requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, deriveStage: deriveStage,
-  statusPill: statusPill, nextStep: nextStep, isUploadedStatus: isUploadedStatus, isRequestedStatus: isRequestedStatus,
+  statusPill: statusPill, nextStep: nextStep, postApprovalState: postApprovalState,
+  isUploadedStatus: isUploadedStatus, isRequestedStatus: isRequestedStatus,
   STEPS: STEPS, BASE_DOCS: BASE_DOCS
 };
 global.OFCP = OFCP;
@@ -322,7 +348,7 @@ global.OFCP = OFCP;
 // A sample file (data URL) so the demo's uploaded docs have something the View button can open.
 var DEMO_DOC = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='640' height='440'><rect width='640' height='440' fill='#f7f9fc'/><rect x='24' y='24' width='592' height='64' fill='#1c2130'/><text x='46' y='64' fill='#ffffff' font-family='Georgia,serif' font-size='23'>Sample Document · Preview</text><text x='46' y='150' fill='#1c2130' font-family='sans-serif' font-size='16'>This is a demo file so you can see the View button open a document.</text></svg>");
 var DEMO_STATUS = {
-  businessName: 'Brennan Eslinger Trucking LLC', status: 'Docs Requested', submittedAt: 'Jun 8, 2026',
+  businessName: 'Brennan Eslinger Trucking LLC', status: 'Docs Requested', agreementStatus: 'Not Sent', submittedAt: 'Jun 8, 2026',
   authorityType: 'Carrier', formationType: 'LLC', veteran: 'No',
   clientMessage: 'Thanks for your application! A couple of follow-ups: your insurance certificate on file lists only one truck — please upload a current COI, and we still need a Driver’s License for each owner. Reach out with any questions.\n\n— 06/09/2026 2:16 PM',
   owners: [
@@ -345,8 +371,6 @@ var DEMO_STATUS = {
     { securedParty: 'TBS Factoring Service', type: 'Factor', filed: '2024-11-02', action: 'LOR Required' }
   ],
   documents: [
-    { type: 'Signed Agreement', status: 'Verified', uploadedAt: 'Jun 8', token: 'demo:sa', link: DEMO_DOC },
-    { type: 'NOA', status: 'Received', uploadedAt: 'Jun 8', token: 'demo:noa', link: DEMO_DOC },
     { type: 'Voided Check', status: 'Received', uploadedAt: 'Jun 8', token: 'demo:vc', link: DEMO_DOC },
     { type: 'Drivers License - Brennan Eslinger', status: 'Verified', uploadedAt: 'Jun 8', token: 'demo:dl', link: DEMO_DOC },
     // staff-requested, not in the base checklist → should surface as upload slots:
@@ -641,6 +665,27 @@ function renderStatus(data, isDemo) {
     return recRow(u.securedParty || '—', sub, u.action || '');
   }).join(''));
 
+  // Post-Approval e-signature card. The Factoring Agreement + NOA are signed here (one merged Zoho
+  // Sign request → one shared status + one "Review & Sign" button). Greyed/locked until approved+sent.
+  var pa = postApprovalState(data);
+  var paLabel = { locked: 'Not sent yet', preparing: 'Preparing', sign: 'Ready to sign', signed: 'Signed', declined: 'Declined' }[pa.state] || '';
+  var paDim = (pa.state === 'sign' || pa.state === 'signed') ? '' : ' style="opacity:.55"';
+  var paRows = ['OperFi Factoring Agreement', 'OperFi Notice of Assignment'].map(function (label) {
+    var done = pa.state === 'signed';
+    return '<div class="doc-row"><div class="doc-main"><span class="doc-mark ' + (done ? 'ok' : 'needed') + '">' + (done ? '✓' : '○') +
+      '</span><div><div class="doc-label">' + esc(label) + '</div><div class="doc-sub">Electronic signature · e-sign</div></div></div>' +
+      (done ? '<div class="doc-action"><span class="pill g">Signed</span></div>' : '') + '</div>';
+  }).join('');
+  var paBtn = pa.active
+    ? '<div class="doc-row" style="border-bottom:none;padding-top:12px;justify-content:flex-end">' +
+      '<button class="btn orange sm js-sign">Review &amp; Sign</button></div>'
+    : '';
+  var postApprovalHtml =
+    '<div class="card"><div class="card-title">Post-Approval' +
+      (paLabel ? ' <span class="count">' + esc(paLabel) + '</span>' : '') + '</div>' +
+      '<div class="summ">' + esc(pa.note) + '</div>' +
+      '<div' + paDim + '>' + paRows + '</div>' + paBtn + '</div>';
+
   el('content').innerHTML =
     '<div class="hero"><div><div class="hero-eyebrow">' + esc(data.authorityType || 'Your application') + '</div>' +
       '<div class="hero-name">' + esc(data.businessName || 'Your Application') + '</div>' +
@@ -673,6 +718,8 @@ function renderStatus(data, isDemo) {
       '</div>' +
       '<div class="toast" id="upToast"></div></div>' +
 
+    postApprovalHtml +
+
     ownersHtml + contactsHtml + clienteleHtml + relatedHtml + uccHtml +
 
     msgHtml +
@@ -693,6 +740,10 @@ function renderStatus(data, isDemo) {
     });
   });
 
+  // Post-Approval "Review & Sign" → open the client's Zoho Sign signing session.
+  var signBtn = el('content').querySelector('.js-sign');
+  if (signBtn) signBtn.addEventListener('click', function (e) { e.preventDefault(); openSignSession(); });
+
   // "Add another document" — the client sends an extra document not on the checklist.
   var addlToggle = el('addlToggle'), addlForm = el('addlForm');
   if (addlToggle && addlForm) addlToggle.addEventListener('click', function () {
@@ -711,6 +762,32 @@ function renderStatus(data, isDemo) {
 }
 
 function upToast(kind, msg){ var t = el('upToast'); if (t) { t.className = 'toast ' + kind; t.textContent = msg; } }
+
+// Open the client's Zoho Sign signing session for the merged Agreement + NOA request. The backend
+// resolves the signer's signing URL from the token-verified application's Sign_Request_Id, so no
+// request/action id is ever exposed to the browser. Opens in a new tab (avoids Zoho iframe frameorigin
+// trust-domain constraints). Live only once the "Sign go-live" env vars are set + the agreement is sent.
+function openSignSession() {
+  if (STATE.mode === 'demo' || typeof fetch !== 'function') {
+    upToast('ok', 'In production this opens your secure Zoho Sign session to review & sign (preview).');
+    try { global.open(DEMO_DOC, '_blank'); } catch (e) {}
+    return;
+  }
+  upToast('', 'Opening your agreement…');
+  var url = API_BASE + SIGN_URL_PATH + '?token=' + encodeURIComponent(STATE.token) +
+    (STATE.usdot ? '&usdot=' + encodeURIComponent(STATE.usdot) : '') +
+    (STATE.email ? '&email=' + encodeURIComponent(STATE.email) : '');
+  fetch(url)
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
+    .then(function (res) {
+      var j = res.j || {};
+      if (res.status === 200 && j.sign_url) { upToast('', ''); try { global.open(j.sign_url, '_blank'); } catch (e) { global.location.href = j.sign_url; } return; }
+      if (j.error === 'verify_required' || j.error === 'verify_invalid' || j.error === 'pin_locked') { renderOtpRequest('Please verify your identity again to continue.'); return; }
+      if (j.error === 'not_ready' || j.error === 'sign_not_configured') { upToast('err', 'Your agreement isn’t ready to sign just yet — please check back shortly.'); return; }
+      upToast('err', (j.error) || 'Could not open your agreement. Please try again.');
+    })
+    .catch(function () { upToast('err', 'Network error — please try again.'); });
+}
 
 // Upload one OR MORE files for a single document type. The input is `multiple`, so a prospect can
 // attach several files (e.g. a multi-page insurance cert, or both sides of a license) to one line.
@@ -813,6 +890,8 @@ function boot() {
         data.documents = requiredDocs(data).map(function (d) { return { type: d.type, status: 'Verified', uploadedAt: 'Jun 8' }; });
       }
     }
+    // Demo-only: ?agr= previews the Post-Approval card states (Not Sent / Draft / Sent / Viewed / Signed / Declined).
+    if (param('agr')) data.agreementStatus = param('agr');
     renderStatus(data, true);
     return;
   }

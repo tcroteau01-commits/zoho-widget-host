@@ -1720,16 +1720,27 @@ function _resolveVendorId(params) {
 }
 
 // Fetch the draft collection and prefill from the matching draft.
+// Fetch the draft collection and prefill from the matching draft. Resolves true if a
+// draft was prefilled. A load whose docs failed can still be at 'Pending Docs' and
+// fresher than the backend sweep threshold, so it won't be in the Draft collection —
+// fall back to fetching that single record by id (any editable status).
 function reopenDraft(draftId) {
-  if (!draftId || !brokerEmail) return Promise.resolve();
+  if (!draftId || !brokerEmail) return Promise.resolve(false);
   return fetch(BROKER_API_BASE + '/draft-loads?email=' + encodeURIComponent(brokerEmail))
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (data) {
       var drafts = (data && data.drafts) || [];
       var d = drafts.filter(function (x) { return String(x.id) === String(draftId); })[0];
-      if (d) prefillFromDraft(d);
+      if (d) { prefillFromDraft(d); return true; }
+      return fetch(BROKER_API_BASE + '/draft-loads/' + encodeURIComponent(draftId) +
+                   '?email=' + encodeURIComponent(brokerEmail))
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (one) {
+          if (one && one.draft) { prefillFromDraft(one.draft); return true; }
+          return false;
+        });
     })
-    .catch(function () {});
+    .catch(function () { return false; });
 }
 
 window.saveDraft = saveDraft;

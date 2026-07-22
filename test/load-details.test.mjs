@@ -1171,3 +1171,24 @@ test('submit shows a document-merge progress message before the network call', (
   w.submitLoad();  // not awaited: capture the synchronous entry status
   assert.match(d.getElementById('submit-status').textContent, /merging|document/i);
 });
+
+test('reopenDraft falls back to GET /draft-loads/<id> when not in the draft list', async () => {
+  const calls = [];
+  const dom = makeB2Dom((url) => {
+    calls.push(String(url));
+    if (/\/draft-loads\?/.test(String(url))) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ drafts: [] }) });
+    }
+    if (/\/draft-loads\/902/.test(String(url))) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ draft: { id: '902' } }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  let got = null;
+  w.prefillFromDraft = (d) => { got = d; };
+  const ok = await w.reopenDraft('902');
+  assert.ok(calls.some(u => /\/draft-loads\/902/.test(u)), 'by-id endpoint called');
+  assert.equal(got.id, '902');
+  assert.equal(ok, true);
+});

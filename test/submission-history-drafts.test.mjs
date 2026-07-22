@@ -178,3 +178,12 @@ test('editDraftLoad stashes the draft id and navigates to the Load Details form'
   assert.equal(w.sessionStorage.getItem('draftId'), '900');
   assert.equal(w.__lastNav, 'https://brokerhub.operfi.com/#Page:Load_Details');
 });
+
+test('panelActionsHtml shows Edit + Delete for editable loads only', () => {
+  const w = makeDom();
+  const editable = w.panelActionsHtml(PENDING);
+  assert.match(editable, /id="p-edit"/);
+  assert.match(editable, /id="p-del"/);
+  assert.match(editable, /Fix this load/i);
+  assert.equal(w.panelActionsHtml(PURCHASED), '');
+});

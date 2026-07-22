@@ -371,6 +371,12 @@ html, body {
 .panel-status-row { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
 .panel-status-row .status-pill { font-size: 11px; padding: 5px 11px; }
 
+.panel-actions { display:flex; gap:8px; padding:12px 20px; border-bottom:1px solid #eee; }
+.panel-edit { background:#F97316; color:#fff; border:none; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
+.panel-edit:hover { background:#ea6a0c; }
+.panel-del { background:#fff; color:#b42318; border:1px solid #f0c2bc; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
+.panel-del:hover { background:#fef3f2; }
+
 .panel-body { flex: 1; overflow-y: auto; padding: 18px 22px 24px; }
 
 .panel-section { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
@@ -666,6 +672,7 @@ function deleteDraftRow(id) {
   function dropRow() {
     allRecords = allRecords.filter(function(x) { return String(x.ID) !== String(id); });
     applyFilters();
+    closePanel();
   }
   fetch(BROKER_API_BASE + '/draft-loads/' + id + '?email=' + encodeURIComponent(brokerEmail), { method: 'DELETE' })
     .then(function(r) {
@@ -1178,6 +1185,17 @@ function navPanel(dir) {
   renderPanel();
 }
 
+// Action bar shown at the top of the detail pane for loads the broker can still
+// fix/remove. Edit routes to the Load Details form (same sessionStorage handoff the
+// Draft Loads queue uses); Delete removes a pre-processing load.
+function panelActionsHtml(r) {
+  if (!isEditable(r)) return '';
+  return '<div class="panel-actions">' +
+    '<button class="panel-edit" id="p-edit">Edit / Fix this load</button>' +
+    '<button class="panel-del" id="p-del">Delete</button>' +
+  '</div>';
+}
+
 function renderPanel() {
   var r = filteredRecords[openIndex];
   if (!r) return;
@@ -1212,6 +1230,7 @@ function renderPanel() {
       '</div>' +
       '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
     '</div>' +
+    panelActionsHtml(r) +
     '<div class="panel-body">' +
       // Rates
       '<div class="panel-section">' +
@@ -1284,6 +1303,10 @@ function renderPanel() {
   if (!prev.classList.contains('disabled')) prev.addEventListener('click', function() { navPanel(-1); });
   if (!next.classList.contains('disabled')) next.addEventListener('click', function() { navPanel(1); });
   document.getElementById('p-close').addEventListener('click', closePanel);
+  var _pe = document.getElementById('p-edit');
+  if (_pe) _pe.addEventListener('click', function() { editDraftLoad(r.ID); });
+  var _pd = document.getElementById('p-del');
+  if (_pd) _pd.addEventListener('click', function() { deleteDraftRow(r.ID); });
 }
 
 function field(label, val) {
@@ -1562,6 +1585,7 @@ window.navigateParent = navigateParent;
 window.goToDraftQueue = goToDraftQueue;
 window.editDraftLoad = editDraftLoad;
 window.deleteDraftRow = deleteDraftRow;
+window.panelActionsHtml = panelActionsHtml;
 
 })();
 </script>

@@ -692,7 +692,6 @@ function renderStatus(data, isDemo) {
   var _bo = data.buyout;
   var buyoutHtml = _bo
     ? '<div class="card" style="border-left:4px solid var(--of-amber)"><div class="card-title">Prior Factor Buyout</div>' +
-        '<div class="summ">OperFi will handle buying out your prior factor as part of getting you set up — no action needed from you.</div>' +
         recRow('Prior factor', '', _bo.factor || '—') +
         (_bo.estimatedDate ? recRow('Estimated buyout date', '', _bo.estimatedDate) : '') +
       '</div>'

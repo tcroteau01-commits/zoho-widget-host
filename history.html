@@ -1075,30 +1075,11 @@ function renderList(truncated) {
   });
   results.innerHTML = html;
 
-  // Bind row clicks. Draft loads route to the Draft Loads queue instead of the
-  // read-only detail panel; their per-row Edit opens the Load Details form.
+  // Bind row clicks. Every row opens the read-only detail panel; draft/pending-docs
+  // rows get in-pane edit/delete actions (see isEditable / Task 5).
   results.querySelectorAll('.row').forEach(function(rowEl) {
-    rowEl.addEventListener('click', function(e) {
-      var idx = parseInt(rowEl.dataset.idx, 10);
-      var r = allRecords[idx];
-      if (r && isDraft(r)) {
-        if (e.target.closest('[data-edit-draft]') || e.target.closest('[data-del-draft]')) return;  // buttons handle themselves
-        goToDraftQueue();
-        return;
-      }
-      openPanel(idx);
-    });
-  });
-  results.querySelectorAll('[data-edit-draft]').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      editDraftLoad(btn.getAttribute('data-edit-draft'));
-    });
-  });
-  results.querySelectorAll('[data-del-draft]').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      deleteDraftRow(btn.getAttribute('data-del-draft'));
+    rowEl.addEventListener('click', function() {
+      openPanel(parseInt(rowEl.dataset.idx, 10));
     });
   });
 }
@@ -1159,12 +1140,7 @@ function rowHtml(r, idx) {
         (docCount > 0 ? '<div class="docs-ic">📎 ' + docCount + ' doc' + (docCount === 1 ? '' : 's') + '</div>' : '') +
       '</div>' +
       '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
-      (isDraft(r)
-        ? '<div class="cell-chev draft-acts">' +
-            '<button class="hist-edit" data-edit-draft="' + esc(r.ID) + '">Edit</button>' +
-            '<button class="hist-del" data-del-draft="' + esc(r.ID) + '" title="Delete draft">✕</button>' +
-          '</div>'
-        : '<div class="chev cell-chev">›</div>') +
+      '<div class="chev cell-chev">›</div>' +
     '</div>';
 }
 

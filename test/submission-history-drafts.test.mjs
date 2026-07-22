@@ -52,18 +52,12 @@ test('isEditable is true for Draft and Pending Docs, false otherwise', () => {
   assert.equal(w.isEditable(PURCHASED), false);
 });
 
-test('rowHtml for a Draft load exposes an Edit control + draft badge', () => {
+test('rowHtml shows only a chevron — no inline edit/delete (actions live in the pane)', () => {
   const w = makeDom();
   const html = w.rowHtml(DRAFT, 0);
-  assert.match(html, /data-edit-draft="900"/);
-  assert.match(html, /status-pill draft/);
-  assert.match(html, /Edit/);
-});
-
-test('rowHtml for a Draft load also exposes a Delete (✕) control', () => {
-  const w = makeDom();
-  const html = w.rowHtml(DRAFT, 0);
-  assert.match(html, /data-del-draft="900"/);
+  assert.doesNotMatch(html, /data-edit-draft/);
+  assert.doesNotMatch(html, /data-del-draft/);
+  assert.match(html, /chev cell-chev/);
 });
 
 test('deleteDraftRow issues a DELETE to /draft-loads/<id> when confirmed', () => {

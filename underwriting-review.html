@@ -506,6 +506,8 @@ tr:last-child td { border-bottom:none; }
             <div><label>Buyout Factor</label><input type="text" id="uwBuyoutFactor"></div>
             <div><label>Est. Buyout Date</label><input type="text" id="uwBuyoutDate" placeholder="MM/DD/YYYY"></div>
           </div>
+          <div class="fld" style="margin-top:12px"><label>Buyout Notes</label><textarea id="uwBuyoutNotes" rows="3" placeholder="Notes about this buyout — prior factor contact, payoff details, timing…"></textarea></div>
+          <div style="margin-top:10px;display:flex;justify-content:flex-end"><button class="btn green sm" id="btnSaveBuyout">💾 Save Buyout</button></div>
         </div>
       </div>
     </div>
@@ -811,6 +813,7 @@ function buildReviewPayload(s, appId) {
     Buyout_Required: !!s.buyoutRequired,
     Buyout_Factor: s.buyoutFactor || '',
     Estimated_Buyout_Date: s.estimatedBuyoutDate || '',
+    Buyout_Notes: s.buyoutNotes || '',
     Checklist_Status1: s.checklistStatus || 'Not Started',
     UW_Notes: s.uwNotes || '',
     Client_Message: s.clientMessage || '',
@@ -926,7 +929,7 @@ function buildAgreementRecipients(roles, inputs){
   return { recipients: recipients, missing: missing };
 }
 
-var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
+var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
   composeNotesLog: composeNotesLog, formatStamp: formatStamp,
   stampClientMessage: stampClientMessage, stripClientStamp: stripClientStamp, clientStampOf: clientStampOf,
   agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
@@ -1154,6 +1157,30 @@ function saveReview(payload, existingId, insuranceExpiration) {
   });
 }
 
+// A "personal" save for just the Buyout Administration card — writes ONLY the buyout fields + notes to
+// the Underwriting_Review (a partial update via /uw-review-save), leaving the decision and the rest of
+// the form untouched. Requires a Buyout_Notes field on the Underwriting_Review form (else the note is
+// silently dropped, like any unknown Creator field).
+function buildBuyoutPayload(s, appId){
+  var p = { Buyout_Required: !!s.buyoutRequired, Buyout_Factor: s.buyoutFactor || '',
+            Estimated_Buyout_Date: s.estimatedBuyoutDate || '', Buyout_Notes: s.buyoutNotes || '' };
+  if (appId != null) p[APPLICATION_LOOKUP] = appId;
+  return p;
+}
+function saveBuyout(){
+  if (!MODEL) { showStatus('Open an application first.', 'error'); return; }
+  var s = readState();
+  showStatus('Saving buyout…', 'loading');
+  return saveReview(buildBuyoutPayload(s, MODEL.appId), MODEL.reviewId).then(function(res){
+    if (res && res.review_id) MODEL.reviewId = res.review_id;
+    MODEL.review = MODEL.review || {};
+    MODEL.review.Buyout_Required = !!s.buyoutRequired;
+    MODEL.review.Buyout_Factor = s.buyoutFactor || '';
+    MODEL.review.Buyout_Notes = s.buyoutNotes || '';
+    showStatus('Buyout saved.', 'success');
+  }).catch(function(e){ showStatus('Could not save buyout: ' + (e && e.message ? e.message : e), 'error'); });
+}
+
 // ── DOM (browser only) ───────────────────────────────────────────────────────
 if (typeof document !== 'undefined') {
   global.addEventListener('load', function(){ try { boot(); } catch(e){ console.error('init', e); } });
@@ -1239,6 +1266,7 @@ function readState() {
     buyoutRequired: $('tgBuyout').classList.contains('on'),
     buyoutFactor: $('uwBuyoutFactor').value,
     estimatedBuyoutDate: $('uwBuyoutDate').value,
+    buyoutNotes: ($('uwBuyoutNotes') && $('uwBuyoutNotes').value) || '',
     insuranceExpiration: ($('uwInsExp') && $('uwInsExp').value) || ''
   };
 }
@@ -1747,6 +1775,7 @@ function renderModel(m) {
   $('tgBuyout').classList.toggle('on', !!r.Buyout_Required);
   $('uwBuyoutFactor').value = r.Buyout_Factor || '';
   $('uwBuyoutDate').value = (r.Estimated_Buyout_Date || '').split(' ')[0];
+  if ($('uwBuyoutNotes')) $('uwBuyoutNotes').value = r.Buyout_Notes || '';
 
   renderHrv();
   renderGate();
@@ -2052,6 +2081,7 @@ function boot() {
   $('btnApprove').addEventListener('click', function(){ confirmDecision('Approved'); });
   $('btnDecline').addEventListener('click', function(){ confirmDecision('Denied'); });
   $('btnSave').addEventListener('click', function(){ submit(null); });   // Save has no confirm — routine
+  if ($('btnSaveBuyout')) $('btnSaveBuyout').addEventListener('click', saveBuyout);
   $('cfCancel').addEventListener('click', closeConfirm);
   $('cfBackdrop').addEventListener('mousedown', function(e){ if (e.target === $('cfBackdrop')) closeConfirm(); });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ var b = $('cfBackdrop'); if (b && !b.classList.contains('hidden')) closeConfirm(); } });

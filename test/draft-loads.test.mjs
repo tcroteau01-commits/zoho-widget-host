@@ -1336,3 +1336,14 @@ test('exitPaperwork aborts navigation when an upload fails', async () => {
   assert.equal(ran, false, 'after-callback must NOT run when upload fails');
   assert.equal(window.__pw.slots['900'].customer, 'pending', 'slot stays pending on failed upload');
 });
+
+// ---- Task 8: queue loading state ----
+test('queue loading state show/hide toggles visibility', () => {
+  const { window: w } = makeWidget();
+  const el = () => w.document.getElementById('dl-loading');
+  assert.equal(el().hidden, true);
+  w._showQueueLoading();
+  assert.equal(el().hidden, false);
+  w._hideQueueLoading();
+  assert.equal(el().hidden, true);
+});

@@ -183,6 +183,11 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
 .foot{display:flex;align-items:center;gap:12px;margin-top:16px}
 .foot .l{flex:1;font-size:12.5px;color:var(--muted)}.foot .l b{color:var(--green)}
 
+.dl-loading { display:flex; align-items:center; gap:10px; padding:24px; color:#64748b; font-weight:600; }
+.dl-loading[hidden] { display:none; }
+.dl-spinner { width:20px; height:20px; border:3px solid #e2e8f0; border-top-color:#F97316; border-radius:50%; animation:dl-spin 0.8s linear infinite; }
+@keyframes dl-spin { to { transform:rotate(360deg); } }
+
 @media (max-width:640px){
   body{overflow-x:hidden}
   .wrap{padding:14px 12px 40px}
@@ -243,6 +248,10 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
   </div>
 
   <div class="panel">
+    <div id="dl-loading" class="dl-loading" hidden>
+      <div class="dl-spinner"></div>
+      <span>Loading your drafts…</span>
+    </div>
     <table>
       <thead>
         <tr>
@@ -870,10 +879,24 @@ function handleSubmitResult(res){
   renderSummary();
 }
 
+/* ---------------- loading state -------- */
+
+function _showQueueLoading() {
+  var el = document.getElementById('dl-loading');
+  if (el) el.hidden = false;
+}
+function _hideQueueLoading() {
+  var el = document.getElementById('dl-loading');
+  if (el) el.hidden = true;
+}
+window._showQueueLoading = _showQueueLoading;
+window._hideQueueLoading = _hideQueueLoading;
+
 /* ---------------- data load ---------------- */
 
 function loadQueue(){
   if (!brokerEmail) return Promise.resolve();
+  _showQueueLoading();
   return fetch(BROKER_API_BASE+'/draft-loads?email='+encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); })
     .then(function(p){
@@ -883,7 +906,8 @@ function loadQueue(){
       renderQueue();
       renderSummary((p&&p.summary)||{});
     })
-    .catch(function(){ setText('sub','Could not load drafts.'); });
+    .catch(function(){ setText('sub','Could not load drafts.'); })
+    .then(function(){ _hideQueueLoading(); });
 }
 
 // Credit_Decision values a load can be funded against -- a boost customer is already

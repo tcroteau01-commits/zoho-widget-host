@@ -309,6 +309,13 @@ textarea { resize: vertical; min-height: 90px; }
   .hstep { flex: 1 1 100%; }
   input, select, textarea { font-size: 16px; }
 }
+.reopen-overlay { position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.92); }
+.reopen-overlay[hidden] { display:none; }
+.reopen-box { text-align:center; color:#334155; font-weight:600; }
+.reopen-spinner { width:32px; height:32px; margin:0 auto 12px; border:3px solid #e2e8f0; border-top-color:#F97316; border-radius:50%; animation:reopen-spin 0.8s linear infinite; }
+.reopen-overlay.error .reopen-spinner { display:none; }
+#reopen-overlay-close { margin-top:14px; background:#F97316; color:#fff; border:none; border-radius:6px; padding:8px 16px; font-weight:600; cursor:pointer; }
+@keyframes reopen-spin { to { transform:rotate(360deg); } }
 </style>
 <!-- File-merge pipeline libraries (preserved — used by mergeFilesToPDF & helpers) -->
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -323,6 +330,13 @@ textarea { resize: vertical; min-height: 90px; }
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
 </head>
 <body>
+<div id="reopen-overlay" class="reopen-overlay" hidden>
+  <div class="reopen-box">
+    <div class="reopen-spinner"></div>
+    <div id="reopen-overlay-msg">Loading load…</div>
+    <button id="reopen-overlay-close" type="button" hidden onclick="_hideReopenOverlay()">Close</button>
+  </div>
+</div>
 <div class="page">
 
   <div class="head">
@@ -848,9 +862,11 @@ function onReady() {
   // Reopen an existing draft once both dropdowns have populated, so prefilling
   // the <select>s lands on real <option>s.
   if (_pendingDraftId) {
-    Promise.all([custLoad, carrLoad]).then(function () {
-      reopenDraft(_pendingDraftId);
-    });
+    _showReopenOverlay();
+    Promise.all([custLoad, carrLoad])
+      .then(function () { return reopenDraft(_pendingDraftId); })
+      .then(function (ok) { _hideReopenOverlay(); if (!ok) _showReopenError(); })
+      .catch(function () { _hideReopenOverlay(); _showReopenError(); });
   }
 
   // Preselect the carrier handed off from View Vendors' Submit Invoice action,
@@ -1719,7 +1735,6 @@ function _resolveVendorId(params) {
   return id || '';
 }
 
-// Fetch the draft collection and prefill from the matching draft.
 // Fetch the draft collection and prefill from the matching draft. Resolves true if a
 // draft was prefilled. A load whose docs failed can still be at 'Pending Docs' and
 // fresher than the backend sweep threshold, so it won't be in the Draft collection —
@@ -1746,6 +1761,34 @@ function reopenDraft(draftId) {
 window.saveDraft = saveDraft;
 window.prefillFromDraft = prefillFromDraft;
 window.reopenDraft = reopenDraft;
+
+function _showReopenOverlay() {
+  var o = document.getElementById('reopen-overlay');
+  if (!o) return;
+  o.className = 'reopen-overlay';
+  var m = document.getElementById('reopen-overlay-msg');
+  if (m) m.textContent = 'Loading load…';
+  var b = document.getElementById('reopen-overlay-close');
+  if (b) b.hidden = true;
+  o.hidden = false;
+}
+function _hideReopenOverlay() {
+  var o = document.getElementById('reopen-overlay');
+  if (o) o.hidden = true;
+}
+function _showReopenError() {
+  var o = document.getElementById('reopen-overlay');
+  if (!o) return;
+  o.className = 'reopen-overlay error';
+  var m = document.getElementById('reopen-overlay-msg');
+  if (m) m.textContent = 'Could not load this load. Close and try again from Submission History, or start a new load.';
+  var b = document.getElementById('reopen-overlay-close');
+  if (b) b.hidden = false;
+  o.hidden = false;
+}
+window._showReopenOverlay = _showReopenOverlay;
+window._hideReopenOverlay = _hideReopenOverlay;
+window._showReopenError = _showReopenError;
 
 // Test helper: set a field value and fire the appropriate event.
 // For SELECT elements, inserts a temporary option if the value isn't already present

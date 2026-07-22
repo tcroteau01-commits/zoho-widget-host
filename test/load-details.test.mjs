@@ -1192,3 +1192,17 @@ test('reopenDraft falls back to GET /draft-loads/<id> when not in the draft list
   assert.equal(got.id, '902');
   assert.equal(ok, true);
 });
+
+test('reopen overlay show/hide/error toggles visibility', () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  const o = () => w.document.getElementById('reopen-overlay');
+  assert.strictEqual(o().hidden, true);              // hidden by default
+  w._showReopenOverlay();
+  assert.strictEqual(o().hidden, false);
+  w._hideReopenOverlay();
+  assert.strictEqual(o().hidden, true);
+  w._showReopenError();
+  assert.strictEqual(o().hidden, false);
+  assert.match(o().className, /error/);
+});

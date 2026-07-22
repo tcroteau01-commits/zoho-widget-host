@@ -351,6 +351,7 @@ var DEMO_STATUS = {
   businessName: 'Brennan Eslinger Trucking LLC', status: 'Docs Requested', agreementStatus: 'Not Sent', submittedAt: 'Jun 8, 2026',
   authorityType: 'Carrier', formationType: 'LLC', veteran: 'No',
   clientMessage: 'Thanks for your application! A couple of follow-ups: your insurance certificate on file lists only one truck — please upload a current COI, and we still need a Driver’s License for each owner. Reach out with any questions.\n\n— 06/09/2026 2:16 PM',
+  buyout: { factor: 'TBS Factoring', estimatedDate: '15-Aug-2026' },
   owners: [
     { First_Name1: 'Brennan', Last_Name1: 'Eslinger', Title: 'CEO', Ownership_Percent: 40 },
     { First_Name1: 'Dana', Last_Name1: 'Whitfield', Title: 'CFO', Ownership_Percent: 30 },
@@ -686,6 +687,17 @@ function renderStatus(data, isDemo) {
       '<div class="summ">' + esc(pa.note) + '</div>' +
       '<div' + paDim + '>' + paRows + '</div>' + paBtn + '</div>';
 
+  // Prior-factor buyout — shown only when the backend sends a `buyout` block (the underwriter checked
+  // "Buyout Required"). Client-friendly framing + the factor being bought out + the estimated date.
+  var _bo = data.buyout;
+  var buyoutHtml = _bo
+    ? '<div class="card" style="border-left:4px solid var(--of-amber)"><div class="card-title">Prior Factor Buyout</div>' +
+        '<div class="summ">OperFi will handle buying out your prior factor as part of getting you set up — no action needed from you.</div>' +
+        recRow('Prior factor', '', _bo.factor || '—') +
+        (_bo.estimatedDate ? recRow('Estimated buyout date', '', _bo.estimatedDate) : '') +
+      '</div>'
+    : '';
+
   el('content').innerHTML =
     '<div class="hero"><div><div class="hero-eyebrow">' + esc(data.authorityType || 'Your application') + '</div>' +
       '<div class="hero-name">' + esc(data.businessName || 'Your Application') + '</div>' +
@@ -719,6 +731,8 @@ function renderStatus(data, isDemo) {
       '<div class="toast" id="upToast"></div></div>' +
 
     postApprovalHtml +
+
+    buyoutHtml +
 
     ownersHtml + contactsHtml + clienteleHtml + relatedHtml + uccHtml +
 

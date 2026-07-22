@@ -1740,12 +1740,13 @@ function renderModel(m) {
   if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
   m.clientMessageStored = r.Client_Message || '';   // full stored value incl. the trailing "— <stamp>"
   $('uwClientMsg').value = stripClientStamp(r.Client_Message);   // edit box shows clean text (no stamp)
-  $('uwDecisionDate').value = r.Decision_Date || '';
+  // Creator date fields come back as "15-Aug-2026 00:00:00" — drop the time part for the input.
+  $('uwDecisionDate').value = (r.Decision_Date || '').split(' ')[0];
   $('uwLimit').value = r.Approved_Credit_Limit || '';
   $('uwRate').value = r.Recommended_Rate || '';
   $('tgBuyout').classList.toggle('on', !!r.Buyout_Required);
   $('uwBuyoutFactor').value = r.Buyout_Factor || '';
-  $('uwBuyoutDate').value = r.Estimated_Buyout_Date || '';
+  $('uwBuyoutDate').value = (r.Estimated_Buyout_Date || '').split(' ')[0];
 
   renderHrv();
   renderGate();

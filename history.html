@@ -612,6 +612,7 @@ var currentLoadId = 0;        // cancels in-flight loads when range changes
 // Maps Purchase_Status field value → { key, label, pillClass }
 var STATUS_MAP = {
   'Draft':                               { key: 'draft',       label: 'Draft',             pill: 'draft' },
+  'Pending Docs':                        { key: 'pending-docs', label: 'Pending Docs',     pill: 'verifying' },
   'Processing':                          { key: 'processing',  label: 'Processing',        pill: 'processing' },
   'On Hold':                             { key: 'hold',        label: 'On Hold',           pill: 'hold' },
   'On Hold - Need NOA Verification':     { key: 'verifying-noa', label: 'Verifying NOA',   pill: 'verifying' },
@@ -623,6 +624,13 @@ function statusMeta(rec) {
   return STATUS_MAP[raw] || { key: 'unknown', label: raw || '—', pill: '' };
 }
 function isDraft(rec) { return statusMeta(rec).key === 'draft'; }
+// A load the broker can still fix/remove: Draft, or Pending Docs (a submit whose
+// docs failed; the backend sweep demotes it to Draft, and it is reopenable/deletable
+// pre-processing either way).
+function isEditable(rec) {
+  var k = statusMeta(rec).key;
+  return k === 'draft' || k === 'pending-docs';
+}
 
 // Creator page link-names. LOAD_DETAILS_PAGE confirmed; DRAFT_LOADS_PAGE — Tom
 // confirm the Draft Loads Creator page's exact link-name (one constant).
@@ -1570,6 +1578,7 @@ window.docsGroupHtml = docsGroupHtml;
 window.openDocViewer = openDocViewer;
 window.statusMeta = statusMeta;
 window.isDraft = isDraft;
+window.isEditable = isEditable;
 window.rowHtml = rowHtml;
 window.__setAllClients = function(v) { allClients = !!v; };  // exposed for tests (see-all row shape)
 window.portalUrl = portalUrl;

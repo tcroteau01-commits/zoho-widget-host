@@ -21,6 +21,8 @@ const DRAFT = { ID: '900', Purchase_Status: 'Draft', Customer_Reference_Number: 
   Customer_Rate: '1000', Carrier_Rate: '900' };
 const PURCHASED = { ID: '901', Purchase_Status: 'Purchased', Customer_Reference_Number: 'EX-2',
   Customer_Rate: '1000', Carrier_Rate: '900' };
+const PENDING = { ID: '902', Purchase_Status: 'Pending Docs', Customer_Reference_Number: 'EX-3',
+  Customer_Rate: '1000', Carrier_Rate: '900' };
 
 test('statusMeta maps Draft to a draft pill (not unknown)', () => {
   const w = makeDom();
@@ -34,6 +36,20 @@ test('isDraft distinguishes draft loads', () => {
   const w = makeDom();
   assert.equal(w.isDraft(DRAFT), true);
   assert.equal(w.isDraft(PURCHASED), false);
+});
+
+test('statusMeta maps Pending Docs to a real label (not unknown)', () => {
+  const w = makeDom();
+  const m = w.statusMeta(PENDING);
+  assert.equal(m.key, 'pending-docs');
+  assert.match(m.label, /pending docs/i);
+});
+
+test('isEditable is true for Draft and Pending Docs, false otherwise', () => {
+  const w = makeDom();
+  assert.equal(w.isEditable(DRAFT), true);
+  assert.equal(w.isEditable(PENDING), true);
+  assert.equal(w.isEditable(PURCHASED), false);
 });
 
 test('rowHtml for a Draft load exposes an Edit control + draft badge', () => {

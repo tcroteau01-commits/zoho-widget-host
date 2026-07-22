@@ -605,8 +605,7 @@ function renderDetail(app, d) {
   var buyoutCard = d.buyoutRequired
     ? '<div class="card"><div class="card-title">Buyout Required</div><div class="rate-box">' +
         '<div class="rate-item"><div class="rv">' + esc(d.buyoutFactor || '—') + '</div><div class="rl">Prior Factor</div></div>' +
-        '<div class="rate-item"><div class="rv">' + esc(d.buyoutDate || '—') + '</div><div class="rl">Est. Buyout Date</div></div></div>' +
-        '<div class="hint">This deal requires buying out the prior factor before funding.</div></div>'
+        '<div class="rate-item"><div class="rv">' + esc(d.buyoutDate || '—') + '</div><div class="rl">Est. Buyout Date</div></div></div></div>'
     : '';
 
   el('detail').innerHTML =

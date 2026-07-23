@@ -94,3 +94,36 @@ test('fact labels are HTML-escaped', () => {
   w.applyVerdict({ verdict: v });
   assert.doesNotMatch(w.document.getElementById('cp-vfacts-safety').innerHTML, /<img/);
 });
+
+test('rail roll-up phrases a fact count, FAILs first in detail', () => {
+  const w = bootCarrierProfile();
+  w.renderRecommendation({ verdict: verdictPayload() });
+  const badge = w.document.getElementById('cp-rail-signal');
+  assert.match(badge.textContent, /1 does not meet the standard/);
+  assert.match(badge.textContent, /2 to review/);
+  assert.ok(badge.className.includes('serious')); // fail present → red styling
+  const detail = w.document.getElementById('cp-rail-signal-detail').innerHTML;
+  assert.match(detail, /2\+ CSA BASIC alerts/);
+  // documented network-graph limit (spec §1: document, don't hide)
+  assert.match(detail, /chameleon|cross-carrier/i);
+});
+
+test('rail roll-up review-only and all-clear phrasings', () => {
+  const w = bootCarrierProfile();
+  w.renderRecommendation({ verdict: verdictPayload({
+    fail_count: 0, review_count: 3 }) });
+  const badge = w.document.getElementById('cp-rail-signal');
+  assert.match(badge.textContent, /3 to review/);
+  assert.doesNotMatch(badge.textContent, /does not meet/);
+  assert.ok(badge.className.includes('elevated'));
+  w.renderRecommendation({ verdict: verdictPayload({
+    fail_count: 0, review_count: 0, facts: [] }) });
+  assert.match(w.document.getElementById('cp-rail-signal').textContent,
+    /No exceptions found/i);
+});
+
+test('rail falls back to legacy tier signal without a verdict payload', () => {
+  const w = bootCarrierProfile();
+  w.renderRecommendation({ risk: { tier: 'High', flags: [] } });
+  assert.match(w.document.getElementById('cp-rail-signal').textContent, /Elevated signal/);
+});

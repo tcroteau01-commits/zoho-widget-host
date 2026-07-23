@@ -1337,6 +1337,29 @@ var TIER_TO_SIGNAL = {"Low":null,"Medium":"Limited","High":"Elevated","Critical"
 function renderRecommendation(p){
   var badge=document.getElementById('cp-rail-signal'); if(!badge) return;
   var detail=document.getElementById('cp-rail-signal-detail');
+  var v=p&&p.verdict;
+  if(v&&v.pillars){
+    // Fact-count phrasing — never an OperFi verdict word (CAVRA3 spec §3).
+    var parts=[];
+    if(v.fail_count>0) parts.push(v.fail_count+' does not meet the standard');
+    if(v.review_count>0) parts.push(v.review_count+' to review');
+    var cls=v.fail_count>0?'serious':(v.review_count>0?'elevated':'limited');
+    badge.className='rail-signal-badge '+cls;
+    badge.textContent=parts.length?parts.join(' · '):'No exceptions found in the data reviewed';
+    if(detail){
+      var top=(v.facts||[]).slice(0,5);
+      var items=top.length
+        ? '<ul style="margin:4px 0 0 16px;">'+top.map(function(f){
+            return '<li>'+esc(f.verdict)+': '+esc(f.label)+'</li>'; }).join('')+'</ul>'
+        : '';
+      detail.innerHTML=items+
+        '<div style="margin-top:8px;font-size:11px;color:var(--of-gray-500);">'+
+        'Facts are sourced from single-DOT FMCSA data plus OperFi’s own records. '+
+        'Cross-carrier chameleon detection is network-tier data not included here.</div>';
+    }
+    return;
+  }
+  // Legacy tier signal (payloads from a backend without the verdict block).
   var tier=(p.risk&&p.risk.tier)||'Medium';
   var signal=TIER_TO_SIGNAL[tier];
   badge.className='rail-signal-badge'+(signal?(' '+signal.toLowerCase()):'');
@@ -1345,12 +1368,13 @@ function renderRecommendation(p){
     var allFlags=(p.risk&&p.risk.flags)||[];
     var SRANK={"Critical":3,"High":2,"Medium":1,"Low":0};
     var sorted=allFlags.slice().sort(function(a,b){ return (SRANK[b.severity]||0)-(SRANK[a.severity]||0); });
-    var top=sorted.slice(0,4);
-    detail.innerHTML = top.length
-      ? ('Top items: <ul style="margin:4px 0 0 16px;">'+top.map(function(f){ return '<li>'+esc(f.label)+'</li>'; }).join('')+'</ul>')
+    var top2=sorted.slice(0,4);
+    detail.innerHTML = top2.length
+      ? ('Top items: <ul style="margin:4px 0 0 16px;">'+top2.map(function(f){ return '<li>'+esc(f.label)+'</li>'; }).join('')+'</ul>')
       : 'No risk flags detected in the data reviewed.';
   }
 }
+if (typeof window !== 'undefined') { window.renderRecommendation = renderRecommendation; }
 
 // ── Litigation Defense Checklist ───────────────────────────────────────────
 // 10-item named checklist per Montgomery v. Caribe Transport II. Two items

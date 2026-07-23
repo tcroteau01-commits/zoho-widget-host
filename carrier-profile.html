@@ -626,7 +626,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="kpi-sub"></div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">CarrierOK Risk Score</div>
+      <div class="kpi-label">BASIC Alerts</div>
       <div class="kpi-value"></div>
       <div class="kpi-sub"></div>
     </div>
@@ -1191,23 +1191,22 @@ function renderRiskStrip(p){
   if(kpi){
     var co=p.carrierok||{};
 
-    // KPI 1 — FMCSA safety rating
-    var rating=(co.safety_rating||p.fmcsa_safety_rating||'').toString();
+    // KPI 1 — FMCSA safety rating (fmcsa spells it safety_rating_desc)
+    var rating=(co.safety_rating_desc||co.safety_rating||p.fmcsa_safety_rating||'').toString();
     var safetyVal=rating?rating.toUpperCase():'NOT RATED';
     var rUp=rating.toUpperCase();
     var safetyCls=rUp==='SATISFACTORY'?'good':((rUp==='CONDITIONAL'||rUp==='UNSATISFACTORY')?'bad':'');
 
-    // KPI 2 — CarrierOK risk score. CarrierOK exposes risk_score (a categorical
-    // TIER string) + risk_score_probability (a fraction) at the profile top level.
-    // Headline = whole-number probability; subtitle = precise probability + tier.
-    var prob=_num(co.risk_score_probability);
-    var cokTier=(co.risk_score||'').toString();
-    var scoreVal=prob!=null?String(Math.round(prob*100)):'—';
-    var scoreSub=prob!=null
-      ? ('Probability '+(prob*100).toFixed(1)+'%'+(cokTier?' · '+cokTier+' tier':''))
-      : 'Not scored';
-    var tU=cokTier.toUpperCase();
-    var scoreCls=tU==='HIGH'?'bad':(tU==='MEDIUM'?'warn':(tU==='LOW'?'good':(prob!=null?(prob>=0.7?'bad':(prob>=0.4?'warn':'good')):'')));
+    // KPI 2 — BASIC alerts (0-5 of the public property categories).
+    // fmcsa has no CarrierOK risk_score; 2+ alerts is the CAVRA hard-stop.
+    var BASIC_KEYS=['basic_alert_unsafe_driving','basic_alert_hours_of_service',
+      'basic_alert_vehicle_maintence','basic_alert_controlled_substance',
+      'basic_alert_driver_fitness'];
+    var alertCount=BASIC_KEYS.reduce(function(n,k){ return n+(co[k]===true?1:0); },0);
+    var scoreVal=String(alertCount);
+    var scoreSub=alertCount===0?'No BASIC categories in alert'
+      :(alertCount+' of 5 categories in alert');
+    var scoreCls=alertCount>=2?'bad':(alertCount===1?'warn':'good');
 
     // KPI 3 — Insurance status (composed multi-word)
     var pendCancel=!!co.pending_insurance_cancellation;
@@ -1394,7 +1393,7 @@ function renderSafetyChecklist(p){
   var el=document.getElementById('cp-safety-checklist'); if(!el) return;
   var co=p.carrierok||{};
   var out=[];
-  var rating=(co.safety_rating||'').toString(), rUp=rating.toUpperCase();
+  var rating=(co.safety_rating_desc||co.safety_rating||'').toString(), rUp=rating.toUpperCase();
   var rv=rUp==='SATISFACTORY'?'good':((rUp==='CONDITIONAL'||rUp==='UNSATISFACTORY')?'bad':'good');
   out.push(_checkRow('FMCSA Safety Rating',
     rating?('<strong>'+esc(rating)+'</strong>'+(co.safety_rating_date?' — issued '+esc(co.safety_rating_date):''))

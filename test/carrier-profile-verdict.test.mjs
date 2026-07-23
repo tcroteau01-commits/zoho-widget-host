@@ -127,3 +127,31 @@ test('rail falls back to legacy tier signal without a verdict payload', () => {
   w.renderRecommendation({ risk: { tier: 'High', flags: [] } });
   assert.match(w.document.getElementById('cp-rail-signal').textContent, /Elevated signal/);
 });
+
+test('safety KPI reads fmcsa safety_rating_desc', () => {
+  const w = bootCarrierProfile();
+  w.renderRiskStrip({ risk: { tier: 'Low' },
+    carrierok: { safety_rating_desc: 'Satisfactory', safety_rating_date: '2021-12-17' } });
+  const kpi = w.document.querySelectorAll('#cp-kpi-row .kpi')[0];
+  assert.equal(kpi.querySelector('.kpi-value').textContent, 'SATISFACTORY');
+});
+
+test('KPI 2 shows BASIC alert count, not CarrierOK risk score', () => {
+  const w = bootCarrierProfile();
+  const label = w.document.querySelectorAll('#cp-kpi-row .kpi-label')[1];
+  assert.match(label.textContent, /BASIC Alerts/i);
+  w.renderRiskStrip({ risk: { tier: 'Low' }, carrierok: {
+    basic_alert_unsafe_driving: true, basic_alert_hours_of_service: true } });
+  const kpi = w.document.querySelectorAll('#cp-kpi-row .kpi')[1];
+  assert.equal(kpi.querySelector('.kpi-value').textContent, '2');
+  assert.ok(kpi.className.includes('bad')); // 2+ = hard-stop styling
+  w.renderRiskStrip({ risk: { tier: 'Low' }, carrierok: {} });
+  assert.equal(w.document.querySelectorAll('#cp-kpi-row .kpi')[1]
+    .querySelector('.kpi-value').textContent, '0');
+});
+
+test('safety checklist reads safety_rating_desc', () => {
+  const w = bootCarrierProfile();
+  w.renderSafetyChecklist({ carrierok: { safety_rating_desc: 'Conditional' } });
+  assert.match(w.document.getElementById('cp-safety-checklist').innerHTML, /Conditional/);
+});

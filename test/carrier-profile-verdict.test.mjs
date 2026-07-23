@@ -155,3 +155,45 @@ test('safety checklist reads safety_rating_desc', () => {
   w.renderSafetyChecklist({ carrierok: { safety_rating_desc: 'Conditional' } });
   assert.match(w.document.getElementById('cp-safety-checklist').innerHTML, /Conditional/);
 });
+
+test('safety section renders the 5-category BASIC table from fmcsa fields', () => {
+  const w = bootCarrierProfile();
+  w.renderSafety({ risk: { flags: [] }, carrierok: {
+    basic_alert_unsafe_driving: false, basic_measure_unsafe_driving: '0.7',
+    violations_unsafe_driving: '78',
+    basic_alert_vehicle_maintence: true, basic_measure_vehicle_maintence: '3.93',
+    violations_vehicle_maintence: '240'
+  } });
+  const html = w.document.getElementById('cp-safety').innerHTML;
+  assert.match(html, /Unsafe Driving/);
+  assert.match(html, /Vehicle Maintenance/);
+  assert.match(html, /0\.7/);
+  assert.match(html, /240/);
+  assert.match(html, /Alert/);   // vehicle maintenance row flagged
+  assert.doesNotMatch(html, /percentile/i);
+});
+
+test('crash tiles read fmcsa crashes_total and show tow-away + last crash', () => {
+  const w = bootCarrierProfile();
+  w.renderCrash({ carrierok: {
+    crash_fatalities: '0', crash_injuries: '19',
+    crashes_total: '62', crashes_tow_away: '43', last_crash_date: '2026-06-27' } });
+  const html = w.document.getElementById('cp-crash').innerHTML +
+    w.document.getElementById('cp-crash-last').innerHTML;
+  assert.match(html, /62/);
+  assert.match(html, /43/);
+  assert.match(html, /Tow-Away/i);
+  assert.doesNotMatch(html, /Preventable/i);
+  assert.match(html, /2026-06-27/);
+});
+
+test('authority section shows start date and last revocation from fmcsa', () => {
+  const w = bootCarrierProfile();
+  w.renderAuthority({ carrierok: {
+    authority_common: 'Active', authority_start_common: '2004-06-10',
+    total_revocations: '1', last_revocation_date: '2004-05-24',
+    authority_age_common_active: '8068' } });
+  const html = w.document.getElementById('cp-authority').innerHTML;
+  assert.match(html, /2004-06-10/);
+  assert.match(html, /2004-05-24/);
+});

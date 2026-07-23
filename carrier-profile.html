@@ -659,7 +659,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <details class="cp-accordion" id="cp-acc-crash">
     <summary>Crash History <span id="cp-acc-crash-pill" class="acc-summary-pill clean">Clean</span><span class="tag">FMCSA · 24 months</span></summary>
-    <div class="cp-accordion-body"><div id="cp-vfacts-crash"></div><div id="cp-crash" class="crash-grid"></div><div id="cp-crash-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
+    <div class="cp-accordion-body"><div id="cp-vfacts-crash"></div><div id="cp-crash" class="crash-grid"></div><div id="cp-crash-last" style="font-size:12px;color:var(--of-gray-700);margin-top:10px;"></div><div id="cp-crash-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
   </details>
 
   <details class="cp-accordion" id="cp-acc-footprint">
@@ -1421,7 +1421,7 @@ function renderCrashChecklist(p){
   var el=document.getElementById('cp-crash-checklist'); if(!el) return;
   var co=p.carrierok||{};
   var fatal=_num(co.crash_fatalities), inj=_num(co.crash_injuries), prev=_num(co.crash_preventable);
-  var ctotal=_num(co.crash_total); if(ctotal==null&&Array.isArray(co.crash_history)) ctotal=co.crash_history.length;
+  var ctotal=_num(co.crashes_total!=null?co.crashes_total:co.crash_total); if(ctotal==null&&Array.isArray(co.crash_history)) ctotal=co.crash_history.length;
   var crashV=(fatal!=null&&fatal>0)?'bad':((ctotal!=null&&ctotal>0)?'warn':'good');
   el.innerHTML=_checkRow('Recent Crashes (24 mo)',
     (ctotal!=null&&ctotal>0)
@@ -1475,12 +1475,14 @@ function renderAuthority(p){
   var revs=_revocationCount(co);
   var boc3=co.boc3_on_file;
   var chain=_hasNetworkGraph(co);
-  var authAge=_authorityAge(co)||_years(co.dot_age);
+  var authAge=_authorityAge(co)||_years(co.authority_age_common_active)||_years(co.dot_age);
   el.innerHTML=authHtml+
     indRow('Active Authority','CarrierOK',active?'Yes':'No',active?'good':'bad')+
     indRow('Authorized For Hire','CarrierOK',forHire?'Yes':'No',forHire?'good':'bad')+
     indRow('Authority Reinstated (last 6 mo)','CarrierOK',reinstated?'⚠ Yes':'No',reinstated?'warn':'good')+
     indRow('Prior Revocations','FMCSA',String(revs),revs>0?'warn':'good')+
+    indRow('Authority Start (common)','FMCSA',co.authority_start_common||co.authority_start_contract||'—','neutral')+
+    indRow('Last Revocation','FMCSA',co.last_revocation_date||'—',co.last_revocation_date?'warn':'neutral')+
     indRow('BOC-3 On File','CarrierOK',boc3===false?'No':(boc3?'Yes':'—'),boc3===false?'bad':(boc3?'good':'neutral'))+
     indRow('USDOT-MC Chain of Title','FMCSA',chain?'Review':'Unchanged',chain?'warn':'good')+
     indRow('Last MCS-150 Filing','FMCSA',co.mcs150_date||'—','neutral')+
@@ -1546,6 +1548,29 @@ function _statCell(label,val,sub,cls){
 function _oosPill(label,active){
   return '<span class="ind-pill '+(active?'bad':'good')+'">'+esc(label)+': '+(active?'Active':'Clear')+'</span>';
 }
+// CAVRA3: BASIC status table. fmcsa carries alert booleans + measures +
+// violation counts for the 5 public property categories — no peer
+// percentiles at this tier (documented limit, not faked).
+var BASIC_CATEGORIES=[
+  ['Unsafe Driving','unsafe_driving'],
+  ['Hours of Service','hours_of_service'],
+  ['Vehicle Maintenance','vehicle_maintence'],
+  ['Controlled Substance','controlled_substance'],
+  ['Driver Fitness','driver_fitness']];
+function renderBasicTable(co){
+  var rows=BASIC_CATEGORIES.map(function(c){
+    var alert=co['basic_alert_'+c[1]]===true;
+    var measure=co['basic_measure_'+c[1]];
+    var viol=co['violations_'+c[1]];
+    return '<div class="ind-row"><span class="ind-label">'+esc(c[0])+'</span>'+
+      '<span class="ind-source">Measure '+esc(measure!=null&&measure!==''?measure:'—')+
+      ' · '+esc(viol!=null&&viol!==''?viol:'—')+' violations</span>'+
+      '<span class="ind-pill '+(alert?'bad':'good')+'">'+(alert?'Alert':'OK')+'</span></div>';
+  }).join('');
+  return '<div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--of-gray-100);">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--of-charcoal);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">CSA BASIC Status</div>'+
+    '<div class="indicators">'+rows+'</div></div>';
+}
 function renderSafety(p){
   var el=document.getElementById('cp-safety'); if(!el) return;
   var co=p.carrierok||{};
@@ -1585,7 +1610,7 @@ function renderSafety(p){
     '</div></div>';
 
   var flagsHtml=flags.length?'<div style="margin-top:16px;">'+flags.map(renderFlagRow).join('')+'</div>':'';
-  el.innerHTML=statsHtml+bars+alerts+flagsHtml;
+  el.innerHTML=statsHtml+bars+renderBasicTable(co)+alerts+flagsHtml;
   var _oos=!!((p.carrierok||{}).out_of_service_flag); setAccPill('cp-acc-safety-pill', _oos?'flag':'clean', _oos?'Flag':'Clean');
 }
 
@@ -1594,8 +1619,9 @@ function renderSafety(p){
 function renderCrash(p){
   var el=document.getElementById('cp-crash'); if(!el) return;
   var co=p.carrierok||{};
-  var fatal=_num(co.crash_fatalities), inj=_num(co.crash_injuries), prev=_num(co.crash_preventable);
-  var total=_num(co.crash_total);
+  var fatal=_num(co.crash_fatalities), inj=_num(co.crash_injuries);
+  var tow=_num(co.crashes_tow_away);
+  var total=_num(co.crashes_total!=null?co.crashes_total:co.crash_total);
   if(total==null&&Array.isArray(co.crash_history)) total=co.crash_history.length;
   function card(num,label,cls){
     var n=num!=null?String(num):'—';
@@ -1604,8 +1630,12 @@ function renderCrash(p){
   el.innerHTML=
     card(fatal,'Fatalities',fatal!=null&&fatal>0?'bad':'good')+
     card(inj,'Injuries',inj!=null&&inj>0?'warn':'good')+
-    card(prev,'Preventable',prev!=null&&prev>0?'warn':(prev===0?'good':''))+
+    card(tow,'Tow-Away',tow!=null&&tow>0?'warn':(tow===0?'good':''))+
     card(total,'Total Crashes',total!=null&&total>0?'warn':'good');
+  var lastEl=document.getElementById('cp-crash-last');
+  if(lastEl) lastEl.innerHTML=co.last_crash_date
+    ? 'Most recent crash: <strong>'+esc(co.last_crash_date)+'</strong> ('+esc(_relTime(co.last_crash_date))+')'
+    : '';
   var _fatal=_num((p.carrierok||{}).crash_fatalities); setAccPill('cp-acc-crash-pill', (_fatal&&_fatal>0)?'flag':'clean', (_fatal&&_fatal>0)?'Flag':'Clean');
 }
 

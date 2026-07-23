@@ -340,6 +340,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .flag-label { font-weight: 600; color: var(--of-charcoal); }
 .flag-exp { color: var(--of-gray-700); font-size: 12px; margin-left: 6px; }
 
+/* CAVRA3 verdict fact rows */
+.vfact { display:flex; align-items:baseline; gap:8px; padding:8px 12px; border-radius:8px; margin-bottom:6px; font-size:12px; }
+.vfact .vf-badge { font-size:10px; font-weight:800; letter-spacing:0.5px; padding:2px 8px; border-radius:999px; flex-shrink:0; }
+.vfact .vf-label { font-weight:700; color:var(--of-charcoal); }
+.vfact .vf-detail { color:var(--of-gray-700); }
+.vfact.fail { background:var(--of-red-soft); border:1px solid #f3b9b9; }
+.vfact.fail .vf-badge { background:var(--of-red); color:#fff; }
+.vfact.review { background:var(--of-amber-soft); border:1px solid #ffe082; }
+.vfact.review .vf-badge { background:var(--of-amber); color:#fff; }
+.vfact.review.red { background:var(--of-red-soft); border-color:#f3b9b9; }
+.vfact.review.red .vf-badge { background:var(--of-red); }
+
 /* Decision History timeline */
 .history-timeline { display: flex; flex-direction: column; gap: 0; }
 .history-event {
@@ -632,27 +644,28 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <details class="cp-accordion" id="cp-acc-authority">
     <summary>Authority &amp; Operating History <span id="cp-acc-authority-pill" class="acc-summary-pill clean">Clean</span><span class="tag">CarrierOK · FMCSA</span></summary>
-    <div class="cp-accordion-body"><div id="cp-authority" class="indicators"></div><div id="cp-authority-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
+    <div class="cp-accordion-body"><div id="cp-vfacts-authority"></div><div id="cp-authority" class="indicators"></div><div id="cp-authority-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
   </details>
 
   <details class="cp-accordion" id="cp-acc-insurance">
     <summary>Insurance <span id="cp-acc-insurance-pill" class="acc-summary-pill clean">Clean</span><span class="tag">FMCSA</span></summary>
-    <div class="cp-accordion-body"><div id="cp-insurance" class="indicators"></div><div id="cp-insurance-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
+    <div class="cp-accordion-body"><div id="cp-vfacts-insurance"></div><div id="cp-insurance" class="indicators"></div><div id="cp-insurance-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
   </details>
 
   <details class="cp-accordion" id="cp-acc-safety">
     <summary>Safety &amp; Compliance <span id="cp-acc-safety-pill" class="acc-summary-pill clean">Clean</span><span class="tag">FMCSA</span></summary>
-    <div class="cp-accordion-body"><div id="cp-safety"></div><div id="cp-safety-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
+    <div class="cp-accordion-body"><div id="cp-vfacts-safety"></div><div id="cp-safety"></div><div id="cp-safety-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
   </details>
 
   <details class="cp-accordion" id="cp-acc-crash">
     <summary>Crash History <span id="cp-acc-crash-pill" class="acc-summary-pill clean">Clean</span><span class="tag">FMCSA · 24 months</span></summary>
-    <div class="cp-accordion-body"><div id="cp-crash" class="crash-grid"></div><div id="cp-crash-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
+    <div class="cp-accordion-body"><div id="cp-vfacts-crash"></div><div id="cp-crash" class="crash-grid"></div><div id="cp-crash-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
   </details>
 
   <details class="cp-accordion" id="cp-acc-footprint">
     <summary>Digital Footprint &amp; Identity <span id="cp-acc-footprint-pill" class="acc-summary-pill clean">Clean</span><span class="tag">IPQualityScore · CarrierOK</span></summary>
     <div class="cp-accordion-body">
+      <div id="cp-vfacts-identity"></div>
       <div id="cp-digital-footprint"></div>
       <div id="cp-stability" style="margin-top:14px;"></div>
     </div>
@@ -982,7 +995,7 @@ function refreshAll() {
 function renderProfile(p) {
   renderLoadHistory(p); renderHero(p); renderRiskStrip(p); renderDigitalFootprint(p); renderBankRouting(p); renderBankChecklist(p); renderRecommendation(p);
   renderAuthority(p); renderAuthorityChecklist(p); renderInsurance(p); renderInsuranceChecklist(p); renderSafety(p); renderSafetyChecklist(p); renderCrash(p); renderCrashChecklist(p); renderStability(p);
-  renderDecisionState(p); renderDecisionHistory(p); renderComments(p); renderChecklist(p); wireDecisionCapture(p);
+  renderDecisionState(p); renderDecisionHistory(p); renderComments(p); renderChecklist(p); wireDecisionCapture(p); applyVerdict(p);
   // Non-blocking NOA status card — degrades silently if endpoint unavailable
   fetch(BROKER_API_BASE + '/noa-status?email=' + encodeURIComponent(brokerEmail) + '&vendor_id=' + encodeURIComponent(vendorId))
     .then(function(r){ return r.json(); })
@@ -996,6 +1009,40 @@ function renderProfile(p) {
 // ── Helpers ────────────────────────────────────────────────────────────────
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function setAccPill(id, cls, text){ var el=document.getElementById(id); if(el){ el.className='acc-summary-pill '+cls; el.textContent=text; } }
+
+// ── CAVRA3 verdict display (fact-based PASS/REVIEW/FAIL, display-only) ─────
+var VERDICT_PILL_CLASS = { PASS: 'clean', REVIEW: 'caution', FAIL: 'flag' };
+var VERDICT_PILLAR_EL = {
+  authority: { pill: 'cp-acc-authority-pill', facts: 'cp-vfacts-authority' },
+  insurance: { pill: 'cp-acc-insurance-pill', facts: 'cp-vfacts-insurance' },
+  safety:    { pill: 'cp-acc-safety-pill',    facts: 'cp-vfacts-safety' },
+  crash:     { pill: 'cp-acc-crash-pill',     facts: 'cp-vfacts-crash' },
+  identity:  { pill: 'cp-acc-footprint-pill', facts: 'cp-vfacts-identity' }
+};
+function verdictFactRow(f){
+  var cls = 'vfact ' + (f.verdict === 'FAIL' ? 'fail' : 'review') +
+            (f.tone === 'red' ? ' red' : '');
+  return '<div class="' + cls + '"><span class="vf-badge">' + esc(f.verdict) + '</span>' +
+    '<span class="vf-label">' + esc(f.label) + '</span>' +
+    '<span class="vf-detail">' + esc(f.detail || '') + '</span></div>';
+}
+// Applies the backend verdict block to section pills + per-section fact rows.
+// Runs AFTER the legacy renders so it wins; no-op when the payload has no
+// verdict (older backend), leaving the legacy Clean/Caution/Flag pills intact.
+function applyVerdict(p){
+  var v = p && p.verdict;
+  if (!v || !v.pillars) return;
+  Object.keys(VERDICT_PILLAR_EL).forEach(function(name){
+    var el = VERDICT_PILLAR_EL[name];
+    var pv = (v.pillars[name] && v.pillars[name].verdict) || 'PASS';
+    setAccPill(el.pill, VERDICT_PILL_CLASS[pv] || 'clean', pv);
+    var box = document.getElementById(el.facts);
+    if (box) box.innerHTML = (v.facts || [])
+      .filter(function(f){ return f.pillar === name; })
+      .map(verdictFactRow).join('');
+  });
+}
+if (typeof window !== 'undefined') { window.applyVerdict = applyVerdict; }
 var REC_ICON = {"Approve":"✓","Approve with Caution":"◐","Hold":"⏸","Decline":"✕"};
 var FLAG_CATEGORIES = ["Authority and Compliance","Identity and Signup Fraud","Insurance","Operations and Safety","Payment and Internal"];
 function flagsByCategory(p, cat){ return ((p.risk && p.risk.flags) || []).filter(function(f){ return f.category === cat; }); }

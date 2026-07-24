@@ -1125,15 +1125,13 @@ if (typeof window !== 'undefined') { window.mapsHref = mapsHref; window.saferHre
 function renderLoadHistory(p){
   var el=document.getElementById('cp-load-history-body'); if(!el) return;
   var sum=document.getElementById('cp-load-history-summary');
-  var av0=p.account_vendor;
-  if(sum){
-    var c0=av0?(av0.Loads_Tendered_Count||0):0;
-    sum.textContent=c0>0
-      ? c0+' loads with you · last '+(_fmtDate(av0.Last_Tendered_Date)||'—')
-      : 'No loads yet';
-  }
   var av=p.account_vendor;
   var count=av?(av.Loads_Tendered_Count||0):0;
+  if(sum){
+    sum.textContent=count>0
+      ? count+' loads with you · last '+(_fmtDate(av.Last_Tendered_Date)||'—')
+      : 'No loads yet';
+  }
   if(!av || count===0){
     el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;">First load with this carrier? No history is normal at our size. Treat it as a trial load and lean on the checklist to the right. A clean record is a mitigating factor, but it does not replace this load\'s checks.</div>';
     return;
@@ -1624,7 +1622,7 @@ function renderSafety(p){
 }
 
 // ── Crash ──────────────────────────────────────────────────────────────────
-// Mockup order: Fatalities · Injuries · Preventable · Total Crashes.
+// Tile order: Fatalities · Injuries · Tow-Away · Total Crashes (fmcsa aggregates).
 function renderCrash(p){
   var el=document.getElementById('cp-crash'); if(!el) return;
   var co=p.carrierok||{};

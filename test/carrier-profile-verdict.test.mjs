@@ -197,3 +197,35 @@ test('authority section shows start date and last revocation from fmcsa', () => 
   assert.match(html, /2004-06-10/);
   assert.match(html, /2004-05-24/);
 });
+
+test('history section is a collapsed accordion with a compact header summary', () => {
+  const w = bootCarrierProfile();
+  const acc = w.document.getElementById('cp-acc-load-history');
+  assert.ok(acc, 'history accordion exists');
+  assert.equal(acc.tagName, 'DETAILS');
+  assert.ok(!acc.open, 'collapsed by default');
+  w.renderLoadHistory({ account_vendor: {
+    Loads_Tendered_Count: 2, First_Tendered_Date: '2026-04-01',
+    Last_Tendered_Date: '2026-05-28' } });
+  assert.match(w.document.getElementById('cp-load-history-summary').textContent,
+    /2 loads with you/);
+  w.renderLoadHistory({ account_vendor: null });
+  assert.match(w.document.getElementById('cp-load-history-summary').textContent,
+    /No loads yet/i);
+});
+
+test('stability section documents the network-tier limit instead of dash rows', () => {
+  const w = bootCarrierProfile();
+  w.renderStability({ carrierok: {} });
+  const html = w.document.getElementById('cp-stability').innerHTML;
+  assert.match(html, /network-tier|cross-carrier/i);
+  assert.doesNotMatch(html, /Phone Number Changes/);
+});
+
+test('source bar and footer name FMCSA via CarrierOK', () => {
+  const w = bootCarrierProfile();
+  const sync = w.document.querySelector('.sync-bar').textContent;
+  assert.match(sync, /FMCSA \(via CarrierOK\)/);
+  assert.match(w.document.querySelector('.footer-note').textContent,
+    /FMCSA \(via CarrierOK\)/);
+});

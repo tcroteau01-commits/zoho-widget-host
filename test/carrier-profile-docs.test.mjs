@@ -225,8 +225,8 @@ test('openCarrierDoc delegates to OperFiDocViewer.open (no inline iframe build)'
   assert.doesNotMatch(HTML, /<iframe src="' \+ url/);
 });
 
-test('carrier-profile footer carries the v2026-06-28.1 version stamp', () => {
-  assert.match(HTML, /v2026-06-28\.1/);
+test('carrier-profile footer carries the v2026-07-22.1 version stamp', () => {
+  assert.match(HTML, /v2026-07-22\.1/);
 });
 
 test('recommended section: non-factored carrier recommends COI + Banking', async () => {

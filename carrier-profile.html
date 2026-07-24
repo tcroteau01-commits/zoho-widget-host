@@ -607,17 +607,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   <!-- Sync bar -->
   <div class="sync-bar">
-    <div><span class="fresh">Live data</span> · Sources: CarrierOK · FMCSA · IPQS · FedACH · OperFi Network</div>
+    <div><span class="fresh">Live data</span> · Sources: FMCSA (via CarrierOK) · IPQS · FedACH · OperFi Network</div>
     <button class="refresh-btn">↻ Refresh all data</button>
   </div>
 
   <div id="cp-layout" class="cp-layout">
   <div id="cp-left-col">
 
-    <div class="card" id="cp-load-history">
-      <div class="card-title">Your History With This Carrier</div>
-      <div id="cp-load-history-body"></div>
-    </div>
+    <details class="cp-accordion" id="cp-acc-load-history">
+      <summary>Your History With This Carrier
+        <span id="cp-load-history-summary" class="cp-ct"></span></summary>
+      <div class="cp-accordion-body"><div id="cp-load-history-body" style="padding-top:14px;"></div></div>
+    </details>
   <!-- KPI strip -->
   <div id="cp-kpi-row" class="kpi-row">
     <div class="kpi">
@@ -715,10 +716,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   </div>
 
   <div class="footer-note">
-    Data sourced from CarrierOK, FMCSA, IPQualityScore, FedACH Directory, and OperFi Network · Live data<br>
+    Data sourced from FMCSA (via CarrierOK), IPQualityScore, FedACH Directory, and OperFi Network · Live data<br>
     Risk profile is informational. Final booking decisions are at the broker's discretion. Decisions and snapshots are retained for audit purposes per Montgomery v. Caribe Transport II (2026) due diligence requirements.
   </div>
-  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-28.1</div>
+  <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-07-22.1</div>
 
   </div><!-- /cp-left-col -->
 
@@ -1123,6 +1124,14 @@ if (typeof window !== 'undefined') { window.mapsHref = mapsHref; window.saferHre
 // ── Load History ───────────────────────────────────────────────────────────
 function renderLoadHistory(p){
   var el=document.getElementById('cp-load-history-body'); if(!el) return;
+  var sum=document.getElementById('cp-load-history-summary');
+  var av0=p.account_vendor;
+  if(sum){
+    var c0=av0?(av0.Loads_Tendered_Count||0):0;
+    sum.textContent=c0>0
+      ? c0+' loads with you · last '+(_fmtDate(av0.Last_Tendered_Date)||'—')
+      : 'No loads yet';
+  }
   var av=p.account_vendor;
   var count=av?(av.Loads_Tendered_Count||0):0;
   if(!av || count===0){
@@ -1642,26 +1651,15 @@ function renderCrash(p){
 // ── Stability & Contact History ────────────────────────────────────────────
 function renderStability(p){
   var el=document.getElementById('cp-stability'); if(!el) return;
-  var co=p.carrierok||{};
-  var phone=_num(co.phone_change_count!=null?co.phone_change_count:co.indicator_network_graph_phone_change_count);
-  var email=_num(co.email_change_count!=null?co.email_change_count:co.indicator_network_graph_email_change_count);
-  var addr=_num(co.address_change_count!=null?co.address_change_count:co.indicator_network_graph_address_change_count);
-  var rf=(co.risk_factors&&co.risk_factors[0])||{};
-  var recentChange=!!(rf.stability_name_history||rf.stability_email_history||rf.stability_phone_history||
-                      rf.stability_address_history||rf.stability_contact_history);
-  var ageReview=hasFlag(p,'new_authority');
-  function countRow(label,val,cls){
-    return '<div class="flag-row"><div class="label">'+esc(label)+'</div>'+
-      '<div class="count '+(cls||'')+'">'+esc(val)+'</div></div>';
-  }
-  var intro='<div style="font-size:12px;color:var(--of-gray-700);line-height:1.5;margin-bottom:14px;">'+
-    'Frequent contact info changes are a fraud indicator. Legitimate carriers rarely update phone, email, or address more than once per year.</div>';
-  el.innerHTML=intro+
-    countRow('Phone Number Changes (lifetime)', phone!=null?String(phone):'—', phone>1?'warn':'')+
-    countRow('Email Changes (lifetime)', email!=null?String(email):'—', email>1?'warn':'')+
-    countRow('Address Changes (lifetime)', addr!=null?String(addr):'—', addr>1?'warn':'')+
-    countRow('Contact Info Changed in Last 30 Days', recentChange?'Yes':'No', recentChange?'warn':'')+
-    countRow('Carrier Entity Age vs Authority Age', ageReview?'Review':'Match', ageReview?'warn':'');
+  // CAVRA3: contact-churn counts are CarrierOK network-tier data, not in the
+  // single-DOT fmcsa profile. Documented limit (not hidden); the Phase 2
+  // internal-match flag covers reincarnations of carriers OperFi has flagged.
+  el.innerHTML='<div style="font-size:12px;color:var(--of-gray-700);line-height:1.6;'+
+    'padding:10px 12px;background:var(--of-beige-soft);border:1px solid var(--of-beige-line);border-radius:8px;">'+
+    'Contact-change history and cross-carrier network matching are network-tier '+
+    'data not included in this profile. OperFi screens carriers against its own '+
+    'flagged records; industry-wide reincarnations OperFi has never touched are '+
+    'outside that signal.</div>';
 }
 
 // ── Decision state / history / capture ────────────────────────────────────

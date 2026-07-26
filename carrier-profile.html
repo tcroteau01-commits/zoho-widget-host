@@ -516,6 +516,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .cp-dmain { flex:1; min-width:0; }
 .cp-dlabel { font-size:13px; font-weight:600; color:var(--of-charcoal-soft); }
 .cp-dfile { font-size:12px; color:var(--of-gray-500); word-break:break-all; }
+.cp-doc-advisory { display:block; font-size:11px; font-weight:700; color:var(--of-amber-text); margin-top:4px; }
+.cp-doc-advisory:empty { display:none; }
 .cp-dnote { font-size:12px; color:var(--of-gray-500); }
 .cp-dacts { display:flex; align-items:center; gap:12px; flex:0 0 auto; }
 .cp-dbtn { font-size:12px; font-weight:600; color:var(--of-blue-text); background:none; border:none; cursor:pointer; padding:0; }
@@ -2005,6 +2007,7 @@ function _bindCarrierDocsListener() {
     var btn = e.target;
     if (!btn || !btn.classList.contains('cp-doc-preview')) return;
     openCarrierDoc(btn.getAttribute('data-token') || '', btn.getAttribute('data-filename') || '');
+    cpFetchDocAdvisory(btn.getAttribute('data-token') || '');
   });
   _cpDocsListenerBound = true;
 }
@@ -2054,7 +2057,8 @@ function renderCarrierDocs(data) {
       html += '<div class="cp-doccard">' +
         '<div class="cp-dic">' + icon + '</div>' +
         '<div class="cp-dmain"><div class="cp-dlabel">' + label + '</div>' +
-        '<div class="cp-dfile">' + fname + '</div></div>' +
+        '<div class="cp-dfile">' + fname + '</div>' +
+        '<span class="cp-doc-advisory" data-token="' + esc(token) + '"></span></div>' +
         '<div class="cp-dacts">' +
         '<button class="cp-dbtn cp-doc-preview" data-token="' + esc(token) + '" data-filename="' + fname + '">View</button>' +
         '<a class="cp-doc-link" href="' + esc(dlUrl) + '" download>Download</a>' +
@@ -2133,9 +2137,31 @@ function openCarrierDoc(token, filename) {
 function closeCarrierDoc() {
   if (window.OperFiDocViewer) OperFiDocViewer.close();
 }
+var cpAuthCache = {};
+// DOCAUTH Tier-A: fetch the tampering advisory for a doc and render a chip on
+// its card. Advisory only — additive, never blocks the view. Errors are silent
+// (a failed check is a non-detection). Cached per token.
+function cpFetchDocAdvisory(token) {
+  if (!token) return;
+  var slot = document.querySelector('.cp-doc-advisory[data-token="' + token + '"]');
+  if (!slot) return;
+  if (cpAuthCache[token]) { cpRenderDocAdvisory(slot, cpAuthCache[token]); return; }
+  fetch(BROKER_API_BASE + '/carrier-doc-authcheck?t=' + encodeURIComponent(token))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (a) { if (a) { cpAuthCache[token] = a; cpRenderDocAdvisory(slot, a); } })
+    .catch(function () { /* silent */ });
+}
+function cpRenderDocAdvisory(slot, a) {
+  if (!slot || !a || !a.advisory) return;
+  var reasons = (a.reasons || []).map(esc).join(' · ');
+  slot.textContent = '⚠ Possible edit after creation';
+  slot.title = reasons;
+}
 if (typeof window !== 'undefined') {
   window.openCarrierDoc = openCarrierDoc;
   window.closeCarrierDoc = closeCarrierDoc;
+  window.cpFetchDocAdvisory = cpFetchDocAdvisory;
+  window.cpRenderDocAdvisory = cpRenderDocAdvisory;
 }
 
 // boot() is invoked by the window 'load' handler above, after Vendor_ID acquisition.

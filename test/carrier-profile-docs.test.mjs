@@ -267,3 +267,63 @@ test('recommended item is suppressed when a matching type is already on file', a
   assert.ok(recLabels.includes('Banking (Voided Check / Bank Info)'), 'Banking recommended');
   assert.ok(!recLabels.includes('Insurance (COI)'), 'COI not re-recommended (already on file)');
 });
+
+test('opening a flagged PDF shows a DOCAUTH advisory chip on its card', async () => {
+  const docsPayload = { documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 'TOKCOI' }
+  ] };
+  const authPayload = { advisory: true, reasons: ['Produced with unusual software (Adobe Photoshop)'],
+    producer: 'Adobe Photoshop', created: '2024-01-01', modified: '2024-02-06' };
+  const dom = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsPayload) });
+    if (url.indexOf('/carrier-doc-authcheck') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(authPayload) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  // click the COI card's View button
+  const btn = w.document.querySelector('.cp-doc-preview[data-token="TOKCOI"]');
+  btn.click();
+  await new Promise(r => setTimeout(r, 0));
+  await new Promise(r => setTimeout(r, 0));
+  const card = btn.closest('.cp-doccard');
+  assert.match(card.querySelector('.cp-doc-advisory').textContent, /Photoshop|edit|advisory/i);
+});
+
+test('opening a clean PDF shows no advisory chip', async () => {
+  const docsPayload = { documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 'TOKCLEAN' }
+  ] };
+  const dom = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsPayload) });
+    if (url.indexOf('/carrier-doc-authcheck') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ advisory: false, reasons: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  const btn = w.document.querySelector('.cp-doc-preview[data-token="TOKCLEAN"]');
+  btn.click();
+  await new Promise(r => setTimeout(r, 0));
+  await new Promise(r => setTimeout(r, 0));
+  const card = btn.closest('.cp-doccard');
+  assert.equal(card.querySelector('.cp-doc-advisory').textContent.trim(), '');
+});
+
+test('viewing still delegates to OperFiDocViewer.open (advisory is additive)', async () => {
+  const docsPayload = { documents: [
+    { type: 'banking', label: 'Banking', filename: 'bank.pdf', preview_token: 'TOKB' }
+  ] };
+  const dom = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsPayload) });
+    if (url.indexOf('/carrier-doc-authcheck') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ advisory: false, reasons: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  w.document.querySelector('.cp-doc-preview[data-token="TOKB"]').click();
+  await new Promise(r => setTimeout(r, 0));
+  assert.ok(w.OperFiDocViewer._calls.find(c => c.method === 'open'), 'viewer still opens');
+});

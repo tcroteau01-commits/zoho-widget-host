@@ -36,6 +36,16 @@
   ];
   var debtors = DEBTOR_NAMES.map(function (name, i) { return { id: 'D' + (i + 1), name: name }; });
 
+  // Only these customers carry aged-open (61+) balances, so only their rows
+  // highlight in the Aging widget. Everyone else is kept current-to-60.
+  // Highland Grocery is included deliberately (it reads as the top concentration).
+  var SLOW_PAYER_NAMES = [
+    'Highland Grocery Distribution', 'Cascade Retail Distribution',
+    'Summit Electronics Supply', 'Redstone Beverage Co', 'Union Steel Supply'
+  ];
+  var slowPayerDebtors = debtors.filter(function (d) { return SLOW_PAYER_NAMES.indexOf(d.name) !== -1; });
+  var SLOW_PAYER_IDS = slowPayerDebtors.map(function (d) { return d.id; });
+
   var CARRIER_PREFIXES = ['Redwood', 'Ironhide', 'Blackhawk', 'Silver Creek', 'Golden State',
     'Lone Star', 'Bluegrass', 'Cedar Point', 'Granite', 'Timberline', 'Crossroads', 'Highline', 'Prairie'];
   var CARRIER_SUFFIXES = ['Transport', 'Freight Carriers', 'Logistics', 'Trucking', 'Haulers'];
@@ -54,8 +64,8 @@
   var RECENT_LOAD_COUNT = Math.round(LOADS_PER_MONTH * (RECENT_WINDOW_DAYS / 30));
   var STRAGGLER_COUNT = 18; // small tail of very-old open loads to populate the 90+ aging bucket
 
-  function buildLoad(i, daysAgo, forceOpen) {
-    var debtor = pick(debtors);
+  function buildLoad(i, daysAgo, forceOpen, debtorOverride) {
+    var debtor = debtorOverride || pick(debtors);
     var carrier = pick(carriers);
     var purchaseAmount = round2(rf(600, 3200));
     var feePct = rf(0.022, 0.028);
@@ -67,9 +77,14 @@
     var escrowReserve = -round2(purchaseAmount * ESCROW_RATE);
     var cashReserve = -round2(purchaseAmount * CASH_HOLD_RATE);
 
+    var isSlow = SLOW_PAYER_IDS.indexOf(debtor.id) !== -1;
     var status, closedDaysAgo;
     if (forceOpen) {
       status = 'open'; closedDaysAgo = null;
+    } else if (!isSlow && daysAgo > 60) {
+      // Clean customers never carry aged-open AR — force older loads closed so
+      // they drop out of open aging entirely.
+      status = 'closed'; closedDaysAgo = ri(0, daysAgo);
     } else {
       // Recent loads mostly stay open (current AR); older loads mostly close.
       var stayOpenChance = daysAgo <= 30 ? 0.85 : daysAgo <= 60 ? 0.35 : 0.15;
@@ -92,7 +107,8 @@
     loads.push(buildLoad(i, ri(0, RECENT_WINDOW_DAYS), false));
   }
   for (var s = 0; s < STRAGGLER_COUNT; s++) {
-    loads.push(buildLoad(RECENT_LOAD_COUNT + s, ri(RECENT_WINDOW_DAYS + 5, RECENT_WINDOW_DAYS + 60), true));
+    var slowDebtor = slowPayerDebtors[s % slowPayerDebtors.length];
+    loads.push(buildLoad(RECENT_LOAD_COUNT + s, ri(RECENT_WINDOW_DAYS + 5, RECENT_WINDOW_DAYS + 60), true, slowDebtor));
   }
 
   // ---- Reserve ledger: escrow held on every load at buy time, transferred to cash
@@ -148,7 +164,7 @@
 
   window.OPERFI_DEMO_LEDGER = {
     SEED: SEED, debtors: debtors, carriers: carriers, loads: loads,
-    reserveTxns: reserveTxns, ratings: ratings,
+    reserveTxns: reserveTxns, ratings: ratings, SLOW_PAYER_IDS: SLOW_PAYER_IDS,
     CASH_RESERVE_TARGET: CASH_RESERVE_TARGET, ESCROW_RATE: ESCROW_RATE
   };
 })();

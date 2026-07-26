@@ -41,3 +41,35 @@ test('one customer\'s invoices sum to that customer\'s bucket total', () => {
   const sum = c.invoices.reduce((s, inv) => s + inv.openBalance, 0);
   assert.ok(Math.abs(sum - c.buckets.total) < 0.02);
 });
+
+test('exactly the slow-payer customers carry 61+ aging (only they highlight)', () => {
+  const w = boot();
+  const a = w.OPERFI_DEMO.aging('purchase');
+  const hot = a.customers.filter((c) => (c.buckets.b61_90 + c.buckets.b90_plus) > 0);
+  const slowIds = w.OPERFI_DEMO_LEDGER.SLOW_PAYER_IDS;
+  assert.equal(hot.length, slowIds.length, `expected ${slowIds.length} highlighted, got ${hot.length}`);
+  hot.forEach((c) => assert.ok(slowIds.indexOf(c.debtorId) !== -1, `${c.name} highlighted but not a slow payer`));
+});
+
+test('every slow-payer customer is actually highlighted (has a 61+ balance)', () => {
+  const w = boot();
+  const a = w.OPERFI_DEMO.aging('purchase');
+  w.OPERFI_DEMO_LEDGER.SLOW_PAYER_IDS.forEach((id) => {
+    const c = a.customers.find((x) => x.debtorId === id);
+    assert.ok(c && (c.buckets.b61_90 + c.buckets.b90_plus) > 0, `slow payer ${id} not highlighted`);
+  });
+});
+
+test('no non-slow-payer customer has any 61+ open balance', () => {
+  const w = boot();
+  const a = w.OPERFI_DEMO.aging('purchase');
+  const slowIds = w.OPERFI_DEMO_LEDGER.SLOW_PAYER_IDS;
+  a.customers.filter((c) => slowIds.indexOf(c.debtorId) === -1).forEach((c) => {
+    assert.equal(c.buckets.b61_90 + c.buckets.b90_plus, 0, `${c.name} (clean) has 61+ balance`);
+  });
+});
+
+test('the aging table still lists most of the 20 customers', () => {
+  const a = boot().OPERFI_DEMO.aging('purchase');
+  assert.ok(a.customers.length >= 18, `expected ~20 customers, got ${a.customers.length}`);
+});

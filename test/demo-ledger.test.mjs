@@ -60,6 +60,14 @@ test('at least a few loads sit in the 90+ day aging tail (open, daysAgo > 90)', 
   assert.ok(stragglers.length >= 5, `expected some 90+ day open loads, got ${stragglers.length}`);
 });
 
+test('designates exactly 5 slow-payer debtors', () => {
+  const w = boot();
+  assert.equal(w.OPERFI_DEMO_LEDGER.SLOW_PAYER_IDS.length, 5);
+  w.OPERFI_DEMO_LEDGER.SLOW_PAYER_IDS.forEach((id) => {
+    assert.ok(w.OPERFI_DEMO_LEDGER.debtors.some((d) => d.id === id), `${id} not a real debtor`);
+  });
+});
+
 test('9 debtors have 6 months of rating history each', () => {
   const w = boot();
   const byDebtor = {};

@@ -67,3 +67,87 @@ test('the hover tooltip bubble is CSS-only: hidden by default, revealed on :hove
   assert.match(html, /\.decision-option::after\s*\{[^}]*opacity:\s*0;/);
   assert.match(html, /\.decision-option:hover::after,\s*\.decision-option:hover::before\s*\{[^}]*opacity:\s*1;/);
 });
+
+// ── CAVRA3 Phase 2C: forced doc-view gate ──────────────────────────────────
+function _p(overrides) {
+  return Object.assign({ account_vendor: { av_id: '1' }, vendor: {}, bank: { has_bank_info: false } }, overrides || {});
+}
+
+test('COI item is locked while a COI is on file but unopened', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_p());
+  w.cpDocTypesOnFile = { coi: true };
+  w.cpViewedTypes = {};
+  w.cpApplyForcedGates();
+  const coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, true);
+  const hint = w.document.querySelector('.cp-check-hint[data-hint-for="Checklist_COI_Truck_Driver"]');
+  assert.match(hint.textContent, /open the coi/i);
+});
+
+test('opening the COI (viewed) releases the lock', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_p());
+  w.cpDocTypesOnFile = { coi: true };
+  w.cpViewedTypes = { coi: true };
+  w.cpApplyForcedGates();
+  const coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, false);
+  const hint = w.document.querySelector('.cp-check-hint[data-hint-for="Checklist_COI_Truck_Driver"]');
+  assert.equal(hint.textContent.trim(), '');
+});
+
+test('no COI on file leaves the item checkable (attest, never blocks)', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_p());
+  w.cpDocTypesOnFile = {};   // nothing on file
+  w.cpViewedTypes = {};
+  w.cpApplyForcedGates();
+  const coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, false);
+});
+
+test('bank item gate applies only when the bank item is shown', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  // _checklistApplies true (no bank info) → bank item present
+  w.renderChecklist(_p({ bank: { has_bank_info: false } }));
+  w.cpDocTypesOnFile = { banking: true };
+  w.cpViewedTypes = {};
+  w.cpApplyForcedGates();
+  const bank = w.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]');
+  assert.ok(bank, 'bank item shown when _checklistApplies');
+  assert.equal(bank.disabled, true);
+});
+
+test('Select-All does not tick a locked item', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_p());
+  w.cpDocTypesOnFile = { coi: true };
+  w.cpViewedTypes = {};
+  w.cpApplyForcedGates();
+  const all = w.document.getElementById('cp-check-all');
+  all.checked = true;
+  all.onchange();
+  const coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.checked, false, 'locked COI item stays unchecked under Select-All');
+  // a non-gated item does get ticked
+  const auth = w.document.querySelector('.cp-check-item[data-key="Checklist_Authority_Active"]');
+  assert.equal(auth.checked, true);
+});
+
+test('a locked COI keeps the checklist incomplete (decision stays gated)', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_p());
+  w.cpDocTypesOnFile = { coi: true };
+  w.cpViewedTypes = {};
+  w.cpApplyForcedGates();
+  // tick every ENABLED item via Select-All
+  const all = w.document.getElementById('cp-check-all'); all.checked = true; all.onchange();
+  assert.equal(w.checklistComplete(), false, 'cannot complete while COI locked');
+});

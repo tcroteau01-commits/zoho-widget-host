@@ -518,6 +518,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .cp-dfile { font-size:12px; color:var(--of-gray-500); word-break:break-all; }
 .cp-doc-advisory { display:block; font-size:11px; font-weight:700; color:var(--of-amber-text); margin-top:4px; }
 .cp-doc-advisory:empty { display:none; }
+.cp-check-hint { display:block; font-size:11px; color:var(--of-amber-text); margin-left:24px; }
+.cp-check-hint:empty { display:none; }
 .cp-dnote { font-size:12px; color:var(--of-gray-500); }
 .cp-dacts { display:flex; align-items:center; gap:12px; flex:0 0 auto; }
 .cp-dbtn { font-size:12px; font-weight:600; color:var(--of-blue-text); background:none; border:none; cursor:pointer; padding:0; }
@@ -1871,6 +1873,31 @@ var CHECKLIST_ITEMS = [
 var CHECKLIST_BANK_ITEM = { key: 'Checklist_Bank_Letter_Verified', label: 'Bank letter verified directly' };
 var checklistState = {};
 
+// CAVRA3 Phase 2C — forced doc-view gate. Gate the COI / bank-letter confirm
+// items ONLY when that doc is on file but not yet opened in the viewer (Tom
+// 2026-07-26). No doc on file → attest as today; never makes booking impossible.
+var cpViewedTypes = {};
+var cpDocTypesOnFile = {};
+var FORCED_VIEW_MAP = { Checklist_COI_Truck_Driver: 'coi', Checklist_Bank_Letter_Verified: 'banking' };
+function cpApplyForcedGates() {
+  Object.keys(FORCED_VIEW_MAP).forEach(function (key) {
+    var cb = document.querySelector('.cp-check-item[data-key="' + key + '"]');
+    if (!cb) return;  // item not shown (e.g. bank item when _checklistApplies is false)
+    var type = FORCED_VIEW_MAP[key];
+    var hint = document.querySelector('.cp-check-hint[data-hint-for="' + key + '"]');
+    var lockable = !!cpDocTypesOnFile[type] && !cpViewedTypes[type];
+    if (lockable) {
+      cb.disabled = true; cb.checked = false; checklistState[key] = false;
+      if (hint) hint.textContent = 'Open the ' + (type === 'coi' ? 'COI' : 'bank document') + ' below to confirm';
+    } else {
+      cb.disabled = false;
+      if (hint) hint.textContent = '';
+    }
+  });
+  updateDecisionGate();
+}
+if (typeof window !== 'undefined') { window.cpApplyForcedGates = cpApplyForcedGates; }
+
 function _checklistApplies(p){
   var v=p.vendor||{}, bank=p.bank||{};
   var fs=(v.Factor_Status||'').toString();
@@ -1879,6 +1906,7 @@ function _checklistApplies(p){
 function renderChecklist(p){
   var el=document.getElementById('cp-checklist'); if(!el) return;
   checklistState={};
+  cpViewedTypes = {}; cpDocTypesOnFile = {};
   if(!p.account_vendor){
     el.innerHTML='<div class="card-title" style="margin-bottom:10px;">Confirm Before You Book</div>'+
       '<div style="color:var(--of-gray-500);font-size:13px;">Tender a load to this carrier to enable decision capture.</div>';
@@ -1892,18 +1920,22 @@ function renderChecklist(p){
     '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--of-gray-700);margin-bottom:10px;cursor:pointer;">'+
       '<input type="checkbox" id="cp-check-all"> Select All</label>'+
     items.map(function(it){
-      return '<label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:6px 0;cursor:pointer;">'+
-        '<input type="checkbox" class="cp-check-item" data-key="'+it.key+'" style="margin-top:2px;"> <span>'+esc(it.label)+'</span></label>';
+      return '<label style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;font-size:13px;padding:6px 0;cursor:pointer;">'+
+        '<input type="checkbox" class="cp-check-item" data-key="'+it.key+'" style="margin-top:2px;"> <span>'+esc(it.label)+'</span>'+
+        '<span class="cp-check-hint" data-hint-for="'+it.key+'"></span></label>';
     }).join('');
   var selectAll=document.getElementById('cp-check-all');
   if(selectAll) selectAll.onchange=function(){
-    Array.prototype.forEach.call(document.querySelectorAll('.cp-check-item'), function(cb){ cb.checked=selectAll.checked; checklistState[cb.getAttribute('data-key')]=selectAll.checked; });
+    Array.prototype.forEach.call(document.querySelectorAll('.cp-check-item'), function(cb){
+      if(cb.disabled) return;
+      cb.checked=selectAll.checked; checklistState[cb.getAttribute('data-key')]=selectAll.checked;
+    });
     updateDecisionGate();
   };
   Array.prototype.forEach.call(document.querySelectorAll('.cp-check-item'), function(cb){
     cb.onchange=function(){ checklistState[cb.getAttribute('data-key')]=cb.checked; updateDecisionGate(); };
   });
-  updateDecisionGate();
+  cpApplyForcedGates();
 }
 function checklistComplete(){
   var keys=Object.keys(checklistState);

@@ -327,3 +327,59 @@ test('viewing still delegates to OperFiDocViewer.open (advisory is additive)', a
   await new Promise(r => setTimeout(r, 0));
   assert.ok(w.OperFiDocViewer._calls.find(c => c.method === 'open'), 'viewer still opens');
 });
+
+test('rendering docs marks on-file types and re-applies the forced-view gate', async () => {
+  const docsPayload = { documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 'TC' }
+  ] };
+  const dom = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsPayload) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist({ account_vendor: { av_id: '1' }, vendor: {}, bank: { has_bank_info: false } });
+  await w.loadCarrierDocs();
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(w.cpDocTypesOnFile.coi, true);
+  const coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, true, 'COI item locked once the on-file COI is known');
+});
+
+test('the View button carries data-type', async () => {
+  const docsPayload = { documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 'TC' }
+  ] };
+  const dom = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsPayload) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window; w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  const btn = w.document.querySelector('.cp-doc-preview[data-token="TC"]');
+  assert.equal(btn.getAttribute('data-type'), 'coi');
+});
+
+test('clicking View records the viewed type and releases the gate', async () => {
+  const docsPayload = { documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 'TC' }
+  ] };
+  const dom = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsPayload) });
+    if (url.indexOf('/carrier-doc-authcheck') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ advisory: false, reasons: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window; w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist({ account_vendor: { av_id: '1' }, vendor: {}, bank: { has_bank_info: false } });
+  await w.loadCarrierDocs();
+  await new Promise(r => setTimeout(r, 0));
+  let coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, true);
+  w.document.querySelector('.cp-doc-preview[data-token="TC"]').click();
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(w.cpViewedTypes.coi, true);
+  coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, false, 'gate released after viewing');
+});

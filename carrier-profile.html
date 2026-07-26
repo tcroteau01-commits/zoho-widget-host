@@ -2040,6 +2040,8 @@ function _bindCarrierDocsListener() {
     if (!btn || !btn.classList.contains('cp-doc-preview')) return;
     openCarrierDoc(btn.getAttribute('data-token') || '', btn.getAttribute('data-filename') || '');
     cpFetchDocAdvisory(btn.getAttribute('data-token') || '');
+    var vt = btn.getAttribute('data-type') || '';
+    if (vt) { cpViewedTypes[vt] = true; cpApplyForcedGates(); }
   });
   _cpDocsListenerBound = true;
 }
@@ -2067,6 +2069,7 @@ function cpRecommendedDocs() {
 function renderCarrierDocs(data) {
   var body = document.getElementById('cp-docs-body');
   var countEl = document.getElementById('cp-docs-count');
+  cpDocTypesOnFile = {};
   if (!body) return;
   if (countEl) countEl.textContent = '';
   if (!data || data._error) { body.textContent = 'Could not load documents. Please try again.'; return; }
@@ -2092,7 +2095,7 @@ function renderCarrierDocs(data) {
         '<div class="cp-dfile">' + fname + '</div>' +
         '<span class="cp-doc-advisory" data-token="' + esc(token) + '"></span></div>' +
         '<div class="cp-dacts">' +
-        '<button class="cp-dbtn cp-doc-preview" data-token="' + esc(token) + '" data-filename="' + fname + '">View</button>' +
+        '<button class="cp-dbtn cp-doc-preview" data-token="' + esc(token) + '" data-filename="' + fname + '" data-type="' + esc(String(d.type || '')) + '">View</button>' +
         '<a class="cp-doc-link" href="' + esc(dlUrl) + '" download>Download</a>' +
         '</div></div>';
     });
@@ -2100,6 +2103,7 @@ function renderCarrierDocs(data) {
   }
   var present = {};
   docs.forEach(function (d) { present[d.type] = true; });
+  cpDocTypesOnFile = present;
   var missing = cpRecommendedDocs().filter(function (r) {
     return !r.match.some(function (k) { return present[k]; });
   });
@@ -2118,6 +2122,7 @@ function renderCarrierDocs(data) {
   html += carrierUploadHtml();
   body.innerHTML = html;
   _bindCarrierDocsListener();
+  cpApplyForcedGates();
 }
 
 function uploadCarrierDoc() {

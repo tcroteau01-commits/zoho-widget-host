@@ -383,3 +383,59 @@ test('clicking View records the viewed type and releases the gate', async () => 
   coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
   assert.equal(coi.disabled, false, 'gate released after viewing');
 });
+
+test('REGRESSION: a docs reload that errors releases a previously-locked forced-view gate (never stuck-locked)', async () => {
+  const docsPayload = { documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 'TC' }
+  ] };
+  let call = 0;
+  const dom = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) {
+      call += 1;
+      // First load: COI on file, unviewed -> gate locks the item.
+      if (call === 1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsPayload) });
+      // Second load (e.g. after an upload): backend/network failure -> non-ok response.
+      return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({ error: 'workdrive_error' }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window; w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist({ account_vendor: { av_id: '1' }, vendor: {}, bank: { has_bank_info: false } });
+
+  await w.loadCarrierDocs();
+  let coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, true, 'COI item locked once the on-file COI is known');
+
+  await w.loadCarrierDocs();
+  assert.deepStrictEqual(Object.keys(w.cpDocTypesOnFile), [], 'cpDocTypesOnFile reset on the error path');
+  coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, false, 'gate must be released, not stuck-locked, when the docs reload errors');
+});
+
+test('REGRESSION: a docs reload with no documents (data.reason) releases a previously-locked forced-view gate', async () => {
+  const docsPayload = { documents: [
+    { type: 'coi', label: 'Insurance (COI)', filename: 'coi.pdf', preview_token: 'TC' }
+  ] };
+  let call = 0;
+  const dom = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) {
+      call += 1;
+      if (call === 1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsPayload) });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ count: 0, documents: [], reason: 'no_documents' }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window; w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist({ account_vendor: { av_id: '1' }, vendor: {}, bank: { has_bank_info: false } });
+
+  await w.loadCarrierDocs();
+  let coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, true, 'COI item locked once the on-file COI is known');
+
+  await w.loadCarrierDocs();
+  assert.deepStrictEqual(Object.keys(w.cpDocTypesOnFile), [], 'cpDocTypesOnFile reset on the no-documents path');
+  coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, false, 'gate must be released, not stuck-locked, when reload finds no documents');
+});

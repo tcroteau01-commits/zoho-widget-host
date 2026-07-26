@@ -2072,9 +2072,10 @@ function renderCarrierDocs(data) {
   cpDocTypesOnFile = {};
   if (!body) return;
   if (countEl) countEl.textContent = '';
-  if (!data || data._error) { body.textContent = 'Could not load documents. Please try again.'; return; }
+  if (!data || data._error) { body.textContent = 'Could not load documents. Please try again.'; cpApplyForcedGates(); return; }
   if (data.reason) {
     body.innerHTML = 'No documents on file. <span class="cp-up-hint">Document upload available once this carrier is set up with you.</span>';
+    cpApplyForcedGates();
     return;
   }
   var docs = (data.documents || []);

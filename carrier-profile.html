@@ -677,6 +677,16 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div class="cp-accordion-body"><div id="cp-bank-routing"></div><div id="cp-bank-checklist" class="checklist-grid" style="margin-top:14px;"></div></div>
   </details>
 
+  <details class="cp-accordion" id="cp-acc-payment">
+    <summary>Payment &amp; Redirection <span id="cp-acc-payment-pill" class="acc-summary-pill clean">Clean</span><span class="tag">OperFi · Account_Vendor</span></summary>
+    <div class="cp-accordion-body">
+      <div id="cp-vfacts-payment"></div>
+      <div style="font-size:12px;color:var(--of-gray-700);line-height:1.5;margin-top:6px;">
+        Flags a mismatch between how this carrier is set up to be paid and the payment term on your relationship — the pattern behind most payment-redirection fraud. A clean state shows no exceptions.
+      </div>
+    </div>
+  </details>
+
   <!-- Decision History -->
   <div class="card">
     <div class="card-title">Decision History <span class="tag">Audit trail — Carrier_Risk_Decision</span></div>
@@ -1018,7 +1028,8 @@ var VERDICT_PILLAR_EL = {
   insurance: { pill: 'cp-acc-insurance-pill', facts: 'cp-vfacts-insurance' },
   safety:    { pill: 'cp-acc-safety-pill',    facts: 'cp-vfacts-safety' },
   crash:     { pill: 'cp-acc-crash-pill',     facts: 'cp-vfacts-crash' },
-  identity:  { pill: 'cp-acc-footprint-pill', facts: 'cp-vfacts-identity' }
+  identity:  { pill: 'cp-acc-footprint-pill', facts: 'cp-vfacts-identity' },
+  payment:   { pill: 'cp-acc-payment-pill',   facts: 'cp-vfacts-payment' }
 };
 function verdictFactRow(f){
   var cls = 'vfact ' + (f.verdict === 'FAIL' ? 'fail' : 'review') +

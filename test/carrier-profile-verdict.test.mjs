@@ -229,3 +229,41 @@ test('source bar and footer name FMCSA via CarrierOK', () => {
   assert.match(w.document.querySelector('.footer-note').textContent,
     /FMCSA \(via CarrierOK\)/);
 });
+
+test('payment pillar badge + fact row render from the verdict', () => {
+  const w = bootCarrierProfile();
+  const v = verdictPayload({
+    pillars: Object.assign({}, verdictPayload().pillars, {
+      payment: { verdict: 'FAIL', fail_count: 1, review_count: 0 }
+    }),
+    facts: [{ id: 'payment_factored_to_direct', pillar: 'payment', verdict: 'FAIL',
+      label: 'Factored carrier redirecting to direct pay',
+      detail: 'Confirm the change is genuine.', data_point: 'x' }]
+  });
+  w.applyVerdict({ verdict: v });
+  assert.equal(w.document.getElementById('cp-acc-payment-pill').textContent, 'FAIL');
+  assert.ok(w.document.getElementById('cp-acc-payment-pill').className.includes('flag'));
+  const box = w.document.getElementById('cp-vfacts-payment').innerHTML;
+  assert.match(box, /Factored carrier redirecting to direct pay/);
+  assert.match(box, /vfact fail/);
+});
+
+test('payment accordion section exists after the bank section', () => {
+  const w = bootCarrierProfile();
+  const acc = w.document.getElementById('cp-acc-payment');
+  assert.ok(acc, 'payment accordion exists');
+  assert.equal(acc.tagName, 'DETAILS');
+  assert.ok(w.document.getElementById('cp-vfacts-payment'), 'payment facts container exists');
+});
+
+test('internal-match identity fact renders in the identity container (free)', () => {
+  const w = bootCarrierProfile();
+  const v = verdictPayload({
+    facts: [{ id: 'internal_match', pillar: 'identity', verdict: 'FAIL',
+      label: 'Matches a carrier OperFi has flagged',
+      detail: 'Possible reincarnation.', data_point: 'phone' }]
+  });
+  w.applyVerdict({ verdict: v });
+  assert.match(w.document.getElementById('cp-vfacts-identity').innerHTML,
+    /Matches a carrier OperFi has flagged/);
+});

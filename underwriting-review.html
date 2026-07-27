@@ -488,15 +488,16 @@ tr:last-child td { border-bottom:none; }
 
         <div class="card">
           <div class="card-title">Credit Structuring</div>
-          <div class="rate-box">
-            <div class="rate-item"><div class="rv" id="rbLimit">—</div><div class="rl">Credit Limit</div></div>
-            <div class="rate-item"><div class="rv" id="rbRate">—</div><div class="rl">Rec. Rate</div></div>
-            <div class="rate-item"><div class="rv" id="rbReserve">0%</div><div class="rl">Reserve</div></div>
+          <div class="hint" style="font-size:11px;color:var(--of-gray-500);margin-bottom:10px">Pre-filled from the applicant's answers (OperFi rate sheet). Edit any rate if the deal needs it — saved terms flow to the client agreement.</div>
+          <div class="fld row2">
+            <div><label>Promotional Rate (%)</label><input type="text" id="uwPromoRate" placeholder="%"></div>
+            <div><label>Factoring Fee (%)</label><input type="text" id="uwRate" placeholder="%"></div>
           </div>
           <div class="fld row2" style="margin-top:12px">
-            <div><label>Approved Credit Limit</label><input type="text" id="uwLimit"></div>
-            <div><label>Recommended Rate</label><input type="text" id="uwRate"></div>
+            <div><label>Escrow / Reserve (%)</label><input type="text" id="uwEscrow" placeholder="%"></div>
+            <div><label>Advance Rate (%)</label><input type="text" id="uwAdvanceRate" placeholder="%"></div>
           </div>
+          <div class="fld" style="margin-top:12px"><label>Credit Limit ($)</label><input type="text" id="uwLimit" placeholder="$"></div>
         </div>
 
         <div class="card">
@@ -560,6 +561,32 @@ var AGR_URL_PATH = '/agreement-send-url'; // GET ?usdot= → { send_url } — a 
 
 // ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
+
+// Credit Structuring — the OperFi rate sheet's Promotional Rate isn't stored on intake:
+// it's 1.99% for Annual carriers and 0% for 90-Day terms and all Brokerage. Used only to
+// seed the field when the Application has no Promotional_Rate yet (underwriter can edit).
+function defaultPromoRate(app){
+  app = app || {};
+  var isAnnual = /annual/i.test(String(app.Rate_Term_Selection||''));
+  var isBroker = /broker/i.test(String(app.Authority_Type || app.Factoring_Authority_Selected || ''));
+  return (isAnnual && !isBroker) ? 1.99 : 0;
+}
+// Display a stored numeric term cleanly ("30000.00" → "30000", "3.00" → "3", "1.99" → "1.99").
+function fmtTerm(v){
+  if (v==null || v==='') return '';
+  var n=parseFloat(String(v).replace(/[^0-9.\-]/g,''));
+  return isNaN(n) ? String(v) : String(n);
+}
+// The finalized Credit Structuring terms the underwriter edits, written back onto the Application
+// so they flow into the client agreement / setup packet. Empty fields are omitted (don't wipe intake).
+function buildApplicationTerms(s){
+  var t = {}, m = {
+    Purchase_Limit: s.approvedCreditLimit, Factoring_Rate: s.recommendedRate,
+    Reserve_Percent: s.escrow, Advance_Rate: s.advanceRate, Promotional_Rate: s.promoRate
+  };
+  Object.keys(m).forEach(function(k){ var n = num(m[k]); if (n !== '') t[k] = n; });
+  return t;
+}
 
 // Dashboard buckets. Each is a predicate over an application (NOT mutually exclusive — e.g. an
 // approved app that needs a buyout counts in both "Approved / Denied" and "Options for Buy-in").
@@ -932,6 +959,7 @@ function buildAgreementRecipients(roles, inputs){
 }
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
+  defaultPromoRate: defaultPromoRate, fmtTerm: fmtTerm, buildApplicationTerms: buildApplicationTerms,
   composeNotesLog: composeNotesLog, formatStamp: formatStamp,
   stampClientMessage: stampClientMessage, stripClientStamp: stripClientStamp, clientStampOf: clientStampOf,
   agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
@@ -1143,12 +1171,15 @@ function runChecks(app) {
     .catch(function () { return null; });
 }
 
-function saveReview(payload, existingId, insuranceExpiration) {
+function saveReview(payload, existingId, insuranceExpiration, applicationTerms) {
   if (typeof fetch !== 'function') { console.log('DEMO save — Underwriting_Review payload:', JSON.stringify(payload, null, 2)); return Promise.resolve({ demo:true }); }
   var body = { application_id: payload[APPLICATION_LOOKUP] || '', review_id: existingId || '', review: payload };
   // Sent OUTSIDE `review` so it can't fail the Creator write; backend pushes it to the CRM Account
   // (matched by USDOT) only on an Approved decision.
   if (insuranceExpiration) body.insurance_expiration = insuranceExpiration;
+  // Finalized Credit Structuring terms — written onto the Application (best-effort, backend); kept
+  // outside `review` so a terms-write can never fail the review save.
+  if (applicationTerms && Object.keys(applicationTerms).length) body.application_terms = applicationTerms;
   return fetch(API_BASE + '/uw-review-save', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   }).then(function (r) {
@@ -1285,7 +1316,10 @@ function readState() {
     highRiskVolume: !!(MODEL && MODEL.highRiskVolume),
     decisionDate: $('uwDecisionDate').value,
     approvedCreditLimit: $('uwLimit').value,
-    recommendedRate: $('uwRate').value,
+    recommendedRate: $('uwRate').value,   // Factoring Fee
+    promoRate: ($('uwPromoRate') && $('uwPromoRate').value) || '',
+    escrow: ($('uwEscrow') && $('uwEscrow').value) || '',
+    advanceRate: ($('uwAdvanceRate') && $('uwAdvanceRate').value) || '',
     buyoutRequired: $('tgBuyout').classList.contains('on'),
     buyoutFactor: $('uwBuyoutFactor').value,
     estimatedBuyoutDate: $('uwBuyoutDate').value,
@@ -1319,8 +1353,6 @@ function renderGate() {
   if ($('approveGateNote')) $('approveGateNote').textContent = UW_REQUIRE_GATES
     ? 'Approve requires all 6 gates green. Decision syncs to CRM Deal stage.'
     : 'Decision syncs to CRM Deal stage.';
-  $('rbLimit').textContent = s.approvedCreditLimit || '—';
-  $('rbRate').textContent = s.recommendedRate || '—';
   renderAgreement();
 }
 
@@ -1793,8 +1825,17 @@ function renderModel(m) {
   $('uwClientMsg').value = stripClientStamp(r.Client_Message);   // edit box shows clean text (no stamp)
   // Creator date fields come back as "15-Aug-2026 00:00:00" — drop the time part for the input.
   $('uwDecisionDate').value = (r.Decision_Date || '').split(' ')[0];
-  $('uwLimit').value = r.Approved_Credit_Limit || '';
-  $('uwRate').value = r.Recommended_Rate || '';
+  // Credit Structuring — pre-fill the 5 rate-sheet terms from the applicant's answers (intake stored
+  // these on the Application). Underwriter edits save back onto the Application, so this always shows
+  // the latest. Fall back to the review's older Approved_Credit_Limit / Recommended_Rate if present.
+  var ap = m.application || {};
+  var pick = function(a, b){ return (a != null && a !== '') ? a : b; };
+  $('uwLimit').value = fmtTerm(pick(ap.Purchase_Limit, r.Approved_Credit_Limit));
+  $('uwRate').value = fmtTerm(pick(ap.Factoring_Rate, r.Recommended_Rate));
+  if ($('uwEscrow')) $('uwEscrow').value = fmtTerm(ap.Reserve_Percent);
+  if ($('uwAdvanceRate')) $('uwAdvanceRate').value = fmtTerm(ap.Advance_Rate);
+  if ($('uwPromoRate')) $('uwPromoRate').value = (ap.Promotional_Rate != null && ap.Promotional_Rate !== '')
+    ? fmtTerm(ap.Promotional_Rate) : String(defaultPromoRate(ap));
   $('tgBuyout').classList.toggle('on', !!r.Buyout_Required);
   $('uwBuyoutFactor').value = r.Buyout_Factor || '';
   $('uwBuyoutDate').value = (r.Estimated_Buyout_Date || '').split(' ')[0];
@@ -2171,14 +2212,18 @@ function submit(forceDecision) {
   var newClientMsg = stampClientMessage(($('uwClientMsg') && $('uwClientMsg').value) || '', MODEL.clientMessageStored || '', formatStamp(new Date()));
   s.clientMessage = newClientMsg;
   var payload = buildReviewPayload(s, MODEL.appId);
-  saveReview(payload, MODEL.reviewId, s.insuranceExpiration).then(function(res){
+  var terms = buildApplicationTerms(s);
+  saveReview(payload, MODEL.reviewId, s.insuranceExpiration, terms).then(function(res){
     // Commit the stamped note locally on any successful save (demo or live).
     MODEL.clientMessageStored = newClientMsg;
+    // Reflect the saved terms on the in-memory Application so a re-render keeps the edited values.
+    if (MODEL.application) Object.keys(terms).forEach(function(k){ MODEL.application[k] = terms[k]; });
     if (res && res.demo) { showStatus('✓ Demo: decision "'+payload.Decision2+'" validated and Underwriting_Review payload logged to the console.', 'success'); }
     else {
       // Capture the new/again review id so the next save UPDATES the same record (no duplicates).
       if (res && res.review_id) MODEL.reviewId = res.review_id;
       var msg = '✓ Saved. Decision "'+payload.Decision2+'" written to Underwriting_Review for USDOT '+MODEL.application.USDOT+'.';
+      if (res && res.termsSaved) msg += ' Credit terms updated on the application.';
       // Surface the sales-pipeline stage move (Application_Status) written by the backend.
       if (res && res.statusSynced && res.status) msg += ' Stage → '+res.status+'.';
       // Surface the CRM insurance-expiration sync outcome (only meaningful on an Approved decision).

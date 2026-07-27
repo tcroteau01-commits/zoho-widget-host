@@ -1602,17 +1602,53 @@ function submitApplication() {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   }).then(function (r) {
     return r.json().catch(function () { return {}; }).then(function (j) {
-      if (!r.ok || !j || !j.application_id) throw new Error((j && j.error) || ('submit failed (HTTP ' + r.status + ')'));
+      if (!r.ok || !j || !j.application_id) {
+        // Prefer the backend's field-level `detail` ("Field: message") — it says what to fix.
+        throw new Error((j && (j.detail || j.error)) || ('submit failed (HTTP ' + r.status + ')'));
+      }
       return j;
     });
   }).then(function (j) {
+    OF_LEAVE_GUARD.off();                       // submitted — safe to leave now
     renderSubmitted(j.link);
     btn.textContent = '✓ Submitted';
   }).catch(function (e) {
     console.error('submit failed', e);
-    showStatus('Submission failed: ' + (e && e.message ? e.message : e) + '. Please try again or contact your OperFi rep.', 'error');
+    // Keep the applicant on this page (guard against closing/refreshing) until they fix it + resubmit,
+    // and tell them SPECIFICALLY what to correct rather than a generic "try again".
+    OF_LEAVE_GUARD.on();
+    showStatus('Your application couldn’t be submitted — please fix this, then submit again: ' +
+      cleanSubmitError(e && e.message), 'error');
+    var sm = document.getElementById('statusMsg'); if (sm && sm.scrollIntoView) sm.scrollIntoView({ behavior: 'smooth', block: 'center' });
     btn.disabled = false; btn.textContent = '✓ Submit Application';
   });
+}
+
+// A failed submit leaves the applicant's data un-saved server-side — guard the tab so an accidental
+// close/refresh/navigate doesn't lose it. Armed only after a failed submit; disarmed on success.
+var OF_LEAVE_GUARD = (function () {
+  var armed = false;
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('beforeunload', function (e) {
+      if (!armed) return;
+      e.preventDefault(); e.returnValue = ''; return '';
+    });
+  }
+  return { on: function () { armed = true; }, off: function () { armed = false; } };
+})();
+
+// Turn the backend's create error into an applicant-facing "what to fix" line. The detail is
+// "Field_Link_Name: Creator message; …" — strip the link-name prefixes, keep the human message(s).
+// A bare generic error falls back to a friendly nudge.
+function cleanSubmitError(msg) {
+  var s = String(msg == null ? '' : msg).trim();
+  if (!s || /could not create application|submit failed \(HTTP/i.test(s)) {
+    return 'Please review your entries for anything missing or in the wrong format, then submit again — or contact your OperFi rep.';
+  }
+  return s.split(';').map(function (part) {
+    var i = part.indexOf(':');
+    return (i !== -1 ? part.slice(i + 1) : part).trim();
+  }).filter(Boolean).join(' ') || s;
 }
 
 // Assemble the submit payload. Children are sent WITHOUT the Application lookup — the backend

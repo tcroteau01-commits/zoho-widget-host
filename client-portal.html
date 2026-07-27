@@ -351,7 +351,7 @@ var DEMO_STATUS = {
   businessName: 'Brennan Eslinger Trucking LLC', status: 'Docs Requested', agreementStatus: 'Not Sent', submittedAt: 'Jun 8, 2026',
   authorityType: 'Carrier', formationType: 'LLC', veteran: 'No',
   clientMessage: 'Thanks for your application! A couple of follow-ups: your insurance certificate on file lists only one truck — please upload a current COI, and we still need a Driver’s License for each owner. Reach out with any questions.\n\n— 06/09/2026 2:16 PM',
-  buyout: { factor: 'TBS Factoring', estimatedDate: '15-Aug-2026' },
+  buyout: { factor: 'TBS Factoring', estimatedDate: '15-Aug-2026', notes: '[08/18/2026 9:10 AM]\nPayoff confirmed $11,800 — buyout letter sent.\n\n[08/15/2026 2:41 PM]\nRequested aging report from TBS Factoring.' },
   owners: [
     { First_Name1: 'Brennan', Last_Name1: 'Eslinger', Title: 'CEO', Ownership_Percent: 40 },
     { First_Name1: 'Dana', Last_Name1: 'Whitfield', Title: 'CFO', Ownership_Percent: 30 },
@@ -690,10 +690,22 @@ function renderStatus(data, isDemo) {
   // Prior-factor buyout — shown only when the backend sends a `buyout` block (the underwriter checked
   // "Buyout Required"). Client-friendly framing + the factor being bought out + the estimated date.
   var _bo = data.buyout;
+  // The underwriter's running buyout notes log (newest-first, timestamped) — shown to the client too.
+  var _boNotes = _bo && String(_bo.notes || '').trim();
+  var buyoutNotesInner = _boNotes
+    ? _boNotes.split(/\n\n+/).map(function (block) {
+        var nl = block.indexOf('\n');
+        var head = nl === -1 ? '' : block.slice(0, nl).replace(/^\[|\]$/g, '');
+        var body = nl === -1 ? block : block.slice(nl + 1);
+        return '<div style="margin-top:10px">' + (head ? '<div style="font-size:11.5px;color:var(--of-gray-500);font-weight:600;margin-bottom:2px">' + esc(head) + '</div>' : '') +
+          '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(body) + '</div></div>';
+      }).join('')
+    : '';
   var buyoutHtml = _bo
     ? '<div class="card" style="border-left:4px solid var(--of-amber)"><div class="card-title">Prior Factor Buyout</div>' +
         recRow('Prior factor', '', _bo.factor || '—') +
         (_bo.estimatedDate ? recRow('Estimated buyout date', '', _bo.estimatedDate) : '') +
+        buyoutNotesInner +
       '</div>'
     : '';
 

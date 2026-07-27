@@ -145,6 +145,7 @@ tr:last-child td { border-bottom:none; }
 .cf-icon { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
 .cf-icon.approve { background:var(--of-green-soft); color:var(--of-green-text); }
 .cf-icon.decline { background:var(--of-red-soft); color:var(--of-red-text); }
+.cf-icon.moreinfo { background:var(--of-amber-soft); color:var(--of-amber-text); }
 .cf-title { font-size:17px; font-weight:800; }
 .cf-sub { padding:6px 22px 4px; font-size:14px; color:var(--of-charcoal-soft); line-height:1.5; }
 .cf-sub b { color:var(--of-charcoal); }
@@ -413,8 +414,9 @@ tr:last-child td { border-bottom:none; }
       <div>
         <div class="card">
           <div class="card-title">Decision &amp; Administration</div>
-          <div class="fld"><label>Decision</label>
-            <select id="uwDecision"><option>Pending</option><option>Approved</option><option>Denied</option><option>More Information Needed</option></select>
+          <div class="fld" style="margin-bottom:8px">
+            <label>Decision <span id="uwDecisionCurrent" class="pill n" style="margin-left:4px">Pending</span></label>
+            <input type="hidden" id="uwDecision" value="Pending">
           </div>
           <div class="verify-row"><span class="toggle" id="tgAuthority">✓</span> Authority Verified</div>
           <div class="verify-row"><span class="toggle" id="tgOwnership">✓</span> Ownership Verified</div>
@@ -431,6 +433,7 @@ tr:last-child td { border-bottom:none; }
           <div class="fld"><label>Insurance Expiration <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· syncs to CRM on approve</span></label><input type="date" id="uwInsExp"></div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
             <button class="btn green block" id="btnApprove">✓ Approve</button>
+            <button class="btn orange block" id="btnMoreInfo">⋯ Request More Info</button>
             <button class="btn red block" id="btnDecline">✕ Decline</button>
             <button class="btn ghost block" id="btnSave">💾 Save progress</button>
           </div>
@@ -1811,7 +1814,7 @@ function renderModel(m) {
   renderUcc(m);
 
   var r = m.review || {};
-  $('uwDecision').value = r.Decision2 || 'Pending';
+  setDecision(r.Decision2 || 'Pending');
   $('tgAuthority').classList.toggle('on', !!r.Authority_Verified);
   $('tgOwnership').classList.toggle('on', !!r.Ownership_Verified);
   $('tgUcc').classList.toggle('on', !!r.UCC_Checked);
@@ -2143,8 +2146,9 @@ function boot() {
   $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
   ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
-  ['uwDecision','uwFraudFlag','uwChecklist','uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
+  ['uwFraudFlag','uwChecklist','uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
   $('btnApprove').addEventListener('click', function(){ confirmDecision('Approved'); });
+  if ($('btnMoreInfo')) $('btnMoreInfo').addEventListener('click', function(){ confirmDecision('More Information Needed'); });
   $('btnDecline').addEventListener('click', function(){ confirmDecision('Denied'); });
   $('btnSave').addEventListener('click', function(){ submit(null); });   // Save has no confirm — routine
   if ($('btnSaveBuyout')) $('btnSaveBuyout').addEventListener('click', saveBuyout);
@@ -2178,19 +2182,33 @@ function closeConfirm(){ var b = $('cfBackdrop'); if (b) b.classList.add('hidden
 // Approve/Decline ask "are you sure?" first — they commit the decision + move the sales-pipeline
 // stage. Save progress skips this (routine). On "Yes" we run the normal submit(), which validates
 // and persists exactly as before.
+// The decision is now driven ONLY by the action buttons (the dropdown was removed). This sets the
+// hidden decision value + the current-decision pill so the loaded/committed decision stays visible.
+function setDecision(val){
+  val = val || 'Pending';
+  var el = $('uwDecision'); if (el) el.value = val;
+  var pill = $('uwDecisionCurrent');
+  if (pill){
+    pill.textContent = val;
+    pill.className = 'pill ' + (val === 'Approved' ? 'g' : val === 'Denied' ? 'r'
+      : val === 'More Information Needed' ? 'a' : 'n');
+  }
+}
+
 function confirmDecision(decision){
   if (!MODEL) { showStatus('Open an application first.', 'error'); return; }
   var app = MODEL.application || {};
   var name = app.Business_Name || app.DBA || 'this application';
   var approve = decision === 'Approved';
-  $('cfIcon').className = 'cf-icon ' + (approve ? 'approve' : 'decline');
-  $('cfIcon').textContent = approve ? '✓' : '✕';
-  $('cfTitle').textContent = (approve ? 'Approve' : 'Decline') + ' this application?';
-  $('cfSub').innerHTML = 'Are you sure you want to ' + (approve ? 'approve' : 'decline') +
+  var moreInfo = decision === 'More Information Needed';
+  $('cfIcon').className = 'cf-icon ' + (approve ? 'approve' : moreInfo ? 'moreinfo' : 'decline');
+  $('cfIcon').textContent = approve ? '✓' : moreInfo ? '⋯' : '✕';
+  $('cfTitle').textContent = (approve ? 'Approve' : moreInfo ? 'Request more info on' : 'Decline') + ' this application?';
+  $('cfSub').innerHTML = 'Are you sure you want to ' + (approve ? 'approve' : moreInfo ? 'request more information for' : 'decline') +
     ' <b>' + escHtml(name) + '</b>' + (app.USDOT ? ' (USDOT ' + escHtml(app.USDOT) + ')' : '') + '?';
   var go = $('cfGo');
-  go.className = 'btn ' + (approve ? 'green' : 'red');
-  go.textContent = approve ? 'Yes, approve' : 'Yes, decline';
+  go.className = 'btn ' + (approve ? 'green' : moreInfo ? 'orange' : 'red');
+  go.textContent = approve ? 'Yes, approve' : moreInfo ? 'Yes, request info' : 'Yes, decline';
   go.onclick = function(){ closeConfirm(); submit(decision); };
   $('cfBackdrop').classList.remove('hidden');
 }
@@ -2198,7 +2216,7 @@ function confirmDecision(decision){
 function submit(forceDecision) {
   if (!MODEL) { showStatus('Open an application first.', 'error'); return; }
   var s = readState();
-  if (forceDecision) { s.decision = forceDecision; $('uwDecision').value = forceDecision; }
+  if (forceDecision) { s.decision = forceDecision; setDecision(forceDecision); }
   var v = validateDecision(s, ctx(), { requireGates: UW_REQUIRE_GATES });
   if (!v.ok) { showStatus('Cannot save: ' + v.errors[0], 'error'); return; }
   // Reflect the committed decision locally so the Client Agreement section reveals on the Approve

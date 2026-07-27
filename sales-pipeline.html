@@ -358,6 +358,7 @@ var DEMO_PIPELINE = [
     Application_Status: 'Docs Requested', Submitted_At: 'Jun 8, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'M. Reyes',
     loc: 'Glendale, AZ', Factoring_Rate: '3.00%', Purchase_Limit: '$30,000',
     Buyout_Required: true, Buyout_Factor: 'TBS Factoring', Estimated_Buyout_Date: '15-Aug-2026',
+    Buyout_Notes: '[08/18/2026 9:10 AM]\nPayoff confirmed $11,800 — buyout letter sent.\n\n[08/15/2026 2:41 PM]\nRequested aging report from TBS Factoring.',
     owners: [
       { First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'CEO', Ownership_Percent:40, Owner_Sequence:1, Birthdate:'02/14/1985', SSN:'111-22-3333', Phone:'6025551122', Email:'brennan@eslingerlogistics.com', Address:'456 Cargo Way, Phoenix, AZ' },
       { First_Name1:'Dana', Last_Name1:'Whitfield', Title:'CFO', Ownership_Percent:30, Owner_Sequence:2, Birthdate:'07/09/1979', SSN:'222-33-4444', Phone:'6025553344', Email:'dana@eslingerlogistics.com', Address:'78 Mesa Rd, Phoenix, AZ' },
@@ -440,7 +441,7 @@ function loadPipeline() {
 // Load the supporting records for one application (documents + UW note).
 function loadDetail(app) {
   if (STATE.mode === 'demo' || typeof fetch !== 'function') {
-    return Promise.resolve({ documents: app.documents || [], owners: app.owners || [], physicalAddress: app.loc || app.Physical_Address || '', uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', clientMessage: app.Client_Message || '', salesNotes: app.Sales_Notes || '', buyoutRequired: !!app.Buyout_Required, buyoutFactor: app.Buyout_Factor || '', buyoutDate: app.Estimated_Buyout_Date || '' });
+    return Promise.resolve({ documents: app.documents || [], owners: app.owners || [], physicalAddress: app.loc || app.Physical_Address || '', uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', clientMessage: app.Client_Message || '', salesNotes: app.Sales_Notes || '', buyoutRequired: !!app.Buyout_Required, buyoutFactor: app.Buyout_Factor || '', buyoutDate: app.Estimated_Buyout_Date || '', buyoutNotes: app.Buyout_Notes || '' });
   }
   // Reuse /application-by-usdot (returns documents + owners + the latest Underwriting_Review).
   var usdot = String(app.USDOT || '');
@@ -455,9 +456,10 @@ function loadDetail(app) {
         // Buyout the underwriter flagged (from the latest Underwriting_Review). Buyout_Required is a
         // Creator checkbox ("true"/"false"); the date comes back as "15-Aug-2026 00:00:00" → drop the time.
         buyoutRequired: String(rev.Buyout_Required).toLowerCase() === 'true',
-        buyoutFactor: rev.Buyout_Factor || '', buyoutDate: (rev.Estimated_Buyout_Date || '').split(' ')[0] };
+        buyoutFactor: rev.Buyout_Factor || '', buyoutDate: (rev.Estimated_Buyout_Date || '').split(' ')[0],
+        buyoutNotes: rev.Buyout_Notes || '' };
     })
-    .catch(function () { return { documents: [], owners: [], physicalAddress: app.loc || '', uwNotes: '', uwWhen: '', clientMessage: '', salesNotes: app[SALES_NOTES_FIELD] || '', buyoutRequired: false, buyoutFactor: '', buyoutDate: '' }; });
+    .catch(function () { return { documents: [], owners: [], physicalAddress: app.loc || '', uwNotes: '', uwWhen: '', clientMessage: '', salesNotes: app[SALES_NOTES_FIELD] || '', buyoutRequired: false, buyoutFactor: '', buyoutDate: '', buyoutNotes: '' }; });
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
@@ -602,10 +604,20 @@ function renderDetail(app, d) {
 
   // Buyout — shown only when the underwriter flagged Buyout Required on the review. Staff-facing:
   // the prior factor being bought out + the estimated buyout date.
+  // Running timestamped buyout notes log the underwriter keeps (staff-facing, read-only here).
+  var buyoutNotesHtml = String(d.buyoutNotes || '').trim()
+    ? '<div style="margin-top:12px">' + String(d.buyoutNotes).trim().split(/\n\n+/).map(function (block) {
+        var nl = block.indexOf('\n');
+        var head = nl === -1 ? '' : block.slice(0, nl).replace(/^\[|\]$/g, '');
+        var body = nl === -1 ? block : block.slice(nl + 1);
+        return '<div class="note">' + (head ? '<div class="who">' + esc(head) + '</div>' : '') + '<div class="txt">' + esc(body) + '</div></div>';
+      }).join('') + '</div>'
+    : '';
   var buyoutCard = d.buyoutRequired
     ? '<div class="card"><div class="card-title">Buyout Required</div><div class="rate-box">' +
         '<div class="rate-item"><div class="rv">' + esc(d.buyoutFactor || '—') + '</div><div class="rl">Prior Factor</div></div>' +
-        '<div class="rate-item"><div class="rv">' + esc(d.buyoutDate || '—') + '</div><div class="rl">Est. Buyout Date</div></div></div></div>'
+        '<div class="rate-item"><div class="rv">' + esc(d.buyoutDate || '—') + '</div><div class="rl">Est. Buyout Date</div></div></div>' +
+        buyoutNotesHtml + '</div>'
     : '';
 
   el('detail').innerHTML =

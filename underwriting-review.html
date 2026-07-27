@@ -506,7 +506,9 @@ tr:last-child td { border-bottom:none; }
             <div><label>Buyout Factor</label><input type="text" id="uwBuyoutFactor"></div>
             <div><label>Est. Buyout Date</label><input type="text" id="uwBuyoutDate" placeholder="MM/DD/YYYY"></div>
           </div>
-          <div class="fld" style="margin-top:12px"><label>Buyout Notes</label><textarea id="uwBuyoutNotes" rows="3" placeholder="Notes about this buyout — prior factor contact, payoff details, timing…"></textarea></div>
+          <div class="fld" style="margin-top:12px"><label>Buyout Notes</label>
+            <div class="notes-log" id="uwBuyoutLog"></div>
+            <textarea id="uwBuyoutNotes" rows="2" placeholder="Add a buyout note — saved as a timestamped entry when you click Save Buyout…"></textarea></div>
           <div style="margin-top:10px;display:flex;justify-content:flex-end"><button class="btn green sm" id="btnSaveBuyout">💾 Save Buyout</button></div>
         </div>
       </div>
@@ -1161,24 +1163,45 @@ function saveReview(payload, existingId, insuranceExpiration) {
 // the Underwriting_Review (a partial update via /uw-review-save), leaving the decision and the rest of
 // the form untouched. Requires a Buyout_Notes field on the Underwriting_Review form (else the note is
 // silently dropped, like any unknown Creator field).
-function buildBuyoutPayload(s, appId){
+function buildBuyoutPayload(s, appId, notesLog){
   var p = { Buyout_Required: !!s.buyoutRequired, Buyout_Factor: s.buyoutFactor || '',
-            Estimated_Buyout_Date: s.estimatedBuyoutDate || '', Buyout_Notes: s.buyoutNotes || '' };
+            Estimated_Buyout_Date: s.estimatedBuyoutDate || '', Buyout_Notes: notesLog || '' };
   if (appId != null) p[APPLICATION_LOOKUP] = appId;
   return p;
 }
+// "Personal" buyout save: writes only the buyout fields, and FOLDS the entry box into a timestamped
+// running log (newest-first) so each save adds a dated entry instead of overwriting. Empty entry →
+// log unchanged (lets the underwriter save factor/date without adding a note).
 function saveBuyout(){
   if (!MODEL) { showStatus('Open an application first.', 'error'); return; }
   var s = readState();
+  var entry = ($('uwBuyoutNotes') && $('uwBuyoutNotes').value) || '';
+  var newLog = composeNotesLog(MODEL.buyoutNotesLog || '', entry, formatStamp(new Date()));
   showStatus('Saving buyout…', 'loading');
-  return saveReview(buildBuyoutPayload(s, MODEL.appId), MODEL.reviewId).then(function(res){
+  return saveReview(buildBuyoutPayload(s, MODEL.appId, newLog), MODEL.reviewId).then(function(res){
     if (res && res.review_id) MODEL.reviewId = res.review_id;
+    MODEL.buyoutNotesLog = newLog;
     MODEL.review = MODEL.review || {};
     MODEL.review.Buyout_Required = !!s.buyoutRequired;
     MODEL.review.Buyout_Factor = s.buyoutFactor || '';
-    MODEL.review.Buyout_Notes = s.buyoutNotes || '';
-    showStatus('Buyout saved.', 'success');
+    MODEL.review.Buyout_Notes = newLog;
+    renderBuyoutLog(newLog);
+    if ($('uwBuyoutNotes')) $('uwBuyoutNotes').value = '';   // clear the entry box (the log now holds it)
+    showStatus(entry.trim() ? 'Buyout saved · note added.' : 'Buyout saved.', 'success');
   }).catch(function(e){ showStatus('Could not save buyout: ' + (e && e.message ? e.message : e), 'error'); });
+}
+function renderBuyoutLog(log){
+  var el = $('uwBuyoutLog'); if (!el) return;
+  log = String(log == null ? '' : log).trim();
+  if (!log){ el.innerHTML = ''; return; }
+  el.innerHTML = log.split(/\n\n+/).map(function(block){
+    var nl = block.indexOf('\n');
+    var head = nl === -1 ? '' : block.slice(0, nl);
+    var body = nl === -1 ? block : block.slice(nl + 1);
+    return /^\[.*\]$/.test(head)
+      ? '<div class="nl-entry"><span class="nl-head">' + escHtml(head) + '</span><span class="nl-body">' + escHtml(body) + '</span></div>'
+      : '<div class="nl-entry"><span class="nl-body">' + escHtml(block) + '</span></div>';
+  }).join('');
 }
 
 // ── DOM (browser only) ───────────────────────────────────────────────────────
@@ -1266,7 +1289,7 @@ function readState() {
     buyoutRequired: $('tgBuyout').classList.contains('on'),
     buyoutFactor: $('uwBuyoutFactor').value,
     estimatedBuyoutDate: $('uwBuyoutDate').value,
-    buyoutNotes: ($('uwBuyoutNotes') && $('uwBuyoutNotes').value) || '',
+    buyoutNotes: (MODEL && MODEL.buyoutNotesLog) || '',   // persisted timestamped log; the entry box (uwBuyoutNotes) is folded in on Save Buyout
     insuranceExpiration: ($('uwInsExp') && $('uwInsExp').value) || ''
   };
 }
@@ -1775,7 +1798,9 @@ function renderModel(m) {
   $('tgBuyout').classList.toggle('on', !!r.Buyout_Required);
   $('uwBuyoutFactor').value = r.Buyout_Factor || '';
   $('uwBuyoutDate').value = (r.Estimated_Buyout_Date || '').split(' ')[0];
-  if ($('uwBuyoutNotes')) $('uwBuyoutNotes').value = r.Buyout_Notes || '';
+  m.buyoutNotesLog = r.Buyout_Notes || '';        // running timestamped buyout log persists in Buyout_Notes
+  renderBuyoutLog(m.buyoutNotesLog);
+  if ($('uwBuyoutNotes')) $('uwBuyoutNotes').value = '';   // entry box starts empty (the log holds history)
 
   renderHrv();
   renderGate();

@@ -8,7 +8,7 @@
 (function (global) {
   var doc = global.document;
   var STYLE_ID = 'opf-dv-styles';
-  var state = { objectUrl: null, scale: 1, kind: null, pdf: null, loadToken: 0 };
+  var state = { objectUrl: null, scale: 1, rotation: 0, kind: null, pdf: null, loadToken: 0 };
 
   function injectStyles() {
     if (doc.getElementById(STYLE_ID)) return;
@@ -48,6 +48,7 @@
           '<button class="opf-dv-zoom-out" title="Zoom out">−</button>' +
           '<button class="opf-dv-zoom-fit" title="Fit width">Fit</button>' +
           '<button class="opf-dv-zoom-in" title="Zoom in">+</button>' +
+          '<button class="opf-dv-rotate" title="Rotate 90°">⟳</button>' +
           '<a class="opf-dv-download" download>Download</a>' +
           '<button class="opf-dv-close" title="Close (Esc)">Close ✕</button>' +
         '</div>' +
@@ -60,6 +61,7 @@
     bd.querySelector('.opf-dv-zoom-in').addEventListener('click', function () { setScale(state.scale * 1.25); });
     bd.querySelector('.opf-dv-zoom-out').addEventListener('click', function () { setScale(state.scale / 1.25); });
     bd.querySelector('.opf-dv-zoom-fit').addEventListener('click', function () { setScale(1); });
+    bd.querySelector('.opf-dv-rotate').addEventListener('click', rotate);
     if (!doc.__opfDvKeyBound) {
       doc.__opfDvKeyBound = true;
       doc.addEventListener('keydown', function (e) {
@@ -81,13 +83,33 @@
     b.appendChild(e);
   }
 
+  // Apply the current zoom + rotation to the <img> (images are transformed in the browser; PDFs
+  // are re-rendered by PDF.js instead — see renderPdf).
+  function applyImageTransform(img) {
+    if (!img) return;
+    img.style.width = (state.scale * 100) + '%';
+    img.style.transform = state.rotation ? ('rotate(' + state.rotation + 'deg)') : '';
+    // A 90°/270° turn swaps the visual footprint; give it margin so the rotated edges aren't clipped.
+    img.style.margin = (state.rotation % 180 === 90) ? 'auto 0' : '0';
+  }
+
   function setScale(s) {
     state.scale = Math.max(0.25, Math.min(s, 5));
     if (state.kind === 'image') {
-      var img = bodyEl().querySelector('img');
-      if (img) img.style.width = (state.scale * 100) + '%';
+      applyImageTransform(bodyEl().querySelector('img'));
     } else if (state.kind === 'pdf' && state.pdf) {
       renderPdf(state.pdf, state.loadToken); // re-render at new scale — pass current token (not a new load)
+    }
+  }
+
+  // Rotate the document 90° clockwise. Images transform via CSS; PDFs re-render through PDF.js's
+  // viewport rotation so the canvas stays crisp at any angle.
+  function rotate() {
+    state.rotation = (state.rotation + 90) % 360;
+    if (state.kind === 'image') {
+      applyImageTransform(bodyEl().querySelector('img'));
+    } else if (state.kind === 'pdf' && state.pdf) {
+      renderPdf(state.pdf, state.loadToken);
     }
   }
 
@@ -125,7 +147,7 @@
     var bd = ensureModal();
     wireWorker();
     bd.classList.remove('hidden');
-    state.scale = 1; state.pdf = null; state.kind = null;
+    state.scale = 1; state.rotation = 0; state.pdf = null; state.kind = null;
     var myToken = ++state.loadToken;
     bd.querySelector('.opf-dv-title').textContent = opts.filename || 'Document';
     var pgReset = bd.querySelector('.opf-dv-page'); if (pgReset) pgReset.textContent = ''; // clear stale page count (image/error views never set it)
@@ -165,6 +187,7 @@
     img.src = objectUrl;
     img.alt = 'Document';
     b.appendChild(img);
+    applyImageTransform(img);
   }
 
   function renderPdfBytes(arrayBuffer, myToken) {
@@ -198,7 +221,7 @@
         if (myToken !== state.loadToken) return; // superseded — stop appending pages
         return pdf.getPage(n).then(function (page) {
           if (myToken !== state.loadToken) return; // check again after async getPage
-          var viewport = page.getViewport({ scale: state.scale });
+          var viewport = page.getViewport({ scale: state.scale, rotation: state.rotation });
           var canvas = doc.createElement('canvas');
           canvas.width = Math.round(viewport.width);
           canvas.height = Math.round(viewport.height);
@@ -231,7 +254,7 @@
     var bd = doc.querySelector('.opf-dv-backdrop');
     if (bd) bd.classList.add('hidden');
     if (state.objectUrl) { global.URL.revokeObjectURL(state.objectUrl); state.objectUrl = null; }
-    state.pdf = null; state.kind = null;
+    state.pdf = null; state.kind = null; state.rotation = 0; state.scale = 1;
     var b = bodyEl(); if (b) b.innerHTML = '';
   }
 

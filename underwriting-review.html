@@ -2141,7 +2141,19 @@ function boot() {
   if ($('addDocReqToggle')) $('addDocReqToggle').addEventListener('click', function(){ var f=$('addDocReqForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
   if ($('rdSave')) $('rdSave').addEventListener('click', requestDoc);
   if ($('hrvToggle')) $('hrvToggle').addEventListener('click', function(){ var f=$('hrvForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
-  if ($('hrvApply')) $('hrvApply').addEventListener('click', applyHighRiskVolume);
+  if ($('hrvApply')) $('hrvApply').addEventListener('click', function(){
+    if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+    var app = MODEL.application || {};
+    var name = app.Business_Name || app.DBA || 'this application';
+    confirmAction({
+      icon: '⚠', iconCls: 'moreinfo', goCls: 'orange', goText: 'Yes, flag as high risk',
+      title: 'Flag as High Volume / High Risk?',
+      sub: 'This applies the §9.2 expanded documentation requirements to <b>' + escHtml(name) + '</b>'
+         + (app.USDOT ? ' (USDOT ' + escHtml(app.USDOT) + ')' : '')
+         + ' and requests the additional documents from the client. Continue?',
+      onGo: applyHighRiskVolume
+    });
+  });
   if ($('hrvClear')) $('hrvClear').addEventListener('click', clearHighRiskVolume);
   $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
@@ -2193,6 +2205,20 @@ function setDecision(val){
     pill.className = 'pill ' + (val === 'Approved' ? 'g' : val === 'Denied' ? 'r'
       : val === 'More Information Needed' ? 'a' : 'n');
   }
+}
+
+// Generic "are you sure?" using the shared confirm modal (cfBackdrop). onGo runs on confirm.
+function confirmAction(opts){
+  opts = opts || {};
+  $('cfIcon').className = 'cf-icon ' + (opts.iconCls || 'moreinfo');
+  $('cfIcon').textContent = opts.icon || '⚠';
+  $('cfTitle').textContent = opts.title || 'Are you sure?';
+  $('cfSub').innerHTML = opts.sub || '';
+  var go = $('cfGo');
+  go.className = 'btn ' + (opts.goCls || 'orange');
+  go.textContent = opts.goText || 'Yes, continue';
+  go.onclick = function(){ closeConfirm(); if (opts.onGo) opts.onGo(); };
+  $('cfBackdrop').classList.remove('hidden');
 }
 
 function confirmDecision(decision){

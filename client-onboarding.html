@@ -997,6 +997,17 @@ function verifyGovx() {
     .catch(function () { UI.govxDegraded = true; setGovxStatus('Couldn’t verify right now — we’ll confirm it after you submit.', 'muted'); });
 }
 
+// A date the intake accepts: MM/DD/YYYY (matches the field placeholders + what the backend normalizes).
+// Rejects impossible dates (13/40/2027, 02/31/2027) so a bad date is caught here, not at the server.
+function isDate(v) {
+  var m = String(v == null ? '' : v).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return false;
+  var mo = +m[1], da = +m[2], yr = +m[3];
+  if (mo < 1 || mo > 12 || da < 1 || da > 31 || yr < 1900 || yr > 2100) return false;
+  var d = new Date(yr, mo - 1, da);
+  return d.getFullYear() === yr && d.getMonth() === mo - 1 && d.getDate() === da;
+}
+
 function validateAll(s) {
   var errors = [];
   var req = function (cond, field, msg) { if (!cond) errors.push({ field: field, msg: msg }); };
@@ -1029,6 +1040,12 @@ function validateAll(s) {
     var o2 = (s.owners || [])[1] || {};
     req(o2.first && o2.last, 'owner', 'A second owner is required because Owner 1 holds under 100%.');
   }
+  // Date fields must be MM/DD/YYYY — tell the applicant the exact format so they can fix it here
+  // (rather than a create bounce at submit). Owner birthdates + the factor termination date.
+  (s.owners || []).forEach(function (o, i) {
+    if (o && o.dob && !isDate(o.dob)) errors.push({ field: 'owner', msg: "Owner " + (i + 1) + "'s birthdate must be a real date in MM/DD/YYYY format (e.g. 03/15/1985)." });
+  });
+  if (s.termDate && !isDate(s.termDate)) errors.push({ field: 'opTermDate', msg: 'The factor termination date must be a real date in MM/DD/YYYY format (e.g. 03/15/2027).' });
   if (s.vet) req(s.govxVerified || (s.govxDegraded && s.govxCode), 'govxCode', 'Verify your GovX code to continue (use the Verify button).');
   req(s.termsAccepted, 'terms', 'You must accept the Terms & Conditions.');
   if (s.authority === 'broker') req(s.appFeePaid, 'appFee', 'You must authorize the $150 due-diligence application fee.');
@@ -1048,7 +1065,7 @@ var OF = {
   config: { API_BASE: API_BASE, USDOT_LOOKUP_PATH: USDOT_LOOKUP_PATH, SUBMIT_PATH: SUBMIT_PATH, CRM_SYNC_PATH: CRM_SYNC_PATH, FORM: FORM, APPLICATION_LOOKUP: APPLICATION_LOOKUP, PLACES_AC_PATH: PLACES_AC_PATH, PLACE_DETAILS_PATH: PLACE_DETAILS_PATH },
   rateRow: rateRow, computeQuote: computeQuote, resolveAuthority: resolveAuthority,
   buildApplicationPayload: buildApplicationPayload, buildOwnerPayloads: buildOwnerPayloads,
-  buildChildPayloads: buildChildPayloads, buildSubmitBody: buildSubmitBody, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail,
+  buildChildPayloads: buildChildPayloads, buildSubmitBody: buildSubmitBody, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail, isDate: isDate,
   formatPlace: formatPlace
 };
 global.OF = OF;
@@ -1645,10 +1662,13 @@ function cleanSubmitError(msg) {
   if (!s || /could not create application|submit failed \(HTTP/i.test(s)) {
     return 'Please review your entries for anything missing or in the wrong format, then submit again — or contact your OperFi rep.';
   }
-  return s.split(';').map(function (part) {
+  var out = s.split(';').map(function (part) {
     var i = part.indexOf(':');
     return (i !== -1 ? part.slice(i + 1) : part).trim();
   }).filter(Boolean).join(' ') || s;
+  // If Creator complained about a date format, spell out the format the intake expects.
+  if (/date format|valid date/i.test(out) && !/MM\/DD\/YYYY/.test(out)) out += ' Please use MM/DD/YYYY.';
+  return out;
 }
 
 // Assemble the submit payload. Children are sent WITHOUT the Application lookup — the backend

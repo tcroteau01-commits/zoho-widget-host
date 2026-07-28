@@ -47,10 +47,18 @@ html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .status-msg.error { background:var(--of-red-soft); color:var(--of-red-text); border:1px solid #ef9a9a; }
 .status-msg.loading { background:var(--of-amber-soft); color:var(--of-amber-text); border:1px solid #ffe082; }
 /* Timestamped underwriting log: read-only history above the new-note entry box. */
-.notes-log { max-height:150px; overflow-y:auto; margin-bottom:6px; }
+.notes-log { max-height:260px; overflow-y:auto; margin-bottom:6px; }
 .notes-log .nl-entry { padding:6px 9px; margin-bottom:6px; border-left:2px solid var(--of-amber,#e0a44e); background:#faf8f4; border-radius:0 5px 5px 0; }
+.notes-log .nl-entry.sales { border-left-color:#3b82c4; background:#f4f7fb; }
+.notes-log .nl-entry.uw { border-left-color:var(--of-amber,#e0a44e); }
+.notes-log .nl-entry.sys { border-left-color:#9aa0a6; background:#f6f6f5; }
 .notes-log .nl-head { display:block; font-size:11px; font-weight:700; color:#8a7d6a; margin-bottom:2px; letter-spacing:.02em; }
+.notes-log .nl-tag { display:inline-block; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; padding:0 5px; border-radius:8px; margin-left:6px; vertical-align:middle; }
+.notes-log .nl-tag.sales { color:#1f5b96; background:#dbe8f5; }
+.notes-log .nl-tag.uw { color:#8a5a12; background:#f5e6cc; }
+.notes-log .nl-tag.sys { color:#5a5f64; background:#e6e6e4; }
 .notes-log .nl-body { font-size:12.5px; line-height:1.5; white-space:pre-wrap; color:#3a3a3a; }
+.notes-log .nl-empty { font-size:12px; color:var(--of-gray-500); padding:6px 2px; }
 
 .console { display:none; }
 .console.show { display:block; }
@@ -414,7 +422,9 @@ tr:last-child td { border-bottom:none; }
           <div class="fld"><label>Checklist Status</label>
             <select id="uwChecklist"><option>Not Started</option><option>In Progress</option><option>Complete</option></select>
           </div>
-          <div class="fld"><label>Note <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· shown on the client portal &amp; sales pipeline</span></label><textarea id="uwClientMsg" rows="3" placeholder="Write a note — it appears on the client's document portal and on the sales pipeline. Saved when you Save / Approve / Decline."></textarea></div>
+          <div class="fld"><label>Notes &amp; History <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· sales + underwriting, newest first</span></label>
+            <div class="notes-log" id="uwClientMsgLog"></div>
+            <textarea id="uwClientMsg" rows="3" placeholder="Add a note — timestamped &amp; attributed to you, added to the history above, and shown on the client portal &amp; sales pipeline. Saved when you Save / Approve / Decline."></textarea></div>
           <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
           <div class="fld"><label>Insurance Expiration <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· syncs to CRM on approve</span></label><input type="date" id="uwInsExp"></div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
@@ -770,6 +780,9 @@ function stateFromAddress(addr) {
 function stateLinks(code) { code = String(code || '').toUpperCase(); return STATE_LINKS[code] || null; }
 // FMCSA SAFER company snapshot deep-link by USDOT (public safety/authority/insurance record).
 function saferUrl(dot) { dot = String(dot == null ? '' : dot).replace(/[^0-9]/g, ''); return dot ? 'https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=USDOT&original_query_param=NAME&query_string=' + dot : ''; }
+// Carrier-OK public profile for a USDOT — the same carrier source the automated review uses; a quick
+// due-diligence link for the underwriter.
+function carrierOkUrl(dot) { dot = String(dot == null ? '' : dot).replace(/[^0-9]/g, ''); return dot ? 'https://www.carrier-ok.com/profiles?dot_number=' + dot : ''; }
 // "{label} — {ST}" block: up to 3 links (omitting any the state lacks); friendly note otherwise.
 function renderStateFilings(code, labelOverride) {
   var label = labelOverride || 'State Filings';
@@ -949,7 +962,8 @@ function buildAgreementRecipients(roles, inputs){
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
   defaultPromoRate: defaultPromoRate, fmtTerm: fmtTerm, buildApplicationTerms: buildApplicationTerms,
-  composeNotesLog: composeNotesLog, formatStamp: formatStamp, checksFromReview: checksFromReview,
+  composeNotesLog: composeNotesLog, formatStamp: formatStamp, checksFromReview: checksFromReview, parseSalesNotes: parseSalesNotes, uwAuthor: uwAuthor,
+  parseClientMsg: parseClientMsg, noteTime: noteTime, buildNoteHistory: buildNoteHistory, saferUrl: saferUrl, carrierOkUrl: carrierOkUrl,
   stampClientMessage: stampClientMessage, stripClientStamp: stripClientStamp, clientStampOf: clientStampOf,
   agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
@@ -979,7 +993,8 @@ var DEMO_APPS = {
       USDOT:'4366362', MC_Number:'1709488', EIN:'84-21••••', Business_Formation_Type:'LLC', Equipment_Types:['Dry Van','Flatbed'],
       Number_of_Trucks:1, Number_of_Drivers:1, Monthly_Invoices_to_Factor:'$22,000', Has_Prior_Factor:'Yes',
       Current_Previous_Factor:'TBS Factoring', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'Recourse',
-      Credit_Issues:['Bankruptcy'], Credit_Explanation:'Chapter 11 filed 2019 during a prior trucking venture; fully discharged 2021. No defaults since.', loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes' },
+      Credit_Issues:['Bankruptcy'], Credit_Explanation:'Chapter 11 filed 2019 during a prior trucking venture; fully discharged 2021. No defaults since.', loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes',
+      Sales_Notes:'[06/07/2026 9:12 AM] J. Alvarez: Prospect called in — eager to start, wants to factor first loads next week.\n[06/08/2026 1:40 PM] J. Alvarez: Sent the COI request reminder; owner said insurance agent will email it today.' },
     owners: [
       { First_Name1:'Brennan', Last_Name1:'Eslinger', Title:'CEO', Ownership_Percent:40, Owner_Sequence:1, Birthdate:'02/14/1985', SSN:'111-22-3333', Phone:'6025551122', Email:'brennan@eslingerlogistics.com', Address:'456 Cargo Way, Phoenix, AZ', sosRole:'Managing Member' },
       { First_Name1:'Dana', Last_Name1:'Whitfield', Title:'CFO', Ownership_Percent:30, Owner_Sequence:2, Birthdate:'07/09/1979', SSN:'222-33-4444', Phone:'6025553344', Email:'dana@eslingerlogistics.com', Address:'78 Mesa Rd, Phoenix, AZ', sosRole:'Member' },
@@ -1539,6 +1554,61 @@ function renderNotesLog(log){
   }).join('');
 }
 
+// The note author = the assigned underwriter (the identity the widget has). Falls back to a generic label.
+function uwAuthor(){ var a = (MODEL && MODEL.application) || {}; var n = a.Assigned_Underwriter; return (n && n !== '—') ? n : 'Underwriter'; }
+
+// Parse the Application's Sales_Notes running log (as written by the sales pipeline: one line per note,
+// "[stamp] Author: text", oldest-first) into {stamp,author,text} entries, newest-first for display.
+function parseSalesNotes(raw){
+  return String(raw==null?'':raw).split('\n').map(function(l){ return l.replace(/\s+$/,''); }).filter(function(l){ return l.trim(); })
+    .map(function(line){ var m = line.match(/^\s*\[([^\]]*)\]\s*(?:([^:]+):\s*)?([\s\S]*)$/);
+      return m ? { stamp:(m[1]||'').trim(), author:(m[2]||'').trim(), text:(m[3]||'').trim() } : { stamp:'', author:'', text:line.trim() }; })
+    .reverse();
+}
+// Parse the underwriter's Client_Message note into {who,stamp,text} entries. Handles BOTH the NEW log
+// format ("[stamp · author]\n text" blocks, newest-first) and a LEGACY single note ("text\n\n— <stamp>").
+function parseClientMsg(raw){
+  raw = String(raw==null?'':raw).trim();
+  if (!raw) return [];
+  if (raw.charAt(0) !== '['){   // legacy single note
+    var stamp = clientStampOf(raw), text = stripClientStamp(raw);
+    return text ? [{ who:'', stamp:stamp, text:text }] : [];
+  }
+  return raw.split(/\n\n+/).map(function(block){
+    var nl = block.indexOf('\n'); var head = nl===-1 ? '' : block.slice(1,nl).replace(/\]$/,''); var body = nl===-1 ? block : block.slice(nl+1);
+    var parts = head.split(' · ');
+    return { who:(parts[1]||'').trim(), stamp:(parts[0]||'').trim(), text:body };
+  }).filter(function(e){ return e.text; });
+}
+// Parse "MM/DD/YYYY h:mm AM" (underwriting) or "M/D/YYYY, h:mm:ss AM" (sales toLocaleString) → epoch ms
+// for chronological sorting. Unparseable → 0 (sorts to the bottom).
+function noteTime(stamp){
+  var m = String(stamp==null?'':stamp).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\D+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)/i);
+  if (!m) return 0;
+  var h = parseInt(m[4],10) % 12; if (/PM/i.test(m[6])) h += 12;
+  return new Date(+m[3], +m[1]-1, +m[2], h, +m[5]).getTime();
+}
+// Merge the underwriter's notes (Client_Message) and the sales team's notes (Sales_Notes) into ONE
+// chronological history, newest-first — the central activity log shown in the Notes & History box.
+function buildNoteHistory(clientMsg, salesRaw){
+  var uw = parseClientMsg(clientMsg).map(function(e){ return { source:'uw', who:e.who||'Underwriting', stamp:e.stamp, text:e.text, t:noteTime(e.stamp) }; });
+  var sales = parseSalesNotes(salesRaw).map(function(e){ return { source:'sales', who:e.author||'Sales', stamp:e.stamp, text:e.text, t:noteTime(e.stamp) }; });
+  return uw.concat(sales).sort(function(a,b){ return b.t - a.t; });
+}
+// Render the unified Notes & History (sales + underwriting) into the box above the entry field, with a
+// source tag on each entry and a normalized timestamp so the two feeds read as one thread.
+function renderNoteHistory(clientMsg, salesRaw){
+  var el = $('uwClientMsgLog'); if (!el) return;
+  var items = buildNoteHistory(clientMsg, salesRaw);
+  if (!items.length){ el.innerHTML = '<div class="nl-empty">No notes yet — add the first one below.</div>'; return; }
+  el.innerHTML = items.map(function(n){
+    var show = n.t ? formatStamp(new Date(n.t)) : n.stamp;
+    var tag = n.source==='sales' ? 'Sales' : 'Underwriting';
+    var head = escHtml(n.who) + (show ? ' · ' + escHtml(show) : '') + ' <span class="nl-tag ' + n.source + '">' + tag + '</span>';
+    return '<div class="nl-entry ' + n.source + '"><span class="nl-head">' + head + '</span><span class="nl-body">' + escHtml(n.text) + '</span></div>';
+  }).join('');
+}
+
 function showStatus(msg, type){ var el=$('statusMsg'); el.textContent=msg; el.className='status-msg show '+type; }
 function clearStatus(){ $('statusMsg').className='status-msg'; }
 function bindToggle(id){ $(id).addEventListener('click', function(){ this.classList.toggle('on'); renderGate(); }); }
@@ -1634,9 +1704,14 @@ function renderModel(m) {
     ['Requested Term', (a.Rate_Term_Selection||'').replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],
     ['Credit Issues', creditFlags.length ? creditFlags.join(', ') : 'None']
   ].map(function(r){ return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+(r[1]||'—')+'</div></div>'; }).join('');
-  // FMCSA SAFER snapshot (by USDOT) — quick due-diligence link, shown above the credit explanation.
-  var _safer = saferUrl(a.USDOT);
-  if (_safer) appHtml += '<div class="row"><div class="k">FMCSA</div><div class="v"><a href="' + _safer + '" target="_blank" rel="noopener" style="color:var(--of-blue-text,#1a5fb4);font-weight:600;text-decoration:none">SAFER Snapshot ↗</a></div></div>';
+  // Due-diligence links (by USDOT) — FMCSA SAFER snapshot + Carrier-OK profile, on one row above the
+  // credit explanation. Each link is included only when its URL builds (i.e. a USDOT is present).
+  var _ddStyle = 'color:var(--of-blue-text,#1a5fb4);font-weight:600;text-decoration:none';
+  var _dd = [[saferUrl(a.USDOT), 'SAFER Snapshot ↗'], [carrierOkUrl(a.USDOT), 'CarrierOK Profile ↗']]
+    .filter(function(l){ return l[0]; })
+    .map(function(l){ return '<a href="' + l[0] + '" target="_blank" rel="noopener" style="' + _ddStyle + '">' + l[1] + '</a>'; })
+    .join(' <span style="color:var(--of-gray-500)">·</span> ');
+  if (_dd) appHtml += '<div class="row"><div class="k">Due Diligence</div><div class="v">' + _dd + '</div></div>';
   // When the prospect reported credit issue(s), surface THEIR explanation prominently for the underwriter.
   if (creditFlags.length) {
     appHtml += '<div class="row credit-expl"><div class="k">Credit Explanation</div><div class="v">' +
@@ -1830,8 +1905,10 @@ function renderModel(m) {
   m.notesLog = r.UW_Notes || '';           // the running timestamped log persists in UW_Notes
   renderNotesLog(m.notesLog);
   if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
-  m.clientMessageStored = r.Client_Message || '';   // full stored value incl. the trailing "— <stamp>"
-  $('uwClientMsg').value = stripClientStamp(r.Client_Message);   // edit box shows clean text (no stamp)
+  m.clientMessageStored = r.Client_Message || '';   // the running note log (or a legacy single note)
+  // Central hub: unified sales + underwriting history (newest-first) above the entry box.
+  renderNoteHistory(m.clientMessageStored, (m.application || {}).Sales_Notes);
+  if ($('uwClientMsg')) $('uwClientMsg').value = ''; // the box is for a NEW entry, not editing history
   // Creator date fields come back as "15-Aug-2026 00:00:00" — drop the time part for the input.
   $('uwDecisionDate').value = (r.Decision_Date || '').split(' ')[0];
   // Credit Structuring — pre-fill the 5 rate-sheet terms from the applicant's answers (intake stored
@@ -2280,15 +2357,19 @@ function submit(forceDecision) {
   MODEL.review.Decision2 = s.decision;
   renderAgreement();
   showStatus('Saving decision…', 'loading');
-  // Stamp the client note with the current date/time (keeping the old time if the text is unchanged),
-  // so the client portal + sales pipeline can show when it was posted. Persisted as Client_Message.
-  var newClientMsg = stampClientMessage(($('uwClientMsg') && $('uwClientMsg').value) || '', MODEL.clientMessageStored || '', formatStamp(new Date()));
+  // Fold any new note text into the running, attributed log (newest-first) — timestamped + who wrote it —
+  // so the client portal + sales pipeline show the full thread. Empty box → log unchanged (a decision
+  // that didn't add a note never bumps the log). Persisted as Client_Message.
+  var _noteEntry = ($('uwClientMsg') && $('uwClientMsg').value) || '';
+  var newClientMsg = composeNotesLog(MODEL.clientMessageStored || '', _noteEntry, formatStamp(new Date()), uwAuthor());
   s.clientMessage = newClientMsg;
   var payload = buildReviewPayload(s, MODEL.appId);
   var terms = buildApplicationTerms(s);
   saveReview(payload, MODEL.reviewId, s.insuranceExpiration, terms).then(function(res){
-    // Commit the stamped note locally on any successful save (demo or live).
+    // Commit the note log locally on any successful save (demo or live); refresh the display + clear the box.
     MODEL.clientMessageStored = newClientMsg;
+    renderNoteHistory(newClientMsg, (MODEL.application || {}).Sales_Notes);
+    if ($('uwClientMsg')) $('uwClientMsg').value = '';
     // Reflect the saved terms on the in-memory Application so a re-render keeps the edited values.
     if (MODEL.application) Object.keys(terms).forEach(function(k){ MODEL.application[k] = terms[k]; });
     if (res && res.demo) { showStatus('✓ Demo: decision "'+payload.Decision2+'" validated and Underwriting_Review payload logged to the console.', 'success'); }

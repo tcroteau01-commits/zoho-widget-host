@@ -384,6 +384,25 @@ var DEMO_STATUS = {
 // ── DOM (browser only) ───────────────────────────────────────────────────────────
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function (c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+// Parse the underwriter's Client_Message note into thread entries {text, who, stamp}, newest-first.
+// NEW format: "[MM/DD/YYYY h:mm AM · Author]\n text" blocks separated by blank lines (already newest-first).
+// LEGACY format: a single note "text\n\n— MM/DD/YYYY h:mm AM" (no bracketed head).
+function parseClientNotes(raw){
+  raw = String(raw == null ? '' : raw).trim();
+  if (!raw) return [];
+  if (raw.charAt(0) !== '['){   // legacy single note
+    var m = raw.match(/\n*—\s(\d{1,2}\/\d{1,2}\/\d{4}\s\d{1,2}:\d{2}\s[AP]M)\s*$/);
+    var text = m ? raw.slice(0, m.index).replace(/\s+$/, '') : raw;
+    return text ? [{ text: text, who: '', stamp: m ? m[1] : '' }] : [];
+  }
+  return raw.split(/\n\n+/).map(function (block){
+    var nl = block.indexOf('\n');
+    var head = nl === -1 ? '' : block.slice(1, nl).replace(/\]$/, '');   // strip the leading "[" and trailing "]"
+    var body = nl === -1 ? block : block.slice(nl + 1);
+    var parts = head.split(' · ');   // "stamp · author"
+    return { text: body, stamp: (parts[0] || '').trim(), who: (parts[1] || '').trim() };
+  }).filter(function (e){ return e.text; });
+}
 // Document viewer: "View" carries the signed file URL + display name in data-*; one delegated
 // listener (bound once) opens the shared OperFiDocViewer modal (renders PDFs/images in-page
 // instead of force-downloading). See operfi-docviewer.js (loaded from app.operfi.com).
@@ -624,16 +643,20 @@ function renderStatus(data, isDemo) {
       (rep.email ? '<a href="mailto:' + esc(rep.email) + '">' + esc(rep.email) + '</a>' : '') + '</div>'
     : '<div class="muted">Questions? Reply to your OperFi onboarding email and we’ll help.</div>';
 
-  // A note the underwriter typed for the client — shown at the bottom, with a simple date/time stamp.
-  // The note carries a trailing "— <MM/DD/YYYY h:mm AM>" stamp; split it off so it renders as its own line.
-  var _cm = String(data.clientMessage || '');
-  var _cmM = _cm.match(/\n*—\s(\d{1,2}\/\d{1,2}\/\d{4}\s\d{1,2}:\d{2}\s[AP]M)\s*$/);
-  var _cmText = _cmM ? _cm.slice(0, _cmM.index).replace(/\s+$/, '') : _cm;
-  var _cmStamp = _cmM ? _cmM[1] : '';
-  var msgHtml = _cmText
-    ? '<div class="card" style="border-left:4px solid var(--of-amber)"><div class="card-title" style="border:none;padding-bottom:4px;margin-bottom:6px">A note from your underwriter</div>' +
-      '<div style="font-size:13.5px;line-height:1.55;white-space:pre-wrap">' + esc(_cmText) + '</div>' +
-      (_cmStamp ? '<div style="margin-top:8px;font-size:11.5px;color:var(--of-gray-500)">' + esc(_cmStamp) + '</div>' : '') +
+  // Notes your underwriter typed for you — a running, timestamped thread (newest first). Handles BOTH the
+  // NEW log format ("[stamp · author]\n text" blocks) and a LEGACY single note ("text\n\n— <stamp>").
+  var _cmEntries = parseClientNotes(data.clientMessage);
+  var msgHtml = _cmEntries.length
+    ? '<div class="card" style="border-left:4px solid var(--of-amber)"><div class="card-title" style="border:none;padding-bottom:4px;margin-bottom:6px">' +
+      (_cmEntries.length > 1 ? 'Notes from your underwriter' : 'A note from your underwriter') + '</div>' +
+      _cmEntries.map(function (e) {
+        // Client view is intentionally generic — never the staff member's name, just "Your underwriter"
+        // + the date. (The underwriting + sales views show the real author.)
+        return '<div style="padding:6px 0;border-top:1px solid var(--of-beige-line)">' +
+          '<div style="font-size:13.5px;line-height:1.55;white-space:pre-wrap">' + esc(e.text) + '</div>' +
+          '<div style="margin-top:6px;font-size:11.5px;color:var(--of-gray-500)">' +
+            esc('Your underwriter' + (e.stamp ? ' · ' + e.stamp : '')) + '</div></div>';
+      }).join('') +
       '</div>'
     : '';
 

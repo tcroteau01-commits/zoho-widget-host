@@ -294,7 +294,7 @@ tr:last-child td { border-bottom:none; }
       <div class="kpi warn"><div class="kpi-label">Fraud Flags</div><div class="kpi-value warn" id="kFraud">—</div><div class="kpi-sub">to clear of 10</div></div>
       <div class="kpi good"><div class="kpi-label">Intake Packet</div><div class="kpi-value good" id="kDocs">—</div><div class="kpi-sub">documents received</div></div>
       <div class="kpi warn"><div class="kpi-label">UCC Status</div><div class="kpi-value warn" id="kUcc">—</div><div class="kpi-sub">prior filings</div></div>
-      <div class="kpi good"><div class="kpi-label">Gates Passed</div><div class="kpi-value good" id="kGates">—</div><div class="kpi-sub">of 6 before approval</div></div>
+      <div class="kpi good"><div class="kpi-label">Gates Passed</div><div class="kpi-value good" id="kGates">—</div><div class="kpi-sub">of 5 before approval</div></div>
     </div>
 
     <div class="col-main">
@@ -415,17 +415,9 @@ tr:last-child td { border-bottom:none; }
           <div class="verify-row"><span class="toggle" id="tgAuthority">✓</span> Authority Verified</div>
           <div class="verify-row"><span class="toggle" id="tgOwnership">✓</span> Ownership Verified</div>
           <div class="verify-row"><span class="toggle" id="tgUcc">✓</span> UCC Checked &amp; cleared</div>
-          <div class="fld" style="margin-top:14px"><label>Fraud Flag</label>
-            <select id="uwFraudFlag"><option>None</option><option>Low</option><option>Medium</option><option>High</option></select>
-          </div>
-          <div class="fld"><label>Fraud Notes</label><textarea id="uwFraudNotes" rows="2"></textarea></div>
-          <div class="fld"><label>Checklist Status</label>
-            <select id="uwChecklist"><option>Not Started</option><option>In Progress</option><option>Complete</option></select>
-          </div>
-          <div class="fld"><label>Notes &amp; History <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· sales + underwriting, newest first</span></label>
+          <div class="fld" style="margin-top:14px"><label>Notes &amp; History <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· sales + underwriting, newest first</span></label>
             <div class="notes-log" id="uwClientMsgLog"></div>
             <textarea id="uwClientMsg" rows="3" placeholder="Add a note — timestamped &amp; attributed to you, added to the history above, and shown on the client portal &amp; sales pipeline. Saved when you Save / Approve / Decline."></textarea></div>
-          <div class="fld"><label>Decision Date</label><input type="text" id="uwDecisionDate" placeholder="MM/DD/YYYY"></div>
           <div class="fld"><label>Insurance Expiration <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· syncs to CRM on approve</span></label><input type="date" id="uwInsExp"></div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
             <button class="btn green block" id="btnApprove">✓ Approve</button>
@@ -433,7 +425,7 @@ tr:last-child td { border-bottom:none; }
             <button class="btn red block" id="btnDecline">✕ Decline</button>
             <button class="btn ghost block" id="btnSave">💾 Save progress</button>
           </div>
-          <div id="approveGateNote" style="font-size:11px;color:var(--of-gray-500);margin-top:10px;text-align:center">Approve requires all 6 gates green. Decision syncs to CRM Deal stage.</div>
+          <div id="approveGateNote" style="font-size:11px;color:var(--of-gray-500);margin-top:10px;text-align:center">Approve requires all 5 gates green. Decision syncs to CRM Deal stage.</div>
 
           <!-- Client agreement e-signature (Zoho Sign). Unlocks after an Approved decision. -->
           <div id="agrSection" class="agr-section">
@@ -801,14 +793,13 @@ function computeGate(s, ctx) {
   ctx = ctx || {};
   var gates = {
     intakePacket:   (ctx.docsReceived||0) >= (ctx.docsRequired||0) && (ctx.docsRequired||0) > 0,
-    fraudClear:     s.fraudFlag === 'None' || s.fraudFlag === 'Low',
+    fraudClear:     (ctx.fraudBad||0) === 0,   // derived from the automated fraud checks (no 'bad' flags)
     ownership:      !!s.ownershipVerified,
     ucc:            !!s.uccChecked,
-    creditDocumented: num(s.approvedCreditLimit) !== '' && num(s.approvedCreditLimit) > 0,
-    checklistComplete: s.checklistStatus === 'Complete'
+    creditDocumented: num(s.approvedCreditLimit) !== '' && num(s.approvedCreditLimit) > 0
   };
   gates.passedCount = Object.keys(gates).filter(function(k){ return k!=='passedCount' && gates[k]; }).length;
-  gates.allPass = gates.passedCount === 6;
+  gates.allPass = gates.passedCount === 5;
   return gates;
 }
 
@@ -821,9 +812,7 @@ function validateDecision(s, ctx, opts) {
     if (!s.ownershipVerified) errors.push('Ownership must be verified to approve.');
     if (!s.uccChecked) errors.push('UCC must be checked & cleared to approve.');
     if (num(s.approvedCreditLimit) === '' || num(s.approvedCreditLimit) <= 0) errors.push('Set an Approved Credit Limit to approve.');
-    if (s.checklistStatus !== 'Complete') errors.push('Checklist must be Complete to approve.');
-    if (s.fraudFlag === 'High') errors.push('Fraud Flag is High — resolve before approving.');
-    if (!computeGate(s, ctx).allPass) errors.push('All 6 approval gates must be green.');
+    if (!computeGate(s, ctx).allPass) errors.push('All 5 approval gates must be green.');
   }
   if ((s.decision === 'Denied' || s.decision === 'More Information Needed') && !(s.uwNotes || s.noteEntry)) {
     errors.push('Add an Underwriting note explaining the decision.');
@@ -839,13 +828,10 @@ function buildReviewPayload(s, appId) {
     Authority_Verified: !!s.authorityVerified,
     Ownership_Verified: !!s.ownershipVerified,
     UCC_Checked: !!s.uccChecked,
-    Fraud_Flag1: s.fraudFlag || 'None',
-    Fraud_Notes: s.fraudNotes || '',
     Buyout_Required: !!s.buyoutRequired,
     Buyout_Factor: s.buyoutFactor || '',
     Estimated_Buyout_Date: s.estimatedBuyoutDate || '',
     Buyout_Notes: s.buyoutNotes || '',
-    Checklist_Status1: s.checklistStatus || 'Not Started',
     UW_Notes: s.uwNotes || '',
     Client_Message: s.clientMessage || '',
     Manual_UCC: JSON.stringify(s.manualUcc || []),
@@ -1326,9 +1312,6 @@ function readState() {
     authorityVerified: $('tgAuthority').classList.contains('on'),
     ownershipVerified: $('tgOwnership').classList.contains('on'),
     uccChecked: $('tgUcc').classList.contains('on'),
-    fraudFlag: $('uwFraudFlag').value,
-    fraudNotes: $('uwFraudNotes').value,
-    checklistStatus: $('uwChecklist').value,
     uwNotes: (MODEL && MODEL.notesLog) || '',   // the CURRENT persisted log; background saves re-send it unchanged
     noteEntry: ($('uwNoteEntry') && $('uwNoteEntry').value) || '',   // the pending new entry, folded in on submit
     clientMessage: (MODEL && MODEL.clientMessageStored) || '',   // the persisted (stamped) note; background saves re-send it unchanged. submit() recomputes from the box.
@@ -1338,7 +1321,8 @@ function readState() {
     manualCustomers: (MODEL && MODEL.manualCustomers) || [],
     manualRelated: (MODEL && MODEL.manualRelated) || [],
     highRiskVolume: !!(MODEL && MODEL.highRiskVolume),
-    decisionDate: $('uwDecisionDate').value,
+    // Decision Date is auto-set on a committed decision (see submit); background saves preserve the stored value.
+    decisionDate: (MODEL && MODEL.review && (MODEL.review.Decision_Date || '').split(' ')[0]) || '',
     approvedCreditLimit: $('uwLimit').value,
     recommendedRate: $('uwRate').value,   // Factoring Fee
     promoRate: ($('uwPromoRate') && $('uwPromoRate').value) || '',
@@ -1365,17 +1349,17 @@ function renderGate() {
   var rows = [
     ['Intake packet verified', g.intakePacket],['Fraud screening clear', g.fraudClear],
     ['Ownership verified', g.ownership],['UCCs resolved & filed', g.ucc],
-    ['Credit / reserve documented', g.creditDocumented],['Checklist complete', g.checklistComplete]
+    ['Credit / reserve documented', g.creditDocumented]
   ];
   $('gateList').innerHTML = rows.map(function(r){
     return '<div class="gate-row '+(r[1]?'ok':'no')+'"><span class="g-ic">'+(r[1]?'✓':'○')+'</span> '+r[0]+'</div>';
   }).join('');
-  $('gateCount').textContent = g.passedCount + ' / 6';
-  $('kGates').textContent = g.passedCount + ' / 6';
+  $('gateCount').textContent = g.passedCount + ' / 5';
+  $('kGates').textContent = g.passedCount + ' / 5';
   // Gates are informational "for now" (UW_REQUIRE_GATES): Approve stays clickable regardless.
   $('btnApprove').disabled = UW_REQUIRE_GATES ? !g.allPass : false;
   if ($('approveGateNote')) $('approveGateNote').textContent = UW_REQUIRE_GATES
-    ? 'Approve requires all 6 gates green. Decision syncs to CRM Deal stage.'
+    ? 'Approve requires all 5 gates green. Decision syncs to CRM Deal stage.'
     : 'Decision syncs to CRM Deal stage.';
   renderAgreement();
 }
@@ -1896,9 +1880,6 @@ function renderModel(m) {
   $('tgAuthority').classList.toggle('on', !!r.Authority_Verified);
   $('tgOwnership').classList.toggle('on', !!r.Ownership_Verified);
   $('tgUcc').classList.toggle('on', !!r.UCC_Checked);
-  $('uwFraudFlag').value = r.Fraud_Flag1 || 'None';
-  $('uwFraudNotes').value = r.Fraud_Notes || '';
-  $('uwChecklist').value = r.Checklist_Status1 || 'Not Started';
   m.notesLog = r.UW_Notes || '';           // the running timestamped log persists in UW_Notes
   renderNotesLog(m.notesLog);
   if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
@@ -1906,8 +1887,7 @@ function renderModel(m) {
   // Central hub: unified sales + underwriting history (newest-first) above the entry box.
   renderNoteHistory(m.clientMessageStored, (m.application || {}).Sales_Notes);
   if ($('uwClientMsg')) $('uwClientMsg').value = ''; // the box is for a NEW entry, not editing history
-  // Creator date fields come back as "15-Aug-2026 00:00:00" — drop the time part for the input.
-  $('uwDecisionDate').value = (r.Decision_Date || '').split(' ')[0];
+  // Decision Date is auto-stamped on a decision (submit) — no manual field; readState reads r.Decision_Date.
   // Credit Structuring — pre-fill the 5 rate-sheet terms from the applicant's answers (intake stored
   // these on the Application). Underwriter edits save back onto the Application, so this always shows
   // the latest. Fall back to the review's older Approved_Credit_Limit / Recommended_Rate if present.
@@ -2261,7 +2241,7 @@ function boot() {
   $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
   ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
-  ['uwFraudFlag','uwChecklist','uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
+  ['uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
   $('btnApprove').addEventListener('click', function(){ confirmDecision('Approved'); });
   if ($('btnMoreInfo')) $('btnMoreInfo').addEventListener('click', function(){ confirmDecision('More Information Needed'); });
   $('btnDecline').addEventListener('click', function(){ confirmDecision('Denied'); });
@@ -2345,13 +2325,16 @@ function confirmDecision(decision){
 function submit(forceDecision) {
   if (!MODEL) { showStatus('Open an application first.', 'error'); return; }
   var s = readState();
-  if (forceDecision) { s.decision = forceDecision; setDecision(forceDecision); }
+  // A committed decision (Approve / Decline / Request More Info) auto-stamps today's Decision Date;
+  // "Save progress" (forceDecision null) leaves the stored value untouched. Backend normalizes MM/DD/YYYY.
+  if (forceDecision) { s.decision = forceDecision; setDecision(forceDecision); s.decisionDate = formatStamp(new Date()).split(' ')[0]; }
   var v = validateDecision(s, ctx(), { requireGates: UW_REQUIRE_GATES });
   if (!v.ok) { showStatus('Cannot save: ' + v.errors[0], 'error'); return; }
   // Reflect the committed decision locally so the Client Agreement section reveals on the Approve
   // BUTTON (a committed decision), not on a mere dropdown change. Denied/other hide it again.
   MODEL.review = MODEL.review || {};
   MODEL.review.Decision2 = s.decision;
+  if (s.decisionDate) MODEL.review.Decision_Date = s.decisionDate;   // keep the auto-stamped date for later background saves
   renderAgreement();
   showStatus('Saving decision…', 'loading');
   // Fold any new note text into the running, attributed log (newest-first) — timestamped + who wrote it —

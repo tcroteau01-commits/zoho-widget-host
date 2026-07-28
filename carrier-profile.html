@@ -1967,6 +1967,8 @@ function updateDecisionGate(){
   });
   var sb=document.getElementById('cp-submit');
   if(sb) sb.disabled = !ok || !selectedDecision;
+  var reqEl=document.querySelector('.modal-notes-label .req');
+  if(reqEl) reqEl.style.display=(cpExceptionNotesRequired()||notesRequired(selectedDecision, (profilePayload&&profilePayload.system_recommendation)))?'inline':'none';
 }
 
 function notesRequired(decision, systemRec){
@@ -1974,6 +1976,12 @@ function notesRequired(decision, systemRec){
   if(decision!=="Approve") return true;
   return DECISION_RANK[decision] > (DECISION_RANK[systemRec]!=null?DECISION_RANK[systemRec]:3);
 }
+// A documented-exception item (required doc absent, non-flagged carrier) may be
+// checked, but only with a decision note capturing how it was verified.
+function cpExceptionNotesRequired() {
+  return (cpDocExceptionKeys || []).some(function (k) { return checklistState[k] === true; });
+}
+if (typeof window !== 'undefined') { window.cpExceptionNotesRequired = cpExceptionNotesRequired; }
 function buildDecisionPayload(){
   var av=profilePayload.account_vendor;
   var rec=profilePayload.system_recommendation||'Hold';
@@ -1985,7 +1993,7 @@ function buildDecisionPayload(){
   var d={ Account_Vendor:av.av_id, System_Recommendation:rec, Broker_Decision:selectedDecision, Decision_Notes:notes.trim(), Trigger_Type:trigger };
   if(av.Account_CRM_ID) d.Account_CRM_ID=av.Account_CRM_ID;
   if(av.Vendor_CRM_ID) d.Vendor_CRM_ID=av.Vendor_CRM_ID;
-  CHECKLIST_ITEMS.concat([CHECKLIST_BANK_ITEM]).forEach(function(it){
+  CHECKLIST_ITEMS.concat([CHECKLIST_BANK_ITEM, CHECKLIST_NOA_ITEM]).forEach(function(it){
     d[it.key] = checklistState.hasOwnProperty(it.key) ? !!checklistState[it.key] : null;
   });
   // Baseline for Phase C's daily re-review diff -- captures this decision's risk
@@ -1999,7 +2007,7 @@ function submitDecision(){
   if(!selectedDecision){ if(fb) fb.textContent='Pick a decision.'; return; }
   var rec=profilePayload.system_recommendation;
   var notes=(document.getElementById('cp-notes')||{}).value||'';
-  if(notesRequired(selectedDecision,rec)&&!notes.trim()){ if(fb) fb.textContent='Decision Notes are required for this choice.'; return; }
+  if((notesRequired(selectedDecision,rec)||cpExceptionNotesRequired())&&!notes.trim()){ if(fb) fb.textContent='Decision Notes are required for this choice.'; return; }
   var cid=(profilePayload&&profilePayload.broker_contact_id)||'';
   if(!cid){ if(fb) fb.textContent='Could not resolve your contact — cannot record decision. Contact OperFi.'; return; }
   var data=buildDecisionPayload();

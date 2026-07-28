@@ -165,6 +165,70 @@ test('buildDecisionPayload keeps the standard re-review Trigger_Type when Re_Rev
   assert.equal(payload.Trigger_Type, 'Re-review: Authority, Ins, Safety, Crash, OOS, Fraud');
 });
 
+test('buildDecisionPayload includes Checklist_NOA_Reviewed', () => {
+  const { window } = makeWidget();
+  window.profilePayload = { account_vendor: { av_id: '1' }, system_recommendation: 'Hold' };
+  window.renderChecklist({ account_vendor: { av_id: '1' }, vendor: { Factoring_Company: { ID: 'F1' } }, bank: {} });
+  const payload = window.buildDecisionPayload();
+  assert.ok('Checklist_NOA_Reviewed' in payload);
+});
+
+test('checking a documented-exception item requires a decision note', () => {
+  const { window } = makeWidget();
+  window.profilePayload = { account_vendor: { av_id: '1' }, system_recommendation: 'Approve', vendor: {} };
+  // simulate a documented exception on the bank item
+  window.renderChecklist({ account_vendor: { av_id: '1' }, vendor: {}, bank: {} });
+  window.cpDocExceptionKeys = ['Checklist_Bank_Letter_Verified'];
+  window.checklistState['Checklist_Bank_Letter_Verified'] = true;
+  assert.equal(window.cpExceptionNotesRequired(), true);
+});
+
+test('exception notes not required when the exception item is unchecked', () => {
+  const { window } = makeWidget();
+  window.profilePayload = { account_vendor: { av_id: '1' }, vendor: {} };
+  window.renderChecklist({ account_vendor: { av_id: '1' }, vendor: {}, bank: {} });
+  window.cpDocExceptionKeys = ['Checklist_Bank_Letter_Verified'];
+  window.checklistState['Checklist_Bank_Letter_Verified'] = false;
+  assert.equal(window.cpExceptionNotesRequired(), false);
+});
+
+test('submitDecision blocks with the notes-required message when a documented-exception item is checked and notes are empty', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 'broker@op.com';
+  window.vendorId = '9001';
+  window.profilePayload = {
+    account_vendor: { av_id: 'av_1' }, broker_contact_id: 'c_77',
+    system_recommendation: 'Approve', risk_decisions: [],
+  };
+  window.checklistState = {
+    Checklist_COI_Truck_Driver: true, Checklist_Authority_Active: true,
+    Checklist_Remittance_Matches: true, Checklist_Identity_Verified_FMCSA: true,
+    Checklist_DOT_MC_Match_Pickup: true, Checklist_OOS_HOS_Reviewed: true,
+    Checklist_Bank_Letter_Verified: true,
+  };
+  window.cpDocExceptionKeys = ['Checklist_Bank_Letter_Verified'];
+  window.selectedDecision = 'Approve';
+  window.document.getElementById('cp-notes').value = '';
+
+  await window.submitDecision();
+
+  const fb = window.document.getElementById('cp-rail-feedback');
+  assert.equal(fb.textContent, 'Decision Notes are required for this choice.');
+});
+
+test('updateDecisionGate shows the notes-required asterisk when a documented-exception item is checked, even before a decision is picked', () => {
+  const { window } = makeWidget();
+  window.profilePayload = { account_vendor: { av_id: 'av_1' }, system_recommendation: 'Approve' };
+  window.checklistState = { Checklist_Bank_Letter_Verified: true };
+  window.cpDocExceptionKeys = ['Checklist_Bank_Letter_Verified'];
+  window.selectedDecision = null;
+
+  window.updateDecisionGate();
+
+  const reqEl = window.document.querySelector('.modal-notes-label .req');
+  assert.equal(reqEl.style.display, 'inline');
+});
+
 test('submitDecision leaves the button disabled after a successful save (fresh checklist required for the next decision)', async () => {
   const { window } = makeWidget();
   window.brokerEmail = 'broker@op.com';

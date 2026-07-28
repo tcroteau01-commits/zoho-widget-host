@@ -439,3 +439,71 @@ test('REGRESSION: a docs reload with no documents (data.reason) releases a previ
   coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
   assert.equal(coi.disabled, false, 'gate must be released, not stuck-locked, when reload finds no documents');
 });
+
+// CAVRA3 2D — three-state forced-view gate (lock / hard-stop / documented exception)
+async function _setup(w, vendor, docsJson) {
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.profilePayload = { account_vendor: { av_id: '1' }, vendor: vendor };
+  w.renderChecklist({ account_vendor: { av_id: '1' }, vendor: vendor, bank: {} });
+  // fetchImpl provided at boot returns docsJson for /carrier-docs
+  await w.loadCarrierDocs();
+  await new Promise(r => setTimeout(r, 0));
+}
+function _docsFetch(docsJson) {
+  return function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(docsJson) });
+    if (url.indexOf('/carrier-doc-authcheck') !== -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ advisory: false, reasons: [] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+}
+const NOA_ITEM = '.cp-check-item[data-key="Checklist_NOA_Reviewed"]';
+const BANK_ITEM = '.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]';
+
+test('factored: NOA on file locks the NOA item until opened; lor also releases it', async () => {
+  const w = boot(_docsFetch({ documents: [{ type: 'noa', filename: 'noa.pdf', preview_token: 'TN' }] })).window;
+  await _setup(w, { Factoring_Company: { ID: 'F1' } });
+  assert.equal(w.document.querySelector(NOA_ITEM).disabled, true);
+  w.document.querySelector('.cp-doc-preview[data-token="TN"]').click();
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(w.document.querySelector(NOA_ITEM).disabled, false);
+});
+
+test('direct-pay: bank doc on file locks the bank item until opened', async () => {
+  const w = boot(_docsFetch({ documents: [{ type: 'banking', filename: 'b.pdf', preview_token: 'TB' }] })).window;
+  await _setup(w, { Factor_Status: 'Approved' });
+  assert.equal(w.document.querySelector(BANK_ITEM).disabled, true);
+});
+
+test('non-flagged + required doc absent → documented exception (checkable, hinted)', async () => {
+  const w = boot(_docsFetch({ documents: [] })).window;   // definitive: no docs
+  await _setup(w, { Factoring_Company: { ID: 'F1' } });
+  const noa = w.document.querySelector(NOA_ITEM);
+  assert.equal(noa.disabled, false, 'checkable (never blocks a non-flagged carrier)');
+  assert.match(w.document.querySelector('.cp-check-hint[data-hint-for="Checklist_NOA_Reviewed"]').textContent, /no noa|another way/i);
+  assert.ok(w.cpDocExceptionKeys.indexOf('Checklist_NOA_Reviewed') !== -1);
+});
+
+test('DNU carrier + required doc absent → hard lock (upload required)', async () => {
+  const w = boot(_docsFetch({ documents: [] })).window;
+  await _setup(w, { Factoring_Company: { ID: 'F1' }, DO_NOT_USE: 'true' });
+  const noa = w.document.querySelector(NOA_ITEM);
+  assert.equal(noa.disabled, true, 'hard-locked');
+  assert.match(w.document.querySelector('.cp-check-hint[data-hint-for="Checklist_NOA_Reviewed"]').textContent, /upload/i);
+});
+
+test('Denied carrier + bank doc absent → hard lock', async () => {
+  const w = boot(_docsFetch({ documents: [] })).window;
+  await _setup(w, { Vendor_Status: 'DENIED' });
+  assert.equal(w.document.querySelector(BANK_ITEM).disabled, true);
+});
+
+test('docs fetch error → unknown, item stays neutral (no hard-lock, no exception)', async () => {
+  const w = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  }).window;
+  await _setup(w, { Factoring_Company: { ID: 'F1' }, DO_NOT_USE: 'true' });
+  // even a DNU carrier isn't hard-locked when we don't KNOW the doc is absent
+  assert.equal(w.document.querySelector(NOA_ITEM).disabled, false);
+  assert.equal((w.cpDocExceptionKeys || []).indexOf('Checklist_NOA_Reviewed'), -1);
+});

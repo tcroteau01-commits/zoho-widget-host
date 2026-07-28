@@ -1879,23 +1879,38 @@ var checklistState = {};
 // 2026-07-26). No doc on file → attest as today; never makes booking impossible.
 var cpViewedTypes = {};
 var cpDocTypesOnFile = {};
+var cpDocsLoaded = false;
+var cpDocExceptionKeys = [];
 var FORCED_VIEW_MAP = { Checklist_COI_Truck_Driver: ['coi'], Checklist_Bank_Letter_Verified: ['banking'], Checklist_NOA_Reviewed: ['noa', 'lor'] };
+// CAVRA3 2D — three-state gate: force-view lock (doc on file, unopened) /
+// hard-stop (flagged carrier + doc definitively absent) / documented exception
+// (non-flagged carrier + doc definitively absent -> checkable, but hinted for a note).
 function cpApplyForcedGates() {
+  var v = (profilePayload && profilePayload.vendor) || {};
+  var flagged = _truthy(v.DO_NOT_USE) || (v.Vendor_Status || '').toString().toUpperCase() === 'DENIED';
+  cpDocExceptionKeys = [];
   Object.keys(FORCED_VIEW_MAP).forEach(function (key) {
     var cb = document.querySelector('.cp-check-item[data-key="' + key + '"]');
-    if (!cb) return;  // item not shown (e.g. NOA item hidden when the carrier is direct-pay)
+    if (!cb) return;  // item not shown for this carrier
     var types = FORCED_VIEW_MAP[key];
     var hint = document.querySelector('.cp-check-hint[data-hint-for="' + key + '"]');
     var onFile = types.some(function (t) { return !!cpDocTypesOnFile[t]; });
     var viewed = types.some(function (t) { return !!cpViewedTypes[t]; });
-    var lockable = onFile && !viewed;
-    if (lockable) {
-      cb.disabled = true; cb.checked = false; checklistState[key] = false;
-      var docLabel = types.indexOf('coi') !== -1 ? 'COI' : (types.indexOf('banking') !== -1 ? 'bank document' : 'NOA/LOR document');
-      if (hint) hint.textContent = 'Open the ' + docLabel + ' below to confirm';
+    var label = key === 'Checklist_COI_Truck_Driver' ? 'COI'
+              : key === 'Checklist_NOA_Reviewed' ? 'NOA' : 'bank document';
+    function lock(msg) { cb.disabled = true; cb.checked = false; checklistState[key] = false; if (hint) hint.textContent = msg; }
+    function unlock(msg) { cb.disabled = false; if (hint) hint.textContent = msg || ''; }
+    if (onFile && !viewed) {
+      lock('Open the ' + label + ' below to confirm');
+    } else if (onFile && viewed) {
+      unlock('');
+    } else if (!cpDocsLoaded) {
+      unlock('');                       // on-file set unknown → neutral
+    } else if (flagged) {
+      lock('Upload the ' + label + ' — required for a flagged carrier');
     } else {
-      cb.disabled = false;
-      if (hint) hint.textContent = '';
+      unlock('No ' + label + ' on file — add a note confirming you verified it another way');
+      cpDocExceptionKeys.push(key);
     }
   });
   updateDecisionGate();
@@ -1905,7 +1920,7 @@ if (typeof window !== 'undefined') { window.cpApplyForcedGates = cpApplyForcedGa
 function renderChecklist(p){
   var el=document.getElementById('cp-checklist'); if(!el) return;
   checklistState={};
-  cpViewedTypes = {}; cpDocTypesOnFile = {};
+  cpViewedTypes = {}; cpDocTypesOnFile = {}; cpDocsLoaded = false;
   if(!p.account_vendor){
     el.innerHTML='<div class="card-title" style="margin-bottom:10px;">Confirm Before You Book</div>'+
       '<div style="color:var(--of-gray-500);font-size:13px;">Tender a load to this carrier to enable decision capture.</div>';
@@ -2107,6 +2122,7 @@ function renderCarrierDocs(data) {
   var present = {};
   docs.forEach(function (d) { present[d.type] = true; });
   cpDocTypesOnFile = present;
+  cpDocsLoaded = true;  // docs array is now definitively known (even if empty)
   var missing = cpRecommendedDocs().filter(function (r) {
     return !r.match.some(function (k) { return present[k]; });
   });

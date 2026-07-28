@@ -1704,14 +1704,11 @@ function renderModel(m) {
     ['Requested Term', (a.Rate_Term_Selection||'').replace(' Option','') + (a.Contract_Type?(' · '+a.Contract_Type):'')],
     ['Credit Issues', creditFlags.length ? creditFlags.join(', ') : 'None']
   ].map(function(r){ return '<div class="row"><div class="k">'+r[0]+'</div><div class="v">'+(r[1]||'—')+'</div></div>'; }).join('');
-  // Due-diligence links (by USDOT) — FMCSA SAFER snapshot + Carrier-OK profile, on one row above the
-  // credit explanation. Each link is included only when its URL builds (i.e. a USDOT is present).
+  // Due-diligence links (by USDOT), each its own row so they flow into the 2-col grid: SAFER lands under
+  // Requested Term (left), Carrier-OK lands under Credit Issues (right). Included only when the URL builds.
   var _ddStyle = 'color:var(--of-blue-text,#1a5fb4);font-weight:600;text-decoration:none';
-  var _dd = [[saferUrl(a.USDOT), 'SAFER Snapshot ↗'], [carrierOkUrl(a.USDOT), 'CarrierOK Profile ↗']]
-    .filter(function(l){ return l[0]; })
-    .map(function(l){ return '<a href="' + l[0] + '" target="_blank" rel="noopener" style="' + _ddStyle + '">' + l[1] + '</a>'; })
-    .join(' <span style="color:var(--of-gray-500)">·</span> ');
-  if (_dd) appHtml += '<div class="row"><div class="k">Due Diligence</div><div class="v">' + _dd + '</div></div>';
+  var _ddRow = function(url, label, text){ return url ? '<div class="row"><div class="k">'+label+'</div><div class="v"><a href="'+url+'" target="_blank" rel="noopener" style="'+_ddStyle+'">'+text+' ↗</a></div></div>' : ''; };
+  appHtml += _ddRow(saferUrl(a.USDOT), 'FMCSA', 'SAFER Snapshot') + _ddRow(carrierOkUrl(a.USDOT), 'Carrier-OK', 'CarrierOK Profile');
   // When the prospect reported credit issue(s), surface THEIR explanation prominently for the underwriter.
   if (creditFlags.length) {
     appHtml += '<div class="row credit-expl"><div class="k">Credit Explanation</div><div class="v">' +

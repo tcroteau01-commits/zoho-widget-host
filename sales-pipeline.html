@@ -196,7 +196,7 @@ var APPLICATION_LOOKUP = 'Application';       // child → Application lookup (h
 var SALES_ATTR = global.OPERFI_SALES_ATTR || 'Sales_Rep';
 var SALES_NOTES_FIELD = 'Sales_Notes';        // multiline on Application (hand-add in Creator)
 var API_BASE = global.OPERFI_SALES_API_BASE || 'https://operfi-broker-api.onrender.com';
-var NOTIFY_PATH = '/notify-client';           // POST { usdot, application_id, kind } → emails prospect (confirm with Tom)
+var NOTIFY_PATH = '/notify-client';           // POST { application_id, usdot, document, rep } → SMS reminder + logs the nudge to Sales_Notes
 
 // The data-backed pipeline stages (each maps to a real Application_Status value).
 var STEPS = ['Submitted', 'In Review', 'Underwriting', 'Approved', 'Signed'];
@@ -713,11 +713,34 @@ function dToast(kind, msg){ var t = el('detailToast'); if (t) { t.className = 't
 
 // ── Actions (best-effort live; demo = local + toast) ───────────────────────────
 function nudgeClient(app, docType, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Sent ✓'; }
-  if (STATE.mode === 'demo' || typeof fetch !== 'function') { dToast('ok', 'Reminder queued to ' + (app.Business_Name || 'client') + (docType ? ' for ' + docType : '') + ' (demo).'); return; }
+  var rep = STATE.rep || 'Sales';
+  if (STATE.mode === 'demo' || typeof fetch !== 'function') {
+    if (btn) { btn.disabled = true; btn.textContent = 'Sent ✓'; }
+    dToast('ok', 'Reminder queued to ' + (app.Business_Name || 'client') + (docType ? ' for ' + docType : '') + ' (demo).');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  // Verify the backend actually sent (it 404'd before and we faked success). Only confirm on {ok:true}.
   fetch(API_BASE + NOTIFY_PATH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usdot: app.USDOT, application_id: app.ID, kind: 'doc-reminder', document: docType }) })
-    .then(function () { dToast('ok', 'Reminder sent to ' + (app.Business_Name || 'client') + '.'); })
+    body: JSON.stringify({ usdot: app.USDOT, application_id: app.ID, kind: 'doc-reminder', document: docType, rep: rep }) })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { httpOk: r.ok, j: j || {} }; }); })
+    .then(function (res) {
+      if (!res.httpOk || !res.j.ok) {
+        dToast('err', 'Nudge failed: ' + (res.j.error || res.j.detail || 'could not send the reminder'));
+        if (btn) { btn.disabled = false; btn.textContent = 'Nudge client'; }
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = 'Sent ✓'; }
+      dToast('ok', 'Reminder sent to ' + (app.Business_Name || 'client') + '.');
+      // Reflect the server-logged nudge in the notes feed + in-memory Sales_Notes so the trail shows now.
+      if (res.j.sales_notes) app[SALES_NOTES_FIELD] = res.j.sales_notes;
+      var feed = el('notesFeed');
+      if (feed) {
+        if (/No notes yet/.test(feed.innerHTML)) feed.innerHTML = '';
+        var when = ''; try { when = new Date().toLocaleString(); } catch (e) { when = ''; }
+        feed.insertAdjacentHTML('beforeend', '<div class="note"><div class="who">' + esc(rep) + ' <span class="role">Sales</span></div><div class="txt">Nudged client for ' + esc(docType || 'a document') + ' (SMS)</div><div class="when">' + esc(when) + '</div></div>');
+      }
+    })
     .catch(function () { dToast('err', 'Could not send the reminder — try again shortly.'); if (btn) { btn.disabled = false; btn.textContent = 'Nudge client'; } });
 }
 

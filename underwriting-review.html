@@ -388,21 +388,7 @@ tr:last-child td { border-bottom:none; }
           <div class="add-wrap">
             <button class="btn ghost sm" id="addDocReqToggle">+ Request document</button>
             <div class="add-form" id="addDocReqForm" style="display:none">
-              <div class="fld"><label>Document type</label>
-                <select id="rdType">
-                  <option value="">Select a document…</option>
-                  <option>Operating Authority</option>
-                  <option>Insurance Certificate</option>
-                  <option>Voided Check</option>
-                  <option>Drivers License</option>
-                  <option>W-9</option>
-                  <option>Articles of Formation</option>
-                  <option>Proof of Service</option>
-                  <option>Prior factor aging report</option>
-                  <option value="__other">Other (specify below)</option>
-                </select>
-              </div>
-              <div class="fld"><label>Or specify a custom document</label><input type="text" id="rdOther" placeholder="e.g. Equipment lease agreement"></div>
+              <div class="fld"><label>Document type</label><input type="text" id="rdOther" placeholder="e.g. Insurance Certificate, Voided Check, Equipment lease agreement"></div>
               <button class="btn green sm" id="rdSave">Request from client</button>
               <div class="hint" style="font-size:11px;color:var(--of-gray-500);margin-top:6px">Requested documents appear on the client's upload portal as a new item to upload.</div>
             </div>
@@ -2056,15 +2042,15 @@ function persistManual(okMsg){
 }
 // Request a document FROM the client. Creates a Document (Status='Requested') that surfaces on the
 // client's upload portal as a new item to upload. Reuses the /sales-doc-request contract.
-function readDocReq(){ var sel = $('rdType').value, other = ($('rdOther').value || '').trim(); return (sel && sel !== '__other') ? sel : other; }
+function readDocReq(){ return ($('rdOther').value || '').trim(); }
 function requestDoc(){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
   var dtype = readDocReq();
-  if (!dtype){ showStatus('Choose or enter a document type to request.', 'error'); return; }
+  if (!dtype){ showStatus('Enter a document type to request.', 'error'); return; }
   if (MODEL._demo || typeof fetch !== 'function'){
     MODEL.documents = MODEL.documents || [];
     MODEL.documents.push([dtype, 'Underwriting', 'Requested', '']);
-    clearAddForm('addDocReqForm'); $('rdType').value = '';
+    clearAddForm('addDocReqForm');
     renderModel(MODEL);
     showStatus('✓ Requested "' + dtype + '" (demo) — the client will see it on their upload portal.', 'success');
     return;
@@ -2073,7 +2059,7 @@ function requestDoc(){
   fetch(API_BASE + DOCREQ_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, document_type: dtype, source: 'Underwriting' }) })
     .then(function (r){ return r.json().catch(function(){ return {}; }); })
     .then(function (j){
-      if (j && j.ok){ clearAddForm('addDocReqForm'); $('rdType').value = ''; showStatus('✓ Requested "' + dtype + '" — added to the client portal.', 'success'); load(MODEL.application.USDOT); }
+      if (j && j.ok){ clearAddForm('addDocReqForm'); showStatus('✓ Requested "' + dtype + '" — added to the client portal.', 'success'); load(MODEL.application.USDOT); }
       else throw new Error((j && j.detail) || (j && j.error) || 'request failed');
     })
     .catch(function (e){ showStatus('Could not request document: ' + (e && e.message ? e.message : e), 'error'); });

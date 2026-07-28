@@ -507,3 +507,29 @@ test('docs fetch error → unknown, item stays neutral (no hard-lock, no excepti
   assert.equal(w.document.querySelector(NOA_ITEM).disabled, false);
   assert.equal((w.cpDocExceptionKeys || []).indexOf('Checklist_NOA_Reviewed'), -1);
 });
+
+test('reload degrading to error after a prior success falls back to neutral (cpDocsLoaded reset)', async () => {
+  let call = 0;
+  const w = boot(function (url) {
+    if (url.indexOf('/carrier-docs') !== -1) {
+      call++;
+      if (call === 1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [] }) });
+      return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  }).window;
+  const vendor = { Factoring_Company: { ID: 'F1' }, DO_NOT_USE: 'true' };  // DNU factored
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  w.profilePayload = { account_vendor: { av_id: '1' }, vendor: vendor };
+  w.renderChecklist({ account_vendor: { av_id: '1' }, vendor: vendor, bank: {} });
+  await w.loadCarrierDocs();                       // 1st: definitive empty → hard-lock (DNU + absent)
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(w.document.querySelector(NOA_ITEM).disabled, true, 'hard-locked on known-absent');
+  // the widget's own 'load' handler clears vendorId when there's no URL/handoff in
+  // jsdom; in production it stays set, so re-establish it before the reload.
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();                       // 2nd: error → unknown → neutral
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(w.cpDocsLoaded, false, 'cpDocsLoaded reset to unknown on degraded reload');
+  assert.equal(w.document.querySelector(NOA_ITEM).disabled, false, 'falls back to neutral, not stale hard-lock');
+});

@@ -2094,7 +2094,11 @@ function cpRecommendedDocs() {
 function renderCarrierDocs(data) {
   var body = document.getElementById('cp-docs-body');
   var countEl = document.getElementById('cp-docs-count');
-  cpDocTypesOnFile = {};
+  // Reset the on-file state to UNKNOWN on entry. The definitive-documents path
+  // below re-sets cpDocsLoaded=true; the _error / data.reason early-returns leave
+  // it false so a reload that degrades to error/unavailable falls back to neutral
+  // (never a stale hard-lock / documented-exception from the prior load).
+  cpDocTypesOnFile = {}; cpDocsLoaded = false;
   if (!body) return;
   if (countEl) countEl.textContent = '';
   if (!data || data._error) { body.textContent = 'Could not load documents. Please try again.'; cpApplyForcedGates(); return; }

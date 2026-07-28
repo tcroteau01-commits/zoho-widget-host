@@ -127,6 +127,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .owner-name { font-size: 13.5px; font-weight: 600; color: var(--of-charcoal); padding: 8px 0; border-bottom: 1px dashed var(--of-beige-line); }
 .owner-name:last-child { border-bottom: none; }
 
+/* application summary (client profile) — 2-col key/value grid */
+.appkv { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+.appkv .row { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px dashed var(--of-beige-line); }
+.appkv .row.full { grid-column: 1 / -1; }
+.appkv .k { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--of-gray-500); }
+.appkv .v { font-size: 13.5px; font-weight: 600; color: var(--of-charcoal); word-break: break-word; }
+
 /* notes */
 .notes { display: flex; flex-direction: column; gap: 10px; }
 .note { font-size: 12.5px; border-left: 3px solid var(--of-beige-line); padding: 4px 0 4px 12px; }
@@ -346,7 +353,7 @@ var OFS = {
   deriveStage: deriveStage, statusPill: statusPill, computeKPIs: computeKPIs,
   pendingDocs: pendingDocs, isPendingDoc: isPendingDoc, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, estTerms: estTerms,
   filterMyPipeline: filterMyPipeline, buildNotePayload: buildNotePayload,
-  buildDocRequestPayload: buildDocRequestPayload, docViewButton: docViewButton, parseClientNotes: parseClientNotes,
+  buildDocRequestPayload: buildDocRequestPayload, docViewButton: docViewButton, parseClientNotes: parseClientNotes, appSummaryRows: appSummaryRows,
   SALES_ATTR: SALES_ATTR, SALES_NOTES_FIELD: SALES_NOTES_FIELD, APPLICATION_LOOKUP: APPLICATION_LOOKUP, STEPS: STEPS
 };
 global.OFS = OFS;
@@ -357,6 +364,11 @@ var DEMO_PIPELINE = [
   { ID: 'UW-2026-0418', Business_Name: 'Brennan Eslinger Trucking LLC', Authority_Type: 'Carrier', USDOT: '4366362',
     Application_Status: 'Docs Requested', Submitted_At: 'Jun 8, 2026', Sales_Rep: 'Jordan Park', Assigned_Underwriter: 'M. Reyes',
     loc: 'Glendale, AZ', Factoring_Rate: '3.00%', Purchase_Limit: '$30,000',
+    Factoring_Authority_Selected: 'Carrier', Business_Formation_Type: 'LLC', Equipment_Types: ['Dry Van','Flatbed'],
+    Number_of_Trucks: 1, Number_of_Drivers: 1, Monthly_Invoices_to_Factor: '$22,000', Has_Prior_Factor: 'Yes',
+    Current_Previous_Factor: 'TBS Factoring', Veteran: 'No', Rate_Term_Selection: 'Annual Option', Contract_Type: 'Recourse',
+    Credit_Issues: ['Bankruptcy'], Credit_Explanation: 'Chapter 11 filed 2019 during a prior trucking venture; fully discharged 2021. No defaults since.',
+    Business_Phone: '(602) 555-1122', Business_Admin_Email: 'brennan@eslingerlogistics.com', Physical_Address: '456 Cargo Way, Phoenix, AZ',
     Buyout_Required: true, Buyout_Factor: 'TBS Factoring', Estimated_Buyout_Date: '15-Aug-2026',
     Buyout_Notes: '[08/18/2026 9:10 AM]\nPayoff confirmed $11,800 — buyout letter sent.\n\n[08/15/2026 2:41 PM]\nRequested aging report from TBS Factoring.',
     owners: [
@@ -441,7 +453,7 @@ function loadPipeline() {
 // Load the supporting records for one application (documents + UW note).
 function loadDetail(app) {
   if (STATE.mode === 'demo' || typeof fetch !== 'function') {
-    return Promise.resolve({ documents: app.documents || [], owners: app.owners || [], physicalAddress: app.loc || app.Physical_Address || '', uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', clientMessage: app.Client_Message || '', salesNotes: app.Sales_Notes || '', buyoutRequired: !!app.Buyout_Required, buyoutFactor: app.Buyout_Factor || '', buyoutDate: app.Estimated_Buyout_Date || '', buyoutNotes: app.Buyout_Notes || '' });
+    return Promise.resolve({ application: app, documents: app.documents || [], owners: app.owners || [], physicalAddress: app.loc || app.Physical_Address || '', uwNotes: app.UW_Notes || '', uwWhen: app.UW_When || '', clientMessage: app.Client_Message || '', salesNotes: app.Sales_Notes || '', buyoutRequired: !!app.Buyout_Required, buyoutFactor: app.Buyout_Factor || '', buyoutDate: app.Estimated_Buyout_Date || '', buyoutNotes: app.Buyout_Notes || '' });
   }
   // Reuse /application-by-usdot (returns documents + owners + the latest Underwriting_Review).
   var usdot = String(app.USDOT || '');
@@ -452,14 +464,14 @@ function loadDetail(app) {
       var rev = j.review || {}, ap = j.application || {};
       var docs = (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; });
       var owners = (j.owners || []).map(function (o) { return { First_Name1:o.First_Name1, Last_Name1:o.Last_Name1, Title:o.Title, Ownership_Percent:o.Ownership_Percent, Owner_Sequence:o.Owner_Sequence, Birthdate:o.Birthdate, SSN:o.SSN, Phone:o.Phone, Email:o.Email, Address:o.Address }; });
-      return { documents: docs, owners: owners, physicalAddress: ap.Physical_Address || ap.loc || app.loc || '', uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', clientMessage: rev.Client_Message || '', salesNotes: app[SALES_NOTES_FIELD] || '',
+      return { application: Object.assign({}, app, ap), documents: docs, owners: owners, physicalAddress: ap.Physical_Address || ap.loc || app.loc || '', uwNotes: rev.UW_Notes || '', uwWhen: rev.Decision_Date || '', clientMessage: rev.Client_Message || '', salesNotes: app[SALES_NOTES_FIELD] || '',
         // Buyout the underwriter flagged (from the latest Underwriting_Review). Buyout_Required is a
         // Creator checkbox ("true"/"false"); the date comes back as "15-Aug-2026 00:00:00" → drop the time.
         buyoutRequired: String(rev.Buyout_Required).toLowerCase() === 'true',
         buyoutFactor: rev.Buyout_Factor || '', buyoutDate: (rev.Estimated_Buyout_Date || '').split(' ')[0],
         buyoutNotes: rev.Buyout_Notes || '' };
     })
-    .catch(function () { return { documents: [], owners: [], physicalAddress: app.loc || '', uwNotes: '', uwWhen: '', clientMessage: '', salesNotes: app[SALES_NOTES_FIELD] || '', buyoutRequired: false, buyoutFactor: '', buyoutDate: '', buyoutNotes: '' }; });
+    .catch(function () { return { application: app, documents: [], owners: [], physicalAddress: app.loc || '', uwNotes: '', uwWhen: '', clientMessage: '', salesNotes: app[SALES_NOTES_FIELD] || '', buyoutRequired: false, buyoutFactor: '', buyoutDate: '', buyoutNotes: '' }; });
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
@@ -484,6 +496,30 @@ function parseClientNotes(raw){
     return { text: body, stamp: (parts[0] || '').trim(), who: (parts[1] || '').trim() };
   }).filter(function (e){ return e.text; });
 }
+// Applicant profile rows for the sales detail — a general picture of the client, mirroring the
+// underwriting "Submitted Application" card's field map plus the contact info sales wants. Reads the
+// full Application record loadDetail now captures (from /application-by-usdot). Returns rows HTML.
+function appSummaryRows(a){
+  a = a || {};
+  var creditFlags = (a.Credit_Issues || []).filter(function(c){ return c && c !== 'None'; });
+  var rows = [
+    ['Authority', a.Authority_Type], ['Factoring As', a.Factoring_Authority_Selected],
+    ['Formation', a.Business_Formation_Type], ['Equipment', (a.Equipment_Types || []).join(', ')],
+    ['Trucks / Drivers', (a.Number_of_Trucks != null || a.Number_of_Drivers != null) ? ((a.Number_of_Trucks || 0) + ' / ' + (a.Number_of_Drivers || 0)) : ''],
+    ['Monthly Invoices', a.Monthly_Invoices_to_Factor],
+    ['Prior Factor', a.Has_Prior_Factor === 'Yes' ? a.Current_Previous_Factor : (a.Has_Prior_Factor ? 'None' : '')],
+    ['Veteran', a.Veteran],
+    ['Requested Term', (a.Rate_Term_Selection || '').replace(' Option', '') + (a.Contract_Type ? (' · ' + a.Contract_Type) : '')],
+    ['Credit Issues', creditFlags.length ? creditFlags.join(', ') : (a.Credit_Issues ? 'None' : '')],
+    ['Business Phone', a.Business_Phone], ['Email', a.Business_Admin_Email],
+    ['Physical Address', a.Physical_Address || a.loc]
+  ].map(function(r){ return '<div class="row"><div class="k">' + esc(r[0]) + '</div><div class="v">' + esc(r[1] || '—') + '</div></div>'; }).join('');
+  if (creditFlags.length && a.Credit_Explanation) {
+    rows += '<div class="row full"><div class="k">Credit Explanation</div><div class="v">' + esc(a.Credit_Explanation) + '</div></div>';
+  }
+  return rows;
+}
+
 // Document viewer: "View" carries the signed file URL + display name in data-*; one delegated
 // listener (bound once) opens the shared OperFiDocViewer modal (renders PDFs/images in-page
 // instead of force-downloading). See operfi-docviewer.js (loaded from app.operfi.com).
@@ -646,6 +682,8 @@ function renderDetail(app, d) {
     '<div class="card"><div class="card-title">Where it stands</div><div class="stepper">' + stepsHtml + '</div></div>' +
 
     ownerCard +
+
+    '<div class="card"><div class="card-title">Application</div><div class="appkv">' + appSummaryRows(d.application) + '</div></div>' +
 
     '<div class="grid2"><div class="card"><div class="card-title">Documents <span class="count">' + docRec.uploadedCount + ' / ' + docRec.total + ' received</span></div>' + docsHtml +
       '<div class="hint">Documents the prospect uploads appear here as Received. Use “Nudge client” on a still-needed item to send a reminder — Sales can’t mark docs received.</div></div>' +

@@ -113,13 +113,13 @@ test('no COI on file leaves the item checkable (attest, never blocks)', () => {
 test('bank item gate applies only when the bank item is shown', () => {
   const w = boot();
   w.profilePayload = { account_vendor: { av_id: '1' } };
-  // _checklistApplies true (no bank info) → bank item present
+  // direct-pay (no Factoring_Company) → bank item present
   w.renderChecklist(_p({ bank: { has_bank_info: false } }));
   w.cpDocTypesOnFile = { banking: true };
   w.cpViewedTypes = {};
   w.cpApplyForcedGates();
   const bank = w.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]');
-  assert.ok(bank, 'bank item shown when _checklistApplies');
+  assert.ok(bank, 'bank item shown for direct-pay carrier');
   assert.equal(bank.disabled, true);
 });
 
@@ -150,4 +150,42 @@ test('a locked COI keeps the checklist incomplete (decision stays gated)', () =>
   // tick every ENABLED item via Select-All
   const all = w.document.getElementById('cp-check-all'); all.checked = true; all.onchange();
   assert.equal(w.checklistComplete(), false, 'cannot complete while COI locked');
+});
+
+// ── CAVRA3 Phase 2D: payment-doc item by pay type ──────────────────────────
+function _pd(overrides) {
+  return Object.assign({ account_vendor: { av_id: '1' }, vendor: {}, bank: {} }, overrides || {});
+}
+
+test('factored carrier shows the NOA item, not the bank item', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_pd({ vendor: { Factoring_Company: { ID: 'F1' } } }));
+  assert.ok(w.document.querySelector('.cp-check-item[data-key="Checklist_NOA_Reviewed"]'), 'NOA item present');
+  assert.ok(!w.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]'), 'bank item absent');
+});
+
+test('direct-pay carrier shows the bank item, not the NOA item', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_pd({ vendor: {}, bank: { has_bank_info: true } }));
+  assert.ok(w.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]'), 'bank item present');
+  assert.ok(!w.document.querySelector('.cp-check-item[data-key="Checklist_NOA_Reviewed"]'), 'NOA item absent');
+});
+
+test('direct-pay WITH bank info on file still shows the bank item (2C inversion fixed)', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  // pre-2D this exact case HID the bank item
+  w.renderChecklist(_pd({ vendor: { Factor_Status: 'Approved' }, bank: { has_bank_info: true } }));
+  assert.ok(w.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]'));
+});
+
+test('exactly one payment item renders', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_pd({ vendor: { Factoring_Company: { ID: 'F1' } } }));
+  const pay = w.document.querySelectorAll(
+    '.cp-check-item[data-key="Checklist_NOA_Reviewed"], .cp-check-item[data-key="Checklist_Bank_Letter_Verified"]');
+  assert.equal(pay.length, 1);
 });

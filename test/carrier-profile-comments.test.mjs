@@ -236,15 +236,17 @@ test('Select All checks every item and unlocks the decision options in one actio
   assert.ok(!opt.classList.contains('disabled'));
 });
 
-test('bank-letter checklist item only appears when direct-pay or factor status is Denied/Pending', () => {
+test('bank-letter checklist item appears for direct-pay carriers, including those with bank info already on file (CAVRA3 2D pay-type rule)', () => {
   const { window } = makeWidget();
   const direct = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001' }, bank: { has_bank_info: false } };
   window.renderChecklist(direct);
   assert.ok(window.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]'));
 
-  const cleanFactor = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001', Factor_Status: 'Approved' }, bank: { has_bank_info: true } };
-  window.renderChecklist(cleanFactor);
-  assert.ok(!window.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]'));
+  // Factor_Status alone doesn't make a carrier "factored" -- pay type is keyed off
+  // Factoring_Company. No Factoring_Company here → still direct-pay → bank item shows.
+  const noFactoringCompany = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001', Factor_Status: 'Approved' }, bank: { has_bank_info: true } };
+  window.renderChecklist(noFactoringCompany);
+  assert.ok(window.document.querySelector('.cp-check-item[data-key="Checklist_Bank_Letter_Verified"]'));
 });
 
 test('submitDecision blocks with a feedback message when the checklist is incomplete', async () => {
@@ -259,8 +261,9 @@ test('submitDecision blocks with a feedback message when the checklist is incomp
   assert.match(window.document.getElementById('cp-rail-feedback').textContent, /checklist/i);
 });
 
-test('buildDecisionPayload includes all checklist booleans, null for the inapplicable bank-letter item', () => {
+test('buildDecisionPayload includes all checklist booleans for a direct-pay carrier (CAVRA3 2D pay-type rule)', () => {
   const { window } = makeWidget();
+  // No Factoring_Company → direct-pay → bank item renders and is included, not nulled out.
   const p = { account_vendor: { av_id: 'av_1' }, vendor: { ID: '9001', Factor_Status: 'Approved' }, bank: { has_bank_info: true },
               system_recommendation: 'Approve', risk_decisions: [] };
   window.profilePayload = p;
@@ -274,7 +277,7 @@ test('buildDecisionPayload includes all checklist booleans, null for the inappli
   assert.equal(d.Checklist_Identity_Verified_FMCSA, true);
   assert.equal(d.Checklist_DOT_MC_Match_Pickup, true);
   assert.equal(d.Checklist_OOS_HOS_Reviewed, true);
-  assert.equal(d.Checklist_Bank_Letter_Verified, null);
+  assert.equal(d.Checklist_Bank_Letter_Verified, true);
 });
 
 // ── UX fix 1: "↻ Refresh all data" button was a dead button (no handler) ──────

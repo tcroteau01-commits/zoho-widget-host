@@ -1871,6 +1871,7 @@ var CHECKLIST_ITEMS = [
   { key: 'Checklist_OOS_HOS_Reviewed', label: 'OOS/HOS reviewed' }
 ];
 var CHECKLIST_BANK_ITEM = { key: 'Checklist_Bank_Letter_Verified', label: 'Bank letter verified directly' };
+var CHECKLIST_NOA_ITEM = { key: 'Checklist_NOA_Reviewed', label: 'NOA reviewed and confirmed' };
 var checklistState = {};
 
 // CAVRA3 Phase 2C — forced doc-view gate. Gate the COI / bank-letter confirm
@@ -1878,17 +1879,20 @@ var checklistState = {};
 // 2026-07-26). No doc on file → attest as today; never makes booking impossible.
 var cpViewedTypes = {};
 var cpDocTypesOnFile = {};
-var FORCED_VIEW_MAP = { Checklist_COI_Truck_Driver: 'coi', Checklist_Bank_Letter_Verified: 'banking' };
+var FORCED_VIEW_MAP = { Checklist_COI_Truck_Driver: ['coi'], Checklist_Bank_Letter_Verified: ['banking'], Checklist_NOA_Reviewed: ['noa', 'lor'] };
 function cpApplyForcedGates() {
   Object.keys(FORCED_VIEW_MAP).forEach(function (key) {
     var cb = document.querySelector('.cp-check-item[data-key="' + key + '"]');
-    if (!cb) return;  // item not shown (e.g. bank item when _checklistApplies is false)
-    var type = FORCED_VIEW_MAP[key];
+    if (!cb) return;  // item not shown (e.g. NOA item hidden when the carrier is direct-pay)
+    var types = FORCED_VIEW_MAP[key];
     var hint = document.querySelector('.cp-check-hint[data-hint-for="' + key + '"]');
-    var lockable = !!cpDocTypesOnFile[type] && !cpViewedTypes[type];
+    var onFile = types.some(function (t) { return !!cpDocTypesOnFile[t]; });
+    var viewed = types.some(function (t) { return !!cpViewedTypes[t]; });
+    var lockable = onFile && !viewed;
     if (lockable) {
       cb.disabled = true; cb.checked = false; checklistState[key] = false;
-      if (hint) hint.textContent = 'Open the ' + (type === 'coi' ? 'COI' : 'bank document') + ' below to confirm';
+      var docLabel = types.indexOf('coi') !== -1 ? 'COI' : (types.indexOf('banking') !== -1 ? 'bank document' : 'NOA/LOR document');
+      if (hint) hint.textContent = 'Open the ' + docLabel + ' below to confirm';
     } else {
       cb.disabled = false;
       if (hint) hint.textContent = '';
@@ -1898,11 +1902,6 @@ function cpApplyForcedGates() {
 }
 if (typeof window !== 'undefined') { window.cpApplyForcedGates = cpApplyForcedGates; }
 
-function _checklistApplies(p){
-  var v=p.vendor||{}, bank=p.bank||{};
-  var fs=(v.Factor_Status||'').toString();
-  return !bank.has_bank_info || fs==='Denied' || fs==='Pending';
-}
 function renderChecklist(p){
   var el=document.getElementById('cp-checklist'); if(!el) return;
   checklistState={};
@@ -1914,7 +1913,10 @@ function renderChecklist(p){
     return;
   }
   var items=CHECKLIST_ITEMS.slice();
-  if(_checklistApplies(p)) items.push(CHECKLIST_BANK_ITEM);
+  // CAVRA3 2D: exactly one payment-direction item, by pay type. Factored → NOA;
+  // direct pay → bank doc. (Replaces the inverted _checklistApplies visibility.)
+  var factored = !!((((p.vendor || {}).Factoring_Company) || '').toString().trim());
+  items.push(factored ? CHECKLIST_NOA_ITEM : CHECKLIST_BANK_ITEM);
   items.forEach(function(it){ checklistState[it.key]=false; });
   el.innerHTML='<div class="card-title" style="margin-bottom:10px;">Confirm Before You Book</div>'+
     '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--of-gray-700);margin-bottom:10px;cursor:pointer;">'+

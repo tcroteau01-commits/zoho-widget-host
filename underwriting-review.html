@@ -553,7 +553,8 @@ var API_BASE = global.OPERFI_UW_API_BASE || 'https://operfi-broker-api.onrender.
 var CHECKS_PATH = '/application-checks'; // GET ?usdot= → { fraud, ownership, ucc, risk, checkedAt }  (confirm with Tom)
 var QUEUE_PATH = '/applications';        // GET → { applications: [{ USDOT, Business_Name, Authority_Type, Application_Status, Submitted_At, Updated_At, Assigned_Underwriter, Buyout_Required, UCC_Issues, Decision_Date }] }  (Updated_At drives the "Stale (30d+)" bucket; confirm with Tom)
 var ADD_PATH = '/uw-add-record';         // POST { application_id, kind:'owner'|'customer'|'contact'|'related', record } → creates the linked child record  (confirm with Tom)
-var DOCREQ_PATH = '/sales-doc-request';  // POST { application_id, document_type, source } → creates a Document (Status='Requested'); shown on the client portal  (confirm with Tom)
+var DOCREQ_PATH = '/sales-doc-request';  // POST { application_id, document_type|document_types[], source, rep } → creates Document(s) (Status='Requested'); shown on the client portal + logs who asked to Sales_Notes
+var NOTIFY_PATH = '/notify-client';      // POST { application_id, usdot, document, rep } → texts the client a reminder + logs the nudge to the shared Sales_Notes trail
 var AGR_ROLES_PATH = '/agreement-roles'; // GET ?usdot= → { roles:[{action_id,role_name}], suggestions:[{name,email,source}] } from the Zoho Sign template
 var AGR_SEND_PATH = '/send-agreement';   // POST { application_id, usdot, recipients:[{action_id,name,email}], resend? } → prepares a Zoho Sign DRAFT, returns { request_id, status:'Draft', send_url }
 var AGR_URL_PATH = '/agreement-send-url'; // GET ?usdot= → { send_url } — a FRESH Zoho Sign review url for the current draft (embed url expires ~2 min)
@@ -714,6 +715,23 @@ function reconcileDocs(required, documents) {
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
     total: checklist.length + requested.length
   };
+}
+
+// ── "Nudge client" — text the applicant a reminder for a document they still owe ──────────────
+// Only rows the CLIENT can act on get a nudge: anything not yet uploaded, including a rejected doc
+// (they owe a re-upload) and an ad-hoc requested one. Uploaded/verified rows are done. The IRS 8821
+// is excluded — Underwriting sends that one for wet signature, so it's never asked of the client.
+function canNudge(row) {
+  if (!row) return false;
+  if (is8821(row.type || row.label)) return false;
+  return !row.uploaded;
+}
+// The button markup. `sent` renders the post-nudge state so it survives an unrelated re-render.
+function nudgeButton(docType, sent) {
+  if (!docType) return '';
+  return sent
+    ? ' <button type="button" class="btn ghost sm js-nudge" data-doc="' + escHtml(docType) + '" disabled>Sent ✓</button>'
+    : ' <button type="button" class="btn ghost sm js-nudge" data-doc="' + escHtml(docType) + '">Nudge client</button>';
 }
 
 // ── State filing links (SoS business search + UCC search/filing) ──────────────
@@ -963,6 +981,7 @@ function buildAgreementRecipients(roles, inputs){
 }
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
+  canNudge: canNudge, nudgeButton: nudgeButton,
   defaultPromoRate: defaultPromoRate, fmtTerm: fmtTerm, buildApplicationTerms: buildApplicationTerms,
   composeNotesLog: composeNotesLog, formatStamp: formatStamp, checksFromReview: checksFromReview, parseSalesNotes: parseSalesNotes, uwAuthor: uwAuthor,
   parseClientMsg: parseClientMsg, noteTime: noteTime, buildNoteHistory: buildNoteHistory, saferUrl: saferUrl, carrierOkUrl: carrierOkUrl,
@@ -1866,16 +1885,21 @@ function renderModel(m) {
   var viewLink = function(url, filename){ return docViewButton(url, filename); };
   var dt = '<tr><th>Document</th><th>Status</th></tr>';
   var hrvChip = ' <span class="doc-92" title="Underwriting Manual §9.2 expanded requirement">§9.2</span>';
+  // Docs already nudged this session keep their "Sent ✓" across an unrelated re-render.
+  var nudged = (m && m._nudged) || {};
   docRec.checklist.forEach(function(c){
     var pill = c.verified ? '<span class="pill g">Verified</span>'
              : c.uploaded ? '<span class="pill b">Received</span>'
              : c.rejected ? '<span class="pill r">Rejected</span>'
              : '<span class="pill r">Needed</span>';
-    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link, c.label):'')+'</td></tr>';
+    var nudge = canNudge(c) ? nudgeButton(c.type, nudged[normType(c.type)]) : '';
+    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link, c.label):'')+nudge+'</td></tr>';
   });
   (docRec.requested || []).forEach(function(rq){
     if (m.highRiskVolume && is8821(rq.type || rq.label)) return;   // 8821 shown as its own UW-handled row below
-    dt += '<tr><td>'+rq.label+(isHrvType(rq.type)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· requested</span></td><td><span class="pill a">Requested</span></td></tr>';
+    var rqType = rq.type || rq.label;
+    var nudge = canNudge(rq) ? nudgeButton(rqType, nudged[normType(rqType)]) : '';
+    dt += '<tr><td>'+rq.label+(isHrvType(rq.type)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· requested</span></td><td><span class="pill a">Requested</span>'+nudge+'</td></tr>';
   });
   docRec.extras.forEach(function(e){
     if (m.highRiskVolume && is8821(e.label)) return;               // dedup with the 8821 tracked row below
@@ -1893,6 +1917,9 @@ function renderModel(m) {
     dt += '<tr><td>IRS Form 8821'+hrvChip+' <span style="color:var(--of-gray-500)">· Underwriting-handled</span></td><td>'+pill8821+(up8821?viewLink(docUrl(doc8821), 'IRS Form 8821'):'')+'</td></tr>';
   }
   $('docTable').innerHTML = dt;
+  qsa('#docTable .js-nudge').forEach(function (b) {
+    b.addEventListener('click', function () { nudgeClient(b.getAttribute('data-doc'), b); });
+  });
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';
   $('kDocs').textContent = docRec.uploadedCount + ' / ' + docRec.total;
   $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
@@ -2126,6 +2153,45 @@ function persistManual(okMsg){
     showStatus(okMsg, 'success');
   }).catch(function(e){ showStatus('Could not save: ' + (e && e.message ? e.message : e), 'error'); });
 }
+// Nudge the client for a document they still owe: texts them a reminder and logs it to the shared
+// Sales_Notes trail, so the sales pipeline's Notes & Activity shows Underwriting already chased it.
+// Success requires BOTH r.ok AND j.ok — the sales version once faked success against a 404 route.
+function nudgeClient(docType, btn){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  if (!docType) return;
+  MODEL._nudged = MODEL._nudged || {};
+  if (MODEL._demo || typeof fetch !== 'function'){
+    MODEL._nudged[normType(docType)] = true;
+    if (btn){ btn.disabled = true; btn.textContent = 'Sent ✓'; }
+    showStatus('✓ Reminder queued for "' + docType + '" (demo).', 'success');
+    return;
+  }
+  if (btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+  showStatus('Sending reminder for "' + docType + '"…', 'loading');
+  fetch(API_BASE + NOTIFY_PATH, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ application_id: MODEL.appId, usdot: (MODEL.application || {}).USDOT,
+                           document: docType, rep: uwAuthor() }) })
+    .then(function (r){ return r.json().catch(function(){ return {}; })
+                          .then(function (j){ return { httpOk: r.ok, j: j || {} }; }); })
+    .then(function (res){
+      if (!res.httpOk || !res.j.ok) throw new Error(res.j.error || res.j.detail || 'could not send the reminder');
+      MODEL._nudged[normType(docType)] = true;
+      if (btn){ btn.disabled = true; btn.textContent = 'Sent ✓'; }
+      // The server logged the nudge and handed back the FULL new Sales_Notes — re-render just the
+      // history so it lands in its correct chronological slot (a full load() would wipe "Sent ✓").
+      if (res.j.sales_notes){
+        MODEL.application = MODEL.application || {};
+        MODEL.application.Sales_Notes = res.j.sales_notes;
+        renderNoteHistory(MODEL.clientMessageStored, res.j.sales_notes);
+      }
+      showStatus('✓ Reminder sent for "' + docType + '"' + (res.j.note_logged ? ' — logged to the notes trail.' : '.'), 'success');
+    })
+    .catch(function (e){
+      if (btn){ btn.disabled = false; btn.textContent = 'Nudge client'; }
+      showStatus('Could not send the reminder: ' + (e && e.message ? e.message : e), 'error');
+    });
+}
+
 // Request a document FROM the client. Creates a Document (Status='Requested') that surfaces on the
 // client's upload portal as a new item to upload. Reuses the /sales-doc-request contract.
 function readDocReq(){ return ($('rdOther').value || '').trim(); }
@@ -2142,7 +2208,7 @@ function requestDoc(){
     return;
   }
   showStatus('Requesting "' + dtype + '"…', 'loading');
-  fetch(API_BASE + DOCREQ_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, document_type: dtype, source: 'Underwriting' }) })
+  fetch(API_BASE + DOCREQ_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, document_type: dtype, source: 'Underwriting', rep: uwAuthor() }) })
     .then(function (r){ return r.json().catch(function(){ return {}; }); })
     .then(function (j){
       if (j && j.ok){ clearAddForm('addDocReqForm'); showStatus('✓ Requested "' + dtype + '" — added to the client portal.', 'success'); load(MODEL.application.USDOT); }
@@ -2210,13 +2276,15 @@ function applyHighRiskVolume(){
   // §9.2 document — never rendering. See buildReviewPayload / the load derivation above.
   toRequest.forEach(function(doc){ if (!hasDocType(doc.type)) MODEL.documents.push([doc.type, 'Underwriting', 'Requested', '']); });
   renderModel(MODEL);
-  // Fire each client doc-request (best-effort — one failure must not abort the rest), then reload so the
-  // requests come back as persisted Document records (real statuses + view links).
-  Promise.all(toRequest.map(function(doc){
-    return fetch(API_BASE + DOCREQ_PATH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ application_id: MODEL.appId, document_type: doc.type, source: 'Underwriting' }) })
-      .then(function(r){ return r.json().catch(function(){ return {}; }); })
-      .catch(function(){ return {}; });
-  })).then(function(){
+  // ONE batched request (the backend creates each Document and logs a SINGLE "requested N documents"
+  // line to Sales_Notes). Seven parallel POSTs would each read-modify-write Sales_Notes and lose
+  // lines. Best-effort — a failure must not abort the flow; the reload below reconciles reality.
+  fetch(API_BASE + DOCREQ_PATH, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ application_id: MODEL.appId, source: 'Underwriting', rep: uwAuthor(),
+                           document_types: toRequest.map(function(doc){ return doc.type; }) }) })
+    .then(function(r){ return r.json().catch(function(){ return {}; }); })
+    .catch(function(){ return {}; })
+    .then(function(){
     // Best-effort: persist the §9.2 flag on the review (High_Risk_Volume_Flag). A save hiccup must NOT
     // hide the requested docs, so swallow errors — the flag also derives from the requested docs on load.
     return saveReview(buildReviewPayload(readState(), MODEL.appId), MODEL.reviewId)

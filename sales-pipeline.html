@@ -287,7 +287,18 @@ function docStatus(d){ return Array.isArray(d) ? d[2] : (d && (d.Status || d.sta
 function docUrl(d){ return (Array.isArray(d) ? d[3] : (d && (d.fileUrl || d.link || d.url))) || ''; }
 function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
 function isUploadedStatus(s){ return !isPendingDoc(s); }
+function isRequestedStatus(s){ return /^(requested|needed|pending)$/i.test(String(s || '').trim()); }
 function statusRank(s){ s = String(s || '').trim().toLowerCase(); if (s === 'verified') return 3; if (isUploadedStatus(s)) return 2; if (s === 'rejected') return 1; return 0; }
+// Detail line for a checklist row. A row backed by a Document record with Status "Requested" was
+// explicitly asked for (usually by Underwriting) — say so rather than showing a bare "Needed", which
+// reads as "nobody has asked yet". Checklist rows with no record at all carry the literal 'Needed'.
+function docDetail(c) {
+  if (!c) return 'Needed';
+  if (c.verified) return 'Verified';
+  if (c.uploaded) return 'Received';
+  if (c.rejected) return 'Rejected — re-upload';
+  return (isRequestedStatus(c.status) && normType(c.status) !== 'needed') ? 'Requested' : 'Needed';
+}
 function reconcileDocs(required, documents) {
   required = required || []; documents = documents || [];
   var byType = {};
@@ -309,10 +320,15 @@ function reconcileDocs(required, documents) {
   var reqTypes = {}; required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
   var extras = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && isUploadedStatus(docStatus(d)); })
     .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received', link: docUrl(d) }; });
+  // Staff-requested docs that aren't in the base checklist and haven't been uploaded yet. Underwriting
+  // requests these (ad-hoc or the §9.2 set) and they're real Document records — without this bucket
+  // they matched neither checklist nor extras and were silently dropped from the sales view.
+  var requested = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && !isUploadedStatus(docStatus(d)) && isRequestedStatus(docStatus(d)); })
+    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Requested', link: docUrl(d) }; });
   return {
-    checklist: checklist, extras: extras,
+    checklist: checklist, extras: extras, requested: requested,
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
-    total: checklist.length
+    total: checklist.length + requested.length
   };
 }
 
@@ -351,7 +367,8 @@ function buildDocRequestPayload(appId, docType) {
 
 var OFS = {
   deriveStage: deriveStage, statusPill: statusPill, computeKPIs: computeKPIs,
-  pendingDocs: pendingDocs, isPendingDoc: isPendingDoc, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, estTerms: estTerms,
+  pendingDocs: pendingDocs, isPendingDoc: isPendingDoc, isRequestedStatus: isRequestedStatus, docDetail: docDetail,
+  requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, estTerms: estTerms,
   filterMyPipeline: filterMyPipeline, buildNotePayload: buildNotePayload,
   buildDocRequestPayload: buildDocRequestPayload, docViewButton: docViewButton, parseClientNotes: parseClientNotes, appSummaryRows: appSummaryRows,
   SALES_ATTR: SALES_ATTR, SALES_NOTES_FIELD: SALES_NOTES_FIELD, APPLICATION_LOOKUP: APPLICATION_LOOKUP, STEPS: STEPS
@@ -621,10 +638,17 @@ function renderDetail(app, d) {
   var docRec = reconcileDocs(requiredDocs(app), d.documents);
   var docView = function(url, filename){ return docViewButton(url, filename); };
   var docsHtml = docRec.checklist.map(function (c) {
-    var det = c.verified ? 'Verified' : (c.uploaded ? 'Received' : (c.rejected ? 'Rejected — re-upload' : 'Needed'));
+    var det = docDetail(c);
     var action = c.uploaded ? docView(c.link, c.label) : '<button class="btn ghost sm js-nudge" data-doc="' + esc(c.type) + '">Nudge client</button>';
     return '<div class="chk"><span class="mark ' + (c.uploaded ? 'ok' : 'bad') + '">' + (c.uploaded ? '✓' : '○') + '</span>' +
       '<div class="chk-body"><div class="lbl">' + esc(c.label) + '</div><div class="det">' + det + '</div></div>' + action + '</div>';
+  }).join('') +
+  // Docs underwriting asked for that aren't on the standard checklist. Same shape as a needed row so
+  // the existing .js-nudge wiring picks them up — sales can chase them without leaving this screen.
+  (docRec.requested || []).map(function (r) {
+    return '<div class="chk"><span class="mark bad">○</span><div class="chk-body"><div class="lbl">' + esc(r.label) +
+      '</div><div class="det">Requested · not on the standard checklist</div></div>' +
+      '<button class="btn ghost sm js-nudge" data-doc="' + esc(r.type) + '">Nudge client</button></div>';
   }).join('') +
   docRec.extras.map(function (e) {
     return '<div class="chk"><span class="mark ok">✓</span><div class="chk-body"><div class="lbl">' + esc(e.label) +
@@ -770,9 +794,12 @@ function requestDoc(app) {
     selectApp(STATE.selected); dToast('ok', 'Requested “' + docType + '” (demo).'); return;
   }
   fetch(API_BASE + '/sales-doc-request', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ application_id: app.ID, document_type: docType }) })
+    body: JSON.stringify({ application_id: app.ID, document_type: docType, source: 'Sales', rep: STATE.rep || 'Sales' }) })
     .then(function (r) { return r.json().catch(function () { return {}; }); })
     .then(function (j) {
+      // Carry the server's appended Sales_Notes back onto the in-memory app — loadDetail sources the
+      // notes feed from there, and a later addNote appends onto this value.
+      if (j && j.sales_notes) app[SALES_NOTES_FIELD] = j.sales_notes;
       if (j && j.ok) { dToast('ok', 'Requested “' + docType + '”.'); selectApp(STATE.selected); }
       else dToast('err', 'Could not create the request' + ((j && j.detail) ? ': ' + j.detail : '') + '.');
     })

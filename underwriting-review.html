@@ -479,7 +479,7 @@ tr:last-child td { border-bottom:none; }
 
         <div class="card">
           <div class="card-title">Credit Structuring</div>
-          <div class="hint" style="font-size:11px;color:var(--of-gray-500);margin-bottom:10px">Pre-filled from the applicant's answers (OperFi rate sheet). Edit any rate if the deal needs it — saved terms flow to the client agreement.</div>
+          <div class="hint" style="font-size:11px;color:var(--of-gray-500);margin-bottom:10px">The 9 rows of the agreement's term sheet, pre-filled from the applicant's answers (OperFi rate sheet). Edit any term if the deal needs it — what's saved here is what prints on the client agreement / setup packet.</div>
           <div class="fld row2">
             <div><label>Promotional Rate (%)</label><input type="text" id="uwPromoRate" placeholder="%"></div>
             <div><label>Factoring Fee (%)</label><input type="text" id="uwRate" placeholder="%"></div>
@@ -489,6 +489,14 @@ tr:last-child td { border-bottom:none; }
             <div><label>Advance Rate (%)</label><input type="text" id="uwAdvanceRate" placeholder="%"></div>
           </div>
           <div class="fld" style="margin-top:12px"><label>Credit Limit ($)</label><input type="text" id="uwLimit" placeholder="$"></div>
+          <div class="fld row2" style="margin-top:12px">
+            <div><label>Setup Fee (%)</label><input type="text" id="uwSetupFee" placeholder="%"></div>
+            <div><label>Monthly Minimum Volume ($)</label><input type="text" id="uwMonthlyMin" placeholder="$"></div>
+          </div>
+          <div class="fld row2" style="margin-top:12px">
+            <div><label>Repurchase Period (months)</label><input type="text" id="uwRepurchase" placeholder="Months"></div>
+            <div><label>Term (months)</label><input type="text" id="uwTermMonths" placeholder="Months"></div>
+          </div>
         </div>
 
         <div class="card">
@@ -570,12 +578,20 @@ function fmtTerm(v){
 }
 // The finalized Credit Structuring terms the underwriter edits, written back onto the Application
 // so they flow into the client agreement / setup packet. Empty fields are omitted (don't wipe intake).
+// Numeric terms are coerced with num(); Setup_Fee / Monthly_Minimum / Repurchase_Period are TEXT
+// fields in Creator and pass through as typed (the underwriter may enter "N/A", "$10,000", etc.).
 function buildApplicationTerms(s){
   var t = {}, m = {
     Purchase_Limit: s.approvedCreditLimit, Factoring_Rate: s.recommendedRate,
-    Reserve_Percent: s.escrow, Advance_Rate: s.advanceRate, Promotional_Rate: s.promoRate
+    Reserve_Percent: s.escrow, Advance_Rate: s.advanceRate, Promotional_Rate: s.promoRate,
+    Term_Months: s.termMonths
   };
   Object.keys(m).forEach(function(k){ var n = num(m[k]); if (n !== '') t[k] = n; });
+  var txt = { Setup_Fee: s.setupFee, Monthly_Minimum: s.monthlyMinimum, Repurchase_Period: s.repurchasePeriod };
+  Object.keys(txt).forEach(function(k){
+    var v = String(txt[k] == null ? '' : txt[k]).trim();
+    if (v !== '') t[k] = v;
+  });
   return t;
 }
 
@@ -979,6 +995,8 @@ var DEMO_APPS = {
       USDOT:'4366362', MC_Number:'1709488', EIN:'84-21••••', Business_Formation_Type:'LLC', Equipment_Types:['Dry Van','Flatbed'],
       Number_of_Trucks:1, Number_of_Drivers:1, Monthly_Invoices_to_Factor:'$22,000', Has_Prior_Factor:'Yes',
       Current_Previous_Factor:'TBS Factoring', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'Recourse',
+      // Rate-sheet terms as intake stores them (Creator returns decimals with two places).
+      Factoring_Rate:'3.00', Reserve_Percent:'0.00', Advance_Rate:'97.00', Purchase_Limit:'30000.00', Term_Months:'12',
       Credit_Issues:['Bankruptcy'], Credit_Explanation:'Chapter 11 filed 2019 during a prior trucking venture; fully discharged 2021. No defaults since.', loc:'Glendale, AZ', Assigned_Underwriter:'M. Reyes',
       Sales_Notes:'[06/07/2026 9:12 AM] J. Alvarez: Prospect called in — eager to start, wants to factor first loads next week.\n[06/08/2026 1:40 PM] J. Alvarez: Sent the COI request reminder; owner said insurance agent will email it today.' },
     owners: [
@@ -1029,6 +1047,8 @@ var DEMO_APPS = {
       USDOT:'3421250', MC_Number:'1106008', EIN:'84-5097931', Business_Formation_Type:'LLC', Equipment_Types:[],
       Number_of_Trucks:0, Number_of_Drivers:0, Monthly_Invoices_to_Factor:'$48,000', Has_Prior_Factor:'No',
       Current_Previous_Factor:'', Veteran:'No', Rate_Term_Selection:'Annual Option', Contract_Type:'',
+      // Brokerage rate-sheet row: escrow is held back, so Reserve/Advance differ from the carrier demo.
+      Factoring_Rate:'3.00', Reserve_Percent:'7.00', Advance_Rate:'90.00', Purchase_Limit:'30000.00', Term_Months:'12',
       Credit_Issues:['None'], loc:'Atlanta, GA', Assigned_Underwriter:'D. Okafor' },
     owners: [{ First_Name1:'Jim', Last_Name1:'Princeton', Title:'Managing Member', Ownership_Percent:100, Owner_Sequence:1, Birthdate:'05/22/1976', SSN:'444-55-6666', Phone:'4045552310', Email:'jim@princetonlogistics.com', Address:'1200 Peachtree St NE, Atlanta, GA', sosRole:'Managing Member' }],
     contacts: [
@@ -1328,6 +1348,10 @@ function readState() {
     promoRate: ($('uwPromoRate') && $('uwPromoRate').value) || '',
     escrow: ($('uwEscrow') && $('uwEscrow').value) || '',
     advanceRate: ($('uwAdvanceRate') && $('uwAdvanceRate').value) || '',
+    setupFee: ($('uwSetupFee') && $('uwSetupFee').value) || '',
+    monthlyMinimum: ($('uwMonthlyMin') && $('uwMonthlyMin').value) || '',
+    repurchasePeriod: ($('uwRepurchase') && $('uwRepurchase').value) || '',
+    termMonths: ($('uwTermMonths') && $('uwTermMonths').value) || '',
     buyoutRequired: $('tgBuyout').classList.contains('on'),
     buyoutFactor: $('uwBuyoutFactor').value,
     estimatedBuyoutDate: $('uwBuyoutDate').value,
@@ -1888,7 +1912,7 @@ function renderModel(m) {
   renderNoteHistory(m.clientMessageStored, (m.application || {}).Sales_Notes);
   if ($('uwClientMsg')) $('uwClientMsg').value = ''; // the box is for a NEW entry, not editing history
   // Decision Date is auto-stamped on a decision (submit) — no manual field; readState reads r.Decision_Date.
-  // Credit Structuring — pre-fill the 5 rate-sheet terms from the applicant's answers (intake stored
+  // Credit Structuring — pre-fill the rate-sheet terms from the applicant's answers (intake stored
   // these on the Application). Underwriter edits save back onto the Application, so this always shows
   // the latest. Fall back to the review's older Approved_Credit_Limit / Recommended_Rate if present.
   var ap = m.application || {};
@@ -1899,6 +1923,14 @@ function renderModel(m) {
   if ($('uwAdvanceRate')) $('uwAdvanceRate').value = fmtTerm(ap.Advance_Rate);
   if ($('uwPromoRate')) $('uwPromoRate').value = (ap.Promotional_Rate != null && ap.Promotional_Rate !== '')
     ? fmtTerm(ap.Promotional_Rate) : String(defaultPromoRate(ap));
+  // The remaining 4 rate-sheet rows. Term_Months IS captured at intake (12 Annual / 3 for the 90-Day
+  // option); Setup Fee has no intake question and the rate sheet carries none, so it seeds to 0.
+  // Monthly Minimum Volume + Repurchase Period are never captured anywhere — blank for the underwriter.
+  if ($('uwTermMonths')) $('uwTermMonths').value = fmtTerm(ap.Term_Months);
+  if ($('uwSetupFee')) $('uwSetupFee').value = (ap.Setup_Fee != null && ap.Setup_Fee !== '')
+    ? fmtTerm(ap.Setup_Fee) : '0';
+  if ($('uwMonthlyMin')) $('uwMonthlyMin').value = ap.Monthly_Minimum || '';
+  if ($('uwRepurchase')) $('uwRepurchase').value = ap.Repurchase_Period || '';
   $('tgBuyout').classList.toggle('on', !!r.Buyout_Required);
   $('uwBuyoutFactor').value = r.Buyout_Factor || '';
   $('uwBuyoutDate').value = (r.Estimated_Buyout_Date || '').split(' ')[0];

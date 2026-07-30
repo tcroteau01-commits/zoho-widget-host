@@ -424,7 +424,7 @@ body.show-contacts .contacts-only { display: block; }
           </div>
           <div class="row2">
             <div class="field"><label>Email <span class="req">*</span></label><input type="email" data-of="email"></div>
-            <div class="field"><label>Address</label><input type="text" data-of="address"></div>
+            <div class="field"><label>Address</label><input type="text" data-of="address" placeholder="Street, City, State, ZIP"></div>
           </div>
         </div>
       </div>
@@ -1008,6 +1008,33 @@ function isDate(v) {
   return d.getFullYear() === yr && d.getMonth() === mo - 1 && d.getDate() === da;
 }
 
+// Addresses are stored as ONE text field, but every downstream consumer needs the four parts:
+// the Zoho Sign setup packet has separate Add/City/State/Zip fields and the CRM Account has
+// Billing_Street/City/State/Code. This MIRRORS the backend's _agr_split_address so the intake only
+// accepts what the backend can actually split — a half address here prints blank on the agreement.
+// Tolerates the shapes people really type: "St, City, ST 12345", "St, City, ST, 12345", a trailing
+// "USA", and ZIP+4.
+function parseAddressParts(raw) {
+  var s = String(raw == null ? '' : raw).replace(/[\n\r]+/g, ', ').trim();
+  if (!s) return { street: '', city: '', state: '', zip: '' };
+  s = s.replace(/,?\s*(USA|United States)\.?\s*$/i, '').trim().replace(/,+$/, '').trim();
+  var zip = '', state = '', m;
+  m = s.match(/(\d{5}(?:-\d{4})?)\s*$/);
+  if (m) { zip = m[1]; s = s.slice(0, m.index).trim().replace(/,+$/, '').trim(); }
+  m = s.match(/[,\s]([A-Za-z]{2})\.?$/);
+  if (m) { state = m[1].toUpperCase(); s = s.slice(0, m.index).trim().replace(/,+$/, '').trim(); }
+  var parts = s.split(',').map(function (p) { return p.trim(); }).filter(Boolean);
+  var city = parts.length > 1 ? parts.pop() : '';
+  return { street: parts.join(', '), city: city, state: state, zip: zip };
+}
+// A complete address = all four parts present. Used to gate submit so nothing downstream
+// (agreement, NOA, CRM) ends up with a partial address.
+function isFullAddress(raw) {
+  var p = parseAddressParts(raw);
+  return !!(p.street && p.city && p.state && p.zip);
+}
+var ADDRESS_HINT = 'Enter the full address including street, city, state and ZIP (e.g. 123 Main St, Glendale, AZ 85301).';
+
 function validateAll(s) {
   var errors = [];
   var req = function (cond, field, msg) { if (!cond) errors.push({ field: field, msg: msg }); };
@@ -1020,6 +1047,14 @@ function validateAll(s) {
   req(isPhone(s.smsPhone), 'opSmsPhone', 'Enter a valid mobile number (10 digits).');
   req(!s.smsPhone || !UI.smsCheck || UI.smsCheck.ok, 'opSmsPhone', 'Your text-update number must be a mobile line that can receive texts (checked on the first step).');
   req(s.physicalAddress, 'opPhysical', 'Physical address is required.');
+  if (s.physicalAddress) req(isFullAddress(s.physicalAddress), 'opPhysical', 'Physical address: ' + ADDRESS_HINT);
+  // Mailing is only its own field when the applicant unticked "same as physical" — otherwise it's a
+  // copy of the physical address, already checked above. It was marked required in the markup but
+  // never actually validated. Guard on === false so a caller that omits the flag isn't forced.
+  if (s.sameAddress === false) req(s.mailingAddress, 'opMailing', 'Mailing address is required.');
+  if (s.mailingAddress && s.mailingAddress !== s.physicalAddress) {
+    req(isFullAddress(s.mailingAddress), 'opMailing', 'Mailing address: ' + ADDRESS_HINT);
+  }
   req(num(s.monthly) !== '', 'opMonthly', 'Estimated monthly invoices is required.');
   if (s.authority === 'carrier') {
     req(s.equipTypes && s.equipTypes.length, 'equip', 'Select at least one equipment type.');
@@ -1044,6 +1079,12 @@ function validateAll(s) {
   // (rather than a create bounce at submit). Owner birthdates + the factor termination date.
   (s.owners || []).forEach(function (o, i) {
     if (o && o.dob && !isDate(o.dob)) errors.push({ field: 'owner', msg: "Owner " + (i + 1) + "'s birthdate must be a real date in MM/DD/YYYY format (e.g. 03/15/1985)." });
+    // Owner home address stays OPTIONAL (most applicants leave it blank and underwriting fills it
+    // in on review) — but a partial one is worse than none: it reaches the guaranty block of the
+    // agreement as a half address. If they enter it, it has to be complete.
+    if (o && o.address && !isFullAddress(o.address)) {
+      errors.push({ field: 'owner', msg: "Owner " + (i + 1) + "'s address: " + ADDRESS_HINT });
+    }
   });
   if (s.termDate && !isDate(s.termDate)) errors.push({ field: 'opTermDate', msg: 'The factor termination date must be a real date in MM/DD/YYYY format (e.g. 03/15/2027).' });
   if (s.vet) req(s.govxVerified || (s.govxDegraded && s.govxCode), 'govxCode', 'Verify your GovX code to continue (use the Verify button).');
@@ -1066,7 +1107,7 @@ var OF = {
   rateRow: rateRow, computeQuote: computeQuote, resolveAuthority: resolveAuthority,
   buildApplicationPayload: buildApplicationPayload, buildOwnerPayloads: buildOwnerPayloads,
   buildChildPayloads: buildChildPayloads, buildSubmitBody: buildSubmitBody, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail, isDate: isDate,
-  formatPlace: formatPlace
+  formatPlace: formatPlace, parseAddressParts: parseAddressParts, isFullAddress: isFullAddress
 };
 global.OF = OF;
 OF.validateStep = function (s) { return validateStep(s); }; // exposed for tests (DOM-driven per-step gate)
@@ -1078,9 +1119,13 @@ function val(id) { var e = $(id); return e ? (e.value || '').trim() : ''; }
 
 // Google Places address autocomplete on a free-text address input. Debounced query to
 // the PUBLIC proxy (no key in the browser); pick a prediction → fetch details → fill.
-function attachAddressAutocomplete(inputId) {
-  var input = $(inputId);
+// Accepts an element id OR the element itself, so dynamically added rows (extra owners) can be
+// wired the moment they're created. Idempotent — attaching twice would stack duplicate menus.
+function attachAddressAutocomplete(inputOrId) {
+  var input = (typeof inputOrId === 'string') ? $(inputOrId) : inputOrId;
   if (!input || typeof fetch !== 'function') return;
+  if (input.getAttribute('data-ac') === 'on') return;
+  input.setAttribute('data-ac', 'on');
   var field = input.closest ? input.closest('.field') : input.parentNode;
   if (!field) return;
   var menu = document.createElement('div');
@@ -1241,6 +1286,7 @@ function readState() {
     businessPhone: val('opPhone'), adminEmail: val('opEmail'), smsPhone: val('opSmsPhone'), altPhone: val('opAltPhone'),
     opsEmail: val('opOpsEmail'), acctEmail: val('opAcctEmail'), officeManager: val('opOfficeMgr'),
     physicalAddress: val('opPhysical'), mailingAddress: sameAddr ? val('opPhysical') : val('opMailing'),
+    sameAddress: sameAddr,
     creditIssues: creditIssues, creditExplanation: val('opCreditExpl'),
     term: UI.term, recourse: UI.recourse, qp: UI.qp,
     termsAccepted: UI.termsAccepted, appFeePaid: UI.appFeePaid,
@@ -1303,6 +1349,9 @@ function validateStep(step) {
   function fail(el, errKey) { if (el) { el.classList.add('invalid'); bad.push(el); } if (errKey) { var fe = document.querySelector('[data-err="' + errKey + '"]'); if (fe) fe.classList.add('show'); } }
   function need(id) { var el = $(id); if (el && !(el.value || '').trim()) fail(el, id); }
   function needEmail(id) { var el = $(id); if (el && !isEmail((el.value || '').trim())) fail(el, id); }
+  // Address must be complete here, not just non-empty — catch a half address on this step rather
+  // than at submit (or, worse, on the agreement weeks later).
+  function needAddress(id) { var el = $(id); if (el && !isFullAddress((el.value || '').trim())) fail(el, id); }
   function needPhone(id) { var el = $(id); if (el && !isPhone((el.value || '').trim())) fail(el, id); }
   function needPhoneOpt(id) { var el = $(id); var v = el ? (el.value || '').trim() : ''; if (el && v && !isPhone(v)) fail(el, id); }  // optional: only if filled
 
@@ -1325,8 +1374,8 @@ function validateStep(step) {
   } else if (step === 1) {
     need('opName'); need('opFormation');
     if (einRequired(val('opFormation'))) need('opEIN');
-    needPhone('opPhone'); needEmail('opEmail'); needPhoneOpt('opAltPhone'); need('opPhysical'); need('opMonthly');
-    if (!$('sameAddrChip').classList.contains('sel')) need('opMailing');
+    needPhone('opPhone'); needEmail('opEmail'); needPhoneOpt('opAltPhone'); needAddress('opPhysical'); need('opMonthly');
+    if (!$('sameAddrChip').classList.contains('sel')) needAddress('opMailing');
     if (UI.authority === 'broker') { needEmail('opOpsEmail'); needEmail('opAcctEmail'); }
     else {
       need('opTrucks'); need('opDrivers');
@@ -1353,6 +1402,12 @@ function validateStep(step) {
         else { ['first', 'last'].forEach(function (f) { var el = b2.querySelector('[data-of="' + f + '"]'); if (el && !el.value.trim()) { el.classList.add('invalid'); bad.push(el); } }); }
       }
     }
+    // Owner addresses are optional, but a HALF one is worse than none — it lands in the agreement's
+    // guaranty block incomplete. Applies to every owner block, including ones added on this screen.
+    qsa('#ownerList .owner-block').forEach(function (b) {
+      var el = b.querySelector('[data-of="address"]'); var v = el ? el.value.trim() : '';
+      if (el && v && !isFullAddress(v)) { el.classList.add('invalid'); bad.push(el); }
+    });
     // Trusted Contacts are optional, but any phone entered must be valid. (sub-rows use data-f)
     qsa('#contactRows .sub-row').forEach(function (r) {
       var el = r.querySelector('[data-f="phone"]'); var v = el ? el.value.trim() : '';
@@ -1364,9 +1419,17 @@ function validateStep(step) {
   }
 
   if (bad.length) {
+    // A field flagged only because the address is incomplete looks "filled in" to the applicant —
+    // say what's actually wrong instead of the generic "complete the required fields".
+    var badAddr = bad.filter(function (e) {
+      var v = (e && e.value || '').trim();
+      return v && (e.id === 'opPhysical' || e.id === 'opMailing' || (e.getAttribute && e.getAttribute('data-of') === 'address'));
+    });
     setBanner(step === 2 && !qsa('#creditChips .chip.sel').length
       ? 'Please select a credit history option (or "None of the below").'
-      : 'Please complete the required fields highlighted in red before continuing.', 'error');
+      : (badAddr.length && badAddr.length === bad.length
+        ? ADDRESS_HINT
+        : 'Please complete the required fields highlighted in red before continuing.'), 'error');
     try { bad[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); if (bad[0].focus) bad[0].focus(); } catch (e) {}
     return false;
   }
@@ -1410,12 +1473,19 @@ function addOwnerBlock() {
     '<div class="field"><label>SSN</label><input type="text" data-of="ssn"></div>' +
     '<div class="field"><label>Phone</label><input type="tel" data-of="phone"></div></div>' +
     '<div class="row2"><div class="field"><label>Email</label><input type="email" data-of="email"></div>' +
-    '<div class="field"><label>Address</label><input type="text" data-of="address"></div></div>';
+    '<div class="field"><label>Address</label><input type="text" data-of="address" placeholder="Street, City, State, ZIP"></div></div>';
   var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×';
   rm.addEventListener('click', function () { blk.remove(); recalc(); });
   blk.appendChild(rm);
   $('ownerList').appendChild(blk);
+  wireAddressInputs(blk);   // the added owner gets the same lookup as every other address field
   recalc();
+}
+
+// Attach Places autocomplete to every address input inside `root` that doesn't have it yet.
+// Called on init AND whenever a block is added, so an owner added later behaves identically.
+function wireAddressInputs(root) {
+  qsa('[data-of="address"]', root || document).forEach(attachAddressAutocomplete);
 }
 
 function initDom() {
@@ -1490,6 +1560,7 @@ function initDom() {
   $('sameAddrChip').addEventListener('click', function () { this.classList.toggle('sel'); $('mailingWrap').style.display = this.classList.contains('sel') ? 'none' : 'block'; });
   attachAddressAutocomplete('opPhysical');
   attachAddressAutocomplete('opMailing');
+  wireAddressInputs();   // Owner 1's address (in the static markup); added owners wire on creation
 
   // Broker subform toggles
   qsa('#relatedToggle .chip').forEach(function (c) { c.addEventListener('click', function () { pickRadio('relatedToggle', 'data-rel', c.getAttribute('data-rel')); var on = c.getAttribute('data-rel') === 'Yes'; document.body.classList.toggle('show-related', on); if (on && !$('relatedRows').children.length) addRelatedRow(); }); });

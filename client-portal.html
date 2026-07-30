@@ -661,10 +661,15 @@ function renderStatus(data, isDemo) {
 
   var extrasHtml = rec.extras.length
     ? '<div class="doc-row" style="border-top:1px dashed var(--of-beige-line)"></div>' + rec.extras.map(function (e) {
+        // Same Verified/Received pill the checklist rows carry — an extra document is on file just
+        // as much as a checklist one, so it shouldn't look like a lesser row.
+        var verified = /verified/i.test(e.status);
+        var pill = verified ? '<span class="pill g">Verified</span>' : '<span class="pill a">Received</span>';
         return '<div class="doc-row"><div class="doc-main"><span class="doc-mark ok">✓</span><div><div class="doc-label">' + esc(e.label) +
           '</div><div class="doc-sub">' + esc(e.status) + ' · additional</div></div></div>' +
-          '<div class="doc-action">' + (e.link ? docViewButton(e.link, e.label) : '') +
-          ((!/verified/i.test(e.status) && e.token) ? ' ' + docDelButton(e.token, e.label) : '') + '</div></div>';
+          '<div class="doc-action">' + pill +
+          (e.link ? ' ' + docViewButton(e.link, e.label) : '') +
+          ((!verified && e.token) ? ' ' + docDelButton(e.token, e.label) : '') + '</div></div>';
       }).join('')
     : '';
 

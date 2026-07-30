@@ -875,7 +875,11 @@ function openSignSession() {
       if (res.status === 200 && j.sign_url) { upToast('', ''); try { global.open(j.sign_url, '_blank'); } catch (e) { global.location.href = j.sign_url; } return; }
       if (isAuthError(res.status, j)) { renderOtpRequest('Please verify your identity again to continue.'); return; }
       if (j.error === 'not_ready' || j.error === 'sign_not_configured') { upToast('err', 'Your agreement isn’t ready to sign just yet — please check back shortly.'); return; }
-      upToast('err', (j.error) || 'Could not open your agreement. Please try again.');
+      // Client-friendly wording, but keep the underlying reason visible — an opaque code like
+      // "sign_url_unavailable" tells whoever is testing nothing, and the detail is what identifies
+      // whether Zoho refused the token vs the session simply expired.
+      upToast('err', 'We couldn’t open your agreement just now. Please try again, or contact your OperFi rep.' +
+                     (j.detail ? ' (' + j.detail + ')' : ''));
     })
     .catch(function () { upToast('err', 'Network error — please try again.'); });
 }

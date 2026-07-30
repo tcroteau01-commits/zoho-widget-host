@@ -82,6 +82,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-main { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .doc-mark { width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff; }
 .doc-mark.ok { background: var(--of-green); } .doc-mark.needed { background: #fff; border: 2px solid var(--of-beige-line); color: var(--of-gray-500); }
+/* Out for signature — amber "in progress", distinct from both "nothing yet" and "done". */
+.doc-mark.pend { background: #fff; border: 2px solid var(--of-amber); color: var(--of-amber-text); }
 .doc-label { font-weight: 600; font-size: 13.5px; }
 .doc-sub { font-size: 11.5px; color: var(--of-gray-500); margin-top: 2px; }
 .doc-action { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -168,7 +170,6 @@ var UPLOAD_PATH = '/application-upload';   // POST ?token= (multipart doc_type +
 var LOOKUP_PATH = '/application-lookup';   // POST {usdot,email} → { link } (recovery)
 var OTP_START_PATH = '/portal-otp-start';   // POST {usdot,email} → { masked_phone } (texts a Verify code)
 var OTP_VERIFY_PATH = '/portal-otp-verify'; // POST {usdot,email,code} → curated status + token
-var SIGN_URL_PATH = '/application-sign-url'; // GET ?token= → { sign_url } (client's Zoho Sign signing session)
 
 // Client-facing stage labels; each maps to a real Application_Status value.
 var STEPS = ['Submitted', 'In Review', 'Underwriting', 'Approved', 'Signed'];
@@ -331,7 +332,10 @@ function postApprovalState(application) {
   var agr = String(application.Agreement_Status || application.agreementStatus || '').trim();
   if (agr === 'Signed') return { state: 'signed', active: false, note: 'Signed — thank you! We’re activating your account.' };
   if (agr === 'Declined' || agr === 'Recalled') return { state: 'declined', active: false, note: 'There was an issue with your agreement — your OperFi rep will reach out.' };
-  if (agr === 'Sent' || agr === 'Viewed') return { state: 'sign', active: true, note: 'Your agreement is ready — review and sign it below.' };
+  // Signing happens in the email Zoho sends the signer — NOT here. Zoho will only mint an in-app
+  // signing session for a recipient marked "embedded" at send time, and an embedded recipient is
+  // never emailed. We keep the email, so this card reports progress rather than offering to sign.
+  if (agr === 'Sent' || agr === 'Viewed') return { state: 'sign', active: false, note: 'We’ve emailed your documents — please check your inbox and sign. Underwriting will update here once it’s approved.' };
   if (appStatus === 'Approved' || appStatus === 'Signed') return { state: 'preparing', active: false, note: 'You’re approved! Your agreement is being prepared — check back shortly.' };
   return { state: 'locked', active: false, note: 'Available after approval — once you’re approved, your OperFi Factoring Agreement and Notice of Assignment will appear here to review and sign.' };
 }
@@ -717,21 +721,24 @@ function renderStatus(data, isDemo) {
     return recRow(u.securedParty || '—', sub, u.action || '');
   }).join(''));
 
-  // Post-Approval e-signature card. The Factoring Agreement + NOA are signed here (one merged Zoho
-  // Sign request → one shared status + one "Review & Sign" button). Greyed/locked until approved+sent.
+  // Post-Approval e-signature card. The Factoring Agreement + NOA go out as ONE merged Zoho Sign
+  // request, so they share a status. The client signs from the email Zoho sends them — this card
+  // REPORTS progress, it doesn't offer to sign (see postApprovalState for why).
   var pa = postApprovalState(data);
-  var paLabel = { locked: 'Not sent yet', preparing: 'Preparing', sign: 'Ready to sign', signed: 'Signed', declined: 'Declined' }[pa.state] || '';
+  var paLabel = { locked: 'Not sent yet', preparing: 'Preparing', sign: 'In progress', signed: 'Signed', declined: 'Declined' }[pa.state] || '';
   var paDim = (pa.state === 'sign' || pa.state === 'signed') ? '' : ' style="opacity:.55"';
   var paRows = ['OperFi Factoring Agreement', 'OperFi Notice of Assignment'].map(function (label) {
     var done = pa.state === 'signed';
-    return '<div class="doc-row"><div class="doc-main"><span class="doc-mark ' + (done ? 'ok' : 'needed') + '">' + (done ? '✓' : '○') +
-      '</span><div><div class="doc-label">' + esc(label) + '</div><div class="doc-sub">Electronic signature · e-sign</div></div></div>' +
-      (done ? '<div class="doc-action"><span class="pill g">Signed</span></div>' : '') + '</div>';
+    var out = pa.state === 'sign';                 // emailed, awaiting their signature
+    var mark = done ? 'ok' : (out ? 'pend' : 'needed');
+    var sub = done ? 'Electronic signature · e-sign'
+                   : (out ? 'Emailed for signature · check your inbox' : 'Electronic signature · e-sign');
+    var pill = done ? '<span class="pill g">Signed</span>'
+                    : (out ? '<span class="pill a">In progress</span>' : '');
+    return '<div class="doc-row"><div class="doc-main"><span class="doc-mark ' + mark + '">' + (done ? '✓' : '○') +
+      '</span><div><div class="doc-label">' + esc(label) + '</div><div class="doc-sub">' + esc(sub) + '</div></div></div>' +
+      (pill ? '<div class="doc-action">' + pill + '</div>' : '') + '</div>';
   }).join('');
-  var paBtn = pa.active
-    ? '<div class="doc-row" style="border-bottom:none;padding-top:12px;justify-content:flex-end">' +
-      '<button class="btn orange sm js-sign">Review &amp; Sign</button></div>'
-    : '';
   // Once signed, the client's own copy of the executed packet. The backend files it as a Document on
   // the Signed webhook, so there's a short window right after signing where the status says Signed
   // but the PDF hasn't landed yet — say so rather than showing nothing.
@@ -751,7 +758,7 @@ function renderStatus(data, isDemo) {
     '<div class="card"><div class="card-title">Post-Approval' +
       (paLabel ? ' <span class="count">' + esc(paLabel) + '</span>' : '') + '</div>' +
       '<div class="summ">' + esc(pa.note) + '</div>' +
-      '<div' + paDim + '>' + paRows + '</div>' + paBtn + paSigned + '</div>';
+      '<div' + paDim + '>' + paRows + '</div>' + paSigned + '</div>';
 
   // Prior-factor buyout — shown only when the backend sends a `buyout` block (the underwriter checked
   // "Buyout Required"). Client-friendly framing + the factor being bought out + the estimated date.
@@ -831,10 +838,6 @@ function renderStatus(data, isDemo) {
     });
   });
 
-  // Post-Approval "Review & Sign" → open the client's Zoho Sign signing session.
-  var signBtn = el('content').querySelector('.js-sign');
-  if (signBtn) signBtn.addEventListener('click', function (e) { e.preventDefault(); openSignSession(); });
-
   // "Add another document" — the client sends an extra document not on the checklist.
   var addlToggle = el('addlToggle'), addlForm = el('addlForm');
   if (addlToggle && addlForm) addlToggle.addEventListener('click', function () {
@@ -854,35 +857,6 @@ function renderStatus(data, isDemo) {
 
 function upToast(kind, msg){ var t = el('upToast'); if (t) { t.className = 'toast ' + kind; t.textContent = msg; } }
 
-// Open the client's Zoho Sign signing session for the merged Agreement + NOA request. The backend
-// resolves the signer's signing URL from the token-verified application's Sign_Request_Id, so no
-// request/action id is ever exposed to the browser. Opens in a new tab (avoids Zoho iframe frameorigin
-// trust-domain constraints). Live only once the "Sign go-live" env vars are set + the agreement is sent.
-function openSignSession() {
-  if (STATE.mode === 'demo' || typeof fetch !== 'function') {
-    upToast('ok', 'In production this opens your secure Zoho Sign session to review & sign (preview).');
-    try { global.open(DEMO_DOC, '_blank'); } catch (e) {}
-    return;
-  }
-  upToast('', 'Opening your agreement…');
-  var url = API_BASE + SIGN_URL_PATH + '?token=' + encodeURIComponent(STATE.token) +
-    (STATE.usdot ? '&usdot=' + encodeURIComponent(STATE.usdot) : '') +
-    (STATE.email ? '&email=' + encodeURIComponent(STATE.email) : '');
-  fetch(url)
-    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
-    .then(function (res) {
-      var j = res.j || {};
-      if (res.status === 200 && j.sign_url) { upToast('', ''); try { global.open(j.sign_url, '_blank'); } catch (e) { global.location.href = j.sign_url; } return; }
-      if (isAuthError(res.status, j)) { renderOtpRequest('Please verify your identity again to continue.'); return; }
-      if (j.error === 'not_ready' || j.error === 'sign_not_configured') { upToast('err', 'Your agreement isn’t ready to sign just yet — please check back shortly.'); return; }
-      // Client-friendly wording, but keep the underlying reason visible — an opaque code like
-      // "sign_url_unavailable" tells whoever is testing nothing, and the detail is what identifies
-      // whether Zoho refused the token vs the session simply expired.
-      upToast('err', 'We couldn’t open your agreement just now. Please try again, or contact your OperFi rep.' +
-                     (j.detail ? ' (' + j.detail + ')' : ''));
-    })
-    .catch(function () { upToast('err', 'Network error — please try again.'); });
-}
 
 // Upload one OR MORE files for a single document type. The input is `multiple`, so a prospect can
 // attach several files (e.g. a multi-page insurance cert, or both sides of a license) to one line.

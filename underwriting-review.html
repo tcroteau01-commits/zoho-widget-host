@@ -213,6 +213,11 @@ tr:last-child td { border-bottom:none; }
 .ca-box.on { background:var(--of-green); border-color:var(--of-green); }
 .ca-txt .t { font-size:13px; font-weight:700; color:var(--of-charcoal); }
 .ca-txt .s { display:block; font-size:11px; color:var(--of-gray-500); margin-top:2px; line-height:1.4; }
+/* Which California disclosure will (or won't) be attached, given the Factoring Fee. Red = the packet
+   will go out WITHOUT a disclosure — deliberately loud, since nothing blocks the send. */
+.ca-warn { margin-top:10px; background:var(--of-red-soft); border:1.5px solid #f3c0c0; color:var(--of-red-text);
+           border-radius:8px; padding:9px 12px; font-size:12px; font-weight:700; line-height:1.45; }
+.ca-warn.ok { background:var(--of-green-soft); border-color:#c7e6c7; color:var(--of-green-text); font-weight:600; }
 
 /* Intro dashboard */
 .dash-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--of-charcoal); margin:4px 2px 10px; }
@@ -451,9 +456,10 @@ tr:last-child td { border-bottom:none; }
                 <span class="ca-box" id="agrCaBox"></span>
                 <span class="ca-txt">
                   <span class="t">California deal</span>
-                  <span class="s">Adds the California addendum document to the packet.</span>
+                  <span class="s">Adds the California disclosure matching the Factoring Fee.</span>
                 </span>
               </div>
+              <div id="agrCaWarn" class="ca-warn" style="display:none"></div>
             </div>
 
             <button class="btn orange block" id="btnSendAgreement" style="display:none">✍ Prepare Agreement</button>
@@ -980,6 +986,44 @@ function buildAgreementRecipients(roles, inputs){
   return { recipients: recipients, missing: missing };
 }
 
+// ── California disclosure (client-side preview only) ─────────────────────────────────
+// California requires a disclosure whose math differs per rate, so each tier is its own Zoho Sign
+// template, picked by the deal's Factoring Fee. MIRRORS app.py _CA_DISCLOSURES — keep in sync; the
+// drift-canary test guards it. The BACKEND is authoritative: its ca_warning always overwrites
+// whatever this produces. This exists so the underwriter gets feedback as they TYPE a fee, before
+// they ever open the signer panel.
+var CA_DISCLOSURE_TIERS = ['1.5', '2.5', '2.75', '3', '3.25', '3.5'];
+
+// JS twin of app.py _ca_rate_key: '3.00' / 3 / ' 3 % ' → '3'; '2.750' → '2.75'; junk → ''.
+// Never rounds — 2.9 stays '2.9' and matches no tier.
+function caRateKey(rate){
+  var s = String(rate == null ? '' : rate).replace(/[%,$\s]/g, '');
+  if (!s) return '';
+  var n = parseFloat(s);
+  if (isNaN(n)) return '';
+  return n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') || '0';
+}
+
+// {ok, tier, msg} for a Factoring Fee. ok=true → that tier's disclosure will be attached.
+function caDisclosureNote(rate, tiers){
+  tiers = tiers || CA_DISCLOSURE_TIERS;
+  var key = caRateKey(rate);
+  var list = tiers.map(function(t){ return t + '%'; }).join(', ');
+  if (key && tiers.indexOf(key) !== -1) return { ok: true, tier: key, msg: '✓ Attaching the ' + key + '% California disclosure.' };
+  if (!key) return { ok: false, tier: '', msg: '⚠ No California disclosure chosen — the Factoring Fee is blank or unreadable. Disclosures exist for ' + list + '. The packet will send WITHOUT a disclosure.' };
+  return { ok: false, tier: '', msg: '⚠ No California disclosure for a ' + key + '% Factoring Fee. Disclosures exist only for ' + list + '. The packet will send WITHOUT the disclosure — attach it by hand in Zoho Sign.' };
+}
+
+// The /agreement-roles url. `california` must ride along so the panel's action_ids are reconciled
+// from the SAME template set the send merges — Zoho reconciles them per merge set.
+function agreementRolesUrl(base, usdot, cfg){
+  cfg = cfg || {};
+  var u = base + '?usdot=' + encodeURIComponent(usdot || '') +
+    '&packet_type=' + encodeURIComponent(cfg.packet_type || '');
+  if (cfg.california) u += '&california=1';
+  return u;
+}
+
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
   canNudge: canNudge, nudgeButton: nudgeButton,
   defaultPromoRate: defaultPromoRate, fmtTerm: fmtTerm, buildApplicationTerms: buildApplicationTerms,
@@ -987,6 +1031,8 @@ var OFUW = { computeGate: computeGate, validateDecision: validateDecision, build
   parseClientMsg: parseClientMsg, noteTime: noteTime, buildNoteHistory: buildNoteHistory, saferUrl: saferUrl, carrierOkUrl: carrierOkUrl,
   stampClientMessage: stampClientMessage, stripClientStamp: stripClientStamp, clientStampOf: clientStampOf,
   agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
+  caRateKey: caRateKey, caDisclosureNote: caDisclosureNote, agreementRolesUrl: agreementRolesUrl,
+  CA_DISCLOSURE_TIERS: CA_DISCLOSURE_TIERS,
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
   STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
@@ -1454,6 +1500,23 @@ function agreementPacketConfig(){
   };
 }
 
+// The persistent banner under the California checkbox. `text` from the backend wins when given;
+// otherwise preview from the Factoring Fee the underwriter is typing. Nothing here blocks a send —
+// it exists so an unmatched rate can't slip out silently.
+function setCaWarn(text, ok){
+  var box = $('agrCaWarn'); if (!box) return;
+  if (!text){ box.style.display = 'none'; box.textContent = ''; return; }
+  box.className = 'ca-warn' + (ok ? ' ok' : '');
+  box.textContent = text;
+  box.style.display = 'block';
+}
+function renderCaDisclosureNote(){
+  if (!$('agrCaWarn')) return;
+  if (!agreementPacketConfig().california){ setCaWarn(''); return; }   // not a CA deal → nothing to say
+  var note = caDisclosureNote($('uwRate') ? $('uwRate').value : '');
+  setCaWarn(note.msg, note.ok);
+}
+
 // The primary button: open the review screen for an existing draft, else open the recipients panel.
 function agreementPrimaryClick(){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
@@ -1492,10 +1555,14 @@ function openAgreementPanel(){
     pstat.textContent = 'Demo mode — no live Sign template. (OperFi countersigns automatically.)';
     return;
   }
-  var pkt = agreementPacketConfig().packet_type;
-  fetch(API_BASE + AGR_ROLES_PATH + '?usdot=' + encodeURIComponent(usdot) + '&packet_type=' + encodeURIComponent(pkt))
+  // Send the CA flag too: the panel's action_ids must be reconciled from the SAME template set the
+  // send will merge (Zoho reconciles per merge set), or the recipients posted back are stale.
+  fetch(agreementRolesUrl(API_BASE + AGR_ROLES_PATH, usdot, agreementPacketConfig()))
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status)); return j; }); })
     .then(function(j){
+      // The backend is authoritative about the disclosure — overwrite the typed-fee preview.
+      if (j.ca_warning) setCaWarn(j.ca_warning);
+      else if (agreementPacketConfig().california) renderCaDisclosureNote();
       if (!j.roles || !j.roles.length){ pstat.textContent = 'No signer roles found on the agreement template.'; return; }
       buildAgreementRows(j.roles, j.suggestions || []); pstat.textContent = '';
     })
@@ -1543,7 +1610,16 @@ function prepareAgreement(){
       $('agrPanel').style.display = 'none'; $('btnAgrConfirm').disabled = false; renderAgreement();
       if (j.send_url){ if (win) win.location = j.send_url; else global.open(j.send_url, '_blank'); }
       else if (win) win.close();
-      showStatus('✓ Draft prepared. Review the prefilled fields and click Send in the Zoho Sign tab. (The client is notified only after you send.)', 'success');
+      // A California deal whose Factoring Fee matched no disclosure still sends — so this is the
+      // last chance to tell the underwriter. Red toast (showStatus never auto-clears) AND the
+      // persistent banner, carrying the backend's exact wording.
+      if (j.ca_warning){
+        setCaWarn(j.ca_warning);
+        showStatus('⚠ Draft prepared, but ' + j.ca_warning, 'error');
+      } else {
+        showStatus('✓ Draft prepared' + (j.ca_disclosure_attached ? ' with the California disclosure' : '') +
+          '. Review the prefilled fields and click Send in the Zoho Sign tab. (The client is notified only after you send.)', 'success');
+      }
     })
     .catch(function(e){ if (win) win.close(); $('btnAgrConfirm').disabled = false; $('agrPanelStatus').textContent = 'Could not prepare: ' + (e && e.message ? e.message : e); });
 }
@@ -2341,7 +2417,11 @@ function boot() {
   $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
   ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
-  ['uwLimit','uwRate'].forEach(function(id){ $(id).addEventListener('input', renderGate); $(id).addEventListener('change', renderGate); });
+  // The Factoring Fee also decides WHICH California disclosure gets attached — preview it live.
+  ['uwLimit','uwRate'].forEach(function(id){
+    $(id).addEventListener('input', function(){ renderGate(); renderCaDisclosureNote(); });
+    $(id).addEventListener('change', function(){ renderGate(); renderCaDisclosureNote(); });
+  });
   $('btnApprove').addEventListener('click', function(){ confirmDecision('Approved'); });
   if ($('btnMoreInfo')) $('btnMoreInfo').addEventListener('click', function(){ confirmDecision('More Information Needed'); });
   $('btnDecline').addEventListener('click', function(){ confirmDecision('Denied'); });
@@ -2353,10 +2433,18 @@ function boot() {
   if ($('btnSendAgreement')) $('btnSendAgreement').addEventListener('click', agreementPrimaryClick);
   if ($('btnAgrConfirm')) $('btnAgrConfirm').addEventListener('click', prepareAgreement);
   if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){ $('agrPanel').style.display = 'none'; });
+  // Changing the packet or the CA flag changes the ENVELOPE, so the open signer panel's action_ids
+  // (reconciled by Zoho per merge set) go stale — re-fetch it, don't just repaint the banner.
+  function agrConfigChanged(){
+    renderCaDisclosureNote();
+    if ($('agrPanel') && $('agrPanel').style.display === 'block') openAgreementPanel();
+  }
   if ($('agrCaRow')) $('agrCaRow').addEventListener('click', function(){
     var box = $('agrCaBox'); if (!box) return;
     box.textContent = box.classList.toggle('on') ? '✓' : '';
+    agrConfigChanged();
   });
+  if ($('agrPacket')) $('agrPacket').addEventListener('change', agrConfigChanged);
   if ($('btnAgrRefresh')) $('btnAgrRefresh').addEventListener('click', refreshAgreementStatus);
   $('btnBack').addEventListener('click', showDashboard);
 

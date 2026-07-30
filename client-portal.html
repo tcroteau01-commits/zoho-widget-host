@@ -336,10 +336,30 @@ function postApprovalState(application) {
   return { state: 'locked', active: false, note: 'Available after approval — once you’re approved, your OperFi Factoring Agreement and Notice of Assignment will appear here to review and sign.' };
 }
 
+// The executed agreement PDF the backend files once Zoho Sign reports the packet signed
+// (Document_Type "Signed Agreement", Source "System Generated"). It is deliberately kept OUT of the
+// upload checklist by POST_APPROVAL_TYPES — it isn't something the client uploads, it's their copy
+// to keep — so the Post-Approval card is where it belongs.
+function signedAgreementDoc(documents) {
+  var hits = (documents || []).filter(function (d) {
+    d = d || {};
+    var link = d.WorkDrive_Link || d.link || d.fileUrl || '';
+    return normType(d.Document_Type || d.type) === 'signed agreement'
+      && normType(d.Status || d.status) !== 'removed'
+      && !!link;
+  });
+  if (!hits.length) return null;
+  var d = hits[hits.length - 1];      // newest wins if a re-archive ever produced two
+  return { link: d.WorkDrive_Link || d.link || d.fileUrl || '',
+           uploadedAt: d.UploadedAt || d.uploadedAt || '',
+           status: d.Status || d.status || 'Received' };
+}
+
 var OFCP = {
   requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, deriveStage: deriveStage,
   statusPill: statusPill, nextStep: nextStep, postApprovalState: postApprovalState,
   isUploadedStatus: isUploadedStatus, isRequestedStatus: isRequestedStatus,
+  signedAgreementDoc: signedAgreementDoc,
   STEPS: STEPS, BASE_DOCS: BASE_DOCS
 };
 global.OFCP = OFCP;
@@ -487,6 +507,14 @@ function getToken(){ return param('token'); }
 function setBanner(kind, html){ var b = el('banner'); if (!b) return; if (!kind) { b.className = 'banner'; b.innerHTML = ''; return; } b.className = 'banner show ' + kind; b.innerHTML = html; }
 
 var STATE = { mode: 'live', token: '', data: null, usdot: '', email: '', code: '', maskedPhone: '' };
+
+// A response that means "this session is no longer good — re-verify", as opposed to a real failure.
+// 403 matters because OTP sessions now expire; without this an expired session reads as a generic
+// error (or, on upload, as a retry-forever "Upload failed").
+function isAuthError(status, j) {
+  j = j || {};
+  return status === 403 || j.error === 'verify_required' || j.error === 'verify_invalid' || j.error === 'pin_locked';
+}
 
 function loadStatus(token) {
   if (typeof fetch !== 'function') { renderRecovery('We couldn’t reach the server from this browser.'); return; }
@@ -704,11 +732,26 @@ function renderStatus(data, isDemo) {
     ? '<div class="doc-row" style="border-bottom:none;padding-top:12px;justify-content:flex-end">' +
       '<button class="btn orange sm js-sign">Review &amp; Sign</button></div>'
     : '';
+  // Once signed, the client's own copy of the executed packet. The backend files it as a Document on
+  // the Signed webhook, so there's a short window right after signing where the status says Signed
+  // but the PDF hasn't landed yet — say so rather than showing nothing.
+  var paSigned = '';
+  if (pa.state === 'signed') {
+    var sad = signedAgreementDoc(data.documents);
+    paSigned = sad
+      ? '<div class="doc-row" style="border-bottom:none;padding-top:12px">' +
+          '<div class="doc-main"><span class="doc-mark ok">✓</span><div>' +
+            '<div class="doc-label">Executed agreement (PDF)</div>' +
+            '<div class="doc-sub">Factoring Agreement + Notice of Assignment' +
+              (sad.uploadedAt ? ' · ' + esc(sad.uploadedAt) : '') + '</div></div></div>' +
+          '<div class="doc-action">' + docViewButton(sad.link, 'OperFi Signed Agreement') + '</div></div>'
+      : '<div class="summ" style="margin-top:10px">Your signed copy will appear here shortly.</div>';
+  }
   var postApprovalHtml =
     '<div class="card"><div class="card-title">Post-Approval' +
       (paLabel ? ' <span class="count">' + esc(paLabel) + '</span>' : '') + '</div>' +
       '<div class="summ">' + esc(pa.note) + '</div>' +
-      '<div' + paDim + '>' + paRows + '</div>' + paBtn + '</div>';
+      '<div' + paDim + '>' + paRows + '</div>' + paBtn + paSigned + '</div>';
 
   // Prior-factor buyout — shown only when the backend sends a `buyout` block (the underwriter checked
   // "Buyout Required"). Client-friendly framing + the factor being bought out + the estimated date.
@@ -830,7 +873,7 @@ function openSignSession() {
     .then(function (res) {
       var j = res.j || {};
       if (res.status === 200 && j.sign_url) { upToast('', ''); try { global.open(j.sign_url, '_blank'); } catch (e) { global.location.href = j.sign_url; } return; }
-      if (j.error === 'verify_required' || j.error === 'verify_invalid' || j.error === 'pin_locked') { renderOtpRequest('Please verify your identity again to continue.'); return; }
+      if (isAuthError(res.status, j)) { renderOtpRequest('Please verify your identity again to continue.'); return; }
       if (j.error === 'not_ready' || j.error === 'sign_not_configured') { upToast('err', 'Your agreement isn’t ready to sign just yet — please check back shortly.'); return; }
       upToast('err', (j.error) || 'Could not open your agreement. Please try again.');
     })
@@ -862,7 +905,7 @@ function uploadDocs(docType, files, btn, custom) {
     upToast('', 'Uploading ' + docType + ' — file ' + (i + 1) + ' of ' + n + '…');
     return postFile(docType, files[i], custom).then(function (p) {
       if (p && p.ok) done++;
-      else if (p && (p.error === 'verify_required' || p.error === 'verify_invalid' || p.error === 'pin_locked')) { needVerify = true; return; }
+      else if (p && isAuthError(p._status, p)) { needVerify = true; return; }
       else failed++;
       return next(i + 1);
     });
@@ -889,8 +932,11 @@ function postFile(docType, file, custom) {
   fd.append('file', file);
   if (STATE.usdot) fd.append('usdot', STATE.usdot);
   if (STATE.email) fd.append('email', STATE.email);
+  // Carry the HTTP status through: a 403 (expired session) has no `error` body, and without the
+  // status it counts as a plain failure and the client retries forever.
   return fetch(API_BASE + UPLOAD_PATH + '?token=' + encodeURIComponent(STATE.token), { method: 'POST', body: fd })
-    .then(function (r) { return r.json().catch(function () { return {}; }); });
+    .then(function (r) { return r.json().catch(function () { return {}; })
+                          .then(function (j) { j = j || {}; j._status = r.status; return j; }); });
 }
 
 function renderRecovery(msg) {
@@ -940,6 +986,12 @@ function boot() {
     }
     // Demo-only: ?agr= previews the Post-Approval card states (Not Sent / Draft / Sent / Viewed / Signed / Declined).
     if (param('agr')) data.agreementStatus = param('agr');
+    // ?agr=Signed also previews the executed-agreement row (it stays out of the upload checklist
+    // via POST_APPROVAL_TYPES, so it only ever shows on the Post-Approval card).
+    if (param('agr') === 'Signed') {
+      data.documents = (data.documents || []).concat([{ type: 'Signed Agreement', status: 'Received',
+        uploadedAt: 'just now', token: 'demo:signed', link: DEMO_DOC }]);
+    }
     renderStatus(data, true);
     return;
   }

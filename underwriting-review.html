@@ -310,8 +310,12 @@ tr:last-child td { border-bottom:none; }
           <div class="kv" id="appSummary"></div>
         </div>
         <div class="card">
-          <div class="card-title">Fraud Quick Glance <span class="count">IPQS · FMCSA · Carrier411</span></div>
+          <div class="card-title">Fraud Quick Glance <span class="count">IPQS · FMCSA · Middesk</span></div>
           <div class="flag-grid" id="fraudGrid"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Compliance &amp; Safety <span class="count" id="safetyCount">CSA BASICs · safety rating · insurance · enforcement</span></div>
+          <div class="flag-grid" id="safetyGrid"></div>
         </div>
         <div class="card">
           <div class="card-title">Ownership &amp; Entity <span class="count">FMCSA · Middesk KYB</span></div>
@@ -920,18 +924,32 @@ function stampClientMessage(boxText, prevStored, nowStamp){
   return t + '\n\n— ' + stamp;
 }
 
-// Rule-based system recommendation from the automated checks (fraud quick-glance + UCC).
-// checks: { fraud: [{label,detail,status:'clear'|'warn'|'bad'}], ucc: [{securedParty,action}] }
+// Rule-based system recommendation from the automated checks (fraud quick-glance + UCC
+// + FMCSA compliance/safety).
+// checks: { fraud: [{label,detail,status:'clear'|'warn'|'bad'}], ucc: [{securedParty,action}],
+//           safety: [{label,detail,status}] }
+//
+// Safety deliberately contributes ASYMMETRICALLY. A safety 'bad' is a verdict_model FAIL —
+// an objective federal disqualifier (Conditional/Unsatisfactory rating, 2+ CSA BASIC alerts,
+// BIPD below the required minimum, insurance pending cancellation, a fatal crash, vehicle OOS
+// over 150% of national) — so it escalates on its own. Safety 'warn' rows are DISPLAY-ONLY:
+// they are REVIEW-severity facts (one BASIC alert, cargo not on the federal file, a stale
+// MCS-150) that a large share of perfectly ordinary carriers carry, and letting them move the
+// recommendation would quietly downgrade most files. Omitting `safety` entirely reproduces the
+// previous behaviour byte-for-byte, so a cached pre-change payload still reads correctly.
 function computeRecommendation(checks) {
   checks = checks || {};
-  var fraud = checks.fraud || [], ucc = checks.ucc || [];
+  var fraud = checks.fraud || [], ucc = checks.ucc || [], safety = checks.safety || [];
   var bad = fraud.filter(function (f) { return f.status === 'bad'; }).length;
   var warn = fraud.filter(function (f) { return f.status === 'warn'; }).length;
+  var safetyBad = safety.filter(function (f) { return f.status === 'bad'; }).length;
   var reasons = [];
   ucc.forEach(function (u) { reasons.push('UCC by ' + (u.securedParty || 'secured party') + (u.action ? ' — ' + u.action : '')); });
   fraud.filter(function (f) { return f.status !== 'clear'; }).forEach(function (f) { reasons.push(f.label + ': ' + f.detail); });
+  safety.filter(function (f) { return f.status !== 'clear'; }).forEach(function (f) { reasons.push('FMCSA — ' + f.label + ': ' + f.detail); });
   var risk, verdict;
-  if (bad >= 2) { risk = 'high'; verdict = 'Escalate — likely Decline'; }
+  if (safetyBad >= 1) { risk = 'high'; verdict = 'Escalate — FMCSA safety/compliance hard stop'; }
+  else if (bad >= 2) { risk = 'high'; verdict = 'Escalate — likely Decline'; }
   else if (ucc.length || bad >= 1 || warn >= 1) { risk = 'med'; verdict = 'Conditional Approve — clear items first'; }
   else { risk = 'low'; verdict = 'Approve'; }
   if (!reasons.length) reasons.push('No fraud flags and no prior UCC filings — clean file.');
@@ -1027,7 +1045,7 @@ function agreementRolesUrl(base, usdot, cfg){
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
   canNudge: canNudge, nudgeButton: nudgeButton,
   defaultPromoRate: defaultPromoRate, fmtTerm: fmtTerm, buildApplicationTerms: buildApplicationTerms,
-  composeNotesLog: composeNotesLog, formatStamp: formatStamp, checksFromReview: checksFromReview, parseSalesNotes: parseSalesNotes, uwAuthor: uwAuthor,
+  composeNotesLog: composeNotesLog, formatStamp: formatStamp, checksFromReview: checksFromReview, parseSalesNotes: parseSalesNotes, uwAuthor: uwAuthor, runChecks: runChecks,
   parseClientMsg: parseClientMsg, noteTime: noteTime, buildNoteHistory: buildNoteHistory, saferUrl: saferUrl, carrierOkUrl: carrierOkUrl,
   stampClientMessage: stampClientMessage, stripClientStamp: stripClientStamp, clientStampOf: clientStampOf,
   agreementBadge: agreementBadge, buildAgreementRecipients: buildAgreementRecipients,
@@ -1091,8 +1109,13 @@ var DEMO_APPS = {
       ['IP Address','Glendale, AZ · no proxy','clear'],['Phone (IPQS)','VOIP detected · score 78','bad'],
       ['Email','Business domain match','clear'],['Insurance / COI','Producer phone mismatch','warn'],
       ['COI Created Date','9 days before submit','clear'],['Bank Account Name','Matches legal entity','clear'],
-      ['DL / SSN (IDI/TLO)','Clean scan · identity match','clear'],['Carrier411','No FreightGuard · active','clear'],
-      ['State Match','Formation = mailing (AZ)','clear'],['Dispatch History','No prior internal flags','clear']
+      ['Authority (FMCSA)','Active','clear'],['Insurance on file','yes','clear'],
+      ['Business identity (Middesk)','SOS + EIN match','clear'],['State Match','Formation = mailing (AZ)','clear']
+    ],
+    safety: [
+      ['One CSA BASIC alert','A single BASIC category is in alert status.','warn'],
+      ['Vehicle OOS rate above national average','FMCSA vehicle OOS alert is active.','warn'],
+      ['Cargo insurance not on FMCSA file','Verify cargo coverage on the COI.','warn']
     ],
     documents: [
       ['Signed Application','Prospect Upload','Verified'],["Driver's License",'Prospect Upload','Verified'],
@@ -1123,8 +1146,11 @@ var DEMO_APPS = {
       ['IP Address','Atlanta, GA · no proxy','clear'],['Phone (IPQS)','Landline · score 12','clear'],
       ['Email','Business domain match','clear'],['Insurance / COI','Not required (broker)','clear'],
       ['COI Created Date','N/A','clear'],['Bank Account Name','Matches legal entity','clear'],
-      ['DL / SSN (IDI/TLO)','Clean scan · identity match','clear'],['Carrier411','N/A (broker)','clear'],
-      ['State Match','Formation = mailing (GA)','clear'],['Dispatch History','No prior internal flags','clear']
+      ['Authority (FMCSA)','Active','clear'],['Insurance on file','yes','clear'],
+      ['Business identity (Middesk)','SOS + EIN match','clear'],['State Match','Formation = mailing (GA)','clear']
+    ],
+    safety: [
+      ['FMCSA compliance & safety','No adverse safety, insurance, or authority facts on the federal file.','clear']
     ],
     documents: [
       ['Signed Application','Prospect Upload','Received'],["Driver's License",'Prospect Upload','Received'],
@@ -1202,6 +1228,11 @@ function loadByUSDOT(usdot) {
           documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; }),
           checksReady: !!c,
           fraud: (c && c.fraud) || [],
+          safety: (c && c.safety) || [],
+          verdict: (c && c.verdict) || {},
+          // Only a rehydrated pre-change blob sets this (checksFromReview). A live cache read
+          // that legitimately has no safety data must not claim the run was stale.
+          safetyStale: !!(c && c.safetyStale),
           ucc: (c && c.ucc) || [],
           entity: (c && c.entity) || [],
           officers: (c && c.officers) || [],
@@ -1239,6 +1270,10 @@ function checksFromReview(review) {
   if (!d || typeof d !== 'object') return null;
   return {
     fraud: d.fraud || [], ucc: d.ucc || [], entity: d.entity || [], officers: d.officers || [],
+    // A blob saved before the compliance card shipped has no `safety` key. Distinguish that
+    // from a genuinely clean carrier: `safetyStale` drives a "re-run to capture it" note
+    // rather than a green all-clear on data this run never collected.
+    safety: d.safety || [], verdict: d.verdict || {}, safetyStale: !d.safety,
     risk: d.risk || 'med', checkedAt: review.Checks_Run_At || d.checkedAt || ''
   };
 }
@@ -1246,8 +1281,14 @@ function checksFromReview(review) {
 // RUN the automated review on demand (POST) — IPQS + CarrierOK + Middesk KYB. Fired ONLY by the
 // "Run automated review" button, never on open. POSTs the fields the widget already loaded and
 // caches by USDOT (re-opens read the cache). Returns the result payload or null.
-function runChecks(app) {
+// Accepts either the whole MODEL (preferred — it carries the owners) or a bare application
+// object. The application-only shape is kept working so older call sites and the standalone
+// demo still function.
+function runChecks(model) {
   if (typeof fetch !== 'function') return Promise.resolve(null);
+  var m = model || {};
+  var app = m.application || m;
+  var owners = m.owners || app.owners || [];
   var usdot = String((app && (app.USDOT != null ? app.USDOT : app)) || '');
   var body = {
     usdot: usdot,
@@ -1257,7 +1298,14 @@ function runChecks(app) {
     // KYB (Middesk) inputs — the business to verify
     businessName: (app && app.Business_Name) || '',
     ein: (app && app.EIN) || '',
-    address: (app && app.Physical_Address) || ''
+    address: (app && app.Physical_Address) || '',
+    // Owner names. Feed BOTH the IPQS phone-subscriber name check (is this number
+    // registered to the applicant?) and Middesk's officer verification, which had never
+    // been given any people to check.
+    owners: (Array.isArray(owners) ? owners : []).slice(0, 3).map(function (o) {
+      o = o || {};
+      return { first: o.First_Name1 || o.first || '', last: o.Last_Name1 || o.last || '' };
+    }).filter(function (o) { return o.first || o.last; })
   };
   return fetch(API_BASE + CHECKS_PATH, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -1773,7 +1821,8 @@ function renderModel(m) {
     '<span class="sep">·</span><span>Assigned: <b style="color:#fff">'+(a.Assigned_Underwriter||'—')+'</b></span>';
   // Automated checks → System Recommendation + risk. Normalize fraud to {label,detail,status}.
   var fraud = (m.fraud || []).map(function (f) { return Array.isArray(f) ? { label:f[0], detail:f[1], status:f[2] } : f; });
-  var rec = computeRecommendation({ fraud: fraud, ucc: m.ucc || [] });
+  var safety = (m.safety || []).map(function (f) { return Array.isArray(f) ? { label:f[0], detail:f[1], status:f[2] } : f; });
+  var rec = computeRecommendation({ fraud: fraud, ucc: m.ucc || [], safety: safety });
   var risk = (m.checksReady === false) ? 'med' : rec.risk;
   $('hRisk').className = 'verdict-badge ' + risk;
   $('hRisk').textContent = (risk==='low'?'Low':risk==='high'?'High':'Medium') + ' Risk';
@@ -1819,9 +1868,33 @@ function renderModel(m) {
   }
   $('appSummary').innerHTML = appHtml;
 
+  function flagCells(rows){
+    return rows.map(function(f){ var cls=f.status, ic=cls==='clear'?'✓':'!'; return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f.label+'</div><div class="fd">'+f.detail+'</div></div></div>'; }).join('');
+  }
   $('fraudGrid').innerHTML = fraud.length
-    ? fraud.map(function(f){ var cls=f.status, ic=cls==='clear'?'✓':'!'; return '<div class="flag '+cls+'"><span class="fic">'+ic+'</span><div><div class="ft">'+f.label+'</div><div class="fd">'+f.detail+'</div></div></div>'; }).join('')
+    ? flagCells(fraud)
     : '<div class="flag-empty">'+(m.checksReady===false?'Automated checks pending — enrichment has not run for this application yet.':'No fraud results returned.')+'</div>';
+
+  // Compliance & Safety — FMCSA facts from the house verdict engine (CSA BASIC alerts, safety
+  // rating, insurance filings, enforcement/OOS). Three empty states, deliberately distinct:
+  // checks never run; run BEFORE this card shipped (safetyStale — the saved blob simply has no
+  // safety data, which is not the same as a clean carrier); and a genuinely clean federal file
+  // (which the backend represents as one explicit 'clear' row, so it never lands here).
+  if ($('safetyGrid')) {
+    $('safetyGrid').innerHTML = safety.length
+      ? flagCells(safety)
+      : '<div class="flag-empty">'+(
+          m.checksReady===false ? 'Automated checks pending — FMCSA compliance data has not been pulled for this application yet.'
+          : m.safetyStale ? 'Compliance data was not captured in the last run — re-run the automated review to pull it.'
+          : 'No FMCSA compliance or safety data returned.')+'</div>';
+    if ($('safetyCount') && safety.length) {
+      var sBad = safety.filter(function(f){return f.status==='bad';}).length;
+      var sWarn = safety.filter(function(f){return f.status==='warn';}).length;
+      $('safetyCount').textContent = (sBad || sWarn)
+        ? (sBad ? sBad + ' hard stop' + (sBad>1?'s':'') : '') + (sBad && sWarn ? ' · ' : '') + (sWarn ? sWarn + ' to review' : '')
+        : 'federal file clean';
+    }
+  }
 
   // Ownership & Entity: business-identity verification (FMCSA legal entity + Middesk KYB:
   // SOS / EIN / watchlist) plus the applicant-declared owners, each cross-referenced to the
@@ -2070,7 +2143,7 @@ function runReview() {
   var btn = $('btnRunReview');
   if (btn) btn.disabled = true;
   if ($('runReviewStatus')) $('runReviewStatus').textContent = 'Running automated review… (IPQS · CarrierOK · Middesk KYB)';
-  runChecks(MODEL.application).then(function (checks) {
+  runChecks(MODEL).then(function (checks) {     // whole MODEL: it carries the owners
     if (!checks) {
       if (btn) btn.disabled = false;
       if ($('runReviewStatus')) $('runReviewStatus').textContent = 'No results returned — try again.';
@@ -2078,6 +2151,9 @@ function runReview() {
     }
     MODEL.checksReady = true;
     MODEL.fraud = checks.fraud || [];
+    MODEL.safety = checks.safety || [];
+    MODEL.verdict = checks.verdict || {};
+    MODEL.safetyStale = false;    // this run captured it (or the backend had nothing to give)
     MODEL.ucc = checks.ucc || [];
     MODEL.entity = checks.entity || [];
     MODEL.officers = checks.officers || [];
@@ -2100,7 +2176,8 @@ function persistChecks() {
   if (!MODEL || MODEL._demo) return;
   var stamp = MODEL.checkedAt || formatStamp(new Date());
   var blob = JSON.stringify({
-    fraud: MODEL.fraud || [], ucc: MODEL.ucc || [], entity: MODEL.entity || [],
+    fraud: MODEL.fraud || [], safety: MODEL.safety || [], verdict: MODEL.verdict || {},
+    ucc: MODEL.ucc || [], entity: MODEL.entity || [],
     officers: MODEL.officers || [], risk: MODEL.risk || 'med', checkedAt: stamp
   });
   var payload = { Automated_Checks_JSON: blob, Checks_Run_At: stamp };

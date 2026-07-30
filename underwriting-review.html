@@ -1299,9 +1299,9 @@ function runChecks(model) {
     businessName: (app && app.Business_Name) || '',
     ein: (app && app.EIN) || '',
     address: (app && app.Physical_Address) || '',
-    // Owner names. Feed BOTH the IPQS phone-subscriber name check (is this number
-    // registered to the applicant?) and Middesk's officer verification, which had never
-    // been given any people to check.
+    // Owner names, for Middesk's officer verification — which had never been given any
+    // people to check. (Not used for IPQS: matching a phone to its registered owner is a
+    // paid-tier IPQS feature we don't buy.)
     owners: (Array.isArray(owners) ? owners : []).slice(0, 3).map(function (o) {
       o = o || {};
       return { first: o.First_Name1 || o.first || '', last: o.Last_Name1 || o.last || '' };

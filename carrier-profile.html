@@ -1158,6 +1158,24 @@ function renderLoadHistory(p){
     '</div>';
 }
 
+// Full physical address for the hero + maps link. Prefer fmcsa's assembled
+// physical_address (e.g. "3552 GREEN AVE, LOS ALAMITOS, CA 90720-3243"); else
+// compose from street/city/state/zip; else fall back to city/state (old
+// behavior). Returns '' when nothing is available.
+function _carrierFullAddress(co, v){
+  co=co||{}; v=v||{};
+  var full=(co.physical_address||'').toString().trim();
+  if(full) return full;
+  var street=(co.physical_address_street||'').toString().trim();
+  var city=(co.physical_address_city||'').toString().trim();
+  var state=(co.physical_address_state||v.Physical_State||'').toString().trim();
+  var zip=(co.physical_address_zip_code||'').toString().trim();
+  var cityLine=[city, state].filter(function(x){return x;}).join(', ');
+  if(zip) cityLine=(cityLine+' '+zip).trim();
+  return [street, cityLine].filter(function(x){return x;}).join(', ').trim();
+}
+if (typeof window !== 'undefined') { window._carrierFullAddress = _carrierFullAddress; }
+
 // ── Hero ───────────────────────────────────────────────────────────────────
 function renderHero(p){
   var v=p.vendor||{}, co=p.carrierok||{};
@@ -1172,10 +1190,9 @@ function renderHero(p){
   if(_sh) parts.push('<span><a href="'+esc(_sh)+'" target="_blank" rel="noopener" style="color:var(--of-orange);text-decoration:underline">FMCSA SAFER ↗</a></span>');
   var authAge=_authorityAge(co); if(authAge) parts.push('<span>Authority age: '+esc(authAge)+'</span>');
   var dotAge=_years(co.dot_age); if(dotAge) parts.push('<span>DOT age: '+esc(dotAge)+'</span>');
-  var loc=[co.physical_address_city||'', co.physical_address_state||v.Physical_State||'']
-            .filter(function(x){return x;}).join(', ');
-  if(loc){ var _mh=mapsHref(loc);
-    parts.push('<span>Based in '+(_mh?'<a href="'+esc(_mh)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+esc(loc)+'</a>':esc(loc))+'</span>'); }
+  var addr=_carrierFullAddress(co, v);
+  if(addr){ var _mh=mapsHref(addr);
+    parts.push('<span>Based in '+(_mh?'<a href="'+esc(_mh)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+esc(addr)+'</a>':esc(addr))+'</span>'); }
   if(metaEl) metaEl.innerHTML=parts.join('<span class="sep">·</span>');
 }
 

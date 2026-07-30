@@ -56,3 +56,29 @@ test('renderHero shows the full street address and links maps to it', () => {
   assert.ok(html.includes('3552 GREEN AVE'), 'shows the street address, not just city/state');
   assert.ok(html.includes(encodeURIComponent('3552 GREEN AVE, LOS ALAMITOS, CA 90720-3243')), 'maps link targets the full address');
 });
+
+// ── Street View link in hero (from Google-validated lat/lng) ───────────────
+test('streetViewHref builds a pano link from lat/lng, "" when missing', () => {
+  const w = boot();
+  assert.ok(w.streetViewHref(33.4, -112.0).includes('map_action=pano'));
+  assert.ok(w.streetViewHref(33.4, -112.0).includes('viewpoint=33.4,-112'));
+  assert.strictEqual(w.streetViewHref(null, -112.0), '');
+  assert.strictEqual(w.streetViewHref(undefined, undefined), '');
+});
+
+test('renderHero adds a Street View link when address_validation has lat/lng', () => {
+  const w = boot();
+  w.renderHero({ vendor: { Vendor_Name: 'X', MC: '1', USDOT: '2' },
+                 carrierok: { physical_address: '100 Real St, Dallas, TX 75001' },
+                 address_validation: { configured: true, lat: 32.7, lng: -96.8 } });
+  const html = w.document.querySelector('#cp-hero .hero-meta').innerHTML;
+  assert.match(html, /Street View/);
+  assert.match(html, /map_action=pano/);
+});
+
+test('renderHero omits Street View when no lat/lng', () => {
+  const w = boot();
+  w.renderHero({ vendor: { Vendor_Name: 'X', MC: '1', USDOT: '2' },
+                 carrierok: { physical_address: '100 Real St, Dallas, TX' } });
+  assert.doesNotMatch(w.document.querySelector('#cp-hero .hero-meta').innerHTML, /Street View/);
+});

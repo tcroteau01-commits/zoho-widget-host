@@ -1134,7 +1134,12 @@ function saferHref(dot){
   var d=String(dot||'').trim();
   return d ? 'https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=USDOT&query_string='+encodeURIComponent(d) : '';
 }
-if (typeof window !== 'undefined') { window.mapsHref = mapsHref; window.saferHref = saferHref; }
+function streetViewHref(lat, lng){
+  if(lat==null||lng==null||lat===''||lng==='') return '';
+  return 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint='+
+    encodeURIComponent(lat)+','+encodeURIComponent(lng);
+}
+if (typeof window !== 'undefined') { window.mapsHref = mapsHref; window.saferHref = saferHref; window.streetViewHref = streetViewHref; }
 
 // ── Load History ───────────────────────────────────────────────────────────
 function renderLoadHistory(p){
@@ -1193,6 +1198,9 @@ function renderHero(p){
   var addr=_carrierFullAddress(co, v);
   if(addr){ var _mh=mapsHref(addr);
     parts.push('<span>Based in '+(_mh?'<a href="'+esc(_mh)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+esc(addr)+'</a>':esc(addr))+'</span>'); }
+  var _av=p.address_validation||{};
+  var _sv=streetViewHref(_av.lat, _av.lng);
+  if(_sv) parts.push('<span><a href="'+esc(_sv)+'" target="_blank" rel="noopener" style="color:var(--of-orange);text-decoration:underline">Street View ↗</a></span>');
   if(metaEl) metaEl.innerHTML=parts.join('<span class="sep">·</span>');
 }
 

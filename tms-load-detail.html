@@ -838,7 +838,10 @@ function loadExisting() {
   if (!loadId || !brokerEmail) return Promise.resolve(null);
   return fetch(BROKER_API_BASE + '/tms-load?email=' + encodeURIComponent(brokerEmail) + '&id=' + encodeURIComponent(loadId))
     .then(function(r){ return r.json(); })
-    .then(function(p){ return (p && p.load) || null; })
+    .then(function (p) {
+      if (p && p.load) { p.load.can_edit_terms = !!p.can_edit_terms; }
+      return (p && p.load) || null;
+    })
     .catch(function(){ return null; });
 }
 
@@ -1518,7 +1521,11 @@ function termsEditBody(i) {
   if (!host || host.querySelector('textarea')) { return; }
   var ta = document.createElement('textarea');
   ta.rows = 4; ta.value = TERMS[i].body; ta.style.width = '100%';
-  ta.addEventListener('blur', function () { TERMS[i].body = ta.value; renderTermsEditor(); });
+  ta.addEventListener('blur', function () {
+    var v = ta.value.trim();
+    if (!v) { showError('Clause body cannot be empty.'); renderTermsEditor(); return; }
+    TERMS[i].body = ta.value; renderTermsEditor();
+  });
   host.textContent = '';
   host.appendChild(ta);
   ta.focus();
@@ -1579,9 +1586,7 @@ function postLoadTerms(payload) {
     .then(function (res) {
       if (saveBtn) saveBtn.disabled = false;
       if (resetBtn) resetBtn.disabled = false;
-      if (typeof showToast === 'function') {
-        showToast(res.ok ? 'Terms saved.' : (res.body.error || 'Save failed.'));
-      }
+      if (res.ok) { showOk('Terms saved.'); } else { showError(res.body.error || 'Save failed.'); }
       if (res.ok) {
         TERMS_UNLOCKED = false;
         // Re-sync the whole load from the server so the card drops back into its locked

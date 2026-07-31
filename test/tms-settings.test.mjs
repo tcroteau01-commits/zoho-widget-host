@@ -160,3 +160,66 @@ test('editing a body through the editor stores the raw text, not the substituted
   const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
   assert.equal(sent.body, 'Detention is now {rate} per hour, flat.');
 });
+
+test('clearing a clause body on blur restores the previous body instead of deleting it', async () => {
+  const { window, posts } = makeWidget();
+  hydrate(window);
+  window.brokerEmail = 't@x.com';
+  window.editBody(1);
+  const ta = window.document.querySelector('#body-detention textarea');
+  ta.value = '   ';
+  ta.dispatchEvent(new window.Event('blur', { bubbles: true }));
+  await window.saveSettings();
+  assert.equal(posts[0].body.clauses.length, 3, 'no clause should have been dropped');
+  const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
+  assert.equal(sent.body, 'Detention at {rate} per hour.', 'original body preserved');
+});
+
+test('loadSettings routes a non-2xx response to the same failure path as a network error', async () => {
+  const { window } = makeWidget();
+  window.fetch = function () {
+    return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'Unauthorized' }) });
+  };
+  window.brokerEmail = 't@x.com';
+  await window.loadSettings();
+  assert.match(window.document.getElementById('clause-list').textContent, /Could not load terms/);
+  // must NOT have rendered an empty clause list with a live save button
+  assert.equal(window.document.querySelectorAll('.clause').length, 0);
+});
+
+test('boot() does not throw when getInitParams returns a plain object instead of a Promise', () => {
+  const dom = new JSDOM(HTML, {
+    runScripts: 'dangerously',
+    url: 'https://tcroteau01-commits.github.io/tms-settings.html',
+    beforeParse(window) {
+      window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => ({ loginUser: 'b@op.com' }) } } };
+      window.fetch = function () { return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); };
+    }
+  });
+  assert.doesNotThrow(() => { dom.window.boot(); });
+});
+
+test('boot() reads login_user and email aliases, matching the sibling TMS widgets', async () => {
+  for (const alias of ['login_user', 'email']) {
+    let capturedEmail = '';
+    const params = {}; params[alias] = 'b2@op.com';
+    const dom = new JSDOM(HTML, {
+      runScripts: 'dangerously',
+      url: 'https://tcroteau01-commits.github.io/tms-settings.html',
+      beforeParse(window) {
+        window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => Promise.resolve(params) } } };
+        window.fetch = function (url) {
+          capturedEmail = new URL(url, 'https://x').searchParams.get('email');
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ clauses: [] }) });
+        };
+      }
+    });
+    dom.window.boot();
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(capturedEmail, 'b2@op.com', 'alias "' + alias + '" should be picked up');
+  }
+});
+
+test('the impersonation script is included, matching the sibling TMS widgets', () => {
+  assert.match(HTML, /operfi-impersonate\.js/);
+});

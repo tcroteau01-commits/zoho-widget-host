@@ -118,6 +118,24 @@ test('save posts the edited set to /tms-load-terms', async () => {
   assert.equal(posts[0].body.clauses[2].enabled, true);
 });
 
+test('a 400 from /tms-load-terms surfaces the server error message, not a silent no-op', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 't@x.com';
+  window.fetch = function (url, init) {
+    if (init && init.method === 'POST') {
+      return Promise.resolve({
+        ok: false,
+        json: () => Promise.resolve({ error: 'Clause "Detention" is over 4000 characters.' }),
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  window.renderTermsCard(load());
+  window.unlockTerms();
+  await window.saveLoadTerms();
+  assert.match(window.document.getElementById('form-error').textContent, /over 4000 characters/);
+});
+
 test('reset posts the reset flag', async () => {
   const { window, posts } = makeWidget();
   window.brokerEmail = 't@x.com';
@@ -155,4 +173,69 @@ test('save preserves the raw body text through the real body editor, not the sub
   await window.saveLoadTerms();
   const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
   assert.equal(sent.body, 'Detention is now {rate} per hour, flat.');
+});
+
+test('clearing a clause body on blur restores the previous body instead of deleting it', async () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 't@x.com';
+  window.renderTermsCard(load());
+  window.unlockTerms();
+  window.termsEditBody(1);
+  const ta = window.document.querySelector('#tbody-detention textarea');
+  ta.value = '   ';
+  ta.dispatchEvent(new window.Event('blur', { bubbles: true }));
+  await window.saveLoadTerms();
+  assert.equal(posts[0].body.clauses.length, 3, 'no clause should have been dropped');
+  const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
+  assert.equal(sent.body, 'Detention at {rate} per hour.', 'original body preserved');
+});
+
+// --- Real GET /tms-load -> hydrate() path (item 1 / item 7) ---
+// The tests above bypass the real seam by assigning window.canEditTerms directly.
+// These drive loadExisting() and hydrate() for real, against the backend's actual
+// response shape: { load: {...}, can_edit_terms: bool } as a SIBLING, not nested
+// inside load. This is the seam that let the Unlock button go unreachable in
+// production while 1150 other tests stayed green.
+function makeLoadDetailFetchResponse(canEditTerms) {
+  return {
+    load: {
+      id: 'L1', load_number: 'MAR-1042', status: 'Covered', added_time: '29-Jul-2026 10:00:00',
+      rate_con_terms: JSON.parse(JSON.stringify(TERMS)),
+      terms_customized: false, terms_unlocked_by: '', terms_unlocked_at: '',
+      stops: [],
+    },
+    can_edit_terms: canEditTerms,
+  };
+}
+
+test('real GET /tms-load + hydrate(): can_edit_terms true renders the Unlock button and no read-only banner', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 't@x.com';
+  window.loadId = 'L1';
+  window.fetch = function (url) {
+    if (String(url).indexOf('/tms-load?') !== -1) {
+      return Promise.resolve({ json: () => Promise.resolve(makeLoadDetailFetchResponse(true)) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  const loaded = await window.loadExisting();
+  window.hydrate(loaded);
+  assert.ok(window.document.getElementById('terms-unlock'), 'Unlock button should render for a Full Access user');
+  assert.doesNotMatch(window.document.getElementById('terms-card').textContent, /Full Access/);
+});
+
+test('real GET /tms-load + hydrate(): can_edit_terms false hides the Unlock button and shows the read-only banner', async () => {
+  const { window } = makeWidget();
+  window.brokerEmail = 't@x.com';
+  window.loadId = 'L1';
+  window.fetch = function (url) {
+    if (String(url).indexOf('/tms-load?') !== -1) {
+      return Promise.resolve({ json: () => Promise.resolve(makeLoadDetailFetchResponse(false)) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  const loaded = await window.loadExisting();
+  window.hydrate(loaded);
+  assert.equal(window.document.getElementById('terms-unlock'), null, 'Unlock button must not render without Full Access');
+  assert.match(window.document.getElementById('terms-card').textContent, /Full Access/);
 });

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>TMS Settings</title>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <style>
 :root {
   --of-charcoal:#1d1d1f; --of-orange:#F97316; --of-orange-soft:#FEF3E8;
@@ -224,6 +225,8 @@ function editBody(i) {
   var ta = document.createElement('textarea');
   ta.rows = 4; ta.value = c.body;
   ta.addEventListener('blur', function () {
+    var v = ta.value.trim();
+    if (!v) { showToast('Clause body cannot be empty.'); renderClauses(); return; }
     CLAUSES[i].body = ta.value;
     renderClauses();
   });
@@ -281,7 +284,12 @@ function applySettings(data) {
 
 function loadSettings() {
   return fetch(API_BASE + '/tms-settings?email=' + encodeURIComponent(brokerEmail))
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) { throw new Error('load failed'); }
+        return j;
+      });
+    })
     .then(applySettings)
     .catch(function () {
       document.getElementById('clause-list').innerHTML =
@@ -313,16 +321,22 @@ function resetDefaults() {
     .catch(function () { showToast('Could not load the defaults. Nothing was changed.'); });
 }
 
+function boot() {
+  if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) return;
+  var result = ZOHO.CREATOR.UTIL.getInitParams();
+  if (result && typeof result.then === 'function') {
+    result.then(function(params){
+      brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      loadSettings();
+    });
+  }
+}
+
 window.addEventListener('load', function () {
   document.getElementById('btn-save').addEventListener('click', saveSettings);
   document.getElementById('btn-add').addEventListener('click', promptCustomClause);
   document.getElementById('btn-reset').addEventListener('click', resetDefaults);
-  if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.UTIL) {
-    ZOHO.CREATOR.UTIL.getInitParams().then(function (p) {
-      brokerEmail = (p && (p.loginUser || p.brokerEmail)) || '';
-      loadSettings();
-    });
-  }
+  boot();
 });
 </script>
 </body>

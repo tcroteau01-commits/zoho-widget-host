@@ -97,6 +97,46 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 #btn-submit-factoring { width:100%; min-height:44px; }
 #btn-submit-factoring:disabled { background:#d8d8d8; color:#888; border-color:#d8d8d8; opacity:1; cursor:not-allowed; }
 .gate-ok { color:#2e7d32; } .gate-bad { color:#c62828; }
+
+/* Rate Confirmation Terms card. Clause-editor rules duplicated from tms-settings.html
+   (widget CSS isn't shared across files in this repo); colors are this file's own
+   literal tokens rather than tms-settings.html's --of-* custom properties, since this
+   file doesn't define that :root block. */
+.lockstate { font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  padding:3px 8px; border-radius:5px; background:#f5f5f5; color:#888;
+  border:1px solid #eee; }
+.lockstate.open { background:#fef6e7; color:#7a5a12; border-color:#f0d9a8; }
+.banner { font-size:12.5px; border-radius:8px; padding:9px 12px; margin:0 0 12px; }
+.banner.warn { background:#fef6e7; border:1px solid #f0d9a8; color:#7a5a12; }
+.banner.info { background:#fbfaf6; border:1px solid #eee; color:#666; }
+ol.snap { margin:0; padding-left:20px; font-size:12.5px; color:#444; }
+ol.snap li { margin-bottom:7px; }
+ol.snap .tt { font-weight:700; color:#272727; text-transform:uppercase;
+  font-size:11px; letter-spacing:.03em; }
+.clause { border-top:1px solid #f3f1ea; padding:11px 0; }
+.clause:first-of-type { border-top:0; }
+.clause.off .cl-title, .clause.off .cl-body, .clause.off .vars { opacity:.42; }
+.cl-head { display:flex; align-items:flex-start; gap:10px; }
+.cl-head input[type=checkbox] { margin:3px 0 0; width:15px; height:15px;
+  accent-color:#e8a020; flex:none; cursor:pointer; }
+.cl-title { font-weight:650; font-size:13.5px; flex:1; cursor:pointer; }
+.custom-tag { font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:#888; border:1px solid #d8d8d8; border-radius:4px;
+  padding:1px 5px; margin-left:7px; }
+.cl-tools { display:flex; gap:4px; flex:none; }
+.cl-tools button { font:inherit; font-size:11px; color:#888; background:none;
+  border:1px solid transparent; border-radius:5px; padding:1px 6px; cursor:pointer; }
+.cl-tools button:hover { background:#fbfaf6; border-color:#eee;
+  color:#444; }
+.cl-body { font-size:12.5px; color:#444; margin:5px 0 0 25px; }
+.cl-body textarea { width:100%; font:inherit; font-size:12.5px; border:1px solid #d8d8d8;
+  border-radius:6px; padding:7px 9px; resize:vertical; }
+.vars { display:flex; flex-wrap:wrap; gap:6px 12px; margin:8px 0 0 25px; align-items:center; }
+.var { display:inline-flex; align-items:center; gap:5px; }
+.var label { font-size:11px; color:#888; }
+.var input { font:inherit; font-size:12px; border:1px solid #d8d8d8;
+  border-radius:6px; padding:3px 7px; width:9ch; }
+.var input.wide { width:24ch; }
 </style>
 </head>
 <body>
@@ -213,6 +253,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
     <div id="vetting-badge"></div>
     <div class="margin-box"><span class="lbl">Margin</span><span id="margin-display">$0</span></div>
+  </div>
+
+  <div class="card" id="terms-card" style="display:none">
+    <h3>Rate Confirmation Terms <span id="terms-lockbar"></span></h3>
+    <div id="terms-banners"></div>
+    <div id="terms-body"></div>
+    <div id="terms-actions"></div>
   </div>
 
   <div class="card hidden" id="docs-card">
@@ -775,6 +822,8 @@ function hydrate(load) {
   refreshDocCard();
   window._currentLoad = load;
   renderSubmitPanel(load, window._loadedDocs || []);
+  canEditTerms = !!(load && load.can_edit_terms);
+  renderTermsCard(load, window._loadedDocs || []);
   renderStepper(val('f-status'));
   fetchCredit();
   refreshSaveButtons();
@@ -902,7 +951,10 @@ function refreshDocs() {
       var docs = (p && p.documents) || [];
       window._loadedDocs = docs;
       renderDocLibrary(docs);
-      if (window._currentLoad) renderSubmitPanel(window._currentLoad, docs);
+      if (window._currentLoad) {
+        renderSubmitPanel(window._currentLoad, docs);
+        renderTermsCard(window._currentLoad, docs);
+      }
     });
 }
 
@@ -1282,6 +1334,255 @@ window.renderDocList = renderDocList; window.renderDocLibrary = renderDocLibrary
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
 window.setStagedFile = setStagedFile;
 Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
+
+// --- Rate Confirmation Terms card ---
+// Duplicated from tms-settings.html's clause editor on purpose (widget CSS/JS is not
+// shared across files in this repo). Everything here is "terms"-namespaced so it can't
+// collide with the settings widget's own CLAUSES/renderClauses/nextCustomId functions.
+var TERMS = [];
+var TERMS_UNLOCKED = false;
+var TERMS_LOAD_ID = '';
+var canEditTerms = false;
+
+function termsSubstitute(c) {
+  var body = String(c.body || '');
+  var vars = c.vars || {};
+  Object.keys(vars).forEach(function (k) {
+    var v = String(vars[k] == null ? '' : vars[k]).trim();
+    if (v) { body = body.split('{' + k + '}').join(v); }
+  });
+  return body;
+}
+
+function renderTermsCard(load, docs) {
+  var card = document.getElementById('terms-card');
+  if (!load || !load.id || load.status === 'Submitted') {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  TERMS = (load.rate_con_terms || []).map(function (c) {
+    return { id: c.id, title: c.title, enabled: !!c.enabled, body: c.body,
+             vars: JSON.parse(JSON.stringify(c.vars || {})), custom: !!c.custom };
+  });
+  TERMS_LOAD_ID = load.id;
+
+  var lock = document.getElementById('terms-lockbar');
+  lock.innerHTML = TERMS_UNLOCKED
+    ? '<span class="lockstate open">Unlocked</span>'
+    : '<span class="lockstate">Locked</span>';
+  if (!TERMS_UNLOCKED && canEditTerms) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn small'; b.id = 'terms-unlock';
+    b.textContent = 'Unlock';
+    b.addEventListener('click', unlockTerms);
+    lock.appendChild(b);
+  }
+
+  var banners = document.getElementById('terms-banners');
+  banners.innerHTML = '';
+  if (!canEditTerms) {
+    banners.innerHTML = '<div class="banner info">Only Full Access users can change these terms.</div>';
+  }
+  if (load.terms_customized) {
+    banners.innerHTML += '<div class="banner warn">Customized, differs from company standard.' +
+      (load.terms_unlocked_by ? ' Unlocked by ' + load.terms_unlocked_by +
+        (load.terms_unlocked_at ? ' on ' + String(load.terms_unlocked_at).slice(0, 10) : '') : '') +
+      '</div>';
+  } else if (!TERMS_UNLOCKED) {
+    banners.innerHTML += '<div class="banner info">Company standard, captured ' +
+      String(load.added_time || '').slice(0, 11) + '.</div>';
+  }
+  var rc = (docs || []).filter(function (d) { return d.document_type === 'Rate Con'; })[0];
+  if (rc) {
+    banners.innerHTML += '<div class="banner warn">A Rate Con was generated ' +
+      String(rc.uploaded_at || '').slice(0, 10) +
+      '. Regenerate and re-send it so the carrier has the current terms.</div>';
+  }
+
+  if (TERMS_UNLOCKED) { renderTermsEditor(); } else { renderTermsSnapshot(); }
+  renderTermsActions();
+}
+
+function renderTermsSnapshot() {
+  var host = document.getElementById('terms-body');
+  var ol = document.createElement('ol');
+  ol.className = 'snap';
+  TERMS.filter(function (c) { return c.enabled; }).forEach(function (c) {
+    var li = document.createElement('li');
+    var tt = document.createElement('span');
+    tt.className = 'tt'; tt.textContent = c.title + '.';
+    li.appendChild(tt);
+    li.appendChild(document.createTextNode(' ' + termsSubstitute(c)));
+    ol.appendChild(li);
+  });
+  host.innerHTML = '';
+  host.appendChild(ol);
+}
+
+function renderTermsEditor() {
+  var host = document.getElementById('terms-body');
+  host.innerHTML = '';
+  TERMS.forEach(function (c, i) {
+    var row = document.createElement('div');
+    row.className = 'clause' + (c.enabled ? '' : ' off');
+
+    var head = document.createElement('div');
+    head.className = 'cl-head';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = !!c.enabled;
+    cb.id = 'tcl-' + c.id;
+    cb.setAttribute('aria-label', c.title + ' enabled');
+    cb.addEventListener('change', function () { termsToggle(i, cb.checked); });
+    head.appendChild(cb);
+
+    var title = document.createElement('label');
+    title.className = 'cl-title';
+    title.setAttribute('for', 'tcl-' + c.id);
+    title.textContent = (i + 1) + '. ' + c.title;
+    if (c.custom) {
+      var tag = document.createElement('span');
+      tag.className = 'custom-tag'; tag.textContent = 'custom';
+      title.appendChild(tag);
+    }
+    head.appendChild(title);
+
+    var tools = document.createElement('span');
+    tools.className = 'cl-tools';
+    tools.appendChild(termsTool('edit', function () { termsEditBody(i); }));
+    tools.appendChild(termsTool('↑', function () { termsMove(i, i - 1); }));
+    tools.appendChild(termsTool('↓', function () { termsMove(i, i + 1); }));
+    if (c.custom) { tools.appendChild(termsTool('×', function () { termsRemove(i); })); }
+    head.appendChild(tools);
+    row.appendChild(head);
+
+    var body = document.createElement('div');
+    body.className = 'cl-body'; body.id = 'tbody-' + c.id;
+    body.textContent = termsSubstitute(c);
+    row.appendChild(body);
+
+    var keys = Object.keys(c.vars || {});
+    if (keys.length) {
+      var vars = document.createElement('div');
+      vars.className = 'vars';
+      keys.forEach(function (k) {
+        var wrap = document.createElement('span');
+        wrap.className = 'var';
+        var lab = document.createElement('label');
+        lab.textContent = k; lab.setAttribute('for', 'tv-' + c.id + '-' + k);
+        var inp = document.createElement('input');
+        inp.type = 'text'; inp.id = 'tv-' + c.id + '-' + k; inp.value = c.vars[k];
+        inp.addEventListener('input', function () {
+          TERMS[i].vars[k] = inp.value;
+          document.getElementById('tbody-' + c.id).textContent = termsSubstitute(TERMS[i]);
+        });
+        wrap.appendChild(lab); wrap.appendChild(inp);
+        vars.appendChild(wrap);
+      });
+      row.appendChild(vars);
+    }
+    host.appendChild(row);
+  });
+}
+
+function termsTool(label, fn) {
+  var b = document.createElement('button');
+  b.type = 'button'; b.textContent = label;
+  b.addEventListener('click', fn);
+  return b;
+}
+
+function termsToggle(i, on) { if (TERMS[i]) { TERMS[i].enabled = !!on; renderTermsEditor(); } }
+function termsMove(i, to) {
+  if (to < 0 || to >= TERMS.length || !TERMS[i]) { return; }
+  TERMS.splice(to, 0, TERMS.splice(i, 1)[0]);
+  renderTermsEditor();
+}
+function termsRemove(i) {
+  if (!TERMS[i] || !TERMS[i].custom) { return; }
+  TERMS.splice(i, 1);
+  renderTermsEditor();
+}
+function termsEditBody(i) {
+  var host = document.getElementById('tbody-' + TERMS[i].id);
+  if (!host || host.querySelector('textarea')) { return; }
+  var ta = document.createElement('textarea');
+  ta.rows = 4; ta.value = TERMS[i].body; ta.style.width = '100%';
+  ta.addEventListener('blur', function () { TERMS[i].body = ta.value; renderTermsEditor(); });
+  host.textContent = '';
+  host.appendChild(ta);
+  ta.focus();
+}
+// Mirrors tms-settings.html's nextCustomId() exactly: both surfaces write into the same
+// stored clause array, so a different derivation (e.g. array length) can mint an id that
+// collides with one the other surface created.
+function termsNextCustomId() {
+  var max = 0;
+  TERMS.forEach(function (c) {
+    var m = /^custom_(\d+)$/.exec(String(c.id || ''));
+    if (m) { max = Math.max(max, parseInt(m[1], 10)); }
+  });
+  return 'custom_' + (max + 1);
+}
+function termsAddClause(title, body) {
+  title = (title || '').trim(); body = (body || '').trim();
+  if (!title || !body) { return; }
+  TERMS.push({ id: termsNextCustomId(), title: title, enabled: true,
+               body: body, vars: {}, custom: true });
+  renderTermsEditor();
+}
+
+function renderTermsActions() {
+  var host = document.getElementById('terms-actions');
+  host.innerHTML = '';
+  if (!TERMS_UNLOCKED || !canEditTerms) { return; }
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:8px;margin-top:14px;flex-wrap:wrap';
+  [['+ Add clause', function () {
+      var t = window.prompt('Clause title'); if (!t) { return; }
+      var b = window.prompt('Clause text'); if (!b) { return; }
+      termsAddClause(t, b);
+    }],
+   ['Reset to company standard', resetLoadTerms],
+   ['Save terms', saveLoadTerms]].forEach(function (pair) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn small'; b.textContent = pair[0];
+    b.addEventListener('click', pair[1]);
+    wrap.appendChild(b);
+  });
+  host.appendChild(wrap);
+}
+
+function unlockTerms() { TERMS_UNLOCKED = true; renderTermsEditor(); renderTermsActions();
+  document.getElementById('terms-lockbar').innerHTML = '<span class="lockstate open">Unlocked</span>'; }
+
+function postLoadTerms(payload) {
+  return fetch(BROKER_API_BASE + '/tms-load-terms', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+    .then(function (res) {
+      if (typeof showToast === 'function') {
+        showToast(res.ok ? 'Terms saved.' : (res.body.error || 'Save failed.'));
+      }
+      if (res.ok) { TERMS_UNLOCKED = false; loadExisting(); }
+      return res;
+    });
+}
+
+function saveLoadTerms() {
+  return postLoadTerms({ email: brokerEmail, load_id: TERMS_LOAD_ID, clauses: TERMS });
+}
+
+function resetLoadTerms() {
+  return postLoadTerms({ email: brokerEmail, load_id: TERMS_LOAD_ID, reset: true });
+}
+
+window.renderTermsCard = renderTermsCard;
+window.unlockTerms = unlockTerms;
+window.saveLoadTerms = saveLoadTerms;
+window.resetLoadTerms = resetLoadTerms;
+window.termsToggle = termsToggle;
 
 // --- Document viewer ---
 function openDocViewer(url, title) {

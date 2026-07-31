@@ -1233,6 +1233,7 @@ function loadByUSDOT(usdot) {
           // Only a rehydrated pre-change blob sets this (checksFromReview). A live cache read
           // that legitimately has no safety data must not claim the run was stale.
           safetyStale: !!(c && c.safetyStale),
+          middeskBusinessId: (c && c.middeskBusinessId) || '',
           ucc: (c && c.ucc) || [],
           entity: (c && c.entity) || [],
           officers: (c && c.officers) || [],
@@ -1274,6 +1275,9 @@ function checksFromReview(review) {
     // from a genuinely clean carrier: `safetyStale` drives a "re-run to capture it" note
     // rather than a green all-clear on data this run never collected.
     safety: d.safety || [], verdict: d.verdict || {}, safetyStale: !d.safety,
+    // Carried purely so the next run can resume the Middesk verification rather than pay
+    // for a new one. Never displayed.
+    middeskBusinessId: d.middeskBusinessId || '',
     risk: d.risk || 'med', checkedAt: review.Checks_Run_At || d.checkedAt || ''
   };
 }
@@ -1305,7 +1309,12 @@ function runChecks(model) {
     owners: (Array.isArray(owners) ? owners : []).slice(0, 3).map(function (o) {
       o = o || {};
       return { first: o.First_Name1 || o.first || '', last: o.Last_Name1 || o.last || '' };
-    }).filter(function (o) { return o.first || o.last; })
+    }).filter(function (o) { return o.first || o.last; }),
+    // The Middesk business id from the last run, kept in Automated_Checks_JSON. Sending it
+    // back turns this run into a free RESUME instead of a billable CREATE — and because it
+    // lives on the review record, that holds across a backend restart, which the backend's
+    // own in-process cache cannot do.
+    middeskBusinessId: m.middeskBusinessId || ''
   };
   return fetch(API_BASE + CHECKS_PATH, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -2154,6 +2163,9 @@ function runReview() {
     MODEL.safety = checks.safety || [];
     MODEL.verdict = checks.verdict || {};
     MODEL.safetyStale = false;    // this run captured it (or the backend had nothing to give)
+    // Keep whatever id we already had if this run didn't return one (KYB unconfigured,
+    // pending, or rate-limited) — losing it would force a billable re-create next time.
+    MODEL.middeskBusinessId = checks.middeskBusinessId || MODEL.middeskBusinessId || '';
     MODEL.ucc = checks.ucc || [];
     MODEL.entity = checks.entity || [];
     MODEL.officers = checks.officers || [];
@@ -2178,7 +2190,8 @@ function persistChecks() {
   var blob = JSON.stringify({
     fraud: MODEL.fraud || [], safety: MODEL.safety || [], verdict: MODEL.verdict || {},
     ucc: MODEL.ucc || [], entity: MODEL.entity || [],
-    officers: MODEL.officers || [], risk: MODEL.risk || 'med', checkedAt: stamp
+    officers: MODEL.officers || [], risk: MODEL.risk || 'med', checkedAt: stamp,
+    middeskBusinessId: MODEL.middeskBusinessId || ''
   });
   var payload = { Automated_Checks_JSON: blob, Checks_Run_At: stamp };
   if (MODEL.appId != null) payload[APPLICATION_LOOKUP] = MODEL.appId;

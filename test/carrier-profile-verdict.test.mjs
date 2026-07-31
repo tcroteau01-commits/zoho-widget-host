@@ -248,10 +248,10 @@ test('payment pillar badge + fact row render from the verdict', () => {
   assert.match(box, /vfact fail/);
 });
 
-test('payment accordion section exists after the bank section', () => {
+test('payment lives inside the consolidated Payment & Banking section', () => {
   const w = bootCarrierProfile();
-  const acc = w.document.getElementById('cp-acc-payment');
-  assert.ok(acc, 'payment accordion exists');
+  const acc = w.document.getElementById('cp-acc-payment-banking');
+  assert.ok(acc, 'Payment & Banking section exists');
   assert.equal(acc.tagName, 'DETAILS');
   assert.ok(w.document.getElementById('cp-vfacts-payment'), 'payment facts container exists');
 });

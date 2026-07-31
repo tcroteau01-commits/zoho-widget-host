@@ -29,3 +29,27 @@ test('Decision History and Your History sit below the evidence sections', () => 
   assert.ok(before(w,'cp-acc-crash','cp-acc-load-history'), 'crash before Your History');
   assert.ok(before(w,'cp-acc-authority','cp-decision-history'), 'Authority before Decision History');
 });
+
+test('one consolidated Payment & Banking section replaces the three money blocks', () => {
+  const w = boot();
+  const sec = w.document.getElementById('cp-acc-payment-banking');
+  assert.ok(sec, 'consolidated section exists');
+  // the old separate accordions are gone
+  assert.equal(w.document.getElementById('cp-acc-bank'), null);
+  assert.equal(w.document.getElementById('cp-acc-payment'), null);
+  // but every render target + pill still lives inside the consolidated section
+  ['cp-vfacts-payment','cp-noa-card','cp-bank-routing','cp-bank-checklist','cp-acc-bank-pill','cp-acc-payment-pill']
+    .forEach(function(id){ assert.ok(sec.querySelector('#'+id), id+' preserved inside Payment & Banking'); });
+});
+test('Payment & Banking sits below Documents and above Authority', () => {
+  const w = boot();
+  assert.ok(before(w,'cp-acc-docs','cp-acc-payment-banking'));
+  assert.ok(before(w,'cp-acc-payment-banking','cp-acc-authority'));
+});
+test('render functions still populate the consolidated section', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderBankRouting({ vendor: {}, bank: { has_bank_info: false } });   // targets cp-bank-routing + cp-acc-bank-pill
+  assert.ok(w.document.getElementById('cp-bank-routing').innerHTML.length > 0);
+  assert.ok(w.document.getElementById('cp-acc-bank-pill').textContent.length > 0);
+});

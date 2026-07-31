@@ -122,3 +122,52 @@ test('clean direct-pay carrier bank still shows green Clean', () => {
     bank: { has_bank_info: true, bad_actor: false, state_mismatch: false, routing_present: true, routing_valid: true } });
   assert.match(w.document.getElementById('cp-acc-bank-pill').className, /clean/);
 });
+
+function _dfp(ipqs) {
+  return { ipqs: Object.assign({ risk_level: 'High' }, ipqs), vendor: { Phone_Number: '+1', Email: 'x@y.com' } };
+}
+
+test('VOIP renders RED (bad), not amber, in the footprint', () => {
+  const w = boot();
+  w.renderDigitalFootprint(_dfp({ voip_number: true }));
+  const html = w.document.getElementById('cp-digital-footprint').innerHTML;
+  // the VOIP indicator pill is bad (red), never warn
+  assert.match(html, /VOIP Number[\s\S]*?ind-pill bad/);
+});
+
+test('VPN/proxy and Tor at signup render red', () => {
+  const w = boot();
+  w.renderDigitalFootprint(_dfp({ vpn_detected: true }));
+  assert.match(w.document.getElementById('cp-digital-footprint').innerHTML, /VPN[\s\S]*?ind-pill bad/i);
+});
+
+test('foreign signup IP renders red', () => {
+  const w = boot();
+  w.renderDigitalFootprint(_dfp({ ip_country: 'RS' }));   // Serbia, not US
+  assert.match(w.document.getElementById('cp-digital-footprint').innerHTML, /IP Country[\s\S]*?ind-pill bad/);
+});
+
+test('every key signal has a hover tooltip (title)', () => {
+  const w = boot();
+  w.renderDigitalFootprint(_dfp({ voip_number: true }));
+  const html = w.document.getElementById('cp-digital-footprint').innerHTML;
+  // the ⓘ info marker carries a title explaining the signal
+  assert.match(html, /class="ind-info" title="[^"]{20,}"/);
+});
+
+test('secondary signals are behind a Show-all expander, not front-loaded', () => {
+  const w = boot();
+  w.renderDigitalFootprint(_dfp({ ip_recent_abuse: true }));
+  const el = w.document.getElementById('cp-digital-footprint');
+  // a <details> expander exists
+  assert.ok(el.querySelector('details'), 'show-all expander present');
+  // "Recent IP Abuse" lives inside the expander, not the always-visible block
+  assert.ok(el.querySelector('details').innerHTML.includes('Recent IP Abuse'));
+});
+
+test('clean footprint shows green, no red', () => {
+  const w = boot();
+  w.renderDigitalFootprint(_dfp({ voip_number: false, vpn_detected: false, ip_country: 'US', email_disposable: false, email_leaked: false }));
+  const keyBlock = w.document.getElementById('cp-digital-footprint').querySelector('.indicators').innerHTML;
+  assert.doesNotMatch(keyBlock, /ind-pill bad/);
+});

@@ -216,6 +216,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .ind-pill.bad  { background: var(--of-red-soft); color: var(--of-red-text); }
 .ind-pill.warn { background: var(--of-amber-soft); color: #856404; }
 .ind-pill.neutral { background: var(--of-beige); color: var(--of-gray-700); }
+.ind-info { cursor: help; color: var(--of-gray-500); font-size: 11px; margin-left: 5px; border-bottom: 1px dotted var(--of-gray-500); }
 
 /* Litigation Defense Checklist */
 .checklist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
@@ -1301,7 +1302,7 @@ function renderDigitalFootprint(p){
   }
   var lt=[q.phone_line_type,q.phone_carrier].filter(function(x){return x;}).join(' · ');
   var phonePills=[
-    pill(q.voip_number?'VOIP':'Not VOIP', q.voip_number?'warn':'good'),
+    pill(q.voip_number?'VOIP':'Not VOIP', q.voip_number?'bad':'good'),
     pill(q.phone_valid?'Valid':'Invalid', q.phone_valid?'good':'warn'),
     pill(q.phone_active?'Active':'Inactive', q.phone_active?'good':'neutral'),
     lt ? pill(lt,'neutral') : null
@@ -1310,38 +1311,50 @@ function renderDigitalFootprint(p){
   var ipPills=[
     q.ip_location ? pill(q.ip_location,'good') : null,
     q.ip_isp ? pill(q.ip_isp,'good') : null,
-    pill(q.vpn_detected?'VPN':'No VPN', q.vpn_detected?'warn':'good'),
-    pill(q.tor_detected?'Tor':'No Tor', q.tor_detected?'warn':'good')
+    pill(q.vpn_detected?'VPN':'No VPN', q.vpn_detected?'bad':'good'),
+    pill(q.tor_detected?'Tor':'No Tor', q.tor_detected?'bad':'good')
   ];
   var emailPills=[
-    pill(q.email_leaked?'Leaked':'Not leaked', q.email_leaked?'warn':'good'),
+    pill(q.email_leaked?'Leaked':'Not leaked', q.email_leaked?'bad':'good'),
     q.email_deliverability ? pill('Deliv: '+q.email_deliverability, q.email_deliverability==='high'?'good':'neutral') : null,
-    pill(q.email_disposable?'Disposable':'Not disposable', q.email_disposable?'warn':'good'),
+    pill(q.email_disposable?'Disposable':'Not disposable', q.email_disposable?'bad':'good'),
     pill(q.email_dns_valid?'DNS valid':'DNS invalid', q.email_dns_valid?'good':'warn')
   ];
   var summary='<div class="ipqs-summary">'+
     channel('Phone', q.fraud_score_phone, v.Phone_Number, phonePills)+
     channel('IP Address', q.fraud_score_ip, ipVal, ipPills)+
     channel('Email', q.fraud_score_email, v.Email, emailPills)+'</div>';
-  function ind(label,src,bad,goodTxt,badTxt){
-    return '<div class="ind-row"><div class="ind-label">'+esc(label)+'</div>'+
+  function ind(label,src,active,goodTxt,badTxt,sev,tip){
+    var cls=active?(sev||'warn'):'good';
+    var info=tip?(' <span class="ind-info" title="'+esc(tip)+'">&#9432;</span>'):'';
+    return '<div class="ind-row"><div class="ind-label">'+esc(label)+info+'</div>'+
       '<span class="ind-source">'+esc(src)+'</span>'+
-      '<span class="ind-pill '+(bad?'warn':'good')+'">'+esc(bad?badTxt:goodTxt)+'</span></div>';
+      '<span class="ind-pill '+cls+'">'+esc(active?badTxt:goodTxt)+'</span></div>';
   }
   var ipMatch = q.ip_country ? (q.ip_country.toUpperCase()==='US') : true;
-  var rows=[
-    ind('VOIP Number Detected','Phone',!!q.voip_number,'No','⚠ Yes'),
-    ind('Phone Risky / Reported','Phone',!!q.phone_risky,'No','⚠ Yes'),
-    ind('IP Country','IP',!ipMatch, q.ip_country?('Match ('+q.ip_country+')'):'—', '⚠ '+(q.ip_country||'')),
-    ind('VPN / Proxy Detected','IP',!!q.vpn_detected,'No','⚠ Yes'),
-    ind('Tor Detected','IP',!!q.tor_detected,'No','⚠ Yes'),
-    ind('Recent IP Abuse Reports','IP',!!q.ip_recent_abuse,'None','⚠ Yes'),
-    ind('Email in Known Data Breach','Email',!!q.email_leaked,'No','⚠ Yes'),
-    ind('Email Disposable Domain','Email',!!q.email_disposable,'No','⚠ Yes'),
-    ind('Email Spam Trap','Email',(q.spam_trap_flag&&q.spam_trap_flag!=='none'),'None','⚠ Yes'),
-    ind('Email Frequent Complainer','Email',!!q.email_frequent_complainer,'No','⚠ Yes')
+  var keyRows=[
+    ind('VOIP Number','Phone',!!q.voip_number,'No','⚠ Yes','bad',
+      'A VOIP number is an internet phone line, not a carrier’s landline or cell. It’s cheap to spin up and throw away — a common signup-fraud tell.'),
+    ind('VPN / Proxy / Tor at Signup','IP',!!(q.vpn_detected||q.tor_detected),'No','⚠ Yes','bad',
+      'The signup came through a VPN, proxy, or Tor — tools that hide the real location and identity. Legitimate carriers rarely need them.'),
+    ind('Signup IP Country','IP',!ipMatch,q.ip_country?('US ('+q.ip_country+')'):'US','⚠ '+(q.ip_country||'Foreign'),'bad',
+      'Where the signup actually came from. A US carrier signing up from a foreign IP is a strong fraud signal.'),
+    ind('Email Disposable / Breached','Email',!!(q.email_disposable||q.email_leaked),'No','⚠ Yes','bad',
+      'A throwaway/disposable email, or one found in a known data breach — not a stable business identity.')
   ];
-  el.innerHTML=summary+'<div class="indicators">'+rows.join('')+'</div>';
+  var moreRows=[
+    ind('Phone Risky / Reported','Phone',!!q.phone_risky,'No','⚠ Yes','warn',
+      'The phone number has been reported for spam/abuse or scored risky.'),
+    ind('Recent IP Abuse Reports','IP',!!q.ip_recent_abuse,'None','⚠ Yes','warn',
+      'The signup IP has recent abuse/fraud reports against it.'),
+    ind('Email Spam Trap','Email',(q.spam_trap_flag&&q.spam_trap_flag!=='none'),'None','⚠ Yes','warn',
+      'The email is a known spam-trap address — a sign it isn’t a real business inbox.'),
+    ind('Email Frequent Complainer','Email',!!q.email_frequent_complainer,'No','⚠ Yes','warn',
+      'The address is tied to someone who frequently marks mail as spam — low-quality identity signal.')
+  ];
+  var more='<details class="cp-accordion" style="margin-top:10px;"><summary style="cursor:pointer;font-size:12px;color:var(--of-gray-700);padding:6px 0;">Show all identity signals</summary>'+
+    '<div class="indicators">'+moreRows.join('')+'</div></details>';
+  el.innerHTML=summary+'<div class="indicators">'+keyRows.join('')+'</div>'+more;
   setAccPill('cp-acc-footprint-pill', worstSeverity(flagsByCategory(p,'Identity and Signup Fraud'))>=2?'flag':(worstSeverity(flagsByCategory(p,'Identity and Signup Fraud'))>=1?'caution':'clean'), worstSeverity(flagsByCategory(p,'Identity and Signup Fraud'))>=2?'Flag':(worstSeverity(flagsByCategory(p,'Identity and Signup Fraud'))>=1?'Caution':'Clean'));
 }
 

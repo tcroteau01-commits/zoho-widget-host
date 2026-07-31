@@ -141,7 +141,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     <div class="grid">
       <div class="field"><label>Customer *</label><select id="f-customer_id"><option value="">— Select —</option></select></div>
       <div class="field"><label>Customer PO / Reference</label><input id="f-customer_reference"></div>
-      <div class="field"><label>Invoice Amount</label><input id="f-invoice_amount" type="number" step="0.01"></div>
+      <div class="field"><label>Invoice Amount</label>
+        <div style="display:flex;align-items:center;border:1px solid #d8d8d8;border-radius:8px;padding:0 10px">
+          <span style="color:#888">$</span>
+          <input id="f-invoice_amount" type="number" step="0.01" style="border:none;outline:none;flex:1;padding:10px 6px">
+        </div>
+      </div>
       <div class="field"><label>Customer Payment Terms</label>
         <input id="f-customer_payment_terms" list="tms-cust-terms" autocomplete="off" placeholder="e.g. Net 30">
         <datalist id="tms-cust-terms">

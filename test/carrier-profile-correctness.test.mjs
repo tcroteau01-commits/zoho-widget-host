@@ -97,3 +97,28 @@ test('factored carrier does not flag bank-carrier state mismatch as fraud', () =
   // and the card explains it's the factor's account
   assert.match(w.document.getElementById('cp-bank-routing').innerHTML, /factor/i);
 });
+
+test('factored carrier: Bank section header pill is neutral (not green Clean, not Flag)', () => {
+  const w = boot();
+  w.renderBankRouting({ vendor: { Factoring_Company: { ID: 'F1' } },
+    bank: { has_bank_info: true, is_factor_account: true, fedach_bank_name: 'JPMORGAN CHASE',
+            state_mismatch: false, bad_actor: false, fingerprint_count: 64 } });
+  const pill = w.document.getElementById('cp-acc-bank-pill');
+  assert.doesNotMatch(pill.className, /flag/);
+  assert.doesNotMatch(pill.className, /clean/);   // not green "Clean"
+  assert.match(pill.textContent, /Factored/i);
+});
+
+test('direct-pay carrier with a real problem still flags the Bank header', () => {
+  const w = boot();
+  w.renderBankRouting({ vendor: {},
+    bank: { has_bank_info: true, bad_actor: true, routing_present: true, routing_valid: true } });
+  assert.match(w.document.getElementById('cp-acc-bank-pill').className, /flag/);
+});
+
+test('clean direct-pay carrier bank still shows green Clean', () => {
+  const w = boot();
+  w.renderBankRouting({ vendor: {},
+    bank: { has_bank_info: true, bad_actor: false, state_mismatch: false, routing_present: true, routing_valid: true } });
+  assert.match(w.document.getElementById('cp-acc-bank-pill').className, /clean/);
+});

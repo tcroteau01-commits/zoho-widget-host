@@ -113,7 +113,7 @@ test('slide-out shows the company standard terms line', () => {
   window.renderView({ id: 'L1', load_number: 'MAR-1042', status: 'Covered',
                       terms_customized: false });
   const txt = window.document.getElementById('tms-slideout').textContent;
-  assert.match(txt, /Terms/);
+  assert.match(txt, /terms/i);
   assert.match(txt, /Company standard/);
 });
 
@@ -121,7 +121,7 @@ test('slide-out badges a customized load', () => {
   const { window } = makeWidget();
   window.renderView({ id: 'L1', load_number: 'MAR-1042', status: 'Covered',
                       terms_customized: true });
-  const badge = window.document.querySelector('#tms-slideout .badge-cust');
+  const badge = window.document.querySelector('#tms-slideout .chip.customized');
   assert.ok(badge, 'expected a customized badge');
   assert.match(badge.textContent, /Customized/);
 });

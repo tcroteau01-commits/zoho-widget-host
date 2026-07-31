@@ -39,7 +39,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .neg { color: #c62828; font-weight: 700; }
 .chip { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
 .chip.draft, .chip.available { background: #ececec; color: #777; }
-.chip.covered, .chip.dispatched { background: #fff3d6; color: #b8860b; }
+.chip.covered, .chip.dispatched, .chip.customized { background: #fff3d6; color: #b8860b; }
 .chip.intransit { background: #eef4ec; color: #3a7d44; }
 .chip.delivered, .chip.podreceived, .chip.readytosubmit { background: #e8f5e9; color: #2e7d32; }
 .chip.submitted { background: #272727; color: #fff; }
@@ -66,12 +66,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 #tms-slideout .vcard { background: #fff; border: 1px solid #eaecf0; border-radius: 12px; padding: 14px 16px; }
 #tms-slideout .vcard.wide { grid-column: 1 / -1; }
 #tms-slideout .vlabel { font-size: 11px; color: #667085; letter-spacing: .5px; font-weight: 700; margin-bottom: 10px; }
-#tms-slideout .vrates { display: flex; gap: 10px; }
-#tms-slideout .vstat { flex: 1; background: #f9fafb; border-radius: 9px; padding: 10px; }
+#tms-slideout .vrates { display: flex; flex-wrap: wrap; gap: 10px; }
+#tms-slideout .vstat { flex: 1; min-width: 120px; background: #f9fafb; border-radius: 9px; padding: 10px; }
 #tms-slideout .vstat span { font-size: 10.5px; color: #667085; display: block; }
 #tms-slideout .vstat b { font-size: 17px; color: #101828; }
 #tms-slideout .vstat.good { background: #ecfdf3; } #tms-slideout .vstat.good span { color: #067647; } #tms-slideout .vstat.good b { color: #067647; }
-#tms-slideout .badge-cust { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; background: #fff3d6; color: #b8860b; border-radius: 999px; padding: 2px 10px; }
 #tms-slideout .vname { font-size: 14px; font-weight: 600; color: #101828; }
 #tms-slideout .vrow { font-size: 12.5px; color: #101828; margin-top: 4px; }
 #tms-slideout .muted { color: #667085; font-size: 12.5px; }
@@ -308,7 +307,7 @@ function renderView(load) {
   var issue = load.exception_reason
     ? '<span class="chip issue">⚠ ' + esc(load.exception_reason) + '</span>' : '';
   var termsVal = load.terms_customized
-    ? '<span class="badge-cust">Customized</span>'
+    ? '<span class="chip customized">Customized</span>'
     : 'Company standard';
   v.innerHTML =
     '<div class="vhead">'
@@ -324,7 +323,7 @@ function renderView(load) {
     +     '<div class="vstat"><span>CUSTOMER</span><b>' + money(inv) + '</b></div>'
     +     '<div class="vstat"><span>CARRIER</span><b>' + money(pay) + '</b></div>'
     +     '<div class="vstat good"><span>MARGIN</span><b>' + margin + '%</b></div>'
-    +     '<div class="vstat"><span>Terms</span><b>' + termsVal + '</b></div>'
+    +     '<div class="vstat"><span>TERMS</span><b>' + termsVal + '</b></div>'
     +   '</div></div>'
     +   '<div class="vcard"><div class="vlabel">CUSTOMER</div><div class="vname">' + esc(load.customer_name || '') + '</div><div class="muted">Ref# ' + esc(load.customer_reference || '') + ' · ' + esc(load.customer_payment_terms || '') + '</div></div>'
     +   '<div class="vcard"><div class="vlabel">CARRIER</div><div class="vname">' + esc(load.carrier_name || '') + '</div><div class="muted">MC# ' + esc(load.carrier_mc || '') + '</div></div>'

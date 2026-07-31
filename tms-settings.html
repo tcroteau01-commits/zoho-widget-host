@@ -232,11 +232,20 @@ function editBody(i) {
   ta.focus();
 }
 
+function nextCustomId() {
+  var max = 0;
+  CLAUSES.forEach(function (c) {
+    var m = /^custom_(\d+)$/.exec(String(c.id || ''));
+    if (m) { max = Math.max(max, parseInt(m[1], 10)); }
+  });
+  return 'custom_' + (max + 1);
+}
+
 function addCustomClause(title, body) {
   title = (title || '').trim();
   body = (body || '').trim();
   if (!title || !body) { return; }
-  CLAUSES.push({ id: 'custom_' + (CLAUSES.length + 1), title: title, enabled: true,
+  CLAUSES.push({ id: nextCustomId(), title: title, enabled: true,
                  body: body, vars: {}, custom: true });
   renderClauses();
 }
@@ -294,10 +303,14 @@ function saveSettings() {
 }
 
 function resetDefaults() {
-  CLAUSES = [];
   return fetch(API_BASE + '/tms-settings?email=' + encodeURIComponent(brokerEmail) + '&defaults=1')
     .then(function (r) { return r.json(); })
-    .then(function (d) { applySettings({ clauses: d.clauses, can_edit: CAN_EDIT, seeded: true }); });
+    .then(function (d) {
+      if (!d || !d.clauses || !d.clauses.length) { throw new Error('empty'); }
+      applySettings({ clauses: d.clauses, can_edit: CAN_EDIT, seeded: true });
+      showToast('Reset to OperFi defaults. Save to keep them.');
+    })
+    .catch(function () { showToast('Could not load the defaults. Nothing was changed.'); });
 }
 
 window.addEventListener('load', function () {

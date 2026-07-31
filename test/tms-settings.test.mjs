@@ -120,3 +120,43 @@ test('read-only mode renders no inputs, no save, and a banner', () => {
   assert.equal(doc.getElementById('btn-save').style.display, 'none');
   assert.match(doc.getElementById('readonly-banner').textContent, /Full Access/);
 });
+
+test('custom clause ids stay unique across add, add, remove-the-first, add', () => {
+  const { window } = makeWidget();
+  hydrate(window);
+  window.addCustomClause('Custom A', 'Body A');
+  window.addCustomClause('Custom B', 'Body B');
+  // remove the first custom clause (index 3: 3 built-ins + the first custom)
+  window.removeClause(3);
+  window.addCustomClause('Custom C', 'Body C');
+  const ids = window.collectClauses().filter((c) => c.custom).map((c) => c.id);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+test('a var edit does not substitute into the body that gets posted', async () => {
+  const { window, posts } = makeWidget();
+  hydrate(window);
+  window.brokerEmail = 't@x.com';
+  const input = window.document.getElementById('v-detention-rate');
+  input.value = '$75.00';
+  input.dispatchEvent(new window.Event('input', { bubbles: true }));
+  await window.saveSettings();
+  const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
+  assert.match(sent.body, /\{rate\}/);
+  assert.doesNotMatch(sent.body, /\$75\.00/);
+  assert.equal(sent.vars.rate, '$75.00');
+});
+
+test('editing a body through the editor stores the raw text, not the substituted preview', async () => {
+  const { window, posts } = makeWidget();
+  hydrate(window);
+  window.brokerEmail = 't@x.com';
+  window.editBody(1);
+  const ta = window.document.querySelector('#body-detention textarea');
+  assert.match(ta.value, /\{rate\}/); // editor seeds RAW text, not the preview
+  ta.value = 'Detention is now {rate} per hour, flat.';
+  ta.dispatchEvent(new window.Event('blur', { bubbles: true }));
+  await window.saveSettings();
+  const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
+  assert.equal(sent.body, 'Detention is now {rate} per hour, flat.');
+});

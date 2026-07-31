@@ -331,3 +331,11 @@ test('margin still recomputes after the invoice amount is wrapped', () => {
   window.recomputeMargin();
   assert.match(window.document.getElementById('margin-display').textContent, /\$950/);
 });
+
+test('detail navigates back to the Dispatch Board page', () => {
+  const { window } = makeWidget();
+  const src = window.document.documentElement.outerHTML;
+  assert.match(src, /TMS_Dispatch_Board/);
+  assert.doesNotMatch(src, /TMS_Load_Board/);
+  assert.match(src, /Back to Dispatch Board/);
+});

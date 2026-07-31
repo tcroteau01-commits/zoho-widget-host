@@ -114,7 +114,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="title" id="page-title">New Load</div>
       <div class="sub" id="sub">Book a load and assign a carrier</div>
     </div>
-    <button class="btn small" id="back-btn">← Board</button>
+    <button class="btn small" id="back-btn">← Back to Dispatch Board</button>
   </div>
 
   <div id="edit-mode">
@@ -632,7 +632,7 @@ function refreshSaveButtons() {
 function saveAndReturn() {
   return saveLoad().then(function(){
     if (!document.getElementById('form-error').textContent) {
-      try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}
+      try { window.top.location.href = portalPageUrl('TMS_Dispatch_Board'); } catch (e) {}
     }
   });
 }
@@ -863,7 +863,7 @@ window.addEventListener('load', function(){
   document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
   document.getElementById('update-template-btn').addEventListener('click', updateTemplate);
   document.getElementById('back-btn').addEventListener('click', function(){
-    try { window.top.location.href = portalPageUrl('TMS_Load_Board'); } catch (e) {}
+    try { window.top.location.href = portalPageUrl('TMS_Dispatch_Board'); } catch (e) {}
   });
   wireDocButtons();
   wireUploadControls();

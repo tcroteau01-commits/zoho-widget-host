@@ -1347,19 +1347,24 @@ function renderDigitalFootprint(p){
 function renderBankRouting(p){
   var el=document.getElementById('cp-bank-routing'); if(!el) return;
   var b=p.bank||{};
+  var factored=!!((((p.vendor||{}).Factoring_Company)||'').toString().trim());
   if(!b.has_bank_info){
     el.innerHTML='<div style="color:var(--of-gray-500);font-size:13px;padding:8px 0;">No direct bank account on file (factored or not yet provided).</div>';
     setAccPill('cp-acc-bank-pill','clean','Clean');
     return;
   }
-  var bankBad=(b.routing_present && !b.routing_valid) || b.state_mismatch || b.bad_actor;
+  // For a factored carrier the "bank on file" is the FACTOR's remittance/lockbox account —
+  // a region mismatch or shared routing is expected, not carrier fraud.
+  var bankBad=(b.routing_present && !b.routing_valid) || b.bad_actor || (!factored && b.state_mismatch);
   var loc=[b.bank_city, b.routing_display?('Routing '+b.routing_display):''].filter(function(x){return x;}).join(' · ') || '—';
   var bankCard='<div class="bank-card '+(bankBad?'bad':'')+'">'+
-    '<div class="bank-sub-label">Bank on file</div>'+
+    '<div class="bank-sub-label">'+(factored?'Factor remittance account (bank on file)':'Bank on file')+'</div>'+
     '<div class="bank-name">'+esc(b.fedach_bank_name||'Unknown bank')+'</div>'+
     '<div class="bank-loc">'+esc(loc)+'</div>';
   if(b.routing_present && !b.routing_valid)
     bankCard+='<div class="bank-mismatch">⚠ Routing not found in FedACH</div>';
+  else if(b.state_mismatch && factored)
+    bankCard+='<div class="bank-mismatch">Factor\'s bank region differs from the carrier\'s state — expected for a factored carrier ('+esc(b.carrier_state||'?')+' vs '+esc(b.routing_region||'?')+')</div>';
   else if(b.state_mismatch)
     bankCard+='<div class="bank-mismatch">⚠ Bank-Carrier State Mismatch ('+esc(b.carrier_state||'?')+' vs '+esc(b.routing_region||'?')+')</div>';
   else if(b.bad_actor)
@@ -1376,7 +1381,10 @@ function renderBankRouting(p){
     '<div class="bank-loc" style="margin-top:4px;">'+(b.first_seen?'In OperFi network':'—')+'</div></div>';
   el.innerHTML='<div class="bank-grid">'+bankCard+fpCard+fsCard+'</div>'+
     '<div style="font-size:12px;color:var(--of-gray-700);margin-top:14px;line-height:1.5;">'+
-    'Bank name, routing, and region are from the FedACH directory + OperFi network. A bank-carrier region mismatch is a fraud marker, not disqualifying. Full account details visible to OperFi admin only.</div>';
+    (factored
+      ? 'Bank name, routing, and region are from the FedACH directory + OperFi network. This is the factor\'s remittance account, not the carrier\'s own bank — a region mismatch with the carrier is expected and not a fraud marker. Full account details visible to OperFi admin only.'
+      : 'Bank name, routing, and region are from the FedACH directory + OperFi network. A bank-carrier region mismatch is a fraud marker, not disqualifying. Full account details visible to OperFi admin only.')+
+    '</div>';
   setAccPill('cp-acc-bank-pill', bankBad?'flag':'clean', bankBad?'Flag':'Clean');
 }
 
@@ -1447,9 +1455,14 @@ function renderSafetyChecklist(p){
   out.push(_checkRow('FMCSA Safety Rating',
     rating?('<strong>'+esc(rating)+'</strong>'+(co.safety_rating_date?' — issued '+esc(co.safety_rating_date):''))
           :'Not rated by FMCSA', 'FMCSA', rv));
-  var oosActive=!!(co.out_of_service_flag||co.oos_alert_driver||co.oos_alert_vehicle||co.oos_alert_hazmat);
-  out.push(_checkRow('Active Out-of-Service Orders',
-    oosActive?'Active OOS order on file':'None active', 'FMCSA', oosActive?'bad':'good'));
+  var authOOS=!!co.out_of_service_flag;   // USDOT/authority out of service (the real "OOS order")
+  out.push(_checkRow('Federal Out-of-Service Order',
+    authOOS?'USDOT is OUT OF SERVICE — authority not active':'No federal OOS order — authority active',
+    'FMCSA', authOOS?'bad':'na'));
+  var vehDrvAlert=!!(co.oos_alert_vehicle||co.oos_alert_driver||co.oos_alert_hazmat);
+  out.push(_checkRow('Vehicle/Driver OOS Alert (CSA)',
+    vehDrvAlert?'One or more CSA OOS-rate alerts active (a safety score, not an authority shutdown)':'No CSA OOS alerts',
+    'FMCSA', vehDrvAlert?'warn':'na'));
   el.innerHTML=out.join('');
 }
 function renderAuthorityChecklist(p){
@@ -1493,8 +1506,13 @@ function renderBankChecklist(p){
   var el=document.getElementById('cp-bank-checklist'); if(!el) return;
   var v=p.vendor||{}, bank=p.bank||{};
   var out=[];
+  var factored=!!(((v.Factoring_Company)||'').toString().trim());
   if(!bank.has_bank_info){
     out.push(_checkRow('Carrier-Bank State Match','No direct bank account on file (factored)','FedACH Directory','na'));
+  } else if(bank.state_mismatch && factored){
+    out.push(_checkRow('Carrier-Bank State Match',
+      'Carrier '+esc(bank.carrier_state||'?')+' · Factor bank '+esc(bank.routing_region||'?')+' — factor\'s bank region, expected for a factored carrier',
+      'FedACH Directory · OperFi Network','na'));
   } else if(bank.state_mismatch){
     out.push(_checkRow('Carrier-Bank State Match',
       'Carrier '+esc(bank.carrier_state||'?')+' · Bank '+esc(bank.routing_region||'?')+' — <strong>mismatch</strong>',
@@ -1503,7 +1521,6 @@ function renderBankChecklist(p){
     out.push(_checkRow('Carrier-Bank State Match','Carrier and bank region match','FedACH Directory','good'));
   }
   var fs=(v.Factor_Status||'').toString();
-  var factored=!!(((v.Factoring_Company)||'').toString().trim()) || (v.Factoring_Company&&v.Factoring_Company.ID);
   if(!factored){
     out.push(_checkRow('Factoring Company Status','No factoring company on file (direct pay)','OperFi · Factor_Status','na'));
   } else {

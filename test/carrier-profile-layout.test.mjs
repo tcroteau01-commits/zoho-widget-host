@@ -67,3 +67,26 @@ test('cpPrintFilename builds a carrier-named PDF filename', () => {
   assert.match(fn, /Freight_International_LLC/);
   assert.match(fn, /MC954292/);
 });
+
+test('a PO-box / mail-drop / vacant address shows a red badge at the address in the hero', () => {
+  const w = boot();
+  w.renderHero({ vendor: { Vendor_Name: 'X', MC: '1', USDOT: '2' },
+    carrierok: { physical_address: '100 Main St, Phoenix, AZ' },
+    address_validation: { configured: true, cmra: true } });
+  const meta = w.document.querySelector('#cp-hero .hero-meta').innerHTML;
+  assert.match(meta, /cp-addr-flag/);
+  assert.match(meta, /mail drop|UPS/i);
+});
+test('a clean address shows no red badge', () => {
+  const w = boot();
+  w.renderHero({ vendor: { Vendor_Name: 'X', MC: '1', USDOT: '2' },
+    carrierok: { physical_address: '100 Main St, Phoenix, AZ' },
+    address_validation: { configured: true, po_box: false, cmra: false, vacant: false } });
+  assert.doesNotMatch(w.document.querySelector('#cp-hero .hero-meta').innerHTML, /cp-addr-flag/);
+});
+test('unconfigured validation shows no badge', () => {
+  const w = boot();
+  w.renderHero({ vendor: { Vendor_Name: 'X', MC: '1', USDOT: '2' },
+    carrierok: { physical_address: '100 Main St' }, address_validation: { configured: false, cmra: true } });
+  assert.doesNotMatch(w.document.querySelector('#cp-hero .hero-meta').innerHTML, /cp-addr-flag/);
+});

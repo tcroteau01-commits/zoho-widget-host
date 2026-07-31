@@ -81,6 +81,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .hero-meta { display: flex; gap: 14px; font-size: 13px; color: rgba(255,255,255,0.7); flex-wrap: wrap; margin-top: 4px; }
 .hero-meta .sep { color: rgba(255,255,255,0.3); }
 .hero-meta .key { color: var(--of-orange); font-weight: 600; }
+.cp-addr-flag{display:inline-flex;align-items:center;gap:4px;background:rgba(198,40,40,.22);color:#ff9a9a;border:1px solid rgba(198,40,40,.4);border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;letter-spacing:.3px;margin-left:8px;}
 
 .verdict { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .verdict-badge {
@@ -1203,6 +1204,10 @@ function renderHero(p){
   if(addr){ var _mh=mapsHref(addr);
     parts.push('<span>Based in '+(_mh?'<a href="'+esc(_mh)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+esc(addr)+'</a>':esc(addr))+'</span>'); }
   var _av=p.address_validation||{};
+  if(_av.configured){
+    var _af = _av.po_box?'PO box' : (_av.cmra?'Mail drop (UPS Store / private mailbox)' : (_av.vacant?'Vacant address' : ''));
+    if(_af) parts.push('<span class="cp-addr-flag">&#9888; '+esc(_af)+'</span>');
+  }
   var _sv=streetViewHref(_av.lat, _av.lng);
   if(_sv) parts.push('<span><a href="'+esc(_sv)+'" target="_blank" rel="noopener" style="color:var(--of-orange);text-decoration:underline">Street View ↗</a></span>');
   if(metaEl) metaEl.innerHTML=parts.join('<span class="sep">·</span>');

@@ -203,9 +203,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .acc-summary-pill.flag { background: var(--of-red-soft); color: var(--of-red-text); }
 
 /* Indicator pills */
-.indicators { display: flex; flex-direction: column; gap: 8px; }
-.ind-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 0; }
-.ind-row + .ind-row { border-top: 1px solid var(--of-gray-100); }
+.indicators { display: grid; grid-template-columns: 1fr 1fr; gap: 0 26px; }
+@media (max-width: 640px) { .indicators { grid-template-columns: 1fr; } }
+.ind-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--of-gray-100); }
 .ind-label { font-size: 13px; color: var(--of-charcoal-soft); font-weight: 500; }
 .ind-source { font-size: 10px; color: var(--of-gray-500); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; }
 .ind-pill {

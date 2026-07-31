@@ -53,3 +53,8 @@ test('render functions still populate the consolidated section', () => {
   assert.ok(w.document.getElementById('cp-bank-routing').innerHTML.length > 0);
   assert.ok(w.document.getElementById('cp-acc-bank-pill').textContent.length > 0);
 });
+
+test('indicators lay out in a 2-column grid on wide screens', () => {
+  // the stylesheet declares a 2-col grid for .indicators (jsdom can't compute layout)
+  assert.match(HTML, /\.indicators\s*\{[^}]*grid-template-columns:\s*1fr\s+1fr/);
+});

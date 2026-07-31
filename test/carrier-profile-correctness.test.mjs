@@ -171,3 +171,21 @@ test('clean footprint shows green, no red', () => {
   const keyBlock = w.document.getElementById('cp-digital-footprint').querySelector('.indicators').innerHTML;
   assert.doesNotMatch(keyBlock, /ind-pill bad/);
 });
+
+test('authority age colors: <6mo red, 6-24mo amber, 24mo+ green', () => {
+  const w = boot();
+  function ageCls(days){
+    w.renderAuthority({ carrierok: { authority_age_common_active: String(days), authority_common: 'Active' } });
+    const m = w.document.getElementById('cp-authority').innerHTML.match(/Authority Age[\s\S]*?ind-pill (\w+)/);
+    return m && m[1];
+  }
+  assert.equal(ageCls(120), 'bad');    // ~4 months
+  assert.equal(ageCls(400), 'warn');   // ~13 months
+  assert.equal(ageCls(1200), 'good');  // ~39 months
+});
+
+test('authority age neutral when no numeric age', () => {
+  const w = boot();
+  w.renderAuthority({ carrierok: { authority_common: 'Active' } });
+  assert.match(w.document.getElementById('cp-authority').innerHTML, /Authority Age[\s\S]*?ind-pill neutral/);
+});

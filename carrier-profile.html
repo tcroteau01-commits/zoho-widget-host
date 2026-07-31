@@ -1564,6 +1564,9 @@ function renderAuthority(p){
   var boc3=co.boc3_on_file;
   var chain=_hasNetworkGraph(co);
   var authAge=_authorityAge(co)||_years(co.authority_age_common_active)||_years(co.dot_age);
+  var ageDays=_num(co.authority_age_common_active); if(ageDays==null) ageDays=_num(co.dot_age);
+  var ageCls='neutral';
+  if(ageDays!=null){ var ageMo=ageDays/30.44; ageCls = ageMo<6?'bad':(ageMo<24?'warn':'good'); }
   el.innerHTML=authHtml+
     indRow('Active Authority','CarrierOK',active?'Yes':'No',active?'good':'bad')+
     indRow('Authorized For Hire','CarrierOK',forHire?'Yes':'No',forHire?'good':'bad')+
@@ -1574,7 +1577,7 @@ function renderAuthority(p){
     indRow('BOC-3 On File','CarrierOK',boc3===false?'No':(boc3?'Yes':'—'),boc3===false?'bad':(boc3?'good':'neutral'))+
     indRow('USDOT-MC Chain of Title','FMCSA',chain?'Review':'Unchanged',chain?'warn':'good')+
     indRow('Last MCS-150 Filing','FMCSA',co.mcs150_date||'—','neutral')+
-    indRow('Authority Age','CarrierOK',authAge||'—','neutral');
+    indRow('Authority Age','CarrierOK',authAge||'—',ageCls);
   setAccPill('cp-acc-authority-pill', hasFlag(p,'recent_revocation')||!_authorityActive(p.carrierok||{})?'flag':'clean', hasFlag(p,'recent_revocation')||!_authorityActive(p.carrierok||{})?'Review':'Clean');
 }
 

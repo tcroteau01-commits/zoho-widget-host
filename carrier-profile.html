@@ -622,11 +622,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   <div id="cp-layout" class="cp-layout">
   <div id="cp-left-col">
 
-    <details class="cp-accordion" id="cp-acc-load-history">
-      <summary>Your History With This Carrier
-        <span id="cp-load-history-summary" class="cp-ct"></span></summary>
-      <div class="cp-accordion-body"><div id="cp-load-history-body" style="padding-top:14px;"></div></div>
-    </details>
   <!-- KPI strip -->
   <div id="cp-kpi-row" class="kpi-row">
     <div class="kpi">
@@ -650,6 +645,15 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="kpi-sub"></div>
     </div>
   </div>
+
+  <!-- Carrier Documents (WorkDrive) -->
+  <details class="cp-accordion" id="cp-acc-docs" open>
+    <summary>Documents on File <span id="cp-docs-count" class="cp-ct"></span></summary>
+    <div class="cp-accordion-body" id="cp-docs-card"><div id="cp-docs-body" class="cp-docs-body">Loading documents…</div></div>
+  </details>
+
+  <!-- Document viewer (inline PDF/image) -->
+  <div id="cp-doc-viewer" class="cp-doc-viewer" style="display:none"></div>
 
   <details class="cp-accordion" id="cp-acc-authority">
     <summary>Authority &amp; Operating History <span id="cp-acc-authority-pill" class="acc-summary-pill clean">Clean</span><span class="tag">CarrierOK · FMCSA</span></summary>
@@ -695,23 +699,20 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </div>
   </details>
 
+  <!-- Factoring / NOA -->
+  <div id="cp-noa-card" class="card"></div>
+
+  <details class="cp-accordion" id="cp-acc-load-history">
+    <summary>Your History With This Carrier
+      <span id="cp-load-history-summary" class="cp-ct"></span></summary>
+    <div class="cp-accordion-body"><div id="cp-load-history-body" style="padding-top:14px;"></div></div>
+  </details>
+
   <!-- Decision History -->
   <div class="card">
     <div class="card-title">Decision History <span class="tag">Audit trail — Carrier_Risk_Decision</span></div>
     <div id="cp-decision-history" class="history-timeline"></div>
   </div>
-
-  <!-- Factoring / NOA -->
-  <div id="cp-noa-card" class="card"></div>
-
-  <!-- Carrier Documents (WorkDrive) -->
-  <details class="cp-accordion" id="cp-acc-docs">
-    <summary>Documents on File <span id="cp-docs-count" class="cp-ct"></span></summary>
-    <div class="cp-accordion-body" id="cp-docs-card"><div id="cp-docs-body" class="cp-docs-body">Loading documents…</div></div>
-  </details>
-
-  <!-- Document viewer (inline PDF/image) -->
-  <div id="cp-doc-viewer" class="cp-doc-viewer" style="display:none"></div>
 
   <!-- Vendor Comments -->
   <div class="card">

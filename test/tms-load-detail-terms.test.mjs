@@ -80,10 +80,29 @@ test('an existing rate con triggers the regenerate warning', () => {
   assert.match(window.document.getElementById('terms-card').textContent, /[Rr]egenerate/);
 });
 
-test('the card is hidden on a submitted load', () => {
+test('the card is hidden on a submitted load, with no leftover editor DOM', () => {
   const { window } = makeWidget();
+  window.renderTermsCard(load());
+  window.unlockTerms();
+  assert.equal(window.document.querySelectorAll('#terms-card .clause').length, 3);
   window.renderTermsCard(load({ status: 'Submitted' }));
   assert.equal(window.document.getElementById('terms-card').style.display, 'none');
+  assert.equal(window.document.querySelectorAll('#terms-card .clause').length, 0);
+});
+
+test('an unlocked in-progress edit survives a re-render triggered by an unrelated refresh', () => {
+  const { window } = makeWidget();
+  const original = load();
+  window.renderTermsCard(original);
+  window.unlockTerms();
+  const input = window.document.getElementById('tv-detention-rate');
+  input.value = '$75.00';
+  input.dispatchEvent(new window.Event('input', { bubbles: true }));
+  // Simulate refreshDocs() re-rendering the card from the same, unmutated load object
+  // after an unrelated action (uploading a doc, removing one from the packet, etc.).
+  window.renderTermsCard(original);
+  const after = window.document.getElementById('tv-detention-rate');
+  assert.equal(after.value, '$75.00');
 });
 
 test('save posts the edited set to /tms-load-terms', async () => {
@@ -106,4 +125,34 @@ test('reset posts the reset flag', async () => {
   window.unlockTerms();
   await window.resetLoadTerms();
   assert.equal(posts[0].body.reset, true);
+});
+
+test('save preserves {token} placeholders when a var is edited through the real input handler', async () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 't@x.com';
+  window.renderTermsCard(load());
+  window.unlockTerms();
+  const input = window.document.getElementById('tv-detention-rate');
+  input.value = '$75.00';
+  input.dispatchEvent(new window.Event('input', { bubbles: true }));
+  await window.saveLoadTerms();
+  const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
+  assert.match(sent.body, /\{rate\}/);
+  assert.doesNotMatch(sent.body, /\$75\.00/);
+  assert.equal(sent.vars.rate, '$75.00');
+});
+
+test('save preserves the raw body text through the real body editor, not the substituted preview', async () => {
+  const { window, posts } = makeWidget();
+  window.brokerEmail = 't@x.com';
+  window.renderTermsCard(load());
+  window.unlockTerms();
+  window.termsEditBody(1);
+  const ta = window.document.querySelector('#tbody-detention textarea');
+  assert.match(ta.value, /\{rate\}/); // seeds RAW text, not the substituted preview
+  ta.value = 'Detention is now {rate} per hour, flat.';
+  ta.dispatchEvent(new window.Event('blur', { bubbles: true }));
+  await window.saveLoadTerms();
+  const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
+  assert.equal(sent.body, 'Detention is now {rate} per hour, flat.');
 });

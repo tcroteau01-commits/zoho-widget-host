@@ -1358,13 +1358,23 @@ function renderTermsCard(load, docs) {
   var card = document.getElementById('terms-card');
   if (!load || !load.id || load.status === 'Submitted') {
     card.style.display = 'none';
+    document.getElementById('terms-banners').innerHTML = '';
+    document.getElementById('terms-body').innerHTML = '';
+    document.getElementById('terms-actions').innerHTML = '';
+    document.getElementById('terms-lockbar').innerHTML = '';
     return;
   }
   card.style.display = '';
-  TERMS = (load.rate_con_terms || []).map(function (c) {
-    return { id: c.id, title: c.title, enabled: !!c.enabled, body: c.body,
-             vars: JSON.parse(JSON.stringify(c.vars || {})), custom: !!c.custom };
-  });
+  // Only re-derive TERMS from the server snapshot while locked. Once unlocked, TERMS is the
+  // broker's in-progress edit; refreshing it from load.rate_con_terms here would silently
+  // discard unsaved work every time this card is re-rendered by an unrelated action elsewhere
+  // on the page (uploading a doc, removing a doc from the submission packet, etc.).
+  if (!TERMS_UNLOCKED) {
+    TERMS = (load.rate_con_terms || []).map(function (c) {
+      return { id: c.id, title: c.title, enabled: !!c.enabled, body: c.body,
+               vars: JSON.parse(JSON.stringify(c.vars || {})), custom: !!c.custom };
+    });
+  }
   TERMS_LOAD_ID = load.id;
 
   var lock = document.getElementById('terms-lockbar');
@@ -1542,11 +1552,12 @@ function renderTermsActions() {
       var t = window.prompt('Clause title'); if (!t) { return; }
       var b = window.prompt('Clause text'); if (!b) { return; }
       termsAddClause(t, b);
-    }],
-   ['Reset to company standard', resetLoadTerms],
-   ['Save terms', saveLoadTerms]].forEach(function (pair) {
+    }, ''],
+   ['Reset to company standard', resetLoadTerms, 'terms-reset-btn'],
+   ['Save terms', saveLoadTerms, 'terms-save-btn']].forEach(function (pair) {
     var b = document.createElement('button');
     b.type = 'button'; b.className = 'btn small'; b.textContent = pair[0];
+    if (pair[2]) { b.id = pair[2]; }
     b.addEventListener('click', pair[1]);
     wrap.appendChild(b);
   });
@@ -1557,16 +1568,34 @@ function unlockTerms() { TERMS_UNLOCKED = true; renderTermsEditor(); renderTerms
   document.getElementById('terms-lockbar').innerHTML = '<span class="lockstate open">Unlocked</span>'; }
 
 function postLoadTerms(payload) {
+  var saveBtn = document.getElementById('terms-save-btn');
+  var resetBtn = document.getElementById('terms-reset-btn');
+  if (saveBtn) saveBtn.disabled = true;
+  if (resetBtn) resetBtn.disabled = true;
   return fetch(BROKER_API_BASE + '/tms-load-terms', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
     .then(function (res) {
+      if (saveBtn) saveBtn.disabled = false;
+      if (resetBtn) resetBtn.disabled = false;
       if (typeof showToast === 'function') {
         showToast(res.ok ? 'Terms saved.' : (res.body.error || 'Save failed.'));
       }
-      if (res.ok) { TERMS_UNLOCKED = false; loadExisting(); }
+      if (res.ok) {
+        TERMS_UNLOCKED = false;
+        // Re-sync the whole load from the server so the card drops back into its locked
+        // snapshot view (badge, banners, editor teardown) instead of leaving the stale
+        // unlocked editor on screen with only a toast as confirmation. Same pattern as
+        // saveLoad()'s post-save refresh.
+        return loadExisting().then(function (load) { if (load) { hydrate(load); } return res; });
+      }
       return res;
+    })
+    .catch(function () {
+      if (saveBtn) saveBtn.disabled = false;
+      if (resetBtn) resetBtn.disabled = false;
+      showError('Network error saving terms.');
     });
 }
 

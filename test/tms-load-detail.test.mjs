@@ -315,3 +315,27 @@ test('_vettingWarnings adds no authority warning for a carrier', () => {
   const warns = w._vettingWarnings({ vetting: { authority_class: 'carrier' } });
   assert.ok(!warns.some(s => /double-broker|not a carrier/i.test(s)));
 });
+
+test('invoice amount renders a currency prefix like carrier pay', () => {
+  const { window } = makeWidget();
+  const input = window.document.getElementById('f-invoice_amount');
+  const wrap = input.parentElement;
+  assert.ok(wrap.textContent.includes('$'), 'expected a $ prefix beside the input');
+  assert.equal(wrap.querySelector('input').id, 'f-invoice_amount');
+});
+
+test('margin still recomputes after the invoice amount is wrapped', () => {
+  const { window } = makeWidget();
+  window.document.getElementById('f-invoice_amount').value = '4850';
+  window.document.getElementById('f-carrier_pay').value = '3900';
+  window.recomputeMargin();
+  assert.match(window.document.getElementById('margin-display').textContent, /\$950/);
+});
+
+test('detail navigates back to the Dispatch Board page', () => {
+  const { window } = makeWidget();
+  const src = window.document.documentElement.outerHTML;
+  assert.match(src, /TMS_Dispatch_Board/);
+  assert.doesNotMatch(src, /TMS_Load_Board/);
+  assert.match(src, /Back to Dispatch Board/);
+});

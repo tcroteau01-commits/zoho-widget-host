@@ -171,3 +171,11 @@ test('checking a row reveals the bulk bar and bulkApply posts selected ids', () 
     assert.equal(last.body.status, 'Dispatched');
   });
 });
+
+test('board is titled Dispatch Board, not Load Board', () => {
+  const { window } = makeWidget();
+  const doc = window.document;
+  assert.equal(doc.title, 'Dispatch Board');
+  assert.match(doc.querySelector('.title').textContent, /Dispatch Board/);
+  assert.doesNotMatch(doc.body.innerHTML, /Load Board/);
+});

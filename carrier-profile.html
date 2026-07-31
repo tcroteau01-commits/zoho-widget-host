@@ -2118,9 +2118,22 @@ function wireDecisionCapture(p){
     };
   });
   var sb=document.getElementById('cp-submit'); if(sb) sb.onclick=submitDecision;
-  var pb=document.getElementById('cp-print'); if(pb) pb.onclick=function(){ window.print(); };
+  var pb=document.getElementById('cp-print'); if(pb) pb.onclick=function(){
+    var prev=document.title; try{ document.title=cpPrintFilename(); }catch(e){}
+    window.print();
+    setTimeout(function(){ document.title=prev; }, 1000);
+  };
   var rb=document.querySelector('.refresh-btn'); if(rb) rb.onclick=refreshAll;
 }
+function cpPrintFilename(){
+  var v=(profilePayload&&profilePayload.vendor)||{};
+  var name=String(v.Vendor_Name||v.Name1||'Carrier').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  var mc=String(v.MC||'').replace(/[^A-Za-z0-9]/g,'');
+  var d=new Date(), p=function(n){return (n<10?'0':'')+n;};
+  var date=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+  return 'CarrierRiskProfile_'+name+(mc?'_MC'+mc:'')+'_'+date;
+}
+if (typeof window !== 'undefined') { window.cpPrintFilename = cpPrintFilename; }
 
 // ── Carrier Documents (WorkDrive) ──────────────────────────────────────────
 var cpFactored = false;

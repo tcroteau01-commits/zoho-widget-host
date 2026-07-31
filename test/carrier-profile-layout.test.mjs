@@ -58,3 +58,12 @@ test('indicators lay out in a 2-column grid on wide screens', () => {
   // the stylesheet declares a 2-col grid for .indicators (jsdom can't compute layout)
   assert.match(HTML, /\.indicators\s*\{[^}]*grid-template-columns:\s*1fr\s+1fr/);
 });
+
+test('cpPrintFilename builds a carrier-named PDF filename', () => {
+  const w = boot();
+  w.profilePayload = { vendor: { Vendor_Name: 'Freight International LLC', MC: '954292', USDOT: '2846152' } };
+  const fn = w.cpPrintFilename();
+  assert.match(fn, /CarrierRiskProfile_/);
+  assert.match(fn, /Freight_International_LLC/);
+  assert.match(fn, /MC954292/);
+});

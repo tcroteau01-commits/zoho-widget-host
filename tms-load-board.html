@@ -71,6 +71,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 #tms-slideout .vstat span { font-size: 10.5px; color: #667085; display: block; }
 #tms-slideout .vstat b { font-size: 17px; color: #101828; }
 #tms-slideout .vstat.good { background: #ecfdf3; } #tms-slideout .vstat.good span { color: #067647; } #tms-slideout .vstat.good b { color: #067647; }
+#tms-slideout .badge-cust { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; background: #fff3d6; color: #b8860b; border-radius: 999px; padding: 2px 10px; }
 #tms-slideout .vname { font-size: 14px; font-weight: 600; color: #101828; }
 #tms-slideout .vrow { font-size: 12.5px; color: #101828; margin-top: 4px; }
 #tms-slideout .muted { color: #667085; font-size: 12.5px; }
@@ -306,6 +307,9 @@ function renderView(load) {
   if (!v) return;
   var issue = load.exception_reason
     ? '<span class="chip issue">⚠ ' + esc(load.exception_reason) + '</span>' : '';
+  var termsVal = load.terms_customized
+    ? '<span class="badge-cust">Customized</span>'
+    : 'Company standard';
   v.innerHTML =
     '<div class="vhead">'
     + '<div class="vhead-top"><span class="vlink" id="v-close">&times;</span><span class="vtag">TMS LOAD</span></div>'
@@ -320,6 +324,7 @@ function renderView(load) {
     +     '<div class="vstat"><span>CUSTOMER</span><b>' + money(inv) + '</b></div>'
     +     '<div class="vstat"><span>CARRIER</span><b>' + money(pay) + '</b></div>'
     +     '<div class="vstat good"><span>MARGIN</span><b>' + margin + '%</b></div>'
+    +     '<div class="vstat"><span>Terms</span><b>' + termsVal + '</b></div>'
     +   '</div></div>'
     +   '<div class="vcard"><div class="vlabel">CUSTOMER</div><div class="vname">' + esc(load.customer_name || '') + '</div><div class="muted">Ref# ' + esc(load.customer_reference || '') + ' · ' + esc(load.customer_payment_terms || '') + '</div></div>'
     +   '<div class="vcard"><div class="vlabel">CARRIER</div><div class="vname">' + esc(load.carrier_name || '') + '</div><div class="muted">MC# ' + esc(load.carrier_mc || '') + '</div></div>'

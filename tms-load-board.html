@@ -129,7 +129,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="title">Dispatch Board</div>
       <div class="sub" id="sub">Loading…</div>
     </div>
-    <button class="btn primary" id="new-load-btn">+ New Load</button>
+    <div style="display:flex;align-items:center;gap:16px">
+      <a href="#" id="settings-link" style="font-size:12.5px;color:#888;text-decoration:none;border-bottom:1px solid #d8d8d8">Settings</a>
+      <button class="btn primary" id="new-load-btn">+ New Load</button>
+    </div>
   </div>
   <div class="kpi-row">
     <div class="kpi"><div class="kpi-num" id="kpi-active">–</div><div class="kpi-label">Active Loads</div></div>
@@ -263,6 +266,13 @@ function portalPageUrl(page) {
 }
 function navigateToDetail() {
   try { window.top.location.href = portalPageUrl('TMS_Load_Detail'); } catch (e) {}
+}
+var settingsLinkEl = document.getElementById('settings-link');
+if (settingsLinkEl) {
+  settingsLinkEl.addEventListener('click', function (e) {
+    e.preventDefault();
+    try { window.top.location.href = portalPageUrl('TMS_Settings'); } catch (err) {}
+  });
 }
 
 /* ---- read-only slide-out (cards + lifecycle chip stepper) ---- */

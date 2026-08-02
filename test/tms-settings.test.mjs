@@ -16,7 +16,9 @@ function makeWidget(opts) {
   const posts = [];
   const dom = new JSDOM(HTML, {
     runScripts: 'dangerously',
-    url: 'https://tcroteau01-commits.github.io/tms-settings.html',
+    url: opts.noServiceOrigin
+      ? 'https://tcroteau01-commits.github.io/tms-settings.html'
+      : 'https://tcroteau01-commits.github.io/tms-settings.html?serviceOrigin=https%3A%2F%2Fbrokerhub.operfi.com',
     beforeParse(window) {
       window.ZOHO = { CREATOR: { UTIL: { getInitParams: () => new Promise(() => {}) } } };
       window.fetch = function (url, init) {
@@ -222,4 +224,19 @@ test('boot() reads login_user and email aliases, matching the sibling TMS widget
 
 test('the impersonation script is included, matching the sibling TMS widgets', () => {
   assert.match(HTML, /operfi-impersonate\.js/);
+});
+
+test('a back button returns to the Dispatch Board via serviceOrigin', () => {
+  const { window } = makeWidget();
+  const btn = window.document.getElementById('back-btn');
+  assert.ok(btn, 'expected a back button');
+  assert.match(btn.textContent, /Dispatch Board/);
+  // Settings is hidden from the sidebar, so this link is the only way back.
+  assert.equal(window.portalPageUrl('TMS_Dispatch_Board'),
+               'https://brokerhub.operfi.com/#Page:TMS_Dispatch_Board');
+});
+
+test('portalPageUrl degrades to a bare hash when serviceOrigin is absent', () => {
+  const { window } = makeWidget({ noServiceOrigin: true });
+  assert.equal(window.portalPageUrl('TMS_Dispatch_Board'), '/#Page:TMS_Dispatch_Board');
 });

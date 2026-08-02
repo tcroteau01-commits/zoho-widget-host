@@ -17,7 +17,9 @@ html, body { font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 
   font-size:14px; background:#f0efe9; color:var(--of-charcoal); margin:0; min-height:100vh; }
 .wrap { max-width:900px; margin:0 auto; padding:20px 16px 60px; }
 .card { background:#fff; border:1px solid var(--of-card-br); border-radius:12px; padding:16px 18px; }
-h2 { font-size:18px; margin:0 0 16px; font-weight:700; }
+h2 { font-size:18px; margin:0; font-weight:700; }
+.page-head { display:flex; align-items:center; justify-content:space-between;
+  gap:12px; flex-wrap:wrap; margin:0 0 16px; }
 h3 { font-size:15px; font-weight:700; margin:0 0 4px; }
 .sub { font-size:12px; color:var(--of-gray-500); margin:0 0 14px; }
 .disclaim { font-size:12px; color:var(--of-gray-700); background:var(--of-orange-soft);
@@ -68,7 +70,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 </head>
 <body>
 <div class="wrap">
-  <h2>TMS Settings</h2>
+  <div class="page-head">
+    <h2>TMS Settings</h2>
+    <button class="qa secondary" id="back-btn" type="button">← Back to Dispatch Board</button>
+  </div>
   <div class="card">
     <h3>Rate Confirmation Terms</h3>
     <p class="sub">These appear on every rate confirmation you send.</p>
@@ -332,10 +337,25 @@ function boot() {
   }
 }
 
+function portalPageUrl(page) {
+  // Hosted on GH Pages, so window.top isn't the portal and a bare '#Page:' hash
+  // won't reach it. Creator passes the portal origin in ?serviceOrigin=.
+  var svc = '';
+  try { svc = new URLSearchParams(window.location.search).get('serviceOrigin') || ''; } catch (e) {}
+  return svc.replace(/\/+$/, '') + '/#Page:' + page;
+}
+
+function goToDispatchBoard() {
+  // This page is hidden from the sidebar and is reached only from the board's
+  // Settings link, so this button is the only way back.
+  try { window.top.location.href = portalPageUrl('TMS_Dispatch_Board'); } catch (e) {}
+}
+
 window.addEventListener('load', function () {
   document.getElementById('btn-save').addEventListener('click', saveSettings);
   document.getElementById('btn-add').addEventListener('click', promptCustomClause);
   document.getElementById('btn-reset').addEventListener('click', resetDefaults);
+  document.getElementById('back-btn').addEventListener('click', goToDispatchBoard);
   boot();
 });
 </script>

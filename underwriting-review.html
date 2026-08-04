@@ -467,6 +467,11 @@ tr:last-child td { border-bottom:none; }
             </div>
 
             <button class="btn orange block" id="btnSendAgreement" style="display:none">✍ Prepare Agreement</button>
+            <!-- Shown only when a draft exists and the chosen packet no longer matches the one it was
+                 built from. Without this the chooser silently does nothing and the underwriter reopens
+                 the wrong document, which reads as "the packet didn't populate". -->
+            <div id="agrPacketWarn" class="ca-warn" style="display:none"></div>
+            <button class="btn ghost block sm" id="btnAgrRebuild" style="display:none">⟲ Rebuild as selected packet</button>
             <a href="#" id="btnAgrRefresh" class="agr-refresh" style="display:none">↻ Refresh signature status</a>
 
             <!-- Recipients panel (built from the template's signer roles) -->
@@ -1536,9 +1541,12 @@ function renderAgreement(){
     btn.style.display = 'block'; btn.textContent = '↻ Resend agreement'; btn.disabled = false;
     hint.style.display = 'none'; refresh.style.display = 'inline'; showCfg = true;
   } else if (b.prepared){
-    // Draft exists — the underwriter still needs to review + send it in Zoho Sign.
+    // Draft exists — the underwriter still needs to review + send it in Zoho Sign. The chooser STAYS
+    // visible (it used to be hidden here): /send-agreement short-circuits on an existing draft before
+    // it reads packet_type, so a wrong packet was previously uncorrectable — reopening just handed
+    // back the same document while the dropdown appeared to change something.
     btn.style.display = 'block'; btn.textContent = '▶ Open review & send'; btn.disabled = false;
-    hint.style.display = 'none'; refresh.style.display = 'inline';
+    hint.style.display = 'none'; refresh.style.display = 'inline'; showCfg = true;
   } else if (approved){
     btn.style.display = 'block'; btn.textContent = '✍ Prepare Agreement'; btn.disabled = false;
     hint.style.display = 'none'; refresh.style.display = 'none'; showCfg = true;
@@ -1546,6 +1554,41 @@ function renderAgreement(){
     btn.style.display = 'none'; hint.style.display = 'block'; refresh.style.display = 'none';
   }
   if (cfg) cfg.style.display = showCfg ? 'block' : 'none';
+  // Show the draft's real packet in the chooser rather than the carrier_1 default, so the underwriter
+  // sees what they actually have. Never overrides a deliberate change.
+  if (b.prepared && !MODEL._agrPacketTouched){
+    var builtPkt = ((MODEL.application || {}).Agreement_Packet_Type || '').trim();
+    if (builtPkt && $('agrPacket')) $('agrPacket').value = builtPkt;
+  }
+  renderPacketMismatch(b);
+}
+
+// Human label for a packet key, read straight off the chooser so the two can't drift.
+function packetLabel(key){
+  var sel = $('agrPacket'); if (!sel || !key) return key || '';
+  for (var i = 0; i < sel.options.length; i++){ if (sel.options[i].value === key) return sel.options[i].text; }
+  return key;
+}
+
+// Warn when an existing draft was built from a different packet than the one now selected, and offer
+// the rebuild. Agreement_Packet_Type is blank on drafts prepared before the backend recorded it, so
+// an unknown packet warns generically rather than pretending to know.
+function renderPacketMismatch(b){
+  var warn = $('agrPacketWarn'), btn = $('btnAgrRebuild');
+  if (!warn || !btn) return;
+  b = b || agreementBadge((MODEL && MODEL.application) || {});
+  if (!MODEL || !b.prepared || b.signed){ warn.style.display = 'none'; btn.style.display = 'none'; return; }
+  var built = ((MODEL.application || {}).Agreement_Packet_Type || '').trim();
+  var picked = agreementPacketConfig().packet_type;
+  if (built && built === picked){ warn.style.display = 'none'; btn.style.display = 'none'; return; }
+  warn.style.display = 'block';
+  warn.textContent = built
+    ? 'This draft was built as ' + packetLabel(built) + '. Opening it gives you that document, not '
+      + packetLabel(picked) + '. Rebuild to switch — the old draft stays in Zoho Sign and should be recalled there.'
+    : 'This draft was prepared before the packet was recorded, so it may not be ' + packetLabel(picked)
+      + '. Rebuild if you need to be sure — the old draft stays in Zoho Sign and should be recalled there.';
+  btn.style.display = 'block';
+  btn.textContent = '⟲ Rebuild as ' + packetLabel(picked);
 }
 
 // Read the packet chooser: { packet_type, california }. Defaults to the Carrier(1) packet, CA off.
@@ -1578,7 +1621,19 @@ function renderCaDisclosureNote(){
 function agreementPrimaryClick(){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
   if (agreementBadge(MODEL.application || {}).prepared) return openAgreementReview();
+  MODEL._agrRebuild = false;   // only the Rebuild button discards an existing draft
   openAgreementPanel();
+}
+
+// Rebuild: same recipients panel, but the prepare posts rebuild:true so the backend abandons the
+// in-progress draft and builds the packet selected now.
+function rebuildAgreement(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  MODEL._agrRebuild = true;
+  openAgreementPanel();
+  var pstat = $('agrPanelStatus');
+  if (pstat) pstat.textContent = 'Rebuilding as ' + packetLabel(agreementPacketConfig().packet_type)
+    + '. The previous draft stays in Zoho Sign — recall it there.';
 }
 
 // Open Zoho Sign's review-and-send screen in a new tab. A blank tab is opened synchronously (inside
@@ -1649,6 +1704,9 @@ function prepareAgreement(){
   var built = buildAgreementRecipients(MODEL._agrRoles || [], inputs);
   if (built.missing.length){ $('agrPanelStatus').textContent = 'Enter an email for: ' + built.missing.join(', '); return; }
   var resend = agreementBadge(MODEL.application || {}).sent;
+  // Set by the Rebuild button: discard the in-progress draft and build the selected packet instead.
+  // Without it the backend returns the existing draft and the packet choice is ignored.
+  var rebuild = !!MODEL._agrRebuild;
   var pkt = agreementPacketConfig();
   $('btnAgrConfirm').disabled = true; $('agrPanelStatus').textContent = 'Preparing…';
   if (MODEL._demo || typeof fetch !== 'function'){
@@ -1659,11 +1717,15 @@ function prepareAgreement(){
   // Reserve a tab inside the click gesture so the popup isn't blocked; point it at the review url.
   var win = global.open ? global.open('', '_blank') : null;
   fetch(API_BASE + AGR_SEND_PATH, { method:'POST', headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({ application_id: MODEL.appId, usdot:(MODEL.application && MODEL.application.USDOT) || '', recipients: built.recipients, resend: resend, packet_type: pkt.packet_type, california: pkt.california }) })
+    body: JSON.stringify({ application_id: MODEL.appId, usdot:(MODEL.application && MODEL.application.USDOT) || '', recipients: built.recipients, resend: resend, rebuild: rebuild, packet_type: pkt.packet_type, california: pkt.california }) })
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok || !j.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status)); return j; }); })
     .then(function(j){
       MODEL.application.Sign_Request_Id = j.request_id || MODEL.application.Sign_Request_Id;
       MODEL.application.Agreement_Status = j.status || 'Draft';
+      // Whatever the draft is actually built from — the backend echoes it on both the new-draft and
+      // the reopened-draft paths, so the mismatch warning reflects reality rather than our guess.
+      if (typeof j.packet_type === 'string') MODEL.application.Agreement_Packet_Type = j.packet_type;
+      MODEL._agrRebuild = false;
       $('agrPanel').style.display = 'none'; $('btnAgrConfirm').disabled = false; renderAgreement();
       if (j.send_url){ if (win) win.location = j.send_url; else global.open(j.send_url, '_blank'); }
       else if (win) win.close();
@@ -1674,8 +1736,10 @@ function prepareAgreement(){
         setCaWarn(j.ca_warning);
         showStatus('⚠ Draft prepared, but ' + j.ca_warning, 'error');
       } else {
-        showStatus('✓ Draft prepared' + (j.ca_disclosure_attached ? ' with the California disclosure' : '') +
-          '. Review the prefilled fields and click Send in the Zoho Sign tab. (The client is notified only after you send.)', 'success');
+        showStatus('✓ Draft ' + (j.rebuilt ? 'rebuilt as ' + packetLabel(j.packet_type || pkt.packet_type) : 'prepared') +
+          (j.ca_disclosure_attached ? ' with the California disclosure' : '') +
+          '. Review the prefilled fields and click Send in the Zoho Sign tab. (The client is notified only after you send.)' +
+          (j.rebuilt ? ' The previous draft is still in Zoho Sign — recall it there.' : ''), 'success');
       }
     })
     .catch(function(e){ if (win) win.close(); $('btnAgrConfirm').disabled = false; $('agrPanelStatus').textContent = 'Could not prepare: ' + (e && e.message ? e.message : e); });
@@ -2522,11 +2586,17 @@ function boot() {
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ var b = $('cfBackdrop'); if (b && !b.classList.contains('hidden')) closeConfirm(); } });
   if ($('btnSendAgreement')) $('btnSendAgreement').addEventListener('click', agreementPrimaryClick);
   if ($('btnAgrConfirm')) $('btnAgrConfirm').addEventListener('click', prepareAgreement);
-  if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){ $('agrPanel').style.display = 'none'; });
+  if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){
+    $('agrPanel').style.display = 'none';
+    if (MODEL) MODEL._agrRebuild = false;   // backing out must not leave a rebuild armed
+  });
+  if ($('btnAgrRebuild')) $('btnAgrRebuild').addEventListener('click', rebuildAgreement);
   // Changing the packet or the CA flag changes the ENVELOPE, so the open signer panel's action_ids
   // (reconciled by Zoho per merge set) go stale — re-fetch it, don't just repaint the banner.
   function agrConfigChanged(){
+    if (MODEL) MODEL._agrPacketTouched = true;   // stop renderAgreement resetting it to the draft's packet
     renderCaDisclosureNote();
+    renderPacketMismatch();
     if ($('agrPanel') && $('agrPanel').style.display === 'block') openAgreementPanel();
   }
   if ($('agrCaRow')) $('agrCaRow').addEventListener('click', function(){

@@ -766,15 +766,10 @@ function nudgeButton(docType, sent) {
 // client sees on their portal, so they fix the right thing instead of re-uploading the same file.
 // Only offered on a document that's actually uploaded, isn't already Verified, and carries a signed
 // token — without a token there's nothing for /document-review to address.
+// `token` here is the REVIEW-flavoured handle the staff read mints — not the "doc:" token the client
+// portal hands out. That difference IS the authorisation: a client's own token doesn't validate on
+// /document-review, so they can't mark their own upload Verified.
 function canReviewDoc(c){ return !!(c && c.uploaded && !c.verified && c.token); }
-
-// The staff key rides on the widget's own URL (?k=… in the Creator embed) and is forwarded to
-// /document-review. It's a perimeter, not per-user identity: the signed doc token can't be the only
-// credential because the client portal hands those same tokens to clients.
-function staffKeyQS(){
-  var k = getQueryParam('k') || global.OPERFI_UW_STAFF_KEY || '';
-  return k ? ('?k=' + encodeURIComponent(k)) : '';
-}
 
 function docReviewButtons(c){
   if (!canReviewDoc(c)) return '';
@@ -2478,7 +2473,7 @@ function sendDocReview(token, label, decision, reason, notify){
     return;
   }
   showStatus((decision === 'approve' ? 'Approving' : 'Denying') + ' "' + label + '"…', 'loading');
-  fetch(API_BASE + DOCREVIEW_PATH + staffKeyQS(), { method:'POST', headers:{'Content-Type':'application/json'},
+  fetch(API_BASE + DOCREVIEW_PATH, { method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ application_id: MODEL.appId, token: token, decision: decision,
                            reason: reason || '', rep: uwAuthor(), notify: !!notify }) })
     .then(function (r){ return r.json().catch(function(){ return {}; })

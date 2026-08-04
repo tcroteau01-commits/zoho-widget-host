@@ -547,6 +547,13 @@ function otpStart() {
       if (res.status === 200 && j.ok) { STATE.maskedPhone = j.masked_phone || ''; renderOtpEnter(''); return; }
       if (j.error === 'no_match') { renderOtpRequest('We couldn’t find an application for that USDOT. Please double-check it.'); return; }
       if (j.error === 'no_phone') { renderOtpRequest('No mobile number is on file for this application. Please contact your OperFi rep.'); return; }
+      // The backend caps code sends per USDOT and per IP; without this case a throttled client
+      // just sees the generic "try again in a moment" and keeps retrying into a 429.
+      if (j.error === 'otp_throttled') {
+        var mins = Math.max(1, Math.ceil((j.retryAfter || 0) / 60));
+        renderOtpRequest('Too many code requests. Please try again in ' + mins + ' minute' + (mins === 1 ? '' : 's') + ', or contact your OperFi rep.');
+        return;
+      }
       renderOtpRequest('We couldn’t send a code right now. Please try again in a moment.');
     })
     .catch(function () { renderRecovery('We couldn’t load your application right now. Please try again, or find it below.'); });

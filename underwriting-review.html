@@ -573,6 +573,7 @@ var NOTIFY_PATH = '/notify-client';      // POST { application_id, usdot, docume
 var AGR_ROLES_PATH = '/agreement-roles'; // GET ?usdot= → { roles:[{action_id,role_name}], suggestions:[{name,email,source}] } from the Zoho Sign template
 var AGR_SEND_PATH = '/send-agreement';   // POST { application_id, usdot, recipients:[{action_id,name,email}], resend? } → prepares a Zoho Sign DRAFT, returns { request_id, status:'Draft', send_url }
 var AGR_URL_PATH = '/agreement-send-url'; // GET ?usdot= → { send_url } — a FRESH Zoho Sign review url for the current draft (embed url expires ~2 min)
+var DOCREVIEW_PATH = '/document-review'; // POST { application_id, token, decision:'approve'|'deny', reason, rep, notify } → Status Verified/Rejected (+ Review_Note the client sees) and logs the decision to Sales_Notes
 
 // ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
@@ -694,6 +695,9 @@ function requiredDocs(application) {
 function docType(d){ return Array.isArray(d) ? d[0] : (d && (d.Document_Type || d.type)); }
 function docStatus(d){ return Array.isArray(d) ? d[2] : (d && (d.Status || d.status)); }
 function docUrl(d){ return (Array.isArray(d) ? d[3] : (d && (d.fileUrl || d.link || d.url))) || ''; }
+// Signed per-document handle from the backend. It's what /document-review addresses, so approve/deny
+// can act on ONE document without this widget ever seeing a Creator record id.
+function docToken(d){ return (Array.isArray(d) ? d[4] : (d && d.token)) || ''; }
 function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
 function isUploadedStatus(s){ return /^(received|verified|approved|complete|on file)$/i.test(String(s || '').trim()); }
 function isRequestedStatus(s){ return /^(requested|needed|pending)$/i.test(String(s || '').trim()); }
@@ -706,7 +710,7 @@ function reconcileDocs(required, documents) {
   var byType = {};
   documents.forEach(function (d) {
     var t = normType(docType(d)), st = docStatus(d) || '', cur = byType[t];
-    if (!cur || statusRank(st) > statusRank(cur.status)) byType[t] = { status: st, link: docUrl(d) };
+    if (!cur || statusRank(st) > statusRank(cur.status)) byType[t] = { status: st, link: docUrl(d), token: docToken(d) };
   });
   var checklist = required.map(function (item) {
     var u = byType[normType(item.type)];
@@ -716,15 +720,23 @@ function reconcileDocs(required, documents) {
       uploaded: !!u && isUploadedStatus(u.status),
       verified: !!u && /verified/i.test(String(u.status)),
       rejected: !!u && /rejected/i.test(String(u.status)),
-      link: u ? (u.link || '') : ''
+      link: u ? (u.link || '') : '',
+      token: u ? (u.token || '') : ''
     };
   });
   var reqTypes = {}; required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
   var extras = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && isUploadedStatus(docStatus(d)); })
-    .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received', link: docUrl(d) }; });
-  // Staff-requested docs that aren't in the base checklist and haven't been uploaded yet.
-  var requested = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && !isUploadedStatus(docStatus(d)) && isRequestedStatus(docStatus(d)); })
-    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Requested', link: docUrl(d) }; });
+    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Received', link: docUrl(d), token: docToken(d),
+                                 verified: /verified/i.test(String(docStatus(d) || '')) }; });
+  // Staff-requested docs that aren't in the base checklist and haven't been uploaded yet — plus
+  // REJECTED ones. A rejected off-checklist doc matches neither isUploadedStatus (extras) nor
+  // isRequestedStatus (requested), so without the second clause a denied ad-hoc document silently
+  // disappeared from this table — and from sales' and the client's — leaving nobody chasing it.
+  var isRejected = function (s) { return /rejected/i.test(String(s || '')); };
+  var requested = documents.filter(function (d) { var st = docStatus(d);
+      return !reqTypes[normType(docType(d))] && !isUploadedStatus(st) && (isRequestedStatus(st) || isRejected(st)); })
+    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Requested', link: docUrl(d), token: docToken(d),
+                                 rejected: isRejected(docStatus(d)) }; });
   return {
     checklist: checklist, extras: extras, requested: requested,
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
@@ -747,6 +759,28 @@ function nudgeButton(docType, sent) {
   return sent
     ? ' <button type="button" class="btn ghost sm js-nudge" data-doc="' + escHtml(docType) + '" disabled>Sent ✓</button>'
     : ' <button type="button" class="btn ghost sm js-nudge" data-doc="' + escHtml(docType) + '">Nudge client</button>';
+}
+
+// ── Approve / deny a client-uploaded document ─────────────────────────────────
+// Approve → Verified (which also stops the client deleting it). Deny → Rejected + a reason the
+// client sees on their portal, so they fix the right thing instead of re-uploading the same file.
+// Only offered on a document that's actually uploaded, isn't already Verified, and carries a signed
+// token — without a token there's nothing for /document-review to address.
+function canReviewDoc(c){ return !!(c && c.uploaded && !c.verified && c.token); }
+
+// The staff key rides on the widget's own URL (?k=… in the Creator embed) and is forwarded to
+// /document-review. It's a perimeter, not per-user identity: the signed doc token can't be the only
+// credential because the client portal hands those same tokens to clients.
+function staffKeyQS(){
+  var k = getQueryParam('k') || global.OPERFI_UW_STAFF_KEY || '';
+  return k ? ('?k=' + encodeURIComponent(k)) : '';
+}
+
+function docReviewButtons(c){
+  if (!canReviewDoc(c)) return '';
+  var t = escHtml(c.token), lbl = escHtml(c.label || c.type || 'Document');
+  return ' <button type="button" class="btn ghost sm js-doc-ok" data-token="' + t + '" data-label="' + lbl + '">✓ Approve</button>' +
+         ' <button type="button" class="btn ghost sm js-doc-no" data-token="' + t + '" data-label="' + lbl + '">✕ Deny</button>';
 }
 
 // ── State filing links (SoS business search + UCC search/filing) ──────────────
@@ -1048,7 +1082,7 @@ function agreementRolesUrl(base, usdot, cfg){
 }
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
-  canNudge: canNudge, nudgeButton: nudgeButton,
+  canNudge: canNudge, nudgeButton: nudgeButton, canReviewDoc: canReviewDoc, docReviewButtons: docReviewButtons, docToken: docToken,
   defaultPromoRate: defaultPromoRate, fmtTerm: fmtTerm, buildApplicationTerms: buildApplicationTerms,
   composeNotesLog: composeNotesLog, formatStamp: formatStamp, checksFromReview: checksFromReview, parseSalesNotes: parseSalesNotes, uwAuthor: uwAuthor, runChecks: runChecks,
   parseClientMsg: parseClientMsg, noteTime: noteTime, buildNoteHistory: buildNoteHistory, saferUrl: saferUrl, carrierOkUrl: carrierOkUrl,
@@ -1230,7 +1264,7 @@ function loadByUSDOT(usdot) {
           contacts: (j.contacts || []).map(function (c) { return { Name:c.Name, Title:c.Title, Phone:c.Phone, Email:c.Email }; }),
           customers: (j.customers || []).map(function (c) { return { Business_Name:c.Business_Name, Website:c.Website, Expected_Monthly_Revenue:c.Expected_Monthly_Revenue }; }),
           related: (j.related || []).map(function (r) { return { Business_Name:r.Business_Name, USDOT:r.USDOT, MC_Number:r.MC_Number, Factoring_Company:r.Factoring_Company }; }),
-          documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; }),
+          documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '', d.token || '']; }),
           checksReady: !!c,
           fraud: (c && c.fraud) || [],
           safety: (c && c.safety) || [],
@@ -2115,17 +2149,23 @@ function renderModel(m) {
              : c.rejected ? '<span class="pill r">Rejected</span>'
              : '<span class="pill r">Needed</span>';
     var nudge = canNudge(c) ? nudgeButton(c.type, nudged[normType(c.type)]) : '';
-    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link, c.label):'')+nudge+'</td></tr>';
+    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link, c.label):'')+docReviewButtons(c)+nudge+'</td></tr>';
   });
   (docRec.requested || []).forEach(function(rq){
     if (m.highRiskVolume && is8821(rq.type || rq.label)) return;   // 8821 shown as its own UW-handled row below
     var rqType = rq.type || rq.label;
     var nudge = canNudge(rq) ? nudgeButton(rqType, nudged[normType(rqType)]) : '';
-    dt += '<tr><td>'+rq.label+(isHrvType(rq.type)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· requested</span></td><td><span class="pill a">Requested</span>'+nudge+'</td></tr>';
+    // A denied off-checklist doc lands in this bucket too — say so rather than calling it "Requested".
+    var rqPill = rq.rejected ? '<span class="pill r">Rejected</span>' : '<span class="pill a">Requested</span>';
+    var rqTag = rq.rejected ? '· denied' : '· requested';
+    dt += '<tr><td>'+rq.label+(isHrvType(rq.type)?hrvChip:'')+' <span style="color:var(--of-gray-500)">'+rqTag+'</span></td><td>'+rqPill+nudge+'</td></tr>';
   });
   docRec.extras.forEach(function(e){
     if (m.highRiskVolume && is8821(e.label)) return;               // dedup with the 8821 tracked row below
-    dt += '<tr><td>'+e.label+(isHrvType(e.label)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span>'+viewLink(e.link, e.label)+'</td></tr>';
+    // Extras are uploaded docs, so they're reviewable too — reuse the checklist row's shape.
+    var eRow = { uploaded: true, verified: !!e.verified, token: e.token, label: e.label, type: e.type };
+    dt += '<tr><td>'+e.label+(isHrvType(e.label)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· additional</span></td><td>'+
+      (e.verified ? '<span class="pill g">Verified</span>' : '<span class="pill b">'+e.status+'</span>')+viewLink(e.link, e.label)+docReviewButtons(eRow)+'</td></tr>';
   });
   // §9.2: IRS Form 8821 is Underwriting-handled (wet signature) and never requested from the client —
   // surface it as its own TRACKED row whenever the flag is applied, so the full §9.2 set is visible on
@@ -2141,6 +2181,12 @@ function renderModel(m) {
   $('docTable').innerHTML = dt;
   qsa('#docTable .js-nudge').forEach(function (b) {
     b.addEventListener('click', function () { nudgeClient(b.getAttribute('data-doc'), b); });
+  });
+  qsa('#docTable .js-doc-ok').forEach(function (b) {
+    b.addEventListener('click', function () { reviewDoc(b.getAttribute('data-token'), b.getAttribute('data-label'), 'approve'); });
+  });
+  qsa('#docTable .js-doc-no').forEach(function (b) {
+    b.addEventListener('click', function () { reviewDoc(b.getAttribute('data-token'), b.getAttribute('data-label'), 'deny'); });
   });
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';
   $('kDocs').textContent = docRec.uploadedCount + ' / ' + docRec.total;
@@ -2386,6 +2432,75 @@ function persistManual(okMsg){
 // Nudge the client for a document they still owe: texts them a reminder and logs it to the shared
 // Sales_Notes trail, so the sales pipeline's Notes & Activity shows Underwriting already chased it.
 // Success requires BOTH r.ok AND j.ok — the sales version once faked success against a 404 route.
+// Approve/deny one uploaded document. Deny collects a reason (required — a bare "Rejected" tells the
+// client nothing they can act on) and offers to text them; the reason is what shows on their portal.
+function reviewDoc(token, label, decision){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  if (!token) return;
+  if (decision === 'approve'){
+    confirmAction({
+      icon: '✓', iconCls: 'approve', title: 'Approve this document?',
+      sub: 'Marks <b>' + escHtml(label) + '</b> as Verified. The client will no longer be able to remove or replace it.',
+      goCls: 'green', goText: 'Approve',
+      onGo: function(){ sendDocReview(token, label, 'approve', '', false); }
+    });
+    return;
+  }
+  confirmAction({
+    icon: '✕', iconCls: 'decline', title: 'Deny this document?',
+    sub: '<div style="margin-bottom:8px">Tell <b>' + escHtml(label) + '</b>’s uploader what to fix — this text is shown to the client on their portal.</div>' +
+         '<textarea id="docDenyReason" rows="3" maxlength="255" placeholder="e.g. Expired — policy ended 06/2026. Please upload a current certificate." ' +
+         'style="width:100%;box-sizing:border-box;font:inherit;padding:6px 8px;border:1px solid var(--of-beige-line);border-radius:6px"></textarea>' +
+         '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px">' +
+         '<input type="checkbox" id="docDenyNotify" checked> Text the client a reminder</label>',
+    goCls: 'red', goText: 'Deny document',
+    onGo: function(){
+      // confirmAction closes the modal before onGo runs, so read the fields into locals up front —
+      // by the time this fires the nodes are gone.
+      showStatus('Denying "' + label + '"…', 'loading');
+      sendDocReview(token, label, 'deny', MODEL._denyReason || '', !!MODEL._denyNotify);
+    }
+  });
+  // Capture the inputs live so onGo (which runs after the modal closes) has their final values.
+  var ta = $('docDenyReason'), cb = $('docDenyNotify');
+  MODEL._denyReason = ''; MODEL._denyNotify = true;
+  if (ta){ ta.focus(); ta.addEventListener('input', function(){ MODEL._denyReason = ta.value; }); }
+  if (cb){ cb.addEventListener('change', function(){ MODEL._denyNotify = cb.checked; }); }
+}
+
+function sendDocReview(token, label, decision, reason, notify){
+  if (decision === 'deny' && !String(reason || '').trim()){
+    showStatus('Denying a document needs a reason — it’s what the client sees.', 'error');
+    return;
+  }
+  if (MODEL._demo || typeof fetch !== 'function'){
+    showStatus('✓ Demo: "' + label + '" would be marked ' + (decision === 'approve' ? 'Verified' : 'Rejected') + '.', 'success');
+    return;
+  }
+  showStatus((decision === 'approve' ? 'Approving' : 'Denying') + ' "' + label + '"…', 'loading');
+  fetch(API_BASE + DOCREVIEW_PATH + staffKeyQS(), { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ application_id: MODEL.appId, token: token, decision: decision,
+                           reason: reason || '', rep: uwAuthor(), notify: !!notify }) })
+    .then(function (r){ return r.json().catch(function(){ return {}; })
+                          .then(function (j){ return { httpOk: r.ok, j: j || {} }; }); })
+    .then(function (res){
+      if (!res.httpOk || !res.j.ok) throw new Error(res.j.error || res.j.detail || 'could not update the document');
+      // Same targeted refresh the nudge uses: the server hands back the full new Sales_Notes, so the
+      // decision lands in its chronological slot without a full load() wiping transient row state.
+      if (res.j.sales_notes){
+        MODEL.application = MODEL.application || {};
+        MODEL.application.Sales_Notes = res.j.sales_notes;
+        renderNoteHistory(MODEL.clientMessageStored, res.j.sales_notes);
+      }
+      // Reflect the new status locally so the row's buttons update without a round trip.
+      (MODEL.documents || []).forEach(function (d){ if (docToken(d) === token && Array.isArray(d)) d[2] = res.j.status; });
+      renderModel(MODEL);
+      showStatus('✓ "' + label + '" marked ' + res.j.status +
+        (res.j.notified ? ' — client texted.' : (decision === 'deny' ? ' — the reason is now on their portal.' : '.')), 'success');
+    })
+    .catch(function (e){ showStatus('Could not update "' + label + '": ' + (e && e.message ? e.message : e), 'error'); });
+}
+
 function nudgeClient(docType, btn){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
   if (!docType) return;

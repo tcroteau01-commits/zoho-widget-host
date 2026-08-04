@@ -86,6 +86,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .doc-mark.pend { background: #fff; border: 2px solid var(--of-amber); color: var(--of-amber-text); }
 .doc-label { font-weight: 600; font-size: 13.5px; }
 .doc-sub { font-size: 11.5px; color: var(--of-gray-500); margin-top: 2px; }
+/* The underwriter's rejection reason. Red-soft rather than a pill: it's prose the client has to
+   read and act on, not a status label, and it must out-rank the grey .doc-sub above it. */
+.doc-reason { font-size: 12px; line-height: 1.45; margin-top: 4px; padding: 5px 8px; border-radius: 6px;
+  background: var(--of-red-soft); color: var(--of-red-text); max-width: 46ch; }
 .doc-action { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .doc-file { display: none; }
 .pill { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.3px; display: inline-block; }
@@ -245,7 +249,10 @@ function reconcileDocs(required, documents) {
   documents.forEach(function (d) {
     var t = normType(d.Document_Type || d.type);
     var st = d.Status || d.status || '';
-    var entry = { status: st, link: d.WorkDrive_Link || d.link || '', uploadedAt: d.Uploaded_At || d.uploadedAt || '', token: d.token || '' };
+    var entry = { status: st, link: d.WorkDrive_Link || d.link || '', uploadedAt: d.Uploaded_At || d.uploadedAt || '', token: d.token || '',
+                  // Why the underwriter rejected it — shown under the document so the client fixes
+                  // the right thing instead of re-uploading the same file. Dual-shape like the rest.
+                  reviewNote: d.Review_Note || d.reviewNote || '' };
     if (!byType[t] || statusRank(st) > statusRank(byType[t].status)) byType[t] = entry;
   });
   var checklist = required.map(function (item) {
@@ -256,7 +263,8 @@ function reconcileDocs(required, documents) {
       uploaded: !!u && isUploadedStatus(u.status),
       verified: !!u && /verified/i.test(String(u.status)),
       rejected: !!u && /rejected/i.test(String(u.status)),
-      link: u ? u.link : '', uploadedAt: u ? u.uploadedAt : '', token: u ? u.token : ''
+      link: u ? u.link : '', uploadedAt: u ? u.uploadedAt : '', token: u ? u.token : '',
+      reviewNote: u ? (u.reviewNote || '') : ''
     };
   });
   var reqTypes = {};
@@ -266,10 +274,17 @@ function reconcileDocs(required, documents) {
   // Staff-requested docs that aren't in the base checklist and haven't been uploaded → render as
   // upload slots so the client can fulfill an underwriter's ad-hoc request. (The e-signed
   // Agreement/NOA are handled by the Post-Approval card, never as upload slots.)
+  // A REJECTED off-checklist doc rides here too: it matches neither isUploadedStatus (extras) nor
+  // isRequestedStatus (requested), so without this it vanished from the portal entirely — leaving
+  // the client no way to re-upload the very document the underwriter just asked them to redo.
   var requested = documents.filter(function (d) {
-    var t = normType(d.Document_Type || d.type);
-    return !reqTypes[t] && !POST_APPROVAL_TYPES[t] && !isUploadedStatus(d.Status || d.status) && isRequestedStatus(d.Status || d.status);
-  }).map(function (d) { var ty = d.Document_Type || d.type || 'Document'; return { key: slugType(ty), label: ty, type: ty }; });
+    var t = normType(d.Document_Type || d.type), st = d.Status || d.status;
+    return !reqTypes[t] && !POST_APPROVAL_TYPES[t] && !isUploadedStatus(st) &&
+      (isRequestedStatus(st) || /rejected/i.test(String(st || '')));
+  }).map(function (d) { var ty = d.Document_Type || d.type || 'Document';
+    return { key: slugType(ty), label: ty, type: ty,
+             rejected: /rejected/i.test(String(d.Status || d.status || '')),
+             reviewNote: d.Review_Note || d.reviewNote || '' }; });
   return {
     checklist: checklist, extras: extras, requested: requested,
     pendingCount: checklist.filter(function (c) { return !c.uploaded; }).length + requested.length,
@@ -430,6 +445,16 @@ function parseClientNotes(raw){
 // Document viewer: "View" carries the signed file URL + display name in data-*; one delegated
 // listener (bound once) opens the shared OperFiDocViewer modal (renders PDFs/images in-page
 // instead of force-downloading). See operfi-docviewer.js (loaded from app.operfi.com).
+// The underwriter's reason for rejecting a document, shown under it so the client fixes the right
+// thing. Only ever rendered for a rejected doc that actually has a reason — a bare "Rejected" with
+// an empty box would read worse than nothing. Escaped + pre-wrap like the underwriter-note card, and
+// deliberately unattributed: the client sees "your underwriter", never a staff member's name.
+function docReason(c){
+  var note = c && c.rejected ? String(c.reviewNote || '').trim() : '';
+  if (!note) return '';
+  return '<div class="doc-reason"><b>Why:</b> <span style="white-space:pre-wrap">' + esc(note) + '</span></div>';
+}
+
 function docViewButton(url, filename){
   return url ? '<button type="button" class="viewlink dv-view" data-url="' + esc(url) + '" data-filename="' + esc(filename || 'Document') + '" style="background:none;border:0;padding:0;cursor:pointer">View</button>' : '';
 }
@@ -644,7 +669,8 @@ function renderStatus(data, isDemo) {
     var left = '<div class="doc-main"><span class="doc-mark ' + (c.uploaded ? 'ok' : 'needed') + '">' + (c.uploaded ? '✓' : '○') + '</span>' +
       '<div><div class="doc-label">' + esc(c.label) + '</div><div class="doc-sub">' +
       (c.uploaded ? (esc(c.verified ? 'Verified' : 'Received') + (c.uploadedAt ? ' · ' + esc(c.uploadedAt) : ''))
-                  : (c.rejected ? 'Rejected — please re-upload' : 'Needed')) + '</div></div></div>';
+                  : (c.rejected ? 'Rejected — please re-upload' : 'Needed')) + '</div>' +
+      docReason(c) + '</div></div>';
     var right;
     if (c.uploaded) {
       right = '<div class="doc-action">' + (c.verified ? '<span class="pill g">Verified</span>' : '<span class="pill a">Received</span>') +
@@ -660,7 +686,8 @@ function renderStatus(data, isDemo) {
   // Underwriter-requested documents (not part of the base checklist) → upload slots.
   var requestedRows = (rec.requested || []).map(function (c) {
     var left = '<div class="doc-main"><span class="doc-mark needed">○</span><div><div class="doc-label">' + esc(c.label) +
-      '</div><div class="doc-sub">Requested by your underwriter</div></div></div>';
+      '</div><div class="doc-sub">' + (c.rejected ? 'Rejected — please re-upload' : 'Requested by your underwriter') + '</div>' +
+      docReason(c) + '</div></div>';
     var right = '<div class="doc-action"><input type="file" class="doc-file" id="f-' + esc(c.key) + '" accept="application/pdf,image/*" multiple>' +
       '<button class="btn orange sm js-up" data-key="' + esc(c.key) + '" data-type="' + esc(c.type) + '">Upload</button></div>';
     return '<div class="doc-row">' + left + right + '</div>';

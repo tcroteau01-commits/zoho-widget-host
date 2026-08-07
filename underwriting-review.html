@@ -190,6 +190,22 @@ tr:last-child td { border-bottom:none; }
 .add-wrap { margin-top:12px; padding-top:12px; border-top:1px dashed var(--of-beige-line); }
 .add-form { margin-top:10px; }
 .add-form .fld { margin-bottom:10px; }
+/* UCC Filing card. Own row classes rather than the existing `row2`, whose rule is written as the
+   descendant selector `.fld .row2` but used as `class="fld row2"` on one element — so it never
+   matches. Reusing it would inherit that. */
+.ucf-row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.ucf-row3 { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; }
+.ucf-radio { display:inline-flex !important; align-items:center; gap:6px; margin-right:16px; font-size:13px; font-weight:600; text-transform:none !important; letter-spacing:0 !important; color:var(--of-charcoal) !important; }
+.ucf-radio input { width:auto !important; margin:0; }
+.ucf-hint { display:block; margin-top:5px; font-size:11px; color:var(--of-gray-500); }
+.ucf-actions { display:flex; gap:8px; align-items:center; margin-top:14px; }
+.ucf-note { margin:10px 0 0; padding:10px 12px; border-radius:10px; font-size:12px; line-height:1.5; display:none; }
+.ucf-note.on { display:block; }
+.ucf-note.warn { background:#fff6e8; border:1px solid #f0c99a; color:#7a4a12; }
+.ucf-note.bad  { background:#fdecec; border:1px solid #f0b4b4; color:#8a2020; }
+.ucf-note.good { background:#eaf7ef; border:1px solid #a9d9bd; color:#1e5c39; }
+.ucf-record { margin-top:14px; padding-top:12px; border-top:1px dashed var(--of-beige-line); }
+.ucf-req { font-weight:600; text-transform:none; letter-spacing:0; color:var(--of-gray-500); }
 /* Client agreement (Zoho Sign) — matches .fld/.card tokens for a uniform look. */
 .agr-section { border-top:1px solid var(--of-beige-line); margin-top:16px; padding-top:14px; }
 .agr-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -386,6 +402,55 @@ tr:last-child td { border-bottom:none; }
               <div class="fld"><label>Collateral</label><input type="text" id="aucCollateral"></div>
               <div class="fld row2"><div><label>Filed</label><input type="text" id="aucFiled" placeholder="YYYY-MM-DD"></div><div><label>Notes</label><input type="text" id="aucNotes" placeholder="e.g. LOR Required"></div></div>
               <button class="btn green sm" id="aucSave">Save UCC filing</button>
+            </div>
+          </div>
+        </div>
+        <!-- UCC Filing — the lien OperFi PLACES on this carrier. Deliberately a separate card from
+             UCC Research above, which is the opposite question (what liens already exist AGAINST
+             them). Different data, different lifecycle, and conflating the two would make it easy to
+             read a prior lender's filing as our own.
+             FILING IS MANUAL by decision: this card captures the debtor block once, links straight
+             to the right state's filing office, and records the file number that comes back. It
+             does NOT call Middesk's filing API — see docs/ops/MIDDESK_LIEN_FILING_API.md for the
+             verified contract and why. -->
+        <div class="card">
+          <div class="card-title">UCC Filing <span class="count" id="uccFilingStatus">Not filed</span></div>
+          <div class="ucf-note" id="uccFilingNote"></div>
+          <div class="add-form" id="uccFilingForm">
+            <div class="fld"><label>Debtor</label>
+              <label class="ucf-radio"><input type="radio" name="ucfType" value="ORGANIZATION" checked> Organization</label>
+              <label class="ucf-radio"><input type="radio" name="ucfType" value="INDIVIDUAL"> Individual</label>
+            </div>
+            <div class="fld" id="ucfOwnerPickWrap" style="display:none"><label>Use an owner on file</label>
+              <select id="ucfOwnerPick"></select></div>
+            <div class="fld" id="ucfOrgWrap"><label>Organization Name</label><input type="text" id="ucfOrgName"></div>
+            <div class="fld ucf-row2" id="ucfIndWrap" style="display:none">
+              <div><label>First Name</label><input type="text" id="ucfFirstName"></div>
+              <div><label>Last Name</label><input type="text" id="ucfLastName"></div>
+            </div>
+            <div class="fld"><label>Street Address</label><input type="text" id="ucfStreet"></div>
+            <div class="fld"><label>Apt, suite, etc. (optional)</label><input type="text" id="ucfApt"></div>
+            <div class="fld ucf-row3">
+              <div><label>City</label><input type="text" id="ucfCity"></div>
+              <div><label>State</label><select id="ucfState"></select></div>
+              <div><label>Zip Code</label><input type="text" id="ucfZip"></div>
+            </div>
+            <div class="fld"><label>Filing State</label><select id="ucfFileState"></select>
+              <span class="ucf-hint">Where the UCC-1 is filed — normally the debtor's state of organization.</span></div>
+            <div class="fld"><label>Collateral</label><input type="text" id="ucfCollateral" placeholder="e.g. All assets and receivables"></div>
+            <div id="ucfStateLinks"></div>
+            <!-- Filled in AFTER filing in Middesk or the state portal. The file number is what makes
+                 this a record of a real lien rather than a draft, so it drives the status pill. -->
+            <div class="ucf-record">
+              <div class="fld ucf-row3">
+                <div><label>File # <span class="ucf-req">once filed</span></label><input type="text" id="ucfFileNumber"></div>
+                <div><label>Filed Date</label><input type="text" id="ucfFiledAt" placeholder="YYYY-MM-DD"></div>
+                <div><label>Lapse Date</label><input type="text" id="ucfLapseAt" placeholder="YYYY-MM-DD"></div>
+              </div>
+            </div>
+            <div class="ucf-actions">
+              <button class="btn ghost sm" id="ucfCopy">Copy debtor details</button>
+              <button class="btn green sm" id="ucfSave">Save</button>
             </div>
           </div>
         </div>
@@ -913,6 +978,7 @@ function buildReviewPayload(s, appId) {
     UW_Notes: s.uwNotes || '',
     Client_Message: s.clientMessage || '',
     Manual_UCC: JSON.stringify(s.manualUcc || []),
+    UCC_Filing: JSON.stringify(s.uccFiling || {}),   // OUR UCC-1 (Manual_UCC is prior liens found)
     Manual_Owners: JSON.stringify(s.manualOwners || []),
     Manual: JSON.stringify(s.manualContacts || []),   // Creator field link-name is "Manual" (display "Manual_Contacts")
     Manual_Customers: JSON.stringify(s.manualCustomers || []),
@@ -1088,6 +1154,9 @@ var OFUW = { computeGate: computeGate, validateDecision: validateDecision, build
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
   STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
+  parseUccFiling: parseUccFiling, uccIsFiled: uccIsFiled, uccPrefillDebtor: uccPrefillDebtor, uccDebtorName: uccDebtorName, uccCopyText: uccCopyText,
+  // Exported so the DOM round-trip (render → type → read back) is testable, not just the pure bits.
+  renderUccFiling: renderUccFiling, readUccFilingForm: readUccFilingForm,
   trucksOf: trucksOf, hrvDocs: function(){ return HRV_DOCS; }, hrvThreshold: function(){ return HRV_TRUCK_THRESHOLD; } };
 global.OFUW = OFUW;
 
@@ -1274,6 +1343,7 @@ function loadByUSDOT(usdot) {
           risk: (c && c.risk) || 'med',
           // The saved run stamp wins over the vendor's own field, so the "· last run" display is reliable.
           checkedAt: (j.review && j.review.Checks_Run_At) || (c && c.checkedAt) || '',
+          uccFiling: parseUccFiling(j.review),
           review: j.review || {}
         };
       });
@@ -1314,6 +1384,16 @@ function checksFromReview(review) {
     middeskBusinessId: d.middeskBusinessId || '',
     risk: d.risk || 'med', checkedAt: review.Checks_Run_At || d.checkedAt || ''
   };
+}
+
+// The UCC-1 WE filed, as the underwriter recorded it on the review (saved via /uw-review-save).
+// Returns {} when nothing is stored or the JSON is unreadable — never throws, because a malformed
+// blob must not stop the whole review from rendering.
+function parseUccFiling(review) {
+  var raw = (review || {}).UCC_Filing;
+  if (!raw) return {};
+  try { var d = (typeof raw === 'string') ? JSON.parse(raw) : raw; return (d && typeof d === 'object') ? d : {}; }
+  catch (e) { return {}; }
 }
 
 // RUN the automated review on demand (POST) — IPQS + CarrierOK + Middesk KYB. Fired ONLY by the
@@ -1492,6 +1572,7 @@ function readState() {
     noteEntry: ($('uwNoteEntry') && $('uwNoteEntry').value) || '',   // the pending new entry, folded in on submit
     clientMessage: (MODEL && MODEL.clientMessageStored) || '',   // the persisted (stamped) note; background saves re-send it unchanged. submit() recomputes from the box.
     manualUcc: (MODEL && MODEL.manualUcc) || [],
+    uccFiling: (MODEL && MODEL.uccFiling) || {},   // our own UCC-1 (draft or filed) — see renderUccFiling
     manualOwners: (MODEL && MODEL.manualOwners) || [],
     manualContacts: (MODEL && MODEL.manualContacts) || [],
     manualCustomers: (MODEL && MODEL.manualCustomers) || [],
@@ -2188,6 +2269,7 @@ function renderModel(m) {
   $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
   // UCC: automated check results + underwriter-added manual filings (parsed in the early block).
   renderUcc(m);
+  renderUccFiling(m);
 
   var r = m.review || {};
   setDecision(r.Decision2 || 'Pending');
@@ -2412,6 +2494,201 @@ function removeManualUcc(i){
   renderUcc(MODEL);
   persistManual('UCC filing removed.');
 }
+// ── UCC Filing — the UCC-1 OperFi places on this carrier ────────────────────────────────────
+// FILING IS MANUAL. This card captures the debtor block, links out to the right state's filing
+// office, copies the details for pasting into Middesk's form, and records the file number that
+// comes back. Nothing here files anything — a human stays between the form and the filing office.
+// Rationale + the verified API contract: docs/ops/MIDDESK_LIEN_FILING_API.md.
+function uccStateOptions(sel, blankLabel){
+  var codes = Object.keys(US_STATE_CODES).sort();
+  var out = '<option value="">' + escHtml(blankLabel || '—') + '</option>';
+  for (var i=0;i<codes.length;i++){
+    out += '<option value="' + codes[i] + '"' + (codes[i]===sel ? ' selected' : '') + '>' + codes[i] + '</option>';
+  }
+  return out;
+}
+// Debtor defaults from the application; every field stays editable because the legal debtor name
+// must match the STATE's record, which is not always what the applicant typed on the form.
+function uccPrefillDebtor(m){
+  var a = (m && m.application) || {};
+  var addr = String(a.Physical_Address || '');
+  // "1420 Industrial Pkwy, Columbus, OH 43201" → street / city / state / zip. A shape we can't
+  // parse leaves the pieces blank rather than guessing — a wrong address on a UCC-1 is worse
+  // than an empty box the underwriter has to fill.
+  var mm = addr.match(/^\s*(.+?),\s*([^,]+?),\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$/);
+  return {
+    type: 'ORGANIZATION',
+    organization_name: a.Business_Name || a.DBA || '',
+    first_name: '', last_name: '',
+    address: {
+      address_line1: mm ? mm[1].trim() : '',
+      address_line2: '',
+      city: mm ? mm[2].trim() : '',
+      state: (mm ? mm[3] : stateFromAddress(addr) || '').toUpperCase(),
+      zip: mm && mm[4] ? mm[4] : ''
+    }
+  };
+}
+function uccFormEls(){
+  return { org:$('ucfOrgName'), first:$('ucfFirstName'), last:$('ucfLastName'), street:$('ucfStreet'),
+           apt:$('ucfApt'), city:$('ucfCity'), state:$('ucfState'), zip:$('ucfZip'),
+           fileState:$('ucfFileState'), collateral:$('ucfCollateral') };
+}
+function readUccFilingForm(){
+  var e = uccFormEls();
+  if (!e.org) return {};
+  var type = (qsa('input[name="ucfType"]:checked')[0] || {}).value || 'ORGANIZATION';
+  return {
+    debtor: {
+      type: type,
+      organization_name: type === 'ORGANIZATION' ? (e.org.value || '').trim() : '',
+      first_name: type === 'INDIVIDUAL' ? (e.first.value || '').trim() : '',
+      last_name:  type === 'INDIVIDUAL' ? (e.last.value  || '').trim() : '',
+      address: { address_line1:(e.street.value||'').trim(), address_line2:(e.apt.value||'').trim(),
+                 city:(e.city.value||'').trim(), state:e.state.value||'', zip:(e.zip.value||'').trim() }
+    },
+    states: e.fileState.value ? [e.fileState.value] : [],
+    collateral: (e.collateral.value || '').trim(),
+    // The record of the filing the underwriter actually made.
+    fileNumber: ($('ucfFileNumber').value || '').trim(),
+    filedAt: ($('ucfFiledAt').value || '').trim(),
+    lapseAt: ($('ucfLapseAt').value || '').trim()
+  };
+}
+// A filing is REAL once it has a file number from the filing office. Dates alone don't count —
+// someone typing a date they intend to file on must not turn the card green.
+function uccIsFiled(f){ return !!((f || {}).fileNumber || '').trim(); }
+// The debtor block as plain text, ready to paste into Middesk's UCC Filing form. This is the
+// whole point of a manual flow that still removes the double entry.
+function uccCopyText(f){
+  f = f || {};
+  var d = f.debtor || {}, a = d.address || {};
+  var lines = ['Debtor: ' + (d.type === 'INDIVIDUAL' ? 'Individual' : 'Organization'),
+               'Name: ' + uccDebtorName(d),
+               'Street: ' + (a.address_line1 || '')];
+  if (a.address_line2) lines.push('Apt/Suite: ' + a.address_line2);
+  lines.push('City: ' + (a.city || ''), 'State: ' + (a.state || ''), 'Zip: ' + (a.zip || ''),
+             'Filing state: ' + ((f.states || [])[0] || ''));
+  if (f.collateral) lines.push('Collateral: ' + f.collateral);
+  return lines.join('\n');
+}
+function uccDebtorName(d){
+  d = d || {};
+  return (d.type === 'INDIVIDUAL')
+    ? ((d.first_name || '') + ' ' + (d.last_name || '')).trim()
+    : (d.organization_name || d.name || '').trim();
+}
+// Snapshot of the form as this function last painted it. If what's on screen no longer matches,
+// the underwriter has typed since — so a re-render must not overwrite them.
+//
+// Why a snapshot and not an input listener: renderModel() is called by half a dozen unrelated
+// actions (approving a document, adding an owner, running the automated review) and each
+// re-renders every card. A listener only helps if it was bound before the edit, which couples
+// correctness to boot order. Comparing against what we painted is self-contained and can't be
+// defeated that way. Without this, typing a corrected legal name or a file number and then
+// touching anything else on the page silently discarded it.
+var _uccPainted = null;
+// `force` = the caller deliberately changed the data (debtor type switch, owner picked, save), so
+// the inputs SHOULD be rewritten even mid-edit. Everything else leaves typed values alone.
+function renderUccFiling(m, force){
+  if (!$('uccFilingForm')) return;
+  var f = (m && m.uccFiling) || {};
+  var e = uccFormEls();
+  var edited = _uccPainted !== null && JSON.stringify(readUccFilingForm()) !== _uccPainted;
+  var keepTyping = edited && !force;
+  // While the underwriter is mid-edit the FORM is the source of truth, not the stored model —
+  // otherwise the pill and note would describe data that is no longer on screen.
+  var live = keepTyping ? readUccFilingForm() : null;
+  var d = (live && live.debtor) || f.debtor || uccPrefillDebtor(m);
+  var addr = d.address || {};
+
+  // Owner picker — only meaningful for an Individual debtor (a sole proprietor / guarantor).
+  var owners = (m && m.owners) || [];
+  $('ucfOwnerPick').innerHTML = '<option value="">— choose an owner —</option>' + owners.map(function(o,i){
+    return '<option value="' + i + '">' + escHtml(((o.First_Name1||'') + ' ' + (o.Last_Name1||'')).trim() || ('Owner ' + (i+1))) + '</option>';
+  }).join('');
+
+  qsa('input[name="ucfType"]').forEach(function(r){ r.checked = (r.value === (d.type || 'ORGANIZATION')); });
+  var isInd = (d.type === 'INDIVIDUAL');
+  $('ucfOrgWrap').style.display = isInd ? 'none' : '';
+  $('ucfIndWrap').style.display = isInd ? '' : 'none';
+  $('ucfOwnerPickWrap').style.display = isInd ? '' : 'none';
+
+  var fileState = ((live ? live.states : f.states) || [])[0] || (addr.state || '');
+  fileState = String(fileState).toUpperCase();
+  // The <select>s need their options built at least once; rebuilding mid-edit would drop the
+  // user's selection, so only re-stamp them when we're allowed to write.
+  if (!keepTyping || !e.state.options.length) e.state.innerHTML = uccStateOptions((addr.state || '').toUpperCase(), '—');
+  if (!keepTyping || !e.fileState.options.length) e.fileState.innerHTML = uccStateOptions(fileState, 'Select a state');
+
+  if (!keepTyping) {
+    e.org.value = d.organization_name || '';
+    e.first.value = d.first_name || '';
+    e.last.value = d.last_name || '';
+    e.street.value = addr.address_line1 || '';
+    e.apt.value = addr.address_line2 || '';
+    e.city.value = addr.city || '';
+    e.zip.value = addr.zip || addr.postal_code || '';
+    e.collateral.value = f.collateral || '';
+    $('ucfFileNumber').value = f.fileNumber || '';
+    $('ucfFiledAt').value = f.filedAt || '';
+    $('ucfLapseAt').value = f.lapseAt || '';
+  }
+  $('ucfStateLinks').innerHTML = renderStateFilings(fileState, 'Filing Office');
+
+  var shown = live || f;
+  var filed = uccIsFiled(shown);
+  var pill = $('uccFilingStatus'), note = $('uccFilingNote');
+  pill.textContent = filed ? ('Filed · ' + (shown.fileNumber || '')) : 'Not filed';
+  note.className = 'ucf-note';
+  if (filed){
+    note.className = 'ucf-note on good';
+    note.innerHTML = 'Recorded as filed. Changing the debtor now needs an amendment at the filing ' +
+                     'office, not an edit here.';
+  } else if (!fileState){
+    note.className = 'ucf-note on warn';
+    note.innerHTML = 'Choose the filing state to get the filing-office link.';
+  } else {
+    note.className = 'ucf-note on warn';
+    note.innerHTML = 'Not filed yet. File it in Middesk or the state portal above, then paste the ' +
+                     'file number here so the review has a record.';
+  }
+  // Only re-baseline when we actually painted. Adopting the user's typing as the baseline would
+  // make the NEXT render see no difference and overwrite them — the edit has to keep looking like
+  // an edit until it is saved or deliberately replaced.
+  if (!keepTyping) _uccPainted = JSON.stringify(readUccFilingForm());
+}
+function saveUccFiling(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var form = readUccFilingForm();
+  // A file number without a state is a record nobody can act on later — a UCC-1 is only
+  // meaningful against a jurisdiction.
+  if (uccIsFiled(form) && !form.states.length){
+    showStatus('Choose the filing state that file number belongs to.', 'error'); return;
+  }
+  MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
+  renderUccFiling(MODEL, true);            // force: what's on screen is now what's stored
+  persistManual(uccIsFiled(form) ? 'UCC filing recorded.' : 'UCC filing details saved.');
+}
+function copyUccDetails(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var text = uccCopyText(readUccFilingForm());
+  var done = function(){ showStatus('Debtor details copied — paste them into the filing form.', 'success'); };
+  var fail = function(){ showStatus('Could not copy automatically — select the fields and copy manually.', 'error'); };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, fail); return; }
+  } catch (e) { /* fall through to the textarea path below */ }
+  // execCommand fallback: older embeds and any context where the async clipboard API is blocked.
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    ok ? done() : fail();
+  } catch (e2) { fail(); }
+}
+
 // Persist every underwriter-added record (owners/contacts/customers/related/UCC) by saving the
 // Underwriting_Review — the Manual_* arrays ride in the payload via readState → buildReviewPayload.
 // Reuses the existing /uw-review-save route; no per-type endpoint needed.
@@ -2661,6 +2938,44 @@ function boot() {
   wireAdd('addRelatedToggle','addRelatedForm','arSave','related',readRelatedForm);
   if ($('addUccToggle')) $('addUccToggle').addEventListener('click', function(){ var f=$('addUccForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
   if ($('aucSave')) $('aucSave').addEventListener('click', addUcc);
+  // UCC Filing card. The radio and owner picker deliberately rewrite fields, so they force a full
+  // repaint; every other re-render preserves whatever the underwriter has typed (see _uccPainted).
+  qsa('input[name="ucfType"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      if (!MODEL) return;
+      var form = readUccFilingForm();
+      form.debtor.type = r.value;
+      MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
+      renderUccFiling(MODEL, true);
+    });
+  });
+  if ($('ucfOwnerPick')) $('ucfOwnerPick').addEventListener('change', function(){
+    if (!MODEL) return;
+    var o = ((MODEL.owners || [])[parseInt(this.value, 10)]) || null;
+    if (!o) return;
+    var form = readUccFilingForm();
+    form.debtor.type = 'INDIVIDUAL';
+    form.debtor.first_name = o.First_Name1 || '';
+    form.debtor.last_name = o.Last_Name1 || '';
+    // An owner's own address only overwrites the debtor address when they actually have one.
+    var oa = String(o.Address || '');
+    var mm = oa.match(/^\s*(.+?),\s*([^,]+?),\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$/);
+    if (mm) form.debtor.address = { address_line1:mm[1].trim(), address_line2:'', city:mm[2].trim(),
+                                    state:mm[3].toUpperCase(), zip:mm[4] || '' };
+    MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
+    renderUccFiling(MODEL, true);
+  });
+  if ($('ucfState')) $('ucfState').addEventListener('change', function(){
+    // Keep the filing state following the debtor state until the underwriter sets it themselves.
+    if (!MODEL) return;
+    var fs = $('ucfFileState');
+    if (fs && !fs.value) { fs.value = this.value; $('ucfStateLinks').innerHTML = renderStateFilings(this.value, 'Filing Office'); }
+  });
+  if ($('ucfFileState')) $('ucfFileState').addEventListener('change', function(){
+    $('ucfStateLinks').innerHTML = renderStateFilings(this.value, 'Filing Office');
+  });
+  if ($('ucfSave')) $('ucfSave').addEventListener('click', saveUccFiling);
+  if ($('ucfCopy')) $('ucfCopy').addEventListener('click', copyUccDetails);
   if ($('addDocReqToggle')) $('addDocReqToggle').addEventListener('click', function(){ var f=$('addDocReqForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
   if ($('rdSave')) $('rdSave').addEventListener('click', requestDoc);
   if ($('hrvToggle')) $('hrvToggle').addEventListener('click', function(){ var f=$('hrvForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });

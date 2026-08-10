@@ -1611,15 +1611,48 @@ function openAccessDrawer(user) {
     picker.appendChild(o);
   });
 
+  // Switching the template has to rebuild the tree. Without this the tree kept
+  // rendering the OLD template while saveAccess posted the NEW template_id, so
+  // collectDrawerSelection computed its delta against a template that was no
+  // longer selected -- and any tick or untick of a capability that differed
+  // between the two produced neither an added nor a removed entry and was
+  // silently dropped. The admin then confirmed one thing and saved another.
+  picker.onchange = rebuildDrawerForSelectedTemplate;
+
   var d = user.delta || { added: [], removed: [] };
   var selected = (currentDrawerTemplate.capabilities || [])
     .filter(function (k) { return d.removed.indexOf(k) === -1; })
     .concat(d.added);
 
+  renderDrawerTree(selected);
+  document.getElementById('access-scrim').classList.add('show');
+}
+
+function renderDrawerTree(selected) {
   var tree = document.getElementById('access-tree');
   tree.innerHTML = '';
   tree.appendChild(buildCapabilityTree(accessCatalog, selected, adminCeiling));
-  document.getElementById('access-scrim').classList.add('show');
+}
+
+function rebuildDrawerForSelectedTemplate() {
+  // Read the admin's edits as a delta against the template they were made
+  // against, THEN re-point currentDrawerTemplate, then re-apply that delta to
+  // the newly selected template. Carrying the delta rather than the raw checked
+  // set is what makes the result mean the same thing on both sides of the swap:
+  // an explicit addition stays an addition, an explicit removal stays a removal,
+  // and a capability that simply moved into or out of the template follows the
+  // template rather than masquerading as an override.
+  var edits = collectDrawerSelection();
+  var picker = document.getElementById('access-template');
+  currentDrawerTemplate = accessTemplates.filter(function (t) {
+    return t.template_id === picker.value;
+  })[0] || { capabilities: [] };
+
+  var caps = currentDrawerTemplate.capabilities || [];
+  var selected = caps
+    .filter(function (k) { return edits.grants_removed.indexOf(k) === -1; })
+    .concat(edits.grants_added.filter(function (k) { return caps.indexOf(k) === -1; }));
+  renderDrawerTree(selected);
 }
 
 function closeAccessDrawer() {
@@ -1728,11 +1761,11 @@ function openTemplateEditor(template) {
   document.getElementById('template-fields').style.display = '';
   document.getElementById('template-name').value = template.name || '';
   document.getElementById('template-description').value = template.description || '';
+  // The drawer is shared with the user-access mode, so drop that mode's picker
+  // handler: a rebuild here would replace the template's own capability tree.
+  document.getElementById('access-template').onchange = null;
 
-  var tree = document.getElementById('access-tree');
-  tree.innerHTML = '';
-  tree.appendChild(buildCapabilityTree(
-    accessCatalog, template.capabilities || [], adminCeiling));
+  renderDrawerTree(template.capabilities || []);
   document.getElementById('access-drawer-name').textContent =
     template.template_id ? ('Edit ' + template.name) : 'New template';
   document.getElementById('access-scrim').classList.add('show');

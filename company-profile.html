@@ -666,7 +666,17 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <span id="access-drawer-name"></span>
         <button data-act="close-access">&times;</button>
       </div>
-      <label class="field">
+      <div id="template-fields" style="display:none;">
+        <label class="field">
+          <span>Name</span>
+          <input class="input" type="text" id="template-name" placeholder="Template name">
+        </label>
+        <label class="field">
+          <span>Description</span>
+          <input class="input" type="text" id="template-description" placeholder="What this template is for">
+        </label>
+      </div>
+      <label class="field" id="access-template-field">
         <span>Template</span>
         <select id="access-template"></select>
       </label>
@@ -783,7 +793,7 @@ function bindGlobalUI() {
     if (e.target.id === 'access-scrim') closeAccessDrawer();
   });
   var saveAccessBtn = document.querySelector('[data-act="save-access"]');
-  if (saveAccessBtn) saveAccessBtn.addEventListener('click', saveAccess);
+  if (saveAccessBtn) saveAccessBtn.addEventListener('click', saveDrawer);
 
   // Templates tab (PERM3)
   var newTemplateBtn = document.querySelector('[data-act="new-template"]');
@@ -1276,9 +1286,23 @@ function submitContact() {
   // blank default silently meaning Full Access is the exact defect this whole
   // build removes. showModalMsg, not showCardError, because the modal is still
   // open and the page behind it must not be wiped for an in-modal validation.
+  //
+  // The requirement is conditional on there being something to require: the
+  // starter templates are created by a migration that runs AFTER this code
+  // deploys, and the picker is not required for an account whose flag is
+  // off (the backend does not enforce template_id there either). In both
+  // cases the picker holds only its blank placeholder option (or nothing at
+  // all, if renderInviteTemplatePicker was never called). Blocking submit in
+  // that window would mean nobody can invite a user at all -- worse than the
+  // defect the guard exists to prevent. The backend remains the real
+  // enforcement (it rejects a template-id-less invite when the flag is on);
+  // this guard only stops an admin from reaching that rejection once there
+  // is genuinely a template to pick.
   var templateId = '';
-  if (!isEdit) {
-    templateId = document.getElementById('invite-template').value;
+  var templatePicker = document.getElementById('invite-template');
+  var templatesAvailable = !!(templatePicker && templatePicker.options.length > 1);
+  if (!isEdit && templatesAvailable) {
+    templateId = templatePicker.value;
     if (!templateId) {
       showModalMsg('Choose a permission template for this user.', 'error');
       return;
@@ -1302,7 +1326,7 @@ function submitContact() {
   };
   var endpoint = '/broker-add-contact';
   if (isEdit) { endpoint = '/broker-edit-contact'; payload.contact_id = editingContactId; }
-  else { payload.template_id = templateId; }
+  else if (templatesAvailable) { payload.template_id = templateId; }
 
   fetch(BROKER_API_BASE + endpoint, {
     method: 'POST',
@@ -1466,6 +1490,12 @@ var accessTemplates = [];
 var currentDrawerTemplate = null;
 var currentDrawerUser = null;
 var adminCeiling = [];
+// The drawer is shared between editing a user's access and editing a
+// template. Tracked explicitly rather than inferred from whichever of
+// currentDrawerUser / currentDrawerTemplate happens to be non-null, so a
+// leftover value from the drawer's last use can never cause Save to dispatch
+// to the wrong endpoint.
+var drawerMode = 'user';
 
 function renderAccessTab(users, templates) {
   accessTemplates = templates || [];
@@ -1561,10 +1591,14 @@ function collectDrawerSelection() {
 }
 
 function openAccessDrawer(user) {
+  drawerMode = 'user';
   currentDrawerUser = user;
   currentDrawerTemplate = accessTemplates.filter(function (t) {
     return t.template_id === user.template_id;
   })[0] || { capabilities: [] };
+
+  document.getElementById('template-fields').style.display = 'none';
+  document.getElementById('access-template-field').style.display = '';
 
   document.getElementById('access-drawer-name').textContent = user.name || user.email;
   var picker = document.getElementById('access-template');
@@ -1687,7 +1721,14 @@ function renderTemplatesTab(templates) {
 }
 
 function openTemplateEditor(template) {
+  drawerMode = 'template';
   currentDrawerTemplate = template;
+
+  document.getElementById('access-template-field').style.display = 'none';
+  document.getElementById('template-fields').style.display = '';
+  document.getElementById('template-name').value = template.name || '';
+  document.getElementById('template-description').value = template.description || '';
+
   var tree = document.getElementById('access-tree');
   tree.innerHTML = '';
   tree.appendChild(buildCapabilityTree(
@@ -1695,6 +1736,59 @@ function openTemplateEditor(template) {
   document.getElementById('access-drawer-name').textContent =
     template.template_id ? ('Edit ' + template.name) : 'New template';
   document.getElementById('access-scrim').classList.add('show');
+}
+
+function saveTemplate() {
+  // Reuses the same delta computation saveAccess uses for a user's overrides:
+  // the tree was built with the template's OWN capabilities as the checked
+  // set, so folding "added" back in and "removed" back out of that same set
+  // reconstructs exactly what is checked now -- the template's new
+  // capability list -- without a separate tree-reading helper.
+  var sel = collectDrawerSelection();
+  var tplCaps = (currentDrawerTemplate || {}).capabilities || [];
+  var capabilities = tplCaps
+    .filter(function (k) { return sel.grants_removed.indexOf(k) === -1; })
+    .concat(sel.grants_added);
+
+  var body = {
+    email: brokerEmail,
+    name: document.getElementById('template-name').value.trim(),
+    description: document.getElementById('template-description').value.trim(),
+    capabilities: capabilities
+  };
+  // Editing an existing account template carries its id forward so the save
+  // updates it in place. Cloning or creating new omits it, so the backend
+  // mints a fresh template rather than overwriting the source.
+  if (currentDrawerTemplate && currentDrawerTemplate.template_id) {
+    body.template_id = currentDrawerTemplate.template_id;
+  }
+
+  return fetch(BROKER_API_BASE + '/permissions/template', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function (r) { return r.json().then(function (b) { return { r: r, b: b }; }); })
+    .then(function (res) {
+      if (res.r.status === 200) {
+        closeAccessDrawer();
+        loadAccess();
+        return;
+      }
+      // 400 (invalid/internal capability, or a missing name), 403 (beyond the
+      // admin's own ceiling), 404 (template no longer exists), and 409 (would
+      // leave the account with nobody who can manage users) all carry their
+      // own server-authored message -- surfaced as-is, same as saveAccess
+      // does for the equivalent cases on /permissions/user.
+      showCardError(res.b.error || 'Could not save this template.');
+    });
+}
+
+// The drawer's Save button is shared between editing a user's access and
+// editing a template; dispatch on the explicit mode set by whichever opened
+// it, never on which of currentDrawerUser / currentDrawerTemplate happens to
+// be populated.
+function saveDrawer() {
+  return drawerMode === 'template' ? saveTemplate() : saveAccess();
 }
 
 function deleteTemplate(templateId) {
@@ -1848,6 +1942,17 @@ window.toggleUserStatus = function() {
 };
 window.renderActivity = function() {
   return renderActivity.apply(this, arguments);
+};
+window.saveTemplate = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  return saveTemplate.apply(this, arguments);
+};
+window.saveDrawer = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  if (typeof window.drawerMode === 'string') drawerMode = window.drawerMode;
+  return saveDrawer.apply(this, arguments);
 };
 
 })();

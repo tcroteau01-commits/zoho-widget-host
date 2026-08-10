@@ -75,3 +75,56 @@ test('a disabled user offers Enable rather than Disable', () => {
   const btn = w.document.querySelector('[data-access-row] [data-act="toggle-status"]');
   assert.strictEqual(btn.textContent, 'Enable');
 });
+
+test('saving a cloned template posts to /permissions/template with no template_id', () => {
+  const w = boot();
+  w.accessCatalog = { groups: [] };
+  w.adminCeiling = [];
+  w.openTemplateEditor({ name: 'Operations (copy)', description: 'Book loads and submit for factoring.',
+                         capabilities: ['page.tms_load_board'] });
+  // Capture only the save itself: on a 200 saveTemplate calls loadAccess(),
+  // which fires several more fetches synchronously and would otherwise
+  // overwrite this before the assertions below run.
+  let captured = null;
+  w.fetch = (url, opts) => {
+    if (!captured) captured = { url, opts };
+    return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok: true, template_id: 'new_1' }) });
+  };
+  return w.saveTemplate().then(() => {
+    assert.ok(captured, 'fetch was called');
+    assert.ok(captured.url.indexOf('/permissions/template') !== -1, 'hits the template endpoint');
+    const sent = JSON.parse(captured.opts.body);
+    assert.strictEqual(sent.template_id, undefined, 'a clone mints a new id server-side');
+    assert.strictEqual(sent.name, 'Operations (copy)');
+  });
+});
+
+test('saving an edit posts with the template_id', () => {
+  const w = boot();
+  w.accessCatalog = { groups: [] };
+  w.adminCeiling = [];
+  w.openTemplateEditor(Object.assign({}, TEMPLATES[1]));
+  let captured = null;
+  w.fetch = (url, opts) => {
+    if (!captured) captured = { url, opts };
+    return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok: true, template_id: 'mine' }) });
+  };
+  return w.saveTemplate().then(() => {
+    const sent = JSON.parse(captured.opts.body);
+    assert.strictEqual(sent.template_id, 'mine');
+  });
+});
+
+test('a 409 from saving a template surfaces the server message rather than failing silently', () => {
+  const w = boot();
+  w.accessCatalog = { groups: [] };
+  w.adminCeiling = [];
+  w.openTemplateEditor(Object.assign({}, TEMPLATES[1]));
+  const serverMsg = 'Removing users.manage from this template would leave the account '
+    + 'with nobody who can manage users. Give someone else that access first.';
+  w.fetch = () => Promise.resolve({ status: 409, json: () => Promise.resolve({ error: serverMsg }) });
+  return w.saveTemplate().then(() => {
+    const shown = w.document.getElementById('company-body').textContent;
+    assert.ok(shown.includes('nobody who can manage users'), 'surfaces the real server message, got: ' + shown);
+  });
+});

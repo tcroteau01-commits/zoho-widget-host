@@ -393,6 +393,40 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .foot-actions { width: 100%; flex-direction: column; }
   .foot-actions .modal-btn { width: 100%; min-height: 44px; }
 }
+
+/* Users & Access (PERM3) */
+.count { font-size: 12px; font-weight: 600; color: #888; margin-left: 4px; }
+.access-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 4px; border-bottom: 1px solid #f0efe9;
+  font-size: 13px; color: #444;
+}
+.access-row:last-child { border-bottom: none; }
+.access-row button[data-act="edit-access"] {
+  flex-shrink: 0;
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 600; color: #444;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.access-row button[data-act="edit-access"]:hover { border-color: #b8b8b8; background: #fafafa; }
+.modal-box { padding: 24px 26px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.field > span {
+  font-size: 11px; font-weight: 700; color: #555;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.field select {
+  width: 100%; padding: 10px 12px;
+  background: #fff; border: 1.5px solid #e0ddd2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; color: #272727;
+}
+.field select:focus { outline: 0; border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.12); }
+.btn-primary {
+  background: #e8a020; color: #fff; border: 1.5px solid #e8a020; border-radius: 8px;
+  padding: 9px 18px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-primary:hover { background: #d49018; border-color: #d49018; }
 </style>
 </head>
 <body>
@@ -574,20 +608,22 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 </div>
 
 <!-- Access drawer (PERM3) -->
-<div class="modal" id="access-drawer" style="display:none">
-  <div class="modal-box">
-    <div class="modal-head">
-      <span id="access-drawer-name"></span>
-      <button data-act="close-access">&times;</button>
-    </div>
-    <label class="field">
-      <span>Template</span>
-      <select id="access-template"></select>
-    </label>
-    <div id="access-tree"></div>
-    <div class="modal-foot">
-      <button data-act="save-access" class="btn-primary">Save</button>
-      <button data-act="close-access" class="btn">Cancel</button>
+<div class="modal-scrim" id="access-scrim">
+  <div class="modal" id="access-drawer">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="access-drawer-name"></span>
+        <button data-act="close-access">&times;</button>
+      </div>
+      <label class="field">
+        <span>Template</span>
+        <select id="access-template"></select>
+      </label>
+      <div id="access-tree"></div>
+      <div class="modal-foot">
+        <button data-act="save-access" class="btn-primary">Save</button>
+        <button data-act="close-access" class="btn">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
@@ -675,6 +711,7 @@ function bindGlobalUI() {
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && document.getElementById('modal-scrim').classList.contains('show')) closeModal();
     if (e.key === 'Escape' && document.getElementById('view-scrim').classList.contains('show')) closeViewModal();
+    if (e.key === 'Escape' && document.getElementById('access-scrim').classList.contains('show')) closeAccessDrawer();
   });
 
   // Permission card behavior
@@ -689,9 +726,10 @@ function bindGlobalUI() {
 
   // Access drawer (PERM3)
   document.querySelectorAll('[data-act="close-access"]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      document.getElementById('access-drawer').style.display = 'none';
-    });
+    btn.addEventListener('click', closeAccessDrawer);
+  });
+  document.getElementById('access-scrim').addEventListener('click', function(e) {
+    if (e.target.id === 'access-scrim') closeAccessDrawer();
   });
   var saveAccessBtn = document.querySelector('[data-act="save-access"]');
   if (saveAccessBtn) saveAccessBtn.addEventListener('click', saveAccess);
@@ -1464,7 +1502,11 @@ function openAccessDrawer(user) {
   var tree = document.getElementById('access-tree');
   tree.innerHTML = '';
   tree.appendChild(buildCapabilityTree(accessCatalog, selected, adminCeiling));
-  document.getElementById('access-drawer').style.display = 'block';
+  document.getElementById('access-scrim').classList.add('show');
+}
+
+function closeAccessDrawer() {
+  document.getElementById('access-scrim').classList.remove('show');
 }
 
 function saveAccess() {
@@ -1486,7 +1528,7 @@ function saveAccess() {
         showCardError('That is beyond your own access, so you cannot grant it.');
         return;
       }
-      document.getElementById('access-drawer').style.display = 'none';
+      closeAccessDrawer();
       loadAccess();
     });
 }
@@ -1559,7 +1601,13 @@ window.collectDrawerSelection = function() {
 window.openAccessDrawer = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  if (window.accessCatalog !== undefined) accessCatalog = window.accessCatalog;
+  if (Array.isArray(window.accessTemplates)) accessTemplates = window.accessTemplates;
+  if (Array.isArray(window.adminCeiling)) adminCeiling = window.adminCeiling;
   return openAccessDrawer.apply(this, arguments);
+};
+window.closeAccessDrawer = function() {
+  return closeAccessDrawer.apply(this, arguments);
 };
 window.loadAccess = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;

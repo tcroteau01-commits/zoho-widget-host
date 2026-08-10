@@ -103,3 +103,25 @@ test('a disabled user is shown as disabled rather than hidden', () => {
   const row = w.document.querySelector('[data-access-row]');
   assert.ok(row.textContent.toLowerCase().includes('disabled'));
 });
+
+test('the access drawer is reachable through the same modal-scrim mechanism as the other modals', () => {
+  const w = boot();
+  // openAccessDrawer reads these closure-private vars off window the same way
+  // collectDrawerSelection's test above reads currentDrawerTemplate.
+  w.accessCatalog = CATALOG;
+  w.adminCeiling = ['page.tms_load_board', 'action.load.submit', 'page.loads_margins'];
+  const user = { portal_user_id: 'u1', name: 'Jane Doe', email: 'jane@acme.com',
+    template_id: 't_ops', delta: { added: [], removed: [] } };
+
+  const scrim = w.document.getElementById('access-scrim');
+  assert.ok(scrim.classList.contains('modal-scrim'),
+            'uses the same overlay class as #modal-scrim and #view-scrim, not a bespoke one');
+  assert.ok(!scrim.classList.contains('show'), 'closed before opening');
+
+  w.openAccessDrawer(user);
+  assert.ok(scrim.classList.contains('show'),
+            'opening puts the shared scrim into the same "show" state the other two modals use');
+
+  w.closeAccessDrawer();
+  assert.ok(!scrim.classList.contains('show'), 'closing removes it again');
+});

@@ -429,6 +429,39 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   transition: all 0.15s;
 }
 #access-drawer .btn-primary:hover { background: #d49018; border-color: #d49018; }
+
+/* Templates tab + activity log (PERM3) -- scoped to #templates-card / #activity-card
+   so nothing here can reach the Add Trusted Contact modal or the access drawer. */
+#templates-card .template-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 4px; border-bottom: 1px solid #f0efe9;
+  font-size: 13px; color: #444;
+}
+#templates-card .template-row:last-child { border-bottom: none; }
+#templates-card .template-row button {
+  flex-shrink: 0; margin-left: 8px;
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 600; color: #444;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+#templates-card .template-row button:hover:not(:disabled) { border-color: #b8b8b8; background: #fafafa; }
+#templates-card .template-row button:disabled { opacity: 0.55; cursor: not-allowed; }
+#activity-card #activity-list > div {
+  padding: 10px 4px; border-bottom: 1px solid #f0efe9;
+  font-size: 12px; color: #555;
+}
+#activity-card #activity-list > div:last-child { border-bottom: none; }
+#invite-template-field { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 0; }
+#invite-template-field > span {
+  font-size: 11px; font-weight: 700; color: #555;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+#invite-template-field select {
+  width: 100%; padding: 10px 12px;
+  background: #fff; border: 1.5px solid #e0ddd2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; color: #272727;
+}
+#invite-template-field select:focus { outline: 0; border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.12); }
 </style>
 </head>
 <body>
@@ -498,6 +531,17 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   <div class="card" id="access-card" style="margin-top:18px;">
     <div class="card-title">Users &amp; Access <span class="count" id="access-count"></span></div>
     <div id="access-list"></div>
+  </div>
+
+  <div class="card" id="templates-card" style="margin-top:18px;">
+    <div class="card-title">Permission Templates</div>
+    <div id="templates-list"></div>
+    <button data-act="new-template" class="btn">Create a template</button>
+  </div>
+
+  <div class="card" id="activity-card" style="margin-top:18px;">
+    <div class="card-title">Recent Access Changes</div>
+    <div id="activity-list"></div>
   </div>
 
   <div id="logo-section" class="card" style="margin-top:18px;"></div>
@@ -582,6 +626,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <span>Full Access grants admin privileges including the ability to add and remove other users. Selecting this will deselect all other roles.</span>
         </div>
       </div>
+
+      <label class="field" id="invite-template-field">
+        <span>Permission template</span>
+        <select id="invite-template" required></select>
+      </label>
     </div>
 
     <div class="modal-foot">
@@ -735,6 +784,12 @@ function bindGlobalUI() {
   });
   var saveAccessBtn = document.querySelector('[data-act="save-access"]');
   if (saveAccessBtn) saveAccessBtn.addEventListener('click', saveAccess);
+
+  // Templates tab (PERM3)
+  var newTemplateBtn = document.querySelector('[data-act="new-template"]');
+  if (newTemplateBtn) newTemplateBtn.addEventListener('click', function () {
+    openTemplateEditor({ name: '', description: '', capabilities: [] });
+  });
 
   // Inline error clearing
   ['m-first','m-last','m-email','m-phone'].forEach(function(id) {
@@ -1002,6 +1057,8 @@ function resetModal() {
   document.querySelectorAll('.perm-card.selected').forEach(function(e) { e.classList.remove('selected'); });
   document.getElementById('full-warn').classList.remove('show');
   selectedRoles = [];
+  var tplPicker = document.getElementById('invite-template');
+  if (tplPicker) tplPicker.value = '';
   syncModalSubmit();
   hideModalMsg();
   editingContactId = null;
@@ -1213,9 +1270,23 @@ function submitContact() {
   if (!validateModal()) return;
   if (!selectedRoles.length) return;
 
+  var isEdit = !!editingContactId;
+
+  // A permission template is required on invite, with no default selection: a
+  // blank default silently meaning Full Access is the exact defect this whole
+  // build removes. showModalMsg, not showCardError, because the modal is still
+  // open and the page behind it must not be wiped for an in-modal validation.
+  var templateId = '';
+  if (!isEdit) {
+    templateId = document.getElementById('invite-template').value;
+    if (!templateId) {
+      showModalMsg('Choose a permission template for this user.', 'error');
+      return;
+    }
+  }
+
   var btn = document.getElementById('modal-submit');
   var cancel = document.getElementById('modal-cancel');
-  var isEdit = !!editingContactId;
   btn.disabled = true;
   cancel.disabled = true;
   btn.textContent = isEdit ? 'Saving…' : 'Submitting…';
@@ -1231,6 +1302,7 @@ function submitContact() {
   };
   var endpoint = '/broker-add-contact';
   if (isEdit) { endpoint = '/broker-edit-contact'; payload.contact_id = editingContactId; }
+  else { payload.template_id = templateId; }
 
   fetch(BROKER_API_BASE + endpoint, {
     method: 'POST',
@@ -1424,6 +1496,15 @@ function renderAccessTab(users, templates) {
       edit.textContent = 'Edit access';
       edit.onclick = function () { openAccessDrawer(u); };
       row.appendChild(edit);
+
+      // Disable is the reversible action, not delete: a disabled user still
+      // shows up here (rather than vanishing) so the control always reads
+      // correctly for their current state.
+      var toggle = document.createElement('button');
+      toggle.setAttribute('data-act', 'toggle-status');
+      toggle.textContent = u.status === 'disabled' ? 'Enable' : 'Disable';
+      toggle.onclick = function () { toggleUserStatus(u); };
+      row.appendChild(toggle);
     }
     list.appendChild(row);
   });
@@ -1545,9 +1626,132 @@ function loadAccess() {
   ]).then(function (out) {
     accessCatalog = out[0];
     adminCeiling = (out[3] || {}).capabilities || [];
-    renderAccessTab((out[2] || {}).users || [], (out[1] || {}).templates || []);
+    var templates = (out[1] || {}).templates || [];
+    renderAccessTab((out[2] || {}).users || [], templates);
+    renderTemplatesTab(templates);
+    renderInviteTemplatePicker(templates);
+    return fetch(BROKER_API_BASE + '/permissions/activity?email='
+                 + encodeURIComponent(brokerEmail))
+      .then(function (r) { return r.json(); })
+      .then(function (a) { renderActivity((a || {}).events || []); });
   }).catch(function (err) {
     console.error('[CompanyProfile] access load failed', err);
+  });
+}
+
+// --- PERM3 Templates, invite picker, status, activity ---------------------
+function renderTemplatesTab(templates) {
+  var list = document.getElementById('templates-list');
+  if (!list) return;
+  list.innerHTML = '';
+  (templates || []).forEach(function (t) {
+    var row = document.createElement('div');
+    row.setAttribute('data-template-row', t.template_id);
+    row.className = 'template-row';
+    row.appendChild(document.createTextNode(
+      t.name + '  ·  ' + (t.description || '') + '  ·  ' + t.user_count + ' users'));
+
+    // A starter is OperFi's, shared by every client. Cloning is the only safe
+    // edit: changing it in place would change it for everyone.
+    var clone = document.createElement('button');
+    clone.setAttribute('data-act', 'clone-template');
+    clone.textContent = 'Clone';
+    clone.onclick = function () {
+      openTemplateEditor({ name: t.name + ' (copy)', description: t.description,
+                           capabilities: t.capabilities.slice() });
+    };
+    row.appendChild(clone);
+
+    if (!t.is_system) {
+      var edit = document.createElement('button');
+      edit.setAttribute('data-act', 'edit-template');
+      edit.textContent = 'Edit';
+      edit.onclick = function () { openTemplateEditor(t); };
+      row.appendChild(edit);
+
+      var del = document.createElement('button');
+      del.setAttribute('data-act', 'delete-template');
+      del.textContent = 'Delete';
+      // Blocked rather than cascaded: deleting a template out from under users
+      // would silently strip their access.
+      del.disabled = t.user_count > 0;
+      if (del.disabled) {
+        del.setAttribute('title',
+          t.user_count + ' users are on this template. Move them first.');
+      }
+      del.onclick = function () { deleteTemplate(t.template_id); };
+      row.appendChild(del);
+    }
+    list.appendChild(row);
+  });
+}
+
+function openTemplateEditor(template) {
+  currentDrawerTemplate = template;
+  var tree = document.getElementById('access-tree');
+  tree.innerHTML = '';
+  tree.appendChild(buildCapabilityTree(
+    accessCatalog, template.capabilities || [], adminCeiling));
+  document.getElementById('access-drawer-name').textContent =
+    template.template_id ? ('Edit ' + template.name) : 'New template';
+  document.getElementById('access-scrim').classList.add('show');
+}
+
+function deleteTemplate(templateId) {
+  return fetch(BROKER_API_BASE + '/permissions/template/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, template_id: templateId })
+  }).then(function (r) { return r.json().then(function (b) { return { r: r, b: b }; }); })
+    .then(function (res) {
+      if (res.r.status !== 200) { showCardError(res.b.error); return; }
+      loadAccess();
+    });
+}
+
+function renderInviteTemplatePicker(templates) {
+  var picker = document.getElementById('invite-template');
+  if (!picker) return;
+  picker.innerHTML = '';
+  // Blank first and required: there is no default. A blank default silently
+  // meaning Full Access is the defect this whole build exists to remove.
+  var blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = 'Choose a template';
+  picker.appendChild(blank);
+  (templates || []).forEach(function (t) {
+    var o = document.createElement('option');
+    o.value = t.template_id;
+    o.textContent = t.name;
+    picker.appendChild(o);
+  });
+  picker.required = true;
+  picker.value = '';
+}
+
+function toggleUserStatus(user) {
+  var next = user.status === 'disabled' ? 'active' : 'disabled';
+  return fetch(BROKER_API_BASE + '/permissions/user', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail,
+                           portal_user_id: user.portal_user_id, status: next })
+  }).then(function (r) { return r.json().then(function (b) { return { r: r, b: b }; }); })
+    .then(function (res) {
+      if (res.r.status === 409) { showCardError(res.b.error); return; }
+      loadAccess();
+    });
+}
+
+function renderActivity(events) {
+  var list = document.getElementById('activity-list');
+  if (!list) return;
+  list.innerHTML = '';
+  (events || []).forEach(function (e) {
+    var line = document.createElement('div');
+    var who = e.acting_as_portal_user_id
+      ? 'OperFi support, on behalf of your admin'
+      : 'Your admin';
+    line.textContent = [e.at, who, e.action, e.subject_email || ''].join('  ·  ');
+    list.appendChild(line);
   });
 }
 
@@ -1620,6 +1824,30 @@ window.saveAccess = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
   return saveAccess.apply(this, arguments);
+};
+window.renderTemplatesTab = function() {
+  return renderTemplatesTab.apply(this, arguments);
+};
+window.openTemplateEditor = function() {
+  if (window.accessCatalog !== undefined) accessCatalog = window.accessCatalog;
+  if (Array.isArray(window.adminCeiling)) adminCeiling = window.adminCeiling;
+  return openTemplateEditor.apply(this, arguments);
+};
+window.deleteTemplate = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  return deleteTemplate.apply(this, arguments);
+};
+window.renderInviteTemplatePicker = function() {
+  return renderInviteTemplatePicker.apply(this, arguments);
+};
+window.toggleUserStatus = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  return toggleUserStatus.apply(this, arguments);
+};
+window.renderActivity = function() {
+  return renderActivity.apply(this, arguments);
 };
 
 })();

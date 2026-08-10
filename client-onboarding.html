@@ -327,11 +327,29 @@ body.show-contacts .contacts-only { display: block; }
         </div>
       </div>
       <div class="field"><label>Office Manager</label><input type="text" id="opOfficeMgr"></div>
-      <div class="field"><label>Physical Business Address <span class="req">*</span></label><input type="text" id="opPhysical" placeholder="Street, City, State, ZIP" data-req><div class="ferr" data-err="opPhysical">Physical address is required.</div></div>
+      <!-- Four boxes, not one. The Places proxy already returns {street, city, state, zip} and the
+           widget used to throw the parts away; now they land where the user can see and correct
+           them. Saved back as ONE joined string so the UW tool, sales pipeline and every backend
+           consumer are byte-identical to before. -->
+      <div data-addr="physical">
+        <div class="field"><label>Physical Business Address <span class="req">*</span></label><input type="text" id="opPhysical" data-addr-part="street" placeholder="Street address" data-req><div class="ferr" data-err="opPhysical">Physical address is required.</div></div>
+        <div class="row3">
+          <div class="field"><label>City <span class="req">*</span></label><input type="text" id="opPhysicalCity" data-addr-part="city"></div>
+          <div class="field"><label>State <span class="req">*</span></label><input type="text" id="opPhysicalState" data-addr-part="state" maxlength="2" placeholder="AZ"></div>
+          <div class="field"><label>ZIP <span class="req">*</span></label><input type="text" id="opPhysicalZip" data-addr-part="zip" placeholder="85301"></div>
+        </div>
+      </div>
       <div class="field">
         <div class="chip radio sel" id="sameAddrChip" style="display:inline-flex"><span class="cx">●</span> Mailing address same as physical</div>
       </div>
-      <div class="field" id="mailingWrap" style="display:none"><label>Mailing Business Address <span class="req">*</span></label><input type="text" id="opMailing" placeholder="Street, City, State, ZIP"></div>
+      <div id="mailingWrap" style="display:none" data-addr="mailing">
+        <div class="field"><label>Mailing Business Address <span class="req">*</span></label><input type="text" id="opMailing" data-addr-part="street" placeholder="Street address"><div class="ferr" data-err="opMailing">Mailing address is required.</div></div>
+        <div class="row3">
+          <div class="field"><label>City</label><input type="text" id="opMailingCity" data-addr-part="city"></div>
+          <div class="field"><label>State</label><input type="text" id="opMailingState" data-addr-part="state" maxlength="2" placeholder="AZ"></div>
+          <div class="field"><label>ZIP</label><input type="text" id="opMailingZip" data-addr-part="zip" placeholder="85301"></div>
+        </div>
+      </div>
 
       <div class="divider"></div>
       <div class="section-h">Factoring History</div>
@@ -407,7 +425,7 @@ body.show-contacts .contacts-only { display: block; }
       <div class="step-title">Ownership</div>
       <div class="step-sub">Tell us about the owners. If Owner 1 holds less than 100%, a second owner is required.</div>
       <div id="ownerList">
-        <div class="owner-block" data-owner="0">
+        <div class="owner-block" data-owner="0" data-addr="owner">
           <h4>Owner 1</h4>
           <div class="row2">
             <div class="field"><label>First Name <span class="req">*</span></label><input type="text" data-of="first" data-req></div>
@@ -424,7 +442,12 @@ body.show-contacts .contacts-only { display: block; }
           </div>
           <div class="row2">
             <div class="field"><label>Email <span class="req">*</span></label><input type="email" data-of="email"></div>
-            <div class="field"><label>Address</label><input type="text" data-of="address" placeholder="Street, City, State, ZIP"></div>
+            <div class="field"><label>Address</label><input type="text" data-of="address" data-addr-part="street" placeholder="Street address"></div>
+          </div>
+          <div class="row3">
+            <div class="field"><label>City</label><input type="text" data-of="city" data-addr-part="city"></div>
+            <div class="field"><label>State</label><input type="text" data-of="state" data-addr-part="state" maxlength="2" placeholder="AZ"></div>
+            <div class="field"><label>ZIP</label><input type="text" data-of="zip" data-addr-part="zip" placeholder="85301"></div>
           </div>
         </div>
       </div>
@@ -1008,33 +1031,6 @@ function isDate(v) {
   return d.getFullYear() === yr && d.getMonth() === mo - 1 && d.getDate() === da;
 }
 
-// Addresses are stored as ONE text field, but every downstream consumer needs the four parts:
-// the Zoho Sign setup packet has separate Add/City/State/Zip fields and the CRM Account has
-// Billing_Street/City/State/Code. This MIRRORS the backend's _agr_split_address so the intake only
-// accepts what the backend can actually split — a half address here prints blank on the agreement.
-// Tolerates the shapes people really type: "St, City, ST 12345", "St, City, ST, 12345", a trailing
-// "USA", and ZIP+4.
-function parseAddressParts(raw) {
-  var s = String(raw == null ? '' : raw).replace(/[\n\r]+/g, ', ').trim();
-  if (!s) return { street: '', city: '', state: '', zip: '' };
-  s = s.replace(/,?\s*(USA|United States)\.?\s*$/i, '').trim().replace(/,+$/, '').trim();
-  var zip = '', state = '', m;
-  m = s.match(/(\d{5}(?:-\d{4})?)\s*$/);
-  if (m) { zip = m[1]; s = s.slice(0, m.index).trim().replace(/,+$/, '').trim(); }
-  m = s.match(/[,\s]([A-Za-z]{2})\.?$/);
-  if (m) { state = m[1].toUpperCase(); s = s.slice(0, m.index).trim().replace(/,+$/, '').trim(); }
-  var parts = s.split(',').map(function (p) { return p.trim(); }).filter(Boolean);
-  var city = parts.length > 1 ? parts.pop() : '';
-  return { street: parts.join(', '), city: city, state: state, zip: zip };
-}
-// A complete address = all four parts present. Used to gate submit so nothing downstream
-// (agreement, NOA, CRM) ends up with a partial address.
-function isFullAddress(raw) {
-  var p = parseAddressParts(raw);
-  return !!(p.street && p.city && p.state && p.zip);
-}
-var ADDRESS_HINT = 'Enter the full address including street, city, state and ZIP (e.g. 123 Main St, Glendale, AZ 85301).';
-
 function validateAll(s) {
   var errors = [];
   var req = function (cond, field, msg) { if (!cond) errors.push({ field: field, msg: msg }); };
@@ -1046,14 +1042,18 @@ function validateAll(s) {
   req(isEmail(s.adminEmail), 'opEmail', 'A valid admin email is required.');
   req(isPhone(s.smsPhone), 'opSmsPhone', 'Enter a valid mobile number (10 digits).');
   req(!s.smsPhone || !UI.smsCheck || UI.smsCheck.ok, 'opSmsPhone', 'Your text-update number must be a mobile line that can receive texts (checked on the first step).');
-  req(s.physicalAddress, 'opPhysical', 'Physical address is required.');
-  if (s.physicalAddress) req(isFullAddress(s.physicalAddress), 'opPhysical', 'Physical address: ' + ADDRESS_HINT);
+  // Four boxes means the check is now "are they filled", not a regex guessing whether one free-text
+  // box looked like a whole address.
+  req(s.physicalParts && s.physicalParts.street, 'opPhysical', 'Physical address is required.');
+  req(!s.physicalParts || !s.physicalParts.street || addressGroupComplete(s.physicalParts),
+      'opPhysical', 'Physical address: enter street, city, state and ZIP.');
   // Mailing is only its own field when the applicant unticked "same as physical" — otherwise it's a
   // copy of the physical address, already checked above. It was marked required in the markup but
   // never actually validated. Guard on === false so a caller that omits the flag isn't forced.
-  if (s.sameAddress === false) req(s.mailingAddress, 'opMailing', 'Mailing address is required.');
-  if (s.mailingAddress && s.mailingAddress !== s.physicalAddress) {
-    req(isFullAddress(s.mailingAddress), 'opMailing', 'Mailing address: ' + ADDRESS_HINT);
+  if (s.sameAddress === false) {
+    req(s.mailingParts && s.mailingParts.street, 'opMailing', 'Mailing address is required.');
+    req(!s.mailingParts || !s.mailingParts.street || addressGroupComplete(s.mailingParts),
+        'opMailing', 'Mailing address: enter street, city, state and ZIP.');
   }
   req(num(s.monthly) !== '', 'opMonthly', 'Estimated monthly invoices is required.');
   if (s.authority === 'carrier') {
@@ -1082,8 +1082,9 @@ function validateAll(s) {
     // Owner home address stays OPTIONAL (most applicants leave it blank and underwriting fills it
     // in on review) — but a partial one is worse than none: it reaches the guaranty block of the
     // agreement as a half address. If they enter it, it has to be complete.
-    if (o && o.address && !isFullAddress(o.address)) {
-      errors.push({ field: 'owner', msg: "Owner " + (i + 1) + "'s address: " + ADDRESS_HINT });
+    if (o && o.addressParts && !addressGroupEmpty(o.addressParts) && !addressGroupComplete(o.addressParts)) {
+      errors.push({ field: 'owner',
+                    msg: "Owner " + (i + 1) + "'s address: enter street, city, state and ZIP." });
     }
   });
   if (s.termDate && !isDate(s.termDate)) errors.push({ field: 'opTermDate', msg: 'The factor termination date must be a real date in MM/DD/YYYY format (e.g. 03/15/2027).' });
@@ -1094,6 +1095,33 @@ function validateAll(s) {
 }
 
 // Turn a /place-details-public response into the single-line address the field shows.
+// The four boxes -> the ONE string every downstream consumer still reads. Format is exactly what
+// formatPlace used to produce ("street, city, ST zip"), because the backend's _agr_split_address /
+// _split_us_address and the UCC card's regex all parse that shape. Changing it would break them.
+function joinAddressParts(street, city, state, zip) {
+  var stateZip = ((state || '').trim().toUpperCase() + ((zip || '').trim() ? ' ' + (zip || '').trim() : '')).trim();
+  return [(street || '').trim(), (city || '').trim(), stateZip].filter(Boolean).join(', ').trim();
+}
+// Read a group by its container. `root` is anything holding [data-addr-part] inputs.
+function readAddressGroup(root) {
+  if (!root) return { street: '', city: '', state: '', zip: '', joined: '' };
+  function part(n) {
+    var e = root.querySelector('[data-addr-part="' + n + '"]');
+    return e ? (e.value || '').trim() : '';
+  }
+  var g = { street: part('street'), city: part('city'), state: part('state'), zip: part('zip') };
+  g.joined = joinAddressParts(g.street, g.city, g.state, g.zip);
+  return g;
+}
+// A group is complete when all four are present — replaces the old regex guessing at whether one
+// free-text box "looked like" a full address.
+function addressGroupComplete(g) {
+  return !!(g && g.street && g.city && g.state && g.zip);
+}
+function addressGroupEmpty(g) {
+  return !!g && !g.street && !g.city && !g.state && !g.zip;
+}
+
 function formatPlace(d) {
   if (!d) return '';
   if (d.formatted) return d.formatted;
@@ -1107,10 +1135,12 @@ var OF = {
   rateRow: rateRow, computeQuote: computeQuote, resolveAuthority: resolveAuthority,
   buildApplicationPayload: buildApplicationPayload, buildOwnerPayloads: buildOwnerPayloads,
   buildChildPayloads: buildChildPayloads, buildSubmitBody: buildSubmitBody, validateAll: validateAll, einRequired: einRequired, isEmail: isEmail, isDate: isDate,
-  formatPlace: formatPlace, parseAddressParts: parseAddressParts, isFullAddress: isFullAddress
+  formatPlace: formatPlace, joinAddressParts: joinAddressParts, readAddressGroup: readAddressGroup,
+  addressGroupComplete: addressGroupComplete, addressGroupEmpty: addressGroupEmpty
 };
 global.OF = OF;
 OF.validateStep = function (s) { return validateStep(s); }; // exposed for tests (DOM-driven per-step gate)
+OF.readState = function () { return readState(); };         // exposed for tests (DOM -> payload state)
 
 // ════════════════════════ DOM WIRING (browser only) ═════════════════════════
 function $(id) { return document.getElementById(id); }
@@ -1156,8 +1186,22 @@ function attachAddressAutocomplete(inputOrId) {
     close();
     var url = OF.config.API_BASE + OF.config.PLACE_DETAILS_PATH + '?place_id=' + encodeURIComponent(p.place_id);
     fetch(url).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
-      var line = OF.formatPlace(d);
-      input.value = line || p.description;   // fall back to the prediction text
+      // The proxy already returns {street, city, state, zip}. Fan them out to the four boxes
+      // rather than joining and throwing the parts away, which is what this used to do.
+      var grp = input.closest ? input.closest('[data-addr]') : null;
+      if (grp && d && (d.street || d.city || d.state || d.zip)) {
+        // Assign even when empty: the pick replaces the whole address, so a leftover city or ZIP
+        // from the previous one must not survive under the new street.
+        function put(n, v) {
+          var e = grp.querySelector('[data-addr-part="' + n + '"]');
+          if (e) { e.value = v || ''; e.classList.remove('invalid'); }
+        }
+        put('street', d.street); put('city', d.city);
+        put('state', (d.state || '').toUpperCase()); put('zip', d.zip);
+      } else {
+        // No group (or the lookup gave nothing usable) — keep the old single-box behaviour.
+        input.value = OF.formatPlace(d) || p.description;
+      }
       input.classList.remove('invalid');
     }).catch(function () { input.value = p.description; });
   }
@@ -1260,7 +1304,10 @@ function readState() {
   var creditIssues = qsa('#creditChips .chip.sel').map(function (c) { return c.getAttribute('data-credit'); });
   var owners = qsa('#ownerList .owner-block').map(function (blk) {
     function f(name) { var e = blk.querySelector('[data-of="' + name + '"]'); return e ? e.value.trim() : ''; }
-    return { first: f('first'), last: f('last'), title: f('title'), pct: f('pct'), dob: f('dob'), ssn: f('ssn'), phone: f('phone'), email: f('email'), address: f('address') };
+    var addr = readAddressGroup(blk);
+    return { first: f('first'), last: f('last'), title: f('title'), pct: f('pct'), dob: f('dob'),
+             ssn: f('ssn'), phone: f('phone'), email: f('email'),
+             address: addr.joined, addressParts: addr };
   }).filter(function (o) { return o.first || o.last; });
   var relatedEntities = qsa('#relatedRows .sub-row').map(function (r) {
     function f(n) { var e = r.querySelector('[data-f="' + n + '"]'); return e ? e.value.trim() : ''; }
@@ -1275,6 +1322,7 @@ function readState() {
     return { name: f('name'), title: f('title'), phone: f('phone'), email: f('email') };
   });
   var sameAddr = $('sameAddrChip').classList.contains('sel');
+  var physGroup = readAddressGroup(document.querySelector('[data-addr="physical"]'));
   return {
     authority: UI.authority, authorityType: UI.authorityType, usdot: val('opUsdot') || UI.usdot, mc: val('opMC') || UI.mc,
     referralSource: val('referralSource'), referralName: val('referralName'),
@@ -1285,7 +1333,10 @@ function readState() {
     hasPrior: UI.hasPrior, priorFactor: val('opPriorFactor'), termDate: val('opTermDate'),
     businessPhone: val('opPhone'), adminEmail: val('opEmail'), smsPhone: val('opSmsPhone'), altPhone: val('opAltPhone'),
     opsEmail: val('opOpsEmail'), acctEmail: val('opAcctEmail'), officeManager: val('opOfficeMgr'),
-    physicalAddress: val('opPhysical'), mailingAddress: sameAddr ? val('opPhysical') : val('opMailing'),
+    physicalAddress: physGroup.joined,
+    mailingAddress: sameAddr ? physGroup.joined : readAddressGroup(document.querySelector('[data-addr="mailing"]')).joined,
+    physicalParts: physGroup,
+    mailingParts: sameAddr ? physGroup : readAddressGroup(document.querySelector('[data-addr="mailing"]')),
     sameAddress: sameAddr,
     creditIssues: creditIssues, creditExplanation: val('opCreditExpl'),
     term: UI.term, recourse: UI.recourse, qp: UI.qp,
@@ -1351,7 +1402,18 @@ function validateStep(step) {
   function needEmail(id) { var el = $(id); if (el && !isEmail((el.value || '').trim())) fail(el, id); }
   // Address must be complete here, not just non-empty — catch a half address on this step rather
   // than at submit (or, worse, on the agreement weeks later).
-  function needAddress(id) { var el = $(id); if (el && !isFullAddress((el.value || '').trim())) fail(el, id); }
+  // The id points at the STREET box only — the address is four boxes now, so check the whole
+  // group and flag whichever one is actually empty.
+  function needAddress(id) {
+    var el = $(id); if (!el) return;
+    var grp = el.closest ? el.closest('[data-addr]') : null;
+    var g = OF.readAddressGroup(grp || el.parentNode);
+    if (OF.addressGroupComplete(g)) return;
+    var miss = grp && ['street', 'city', 'state', 'zip'].map(function (n) {
+      return grp.querySelector('[data-addr-part="' + n + '"]');
+    }).filter(function (e) { return e && !(e.value || '').trim(); })[0];
+    fail(miss || el, id);
+  }
   function needPhone(id) { var el = $(id); if (el && !isPhone((el.value || '').trim())) fail(el, id); }
   function needPhoneOpt(id) { var el = $(id); var v = el ? (el.value || '').trim() : ''; if (el && v && !isPhone(v)) fail(el, id); }  // optional: only if filled
 
@@ -1405,8 +1467,13 @@ function validateStep(step) {
     // Owner addresses are optional, but a HALF one is worse than none — it lands in the agreement's
     // guaranty block incomplete. Applies to every owner block, including ones added on this screen.
     qsa('#ownerList .owner-block').forEach(function (b) {
-      var el = b.querySelector('[data-of="address"]'); var v = el ? el.value.trim() : '';
-      if (el && v && !isFullAddress(v)) { el.classList.add('invalid'); bad.push(el); }
+      var g = OF.readAddressGroup(b);
+      if (!OF.addressGroupEmpty(g) && !OF.addressGroupComplete(g)) {
+        var miss = ['street', 'city', 'state', 'zip'].map(function (n) {
+          return b.querySelector('[data-addr-part="' + n + '"]');
+        }).filter(function (e) { return e && !(e.value || '').trim(); })[0];
+        if (miss) { miss.classList.add('invalid'); bad.push(miss); }
+      }
     });
     // Trusted Contacts are optional, but any phone entered must be valid. (sub-rows use data-f)
     qsa('#contactRows .sub-row').forEach(function (r) {
@@ -1422,13 +1489,12 @@ function validateStep(step) {
     // A field flagged only because the address is incomplete looks "filled in" to the applicant —
     // say what's actually wrong instead of the generic "complete the required fields".
     var badAddr = bad.filter(function (e) {
-      var v = (e && e.value || '').trim();
-      return v && (e.id === 'opPhysical' || e.id === 'opMailing' || (e.getAttribute && e.getAttribute('data-of') === 'address'));
+      return !!(e && e.getAttribute && e.getAttribute('data-addr-part'));
     });
     setBanner(step === 2 && !qsa('#creditChips .chip.sel').length
       ? 'Please select a credit history option (or "None of the below").'
       : (badAddr.length && badAddr.length === bad.length
-        ? ADDRESS_HINT
+        ? 'Complete the address: street, city, state and ZIP are all needed.'
         : 'Please complete the required fields highlighted in red before continuing.'), 'error');
     try { bad[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); if (bad[0].focus) bad[0].focus(); } catch (e) {}
     return false;
@@ -1463,6 +1529,7 @@ var ownerCount = 1;
 function addOwnerBlock() {
   ownerCount++;
   var blk = document.createElement('div'); blk.className = 'owner-block'; blk.setAttribute('data-owner', ownerCount - 1);
+  blk.setAttribute('data-addr', 'owner');   // the address group spans two rows of this block
   blk.innerHTML =
     '<h4>Owner ' + ownerCount + '</h4>' +
     '<div class="row2"><div class="field"><label>First Name</label><input type="text" data-of="first"></div>' +
@@ -1473,7 +1540,11 @@ function addOwnerBlock() {
     '<div class="field"><label>SSN</label><input type="text" data-of="ssn"></div>' +
     '<div class="field"><label>Phone</label><input type="tel" data-of="phone"></div></div>' +
     '<div class="row2"><div class="field"><label>Email</label><input type="email" data-of="email"></div>' +
-    '<div class="field"><label>Address</label><input type="text" data-of="address" placeholder="Street, City, State, ZIP"></div></div>';
+    '<div class="field"><label>Address</label><input type="text" data-of="address" data-addr-part="street" placeholder="Street address"></div></div>' +
+    '<div class="row3">' +
+    '<div class="field"><label>City</label><input type="text" data-of="city" data-addr-part="city"></div>' +
+    '<div class="field"><label>State</label><input type="text" data-of="state" data-addr-part="state" maxlength="2" placeholder="AZ"></div>' +
+    '<div class="field"><label>ZIP</label><input type="text" data-of="zip" data-addr-part="zip" placeholder="85301"></div></div>';
   var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×';
   rm.addEventListener('click', function () { blk.remove(); recalc(); });
   blk.appendChild(rm);
@@ -1635,7 +1706,8 @@ function prefillTestData() {
     var fmt = $('opFormation'); if (fmt) fmt.value = 'LLC';
     set('opEIN', '12-3456789');
     set('opPhone', '6235551212'); set('opEmail', 'test@example.com'); set('opSmsPhone', '6235551212');
-    set('opPhysical', '123 Main St, Glendale, AZ 85301');
+    set('opPhysical', '123 Main St'); set('opPhysicalCity', 'Glendale');
+    set('opPhysicalState', 'AZ'); set('opPhysicalZip', '85301');
     set('opMonthly', '$22,000'); set('opTrucks', '2'); set('opDrivers', '2');
     var eq = document.querySelector('#equipChips .chip[data-equip="Dry Van"]');
     if (eq && !eq.classList.contains('sel')) eq.click();
@@ -1644,7 +1716,8 @@ function prefillTestData() {
       var f = function (n, v) { var e = blk.querySelector('[data-of="' + n + '"]'); if (e) e.value = v; };
       f('first', 'Test'); f('last', 'Owner'); f('title', 'Owner'); f('pct', '100');
       f('dob', '01/01/1990'); f('ssn', '111-11-1111'); f('phone', '6235551212');
-      f('email', 'test@example.com'); f('address', '123 Main St, Glendale, AZ');
+      f('email', 'test@example.com');
+      f('address', '123 Main St'); f('city', 'Glendale'); f('state', 'AZ'); f('zip', '85301');
     }
     if (typeof markTermsRead === 'function') markTermsRead();   // simulate reviewing the T&C
     var tc = $('termsChip'); if (tc && !tc.classList.contains('sel')) tc.click();

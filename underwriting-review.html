@@ -486,9 +486,17 @@ tr:last-child td { border-bottom:none; }
             <label>Decision <span id="uwDecisionCurrent" class="pill n" style="margin-left:4px">Pending</span></label>
             <input type="hidden" id="uwDecision" value="Pending">
           </div>
-          <div class="verify-row"><span class="toggle" id="tgAuthority">✓</span> Authority Verified</div>
-          <div class="verify-row"><span class="toggle" id="tgOwnership">✓</span> Ownership Verified</div>
-          <div class="verify-row"><span class="toggle" id="tgUcc">✓</span> UCC Checked &amp; cleared</div>
+          <!-- One row per REVIEW SECTION that needs a human eye, in the order they appear above.
+               Fraud Quick Glance / Compliance & Safety / UCC Research / Documents are deliberately
+               absent: the tool already knows those, and a box restating a known fact just gets
+               ticked reflexively. They stay as derived gates in the Approval Gate card. -->
+          <div class="verify-row"><span class="toggle" id="tgSecApplication">✓</span> Submitted Application</div>
+          <div class="verify-row"><span class="toggle" id="tgSecOwnership">✓</span> Ownership &amp; Entity</div>
+          <div class="verify-row"><span class="toggle" id="tgSecOwners">✓</span> Owner Details</div>
+          <div class="verify-row"><span class="toggle" id="tgSecContacts">✓</span> Trusted Contacts</div>
+          <div class="verify-row"><span class="toggle" id="tgSecClientele">✓</span> Clientele</div>
+          <div class="verify-row"><span class="toggle" id="tgSecRelated">✓</span> Related Businesses</div>
+          <div class="verify-row"><span class="toggle" id="tgSecUccFiling">✓</span> UCC Filing</div>
           <div class="fld" style="margin-top:14px"><label>Notes &amp; History <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· sales + underwriting, newest first</span></label>
             <div class="notes-log" id="uwClientMsgLog"></div>
             <textarea id="uwClientMsg" rows="3" placeholder="Add a note — timestamped &amp; attributed to you, added to the history above, and shown on the client portal &amp; sales pipeline. Saved when you Save / Approve / Decline."></textarea></div>
@@ -932,17 +940,56 @@ function renderStateFilings(code, labelOverride) {
     (parts.length ? parts.join('') : '<span class="sf-none">No filing links on file for this state.</span>') + '</div>';
 }
 
+// The review sections an underwriter must confirm by hand, in page order. Storage is ONE JSON blob
+// (Section_Review) rather than seven Creator booleans — same pattern as Manual_UCC / UCC_Filing /
+// Automated_Checks_JSON, and it keeps this to one new Creator field instead of eight.
+var REVIEW_SECTIONS = [
+  { key: 'application', label: 'Submitted Application', toggle: 'tgSecApplication' },
+  { key: 'ownership',   label: 'Ownership & Entity',    toggle: 'tgSecOwnership' },
+  { key: 'owners',      label: 'Owner Details',         toggle: 'tgSecOwners' },
+  { key: 'contacts',    label: 'Trusted Contacts',      toggle: 'tgSecContacts' },
+  { key: 'clientele',   label: 'Clientele',             toggle: 'tgSecClientele' },
+  { key: 'related',     label: 'Related Businesses',    toggle: 'tgSecRelated' },
+  { key: 'uccFiling',   label: 'UCC Filing',            toggle: 'tgSecUccFiling' }
+];
+// Read the seven toggles off the DOM. Mirrors readState's style: the DOM is the live truth.
+function readSectionReview() {
+  var out = {};
+  REVIEW_SECTIONS.forEach(function (sec) {
+    var el = document.getElementById(sec.toggle);
+    out[sec.key] = !!(el && el.classList.contains('on'));
+  });
+  return out;
+}
+// Stored as JSON on the review. Never throws: a malformed blob must not stop the review rendering.
+function parseSectionReview(review) {
+  var raw = (review || {}).Section_Review;
+  if (!raw) return {};
+  try { var d = (typeof raw === 'string') ? JSON.parse(raw) : raw; return (d && typeof d === 'object') ? d : {}; }
+  catch (e) { return {}; }
+}
+
+function sectionsReviewed(sr) {
+  sr = sr || {};
+  return REVIEW_SECTIONS.filter(function (s) { return !!sr[s.key]; }).length;
+}
+function allSectionsReviewed(sr) { return sectionsReviewed(sr) === REVIEW_SECTIONS.length; }
+
 function computeGate(s, ctx) {
   ctx = ctx || {};
+  // Four gates, split cleanly between what the TOOL knows and what a HUMAN confirmed. The old
+  // `ownership` / `ucc` gates read the two toggles that the section checkboxes replaced.
   var gates = {
-    intakePacket:   (ctx.docsReceived||0) >= (ctx.docsRequired||0) && (ctx.docsRequired||0) > 0,
-    fraudClear:     (ctx.fraudBad||0) === 0,   // derived from the automated fraud checks (no 'bad' flags)
-    ownership:      !!s.ownershipVerified,
-    ucc:            !!s.uccChecked,
-    creditDocumented: num(s.approvedCreditLimit) !== '' && num(s.approvedCreditLimit) > 0
+    intakePacket:     (ctx.docsReceived||0) >= (ctx.docsRequired||0) && (ctx.docsRequired||0) > 0,
+    fraudClear:       (ctx.fraudBad||0) === 0,   // derived from the automated fraud checks (no 'bad' flags)
+    creditDocumented: num(s.approvedCreditLimit) !== '' && num(s.approvedCreditLimit) > 0,
+    sectionsReviewed: allSectionsReviewed(s.sectionReview)
   };
   gates.passedCount = Object.keys(gates).filter(function(k){ return k!=='passedCount' && gates[k]; }).length;
-  gates.allPass = gates.passedCount === 5;
+  gates.allPass = gates.passedCount === 4;
+  // How many of the seven are ticked — the gate row shows progress rather than a bare cross.
+  gates.sectionsDone = sectionsReviewed(s.sectionReview);
+  gates.sectionsTotal = REVIEW_SECTIONS.length;
   return gates;
 }
 
@@ -951,11 +998,15 @@ function validateDecision(s, ctx, opts) {
   var requireGates = opts.requireGates !== false;   // default true (preserves strict behavior + tests)
   var errors = [];
   if (s.decision === 'Approved' && requireGates) {
-    if (!s.authorityVerified) errors.push('Authority must be verified to approve.');
-    if (!s.ownershipVerified) errors.push('Ownership must be verified to approve.');
-    if (!s.uccChecked) errors.push('UCC must be checked & cleared to approve.');
+    // Name the sections still outstanding rather than "some checkbox is unticked" — the
+    // underwriter should not have to hunt for which one.
+    var missing = REVIEW_SECTIONS.filter(function (sec) { return !(s.sectionReview || {})[sec.key]; });
+    if (missing.length) {
+      errors.push('Review these sections before approving: ' +
+                  missing.map(function (sec) { return sec.label; }).join(', ') + '.');
+    }
     if (num(s.approvedCreditLimit) === '' || num(s.approvedCreditLimit) <= 0) errors.push('Set an Approved Credit Limit to approve.');
-    if (!computeGate(s, ctx).allPass) errors.push('All 5 approval gates must be green.');
+    if (!computeGate(s, ctx).allPass) errors.push('All 4 approval gates must be green.');
   }
   if ((s.decision === 'Denied' || s.decision === 'More Information Needed') && !(s.uwNotes || s.noteEntry)) {
     errors.push('Add an Underwriting note explaining the decision.');
@@ -968,9 +1019,10 @@ function buildReviewPayload(s, appId) {
     Decision2: s.decision || 'Pending',
     Approved_Credit_Limit: num(s.approvedCreditLimit),
     Recommended_Rate: num(s.recommendedRate),
-    Authority_Verified: !!s.authorityVerified,
-    Ownership_Verified: !!s.ownershipVerified,
-    UCC_Checked: !!s.uccChecked,
+    // Authority_Verified / Ownership_Verified / UCC_Checked are SUPERSEDED by Section_Review and
+    // deliberately no longer written. The Creator fields still exist so old reviews keep their
+    // history; don't re-wire them without also removing the section checkboxes.
+    Section_Review: JSON.stringify(s.sectionReview || {}),
     Buyout_Required: !!s.buyoutRequired,
     Buyout_Factor: s.buyoutFactor || '',
     Estimated_Buyout_Date: s.estimatedBuyoutDate || '',
@@ -1155,6 +1207,7 @@ var OFUW = { computeGate: computeGate, validateDecision: validateDecision, build
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
   STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
   parseUccFiling: parseUccFiling, uccIsFiled: uccIsFiled, uccPrefillDebtor: uccPrefillDebtor, uccDebtorName: uccDebtorName, uccCopyText: uccCopyText,
+  REVIEW_SECTIONS: REVIEW_SECTIONS, parseSectionReview: parseSectionReview, sectionsReviewed: sectionsReviewed, allSectionsReviewed: allSectionsReviewed,
   // Exported so the DOM round-trip (render → type → read back) is testable, not just the pure bits.
   renderUccFiling: renderUccFiling, readUccFilingForm: readUccFilingForm,
   trucksOf: trucksOf, hrvDocs: function(){ return HRV_DOCS; }, hrvThreshold: function(){ return HRV_TRUCK_THRESHOLD; } };
@@ -1565,9 +1618,7 @@ function showDashboard(){ $('dashboard').style.display='block'; $('console').cla
 function readState() {
   return {
     decision: $('uwDecision').value,
-    authorityVerified: $('tgAuthority').classList.contains('on'),
-    ownershipVerified: $('tgOwnership').classList.contains('on'),
-    uccChecked: $('tgUcc').classList.contains('on'),
+    sectionReview: readSectionReview(),
     uwNotes: (MODEL && MODEL.notesLog) || '',   // the CURRENT persisted log; background saves re-send it unchanged
     noteEntry: ($('uwNoteEntry') && $('uwNoteEntry').value) || '',   // the pending new entry, folded in on submit
     clientMessage: (MODEL && MODEL.clientMessageStored) || '',   // the persisted (stamped) note; background saves re-send it unchanged. submit() recomputes from the box.
@@ -1608,15 +1659,16 @@ function renderGate() {
   if (!MODEL) return;
   var s = readState(); var g = computeGate(s, ctx());
   var rows = [
-    ['Intake packet verified', g.intakePacket],['Fraud screening clear', g.fraudClear],
-    ['Ownership verified', g.ownership],['UCCs resolved & filed', g.ucc],
-    ['Credit / reserve documented', g.creditDocumented]
+    ['Intake packet verified', g.intakePacket],
+    ['Fraud screening clear', g.fraudClear],
+    ['Credit / reserve documented', g.creditDocumented],
+    ['Sections reviewed (' + g.sectionsDone + '/' + g.sectionsTotal + ')', g.sectionsReviewed]
   ];
   $('gateList').innerHTML = rows.map(function(r){
     return '<div class="gate-row '+(r[1]?'ok':'no')+'"><span class="g-ic">'+(r[1]?'✓':'○')+'</span> '+r[0]+'</div>';
   }).join('');
-  $('gateCount').textContent = g.passedCount + ' / 5';
-  $('kGates').textContent = g.passedCount + ' / 5';
+  $('gateCount').textContent = g.passedCount + ' / 4';
+  $('kGates').textContent = g.passedCount + ' / 4';
   // Gates are informational "for now" (UW_REQUIRE_GATES): Approve stays clickable regardless.
   $('btnApprove').disabled = UW_REQUIRE_GATES ? !g.allPass : false;
   if ($('approveGateNote')) $('approveGateNote').textContent = UW_REQUIRE_GATES
@@ -2273,9 +2325,8 @@ function renderModel(m) {
 
   var r = m.review || {};
   setDecision(r.Decision2 || 'Pending');
-  $('tgAuthority').classList.toggle('on', !!r.Authority_Verified);
-  $('tgOwnership').classList.toggle('on', !!r.Ownership_Verified);
-  $('tgUcc').classList.toggle('on', !!r.UCC_Checked);
+  var sr = parseSectionReview(r);
+  REVIEW_SECTIONS.forEach(function (sec) { $(sec.toggle).classList.toggle('on', !!sr[sec.key]); });
   m.notesLog = r.UW_Notes || '';           // the running timestamped log persists in UW_Notes
   renderNotesLog(m.notesLog);
   if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
@@ -2995,7 +3046,7 @@ function boot() {
   if ($('hrvClear')) $('hrvClear').addEventListener('click', clearHighRiskVolume);
   $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
-  ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
+  REVIEW_SECTIONS.map(function (sec) { return sec.toggle; }).concat(['tgBuyout']).forEach(bindToggle);
   // The Factoring Fee also decides WHICH California disclosure gets attached — preview it live.
   ['uwLimit','uwRate'].forEach(function(id){
     $(id).addEventListener('input', function(){ renderGate(); renderCaDisclosureNote(); });

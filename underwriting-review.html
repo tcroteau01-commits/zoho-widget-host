@@ -190,6 +190,22 @@ tr:last-child td { border-bottom:none; }
 .add-wrap { margin-top:12px; padding-top:12px; border-top:1px dashed var(--of-beige-line); }
 .add-form { margin-top:10px; }
 .add-form .fld { margin-bottom:10px; }
+/* UCC Filing card. Own row classes rather than the existing `row2`, whose rule is written as the
+   descendant selector `.fld .row2` but used as `class="fld row2"` on one element — so it never
+   matches. Reusing it would inherit that. */
+.ucf-row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.ucf-row3 { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; }
+.ucf-radio { display:inline-flex !important; align-items:center; gap:6px; margin-right:16px; font-size:13px; font-weight:600; text-transform:none !important; letter-spacing:0 !important; color:var(--of-charcoal) !important; }
+.ucf-radio input { width:auto !important; margin:0; }
+.ucf-hint { display:block; margin-top:5px; font-size:11px; color:var(--of-gray-500); }
+.ucf-actions { display:flex; gap:8px; align-items:center; margin-top:14px; }
+.ucf-note { margin:10px 0 0; padding:10px 12px; border-radius:10px; font-size:12px; line-height:1.5; display:none; }
+.ucf-note.on { display:block; }
+.ucf-note.warn { background:#fff6e8; border:1px solid #f0c99a; color:#7a4a12; }
+.ucf-note.bad  { background:#fdecec; border:1px solid #f0b4b4; color:#8a2020; }
+.ucf-note.good { background:#eaf7ef; border:1px solid #a9d9bd; color:#1e5c39; }
+.ucf-record { margin-top:14px; padding-top:12px; border-top:1px dashed var(--of-beige-line); }
+.ucf-req { font-weight:600; text-transform:none; letter-spacing:0; color:var(--of-gray-500); }
 /* Client agreement (Zoho Sign) — matches .fld/.card tokens for a uniform look. */
 .agr-section { border-top:1px solid var(--of-beige-line); margin-top:16px; padding-top:14px; }
 .agr-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -389,6 +405,55 @@ tr:last-child td { border-bottom:none; }
             </div>
           </div>
         </div>
+        <!-- UCC Filing — the lien OperFi PLACES on this carrier. Deliberately a separate card from
+             UCC Research above, which is the opposite question (what liens already exist AGAINST
+             them). Different data, different lifecycle, and conflating the two would make it easy to
+             read a prior lender's filing as our own.
+             FILING IS MANUAL by decision: this card captures the debtor block once, links straight
+             to the right state's filing office, and records the file number that comes back. It
+             does NOT call Middesk's filing API — see docs/ops/MIDDESK_LIEN_FILING_API.md for the
+             verified contract and why. -->
+        <div class="card">
+          <div class="card-title">UCC Filing <span class="count" id="uccFilingStatus">Not filed</span></div>
+          <div class="ucf-note" id="uccFilingNote"></div>
+          <div class="add-form" id="uccFilingForm">
+            <div class="fld"><label>Debtor</label>
+              <label class="ucf-radio"><input type="radio" name="ucfType" value="ORGANIZATION" checked> Organization</label>
+              <label class="ucf-radio"><input type="radio" name="ucfType" value="INDIVIDUAL"> Individual</label>
+            </div>
+            <div class="fld" id="ucfOwnerPickWrap" style="display:none"><label>Use an owner on file</label>
+              <select id="ucfOwnerPick"></select></div>
+            <div class="fld" id="ucfOrgWrap"><label>Organization Name</label><input type="text" id="ucfOrgName"></div>
+            <div class="fld ucf-row2" id="ucfIndWrap" style="display:none">
+              <div><label>First Name</label><input type="text" id="ucfFirstName"></div>
+              <div><label>Last Name</label><input type="text" id="ucfLastName"></div>
+            </div>
+            <div class="fld"><label>Street Address</label><input type="text" id="ucfStreet"></div>
+            <div class="fld"><label>Apt, suite, etc. (optional)</label><input type="text" id="ucfApt"></div>
+            <div class="fld ucf-row3">
+              <div><label>City</label><input type="text" id="ucfCity"></div>
+              <div><label>State</label><select id="ucfState"></select></div>
+              <div><label>Zip Code</label><input type="text" id="ucfZip"></div>
+            </div>
+            <div class="fld"><label>Filing State</label><select id="ucfFileState"></select>
+              <span class="ucf-hint">Where the UCC-1 is filed — normally the debtor's state of organization.</span></div>
+            <div class="fld"><label>Collateral</label><input type="text" id="ucfCollateral" placeholder="e.g. All assets and receivables"></div>
+            <div id="ucfStateLinks"></div>
+            <!-- Filled in AFTER filing in Middesk or the state portal. The file number is what makes
+                 this a record of a real lien rather than a draft, so it drives the status pill. -->
+            <div class="ucf-record">
+              <div class="fld ucf-row3">
+                <div><label>File # <span class="ucf-req">once filed</span></label><input type="text" id="ucfFileNumber"></div>
+                <div><label>Filed Date</label><input type="text" id="ucfFiledAt" placeholder="YYYY-MM-DD"></div>
+                <div><label>Lapse Date</label><input type="text" id="ucfLapseAt" placeholder="YYYY-MM-DD"></div>
+              </div>
+            </div>
+            <div class="ucf-actions">
+              <button class="btn ghost sm" id="ucfCopy">Copy debtor details</button>
+              <button class="btn green sm" id="ucfSave">Save</button>
+            </div>
+          </div>
+        </div>
         <div class="card">
           <div class="card-title">Documents <span class="count" id="docCount">—</span></div>
           <!-- High Volume / High Risk — Underwriting Manual §9.2 expanded documentation -->
@@ -421,9 +486,17 @@ tr:last-child td { border-bottom:none; }
             <label>Decision <span id="uwDecisionCurrent" class="pill n" style="margin-left:4px">Pending</span></label>
             <input type="hidden" id="uwDecision" value="Pending">
           </div>
-          <div class="verify-row"><span class="toggle" id="tgAuthority">✓</span> Authority Verified</div>
-          <div class="verify-row"><span class="toggle" id="tgOwnership">✓</span> Ownership Verified</div>
-          <div class="verify-row"><span class="toggle" id="tgUcc">✓</span> UCC Checked &amp; cleared</div>
+          <!-- One row per REVIEW SECTION that needs a human eye, in the order they appear above.
+               Fraud Quick Glance / Compliance & Safety / UCC Research / Documents are deliberately
+               absent: the tool already knows those, and a box restating a known fact just gets
+               ticked reflexively. They stay as derived gates in the Approval Gate card. -->
+          <div class="verify-row"><span class="toggle" id="tgSecApplication">✓</span> Submitted Application</div>
+          <div class="verify-row"><span class="toggle" id="tgSecOwnership">✓</span> Ownership &amp; Entity</div>
+          <div class="verify-row"><span class="toggle" id="tgSecOwners">✓</span> Owner Details</div>
+          <div class="verify-row"><span class="toggle" id="tgSecContacts">✓</span> Trusted Contacts</div>
+          <div class="verify-row"><span class="toggle" id="tgSecClientele">✓</span> Clientele</div>
+          <div class="verify-row"><span class="toggle" id="tgSecRelated">✓</span> Related Businesses</div>
+          <div class="verify-row"><span class="toggle" id="tgSecUccFiling">✓</span> UCC Filing</div>
           <div class="fld" style="margin-top:14px"><label>Notes &amp; History <span style="color:var(--of-amber-text);font-weight:700;text-transform:none;letter-spacing:0">· sales + underwriting, newest first</span></label>
             <div class="notes-log" id="uwClientMsgLog"></div>
             <textarea id="uwClientMsg" rows="3" placeholder="Add a note — timestamped &amp; attributed to you, added to the history above, and shown on the client portal &amp; sales pipeline. Saved when you Save / Approve / Decline."></textarea></div>
@@ -467,6 +540,11 @@ tr:last-child td { border-bottom:none; }
             </div>
 
             <button class="btn orange block" id="btnSendAgreement" style="display:none">✍ Prepare Agreement</button>
+            <!-- Shown only when a draft exists and the chosen packet no longer matches the one it was
+                 built from. Without this the chooser silently does nothing and the underwriter reopens
+                 the wrong document, which reads as "the packet didn't populate". -->
+            <div id="agrPacketWarn" class="ca-warn" style="display:none"></div>
+            <button class="btn ghost block sm" id="btnAgrRebuild" style="display:none">⟲ Rebuild as selected packet</button>
             <a href="#" id="btnAgrRefresh" class="agr-refresh" style="display:none">↻ Refresh signature status</a>
 
             <!-- Recipients panel (built from the template's signer roles) -->
@@ -568,6 +646,7 @@ var NOTIFY_PATH = '/notify-client';      // POST { application_id, usdot, docume
 var AGR_ROLES_PATH = '/agreement-roles'; // GET ?usdot= → { roles:[{action_id,role_name}], suggestions:[{name,email,source}] } from the Zoho Sign template
 var AGR_SEND_PATH = '/send-agreement';   // POST { application_id, usdot, recipients:[{action_id,name,email}], resend? } → prepares a Zoho Sign DRAFT, returns { request_id, status:'Draft', send_url }
 var AGR_URL_PATH = '/agreement-send-url'; // GET ?usdot= → { send_url } — a FRESH Zoho Sign review url for the current draft (embed url expires ~2 min)
+var DOCREVIEW_PATH = '/document-review'; // POST { application_id, token, decision:'approve'|'deny', reason, rep, notify } → Status Verified/Rejected (+ Review_Note the client sees) and logs the decision to Sales_Notes
 
 // ── Pure logic (unit-tested) ─────────────────────────────────────────────────
 function num(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?'':n; }
@@ -689,6 +768,9 @@ function requiredDocs(application) {
 function docType(d){ return Array.isArray(d) ? d[0] : (d && (d.Document_Type || d.type)); }
 function docStatus(d){ return Array.isArray(d) ? d[2] : (d && (d.Status || d.status)); }
 function docUrl(d){ return (Array.isArray(d) ? d[3] : (d && (d.fileUrl || d.link || d.url))) || ''; }
+// Signed per-document handle from the backend. It's what /document-review addresses, so approve/deny
+// can act on ONE document without this widget ever seeing a Creator record id.
+function docToken(d){ return (Array.isArray(d) ? d[4] : (d && d.token)) || ''; }
 function normType(t){ return String(t == null ? '' : t).trim().toLowerCase(); }
 function isUploadedStatus(s){ return /^(received|verified|approved|complete|on file)$/i.test(String(s || '').trim()); }
 function isRequestedStatus(s){ return /^(requested|needed|pending)$/i.test(String(s || '').trim()); }
@@ -701,7 +783,7 @@ function reconcileDocs(required, documents) {
   var byType = {};
   documents.forEach(function (d) {
     var t = normType(docType(d)), st = docStatus(d) || '', cur = byType[t];
-    if (!cur || statusRank(st) > statusRank(cur.status)) byType[t] = { status: st, link: docUrl(d) };
+    if (!cur || statusRank(st) > statusRank(cur.status)) byType[t] = { status: st, link: docUrl(d), token: docToken(d) };
   });
   var checklist = required.map(function (item) {
     var u = byType[normType(item.type)];
@@ -711,15 +793,23 @@ function reconcileDocs(required, documents) {
       uploaded: !!u && isUploadedStatus(u.status),
       verified: !!u && /verified/i.test(String(u.status)),
       rejected: !!u && /rejected/i.test(String(u.status)),
-      link: u ? (u.link || '') : ''
+      link: u ? (u.link || '') : '',
+      token: u ? (u.token || '') : ''
     };
   });
   var reqTypes = {}; required.forEach(function (i) { reqTypes[normType(i.type)] = true; });
   var extras = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && isUploadedStatus(docStatus(d)); })
-    .map(function (d) { return { label: docType(d) || 'Document', status: docStatus(d) || 'Received', link: docUrl(d) }; });
-  // Staff-requested docs that aren't in the base checklist and haven't been uploaded yet.
-  var requested = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && !isUploadedStatus(docStatus(d)) && isRequestedStatus(docStatus(d)); })
-    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Requested', link: docUrl(d) }; });
+    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Received', link: docUrl(d), token: docToken(d),
+                                 verified: /verified/i.test(String(docStatus(d) || '')) }; });
+  // Staff-requested docs that aren't in the base checklist and haven't been uploaded yet — plus
+  // REJECTED ones. A rejected off-checklist doc matches neither isUploadedStatus (extras) nor
+  // isRequestedStatus (requested), so without the second clause a denied ad-hoc document silently
+  // disappeared from this table — and from sales' and the client's — leaving nobody chasing it.
+  var isRejected = function (s) { return /rejected/i.test(String(s || '')); };
+  var requested = documents.filter(function (d) { var st = docStatus(d);
+      return !reqTypes[normType(docType(d))] && !isUploadedStatus(st) && (isRequestedStatus(st) || isRejected(st)); })
+    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Requested', link: docUrl(d), token: docToken(d),
+                                 rejected: isRejected(docStatus(d)) }; });
   return {
     checklist: checklist, extras: extras, requested: requested,
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,
@@ -742,6 +832,23 @@ function nudgeButton(docType, sent) {
   return sent
     ? ' <button type="button" class="btn ghost sm js-nudge" data-doc="' + escHtml(docType) + '" disabled>Sent ✓</button>'
     : ' <button type="button" class="btn ghost sm js-nudge" data-doc="' + escHtml(docType) + '">Nudge client</button>';
+}
+
+// ── Approve / deny a client-uploaded document ─────────────────────────────────
+// Approve → Verified (which also stops the client deleting it). Deny → Rejected + a reason the
+// client sees on their portal, so they fix the right thing instead of re-uploading the same file.
+// Only offered on a document that's actually uploaded, isn't already Verified, and carries a signed
+// token — without a token there's nothing for /document-review to address.
+// `token` here is the REVIEW-flavoured handle the staff read mints — not the "doc:" token the client
+// portal hands out. That difference IS the authorisation: a client's own token doesn't validate on
+// /document-review, so they can't mark their own upload Verified.
+function canReviewDoc(c){ return !!(c && c.uploaded && !c.verified && c.token); }
+
+function docReviewButtons(c){
+  if (!canReviewDoc(c)) return '';
+  var t = escHtml(c.token), lbl = escHtml(c.label || c.type || 'Document');
+  return ' <button type="button" class="btn ghost sm js-doc-ok" data-token="' + t + '" data-label="' + lbl + '">✓ Approve</button>' +
+         ' <button type="button" class="btn ghost sm js-doc-no" data-token="' + t + '" data-label="' + lbl + '">✕ Deny</button>';
 }
 
 // ── State filing links (SoS business search + UCC search/filing) ──────────────
@@ -833,17 +940,56 @@ function renderStateFilings(code, labelOverride) {
     (parts.length ? parts.join('') : '<span class="sf-none">No filing links on file for this state.</span>') + '</div>';
 }
 
+// The review sections an underwriter must confirm by hand, in page order. Storage is ONE JSON blob
+// (Section_Review) rather than seven Creator booleans — same pattern as Manual_UCC / UCC_Filing /
+// Automated_Checks_JSON, and it keeps this to one new Creator field instead of eight.
+var REVIEW_SECTIONS = [
+  { key: 'application', label: 'Submitted Application', toggle: 'tgSecApplication' },
+  { key: 'ownership',   label: 'Ownership & Entity',    toggle: 'tgSecOwnership' },
+  { key: 'owners',      label: 'Owner Details',         toggle: 'tgSecOwners' },
+  { key: 'contacts',    label: 'Trusted Contacts',      toggle: 'tgSecContacts' },
+  { key: 'clientele',   label: 'Clientele',             toggle: 'tgSecClientele' },
+  { key: 'related',     label: 'Related Businesses',    toggle: 'tgSecRelated' },
+  { key: 'uccFiling',   label: 'UCC Filing',            toggle: 'tgSecUccFiling' }
+];
+// Read the seven toggles off the DOM. Mirrors readState's style: the DOM is the live truth.
+function readSectionReview() {
+  var out = {};
+  REVIEW_SECTIONS.forEach(function (sec) {
+    var el = document.getElementById(sec.toggle);
+    out[sec.key] = !!(el && el.classList.contains('on'));
+  });
+  return out;
+}
+// Stored as JSON on the review. Never throws: a malformed blob must not stop the review rendering.
+function parseSectionReview(review) {
+  var raw = (review || {}).Section_Review;
+  if (!raw) return {};
+  try { var d = (typeof raw === 'string') ? JSON.parse(raw) : raw; return (d && typeof d === 'object') ? d : {}; }
+  catch (e) { return {}; }
+}
+
+function sectionsReviewed(sr) {
+  sr = sr || {};
+  return REVIEW_SECTIONS.filter(function (s) { return !!sr[s.key]; }).length;
+}
+function allSectionsReviewed(sr) { return sectionsReviewed(sr) === REVIEW_SECTIONS.length; }
+
 function computeGate(s, ctx) {
   ctx = ctx || {};
+  // Four gates, split cleanly between what the TOOL knows and what a HUMAN confirmed. The old
+  // `ownership` / `ucc` gates read the two toggles that the section checkboxes replaced.
   var gates = {
-    intakePacket:   (ctx.docsReceived||0) >= (ctx.docsRequired||0) && (ctx.docsRequired||0) > 0,
-    fraudClear:     (ctx.fraudBad||0) === 0,   // derived from the automated fraud checks (no 'bad' flags)
-    ownership:      !!s.ownershipVerified,
-    ucc:            !!s.uccChecked,
-    creditDocumented: num(s.approvedCreditLimit) !== '' && num(s.approvedCreditLimit) > 0
+    intakePacket:     (ctx.docsReceived||0) >= (ctx.docsRequired||0) && (ctx.docsRequired||0) > 0,
+    fraudClear:       (ctx.fraudBad||0) === 0,   // derived from the automated fraud checks (no 'bad' flags)
+    creditDocumented: num(s.approvedCreditLimit) !== '' && num(s.approvedCreditLimit) > 0,
+    sectionsReviewed: allSectionsReviewed(s.sectionReview)
   };
   gates.passedCount = Object.keys(gates).filter(function(k){ return k!=='passedCount' && gates[k]; }).length;
-  gates.allPass = gates.passedCount === 5;
+  gates.allPass = gates.passedCount === 4;
+  // How many of the seven are ticked — the gate row shows progress rather than a bare cross.
+  gates.sectionsDone = sectionsReviewed(s.sectionReview);
+  gates.sectionsTotal = REVIEW_SECTIONS.length;
   return gates;
 }
 
@@ -852,11 +998,15 @@ function validateDecision(s, ctx, opts) {
   var requireGates = opts.requireGates !== false;   // default true (preserves strict behavior + tests)
   var errors = [];
   if (s.decision === 'Approved' && requireGates) {
-    if (!s.authorityVerified) errors.push('Authority must be verified to approve.');
-    if (!s.ownershipVerified) errors.push('Ownership must be verified to approve.');
-    if (!s.uccChecked) errors.push('UCC must be checked & cleared to approve.');
+    // Name the sections still outstanding rather than "some checkbox is unticked" — the
+    // underwriter should not have to hunt for which one.
+    var missing = REVIEW_SECTIONS.filter(function (sec) { return !(s.sectionReview || {})[sec.key]; });
+    if (missing.length) {
+      errors.push('Review these sections before approving: ' +
+                  missing.map(function (sec) { return sec.label; }).join(', ') + '.');
+    }
     if (num(s.approvedCreditLimit) === '' || num(s.approvedCreditLimit) <= 0) errors.push('Set an Approved Credit Limit to approve.');
-    if (!computeGate(s, ctx).allPass) errors.push('All 5 approval gates must be green.');
+    if (!computeGate(s, ctx).allPass) errors.push('All 4 approval gates must be green.');
   }
   if ((s.decision === 'Denied' || s.decision === 'More Information Needed') && !(s.uwNotes || s.noteEntry)) {
     errors.push('Add an Underwriting note explaining the decision.');
@@ -869,9 +1019,10 @@ function buildReviewPayload(s, appId) {
     Decision2: s.decision || 'Pending',
     Approved_Credit_Limit: num(s.approvedCreditLimit),
     Recommended_Rate: num(s.recommendedRate),
-    Authority_Verified: !!s.authorityVerified,
-    Ownership_Verified: !!s.ownershipVerified,
-    UCC_Checked: !!s.uccChecked,
+    // Authority_Verified / Ownership_Verified / UCC_Checked are SUPERSEDED by Section_Review and
+    // deliberately no longer written. The Creator fields still exist so old reviews keep their
+    // history; don't re-wire them without also removing the section checkboxes.
+    Section_Review: JSON.stringify(s.sectionReview || {}),
     Buyout_Required: !!s.buyoutRequired,
     Buyout_Factor: s.buyoutFactor || '',
     Estimated_Buyout_Date: s.estimatedBuyoutDate || '',
@@ -879,6 +1030,7 @@ function buildReviewPayload(s, appId) {
     UW_Notes: s.uwNotes || '',
     Client_Message: s.clientMessage || '',
     Manual_UCC: JSON.stringify(s.manualUcc || []),
+    UCC_Filing: JSON.stringify(s.uccFiling || {}),   // OUR UCC-1 (Manual_UCC is prior liens found)
     Manual_Owners: JSON.stringify(s.manualOwners || []),
     Manual: JSON.stringify(s.manualContacts || []),   // Creator field link-name is "Manual" (display "Manual_Contacts")
     Manual_Customers: JSON.stringify(s.manualCustomers || []),
@@ -1043,7 +1195,7 @@ function agreementRolesUrl(base, usdot, cfg){
 }
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
-  canNudge: canNudge, nudgeButton: nudgeButton,
+  canNudge: canNudge, nudgeButton: nudgeButton, canReviewDoc: canReviewDoc, docReviewButtons: docReviewButtons, docToken: docToken,
   defaultPromoRate: defaultPromoRate, fmtTerm: fmtTerm, buildApplicationTerms: buildApplicationTerms,
   composeNotesLog: composeNotesLog, formatStamp: formatStamp, checksFromReview: checksFromReview, parseSalesNotes: parseSalesNotes, uwAuthor: uwAuthor, runChecks: runChecks,
   parseClientMsg: parseClientMsg, noteTime: noteTime, buildNoteHistory: buildNoteHistory, saferUrl: saferUrl, carrierOkUrl: carrierOkUrl,
@@ -1054,6 +1206,10 @@ var OFUW = { computeGate: computeGate, validateDecision: validateDecision, build
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
   STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
+  parseUccFiling: parseUccFiling, uccIsFiled: uccIsFiled, uccPrefillDebtor: uccPrefillDebtor, uccDebtorName: uccDebtorName, uccCopyText: uccCopyText,
+  REVIEW_SECTIONS: REVIEW_SECTIONS, parseSectionReview: parseSectionReview, sectionsReviewed: sectionsReviewed, allSectionsReviewed: allSectionsReviewed,
+  // Exported so the DOM round-trip (render → type → read back) is testable, not just the pure bits.
+  renderUccFiling: renderUccFiling, readUccFilingForm: readUccFilingForm,
   trucksOf: trucksOf, hrvDocs: function(){ return HRV_DOCS; }, hrvThreshold: function(){ return HRV_TRUCK_THRESHOLD; } };
 global.OFUW = OFUW;
 
@@ -1225,7 +1381,7 @@ function loadByUSDOT(usdot) {
           contacts: (j.contacts || []).map(function (c) { return { Name:c.Name, Title:c.Title, Phone:c.Phone, Email:c.Email }; }),
           customers: (j.customers || []).map(function (c) { return { Business_Name:c.Business_Name, Website:c.Website, Expected_Monthly_Revenue:c.Expected_Monthly_Revenue }; }),
           related: (j.related || []).map(function (r) { return { Business_Name:r.Business_Name, USDOT:r.USDOT, MC_Number:r.MC_Number, Factoring_Company:r.Factoring_Company }; }),
-          documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '']; }),
+          documents: (j.documents || []).map(function (d) { return [d.Document_Type || 'Document', d.Source || '—', d.Status || 'Requested', d.fileUrl || '', d.token || '']; }),
           checksReady: !!c,
           fraud: (c && c.fraud) || [],
           safety: (c && c.safety) || [],
@@ -1240,6 +1396,7 @@ function loadByUSDOT(usdot) {
           risk: (c && c.risk) || 'med',
           // The saved run stamp wins over the vendor's own field, so the "· last run" display is reliable.
           checkedAt: (j.review && j.review.Checks_Run_At) || (c && c.checkedAt) || '',
+          uccFiling: parseUccFiling(j.review),
           review: j.review || {}
         };
       });
@@ -1280,6 +1437,16 @@ function checksFromReview(review) {
     middeskBusinessId: d.middeskBusinessId || '',
     risk: d.risk || 'med', checkedAt: review.Checks_Run_At || d.checkedAt || ''
   };
+}
+
+// The UCC-1 WE filed, as the underwriter recorded it on the review (saved via /uw-review-save).
+// Returns {} when nothing is stored or the JSON is unreadable — never throws, because a malformed
+// blob must not stop the whole review from rendering.
+function parseUccFiling(review) {
+  var raw = (review || {}).UCC_Filing;
+  if (!raw) return {};
+  try { var d = (typeof raw === 'string') ? JSON.parse(raw) : raw; return (d && typeof d === 'object') ? d : {}; }
+  catch (e) { return {}; }
 }
 
 // RUN the automated review on demand (POST) — IPQS + CarrierOK + Middesk KYB. Fired ONLY by the
@@ -1451,13 +1618,12 @@ function showDashboard(){ $('dashboard').style.display='block'; $('console').cla
 function readState() {
   return {
     decision: $('uwDecision').value,
-    authorityVerified: $('tgAuthority').classList.contains('on'),
-    ownershipVerified: $('tgOwnership').classList.contains('on'),
-    uccChecked: $('tgUcc').classList.contains('on'),
+    sectionReview: readSectionReview(),
     uwNotes: (MODEL && MODEL.notesLog) || '',   // the CURRENT persisted log; background saves re-send it unchanged
     noteEntry: ($('uwNoteEntry') && $('uwNoteEntry').value) || '',   // the pending new entry, folded in on submit
     clientMessage: (MODEL && MODEL.clientMessageStored) || '',   // the persisted (stamped) note; background saves re-send it unchanged. submit() recomputes from the box.
     manualUcc: (MODEL && MODEL.manualUcc) || [],
+    uccFiling: (MODEL && MODEL.uccFiling) || {},   // our own UCC-1 (draft or filed) — see renderUccFiling
     manualOwners: (MODEL && MODEL.manualOwners) || [],
     manualContacts: (MODEL && MODEL.manualContacts) || [],
     manualCustomers: (MODEL && MODEL.manualCustomers) || [],
@@ -1493,15 +1659,16 @@ function renderGate() {
   if (!MODEL) return;
   var s = readState(); var g = computeGate(s, ctx());
   var rows = [
-    ['Intake packet verified', g.intakePacket],['Fraud screening clear', g.fraudClear],
-    ['Ownership verified', g.ownership],['UCCs resolved & filed', g.ucc],
-    ['Credit / reserve documented', g.creditDocumented]
+    ['Intake packet verified', g.intakePacket],
+    ['Fraud screening clear', g.fraudClear],
+    ['Credit / reserve documented', g.creditDocumented],
+    ['Sections reviewed (' + g.sectionsDone + '/' + g.sectionsTotal + ')', g.sectionsReviewed]
   ];
   $('gateList').innerHTML = rows.map(function(r){
     return '<div class="gate-row '+(r[1]?'ok':'no')+'"><span class="g-ic">'+(r[1]?'✓':'○')+'</span> '+r[0]+'</div>';
   }).join('');
-  $('gateCount').textContent = g.passedCount + ' / 5';
-  $('kGates').textContent = g.passedCount + ' / 5';
+  $('gateCount').textContent = g.passedCount + ' / 4';
+  $('kGates').textContent = g.passedCount + ' / 4';
   // Gates are informational "for now" (UW_REQUIRE_GATES): Approve stays clickable regardless.
   $('btnApprove').disabled = UW_REQUIRE_GATES ? !g.allPass : false;
   if ($('approveGateNote')) $('approveGateNote').textContent = UW_REQUIRE_GATES
@@ -1536,9 +1703,12 @@ function renderAgreement(){
     btn.style.display = 'block'; btn.textContent = '↻ Resend agreement'; btn.disabled = false;
     hint.style.display = 'none'; refresh.style.display = 'inline'; showCfg = true;
   } else if (b.prepared){
-    // Draft exists — the underwriter still needs to review + send it in Zoho Sign.
+    // Draft exists — the underwriter still needs to review + send it in Zoho Sign. The chooser STAYS
+    // visible (it used to be hidden here): /send-agreement short-circuits on an existing draft before
+    // it reads packet_type, so a wrong packet was previously uncorrectable — reopening just handed
+    // back the same document while the dropdown appeared to change something.
     btn.style.display = 'block'; btn.textContent = '▶ Open review & send'; btn.disabled = false;
-    hint.style.display = 'none'; refresh.style.display = 'inline';
+    hint.style.display = 'none'; refresh.style.display = 'inline'; showCfg = true;
   } else if (approved){
     btn.style.display = 'block'; btn.textContent = '✍ Prepare Agreement'; btn.disabled = false;
     hint.style.display = 'none'; refresh.style.display = 'none'; showCfg = true;
@@ -1546,6 +1716,41 @@ function renderAgreement(){
     btn.style.display = 'none'; hint.style.display = 'block'; refresh.style.display = 'none';
   }
   if (cfg) cfg.style.display = showCfg ? 'block' : 'none';
+  // Show the draft's real packet in the chooser rather than the carrier_1 default, so the underwriter
+  // sees what they actually have. Never overrides a deliberate change.
+  if (b.prepared && !MODEL._agrPacketTouched){
+    var builtPkt = ((MODEL.application || {}).Agreement_Packet_Type || '').trim();
+    if (builtPkt && $('agrPacket')) $('agrPacket').value = builtPkt;
+  }
+  renderPacketMismatch(b);
+}
+
+// Human label for a packet key, read straight off the chooser so the two can't drift.
+function packetLabel(key){
+  var sel = $('agrPacket'); if (!sel || !key) return key || '';
+  for (var i = 0; i < sel.options.length; i++){ if (sel.options[i].value === key) return sel.options[i].text; }
+  return key;
+}
+
+// Warn when an existing draft was built from a different packet than the one now selected, and offer
+// the rebuild. Agreement_Packet_Type is blank on drafts prepared before the backend recorded it, so
+// an unknown packet warns generically rather than pretending to know.
+function renderPacketMismatch(b){
+  var warn = $('agrPacketWarn'), btn = $('btnAgrRebuild');
+  if (!warn || !btn) return;
+  b = b || agreementBadge((MODEL && MODEL.application) || {});
+  if (!MODEL || !b.prepared || b.signed){ warn.style.display = 'none'; btn.style.display = 'none'; return; }
+  var built = ((MODEL.application || {}).Agreement_Packet_Type || '').trim();
+  var picked = agreementPacketConfig().packet_type;
+  if (built && built === picked){ warn.style.display = 'none'; btn.style.display = 'none'; return; }
+  warn.style.display = 'block';
+  warn.textContent = built
+    ? 'This draft was built as ' + packetLabel(built) + '. Opening it gives you that document, not '
+      + packetLabel(picked) + '. Rebuild to switch — the old draft stays in Zoho Sign and should be recalled there.'
+    : 'This draft was prepared before the packet was recorded, so it may not be ' + packetLabel(picked)
+      + '. Rebuild if you need to be sure — the old draft stays in Zoho Sign and should be recalled there.';
+  btn.style.display = 'block';
+  btn.textContent = '⟲ Rebuild as ' + packetLabel(picked);
 }
 
 // Read the packet chooser: { packet_type, california }. Defaults to the Carrier(1) packet, CA off.
@@ -1578,7 +1783,19 @@ function renderCaDisclosureNote(){
 function agreementPrimaryClick(){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
   if (agreementBadge(MODEL.application || {}).prepared) return openAgreementReview();
+  MODEL._agrRebuild = false;   // only the Rebuild button discards an existing draft
   openAgreementPanel();
+}
+
+// Rebuild: same recipients panel, but the prepare posts rebuild:true so the backend abandons the
+// in-progress draft and builds the packet selected now.
+function rebuildAgreement(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  MODEL._agrRebuild = true;
+  openAgreementPanel();
+  var pstat = $('agrPanelStatus');
+  if (pstat) pstat.textContent = 'Rebuilding as ' + packetLabel(agreementPacketConfig().packet_type)
+    + '. The previous draft stays in Zoho Sign — recall it there.';
 }
 
 // Open Zoho Sign's review-and-send screen in a new tab. A blank tab is opened synchronously (inside
@@ -1649,6 +1866,9 @@ function prepareAgreement(){
   var built = buildAgreementRecipients(MODEL._agrRoles || [], inputs);
   if (built.missing.length){ $('agrPanelStatus').textContent = 'Enter an email for: ' + built.missing.join(', '); return; }
   var resend = agreementBadge(MODEL.application || {}).sent;
+  // Set by the Rebuild button: discard the in-progress draft and build the selected packet instead.
+  // Without it the backend returns the existing draft and the packet choice is ignored.
+  var rebuild = !!MODEL._agrRebuild;
   var pkt = agreementPacketConfig();
   $('btnAgrConfirm').disabled = true; $('agrPanelStatus').textContent = 'Preparing…';
   if (MODEL._demo || typeof fetch !== 'function'){
@@ -1659,11 +1879,15 @@ function prepareAgreement(){
   // Reserve a tab inside the click gesture so the popup isn't blocked; point it at the review url.
   var win = global.open ? global.open('', '_blank') : null;
   fetch(API_BASE + AGR_SEND_PATH, { method:'POST', headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({ application_id: MODEL.appId, usdot:(MODEL.application && MODEL.application.USDOT) || '', recipients: built.recipients, resend: resend, packet_type: pkt.packet_type, california: pkt.california }) })
+    body: JSON.stringify({ application_id: MODEL.appId, usdot:(MODEL.application && MODEL.application.USDOT) || '', recipients: built.recipients, resend: resend, rebuild: rebuild, packet_type: pkt.packet_type, california: pkt.california }) })
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok || !j.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status)); return j; }); })
     .then(function(j){
       MODEL.application.Sign_Request_Id = j.request_id || MODEL.application.Sign_Request_Id;
       MODEL.application.Agreement_Status = j.status || 'Draft';
+      // Whatever the draft is actually built from — the backend echoes it on both the new-draft and
+      // the reopened-draft paths, so the mismatch warning reflects reality rather than our guess.
+      if (typeof j.packet_type === 'string') MODEL.application.Agreement_Packet_Type = j.packet_type;
+      MODEL._agrRebuild = false;
       $('agrPanel').style.display = 'none'; $('btnAgrConfirm').disabled = false; renderAgreement();
       if (j.send_url){ if (win) win.location = j.send_url; else global.open(j.send_url, '_blank'); }
       else if (win) win.close();
@@ -1674,8 +1898,10 @@ function prepareAgreement(){
         setCaWarn(j.ca_warning);
         showStatus('⚠ Draft prepared, but ' + j.ca_warning, 'error');
       } else {
-        showStatus('✓ Draft prepared' + (j.ca_disclosure_attached ? ' with the California disclosure' : '') +
-          '. Review the prefilled fields and click Send in the Zoho Sign tab. (The client is notified only after you send.)', 'success');
+        showStatus('✓ Draft ' + (j.rebuilt ? 'rebuilt as ' + packetLabel(j.packet_type || pkt.packet_type) : 'prepared') +
+          (j.ca_disclosure_attached ? ' with the California disclosure' : '') +
+          '. Review the prefilled fields and click Send in the Zoho Sign tab. (The client is notified only after you send.)' +
+          (j.rebuilt ? ' The previous draft is still in Zoho Sign — recall it there.' : ''), 'success');
       }
     })
     .catch(function(e){ if (win) win.close(); $('btnAgrConfirm').disabled = false; $('agrPanelStatus').textContent = 'Could not prepare: ' + (e && e.message ? e.message : e); });
@@ -2051,17 +2277,23 @@ function renderModel(m) {
              : c.rejected ? '<span class="pill r">Rejected</span>'
              : '<span class="pill r">Needed</span>';
     var nudge = canNudge(c) ? nudgeButton(c.type, nudged[normType(c.type)]) : '';
-    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link, c.label):'')+nudge+'</td></tr>';
+    dt += '<tr><td>'+c.label+(isHrvType(c.type)?hrvChip:'')+'</td><td>'+pill+(c.uploaded?viewLink(c.link, c.label):'')+docReviewButtons(c)+nudge+'</td></tr>';
   });
   (docRec.requested || []).forEach(function(rq){
     if (m.highRiskVolume && is8821(rq.type || rq.label)) return;   // 8821 shown as its own UW-handled row below
     var rqType = rq.type || rq.label;
     var nudge = canNudge(rq) ? nudgeButton(rqType, nudged[normType(rqType)]) : '';
-    dt += '<tr><td>'+rq.label+(isHrvType(rq.type)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· requested</span></td><td><span class="pill a">Requested</span>'+nudge+'</td></tr>';
+    // A denied off-checklist doc lands in this bucket too — say so rather than calling it "Requested".
+    var rqPill = rq.rejected ? '<span class="pill r">Rejected</span>' : '<span class="pill a">Requested</span>';
+    var rqTag = rq.rejected ? '· denied' : '· requested';
+    dt += '<tr><td>'+rq.label+(isHrvType(rq.type)?hrvChip:'')+' <span style="color:var(--of-gray-500)">'+rqTag+'</span></td><td>'+rqPill+nudge+'</td></tr>';
   });
   docRec.extras.forEach(function(e){
     if (m.highRiskVolume && is8821(e.label)) return;               // dedup with the 8821 tracked row below
-    dt += '<tr><td>'+e.label+(isHrvType(e.label)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· additional</span></td><td><span class="pill b">'+e.status+'</span>'+viewLink(e.link, e.label)+'</td></tr>';
+    // Extras are uploaded docs, so they're reviewable too — reuse the checklist row's shape.
+    var eRow = { uploaded: true, verified: !!e.verified, token: e.token, label: e.label, type: e.type };
+    dt += '<tr><td>'+e.label+(isHrvType(e.label)?hrvChip:'')+' <span style="color:var(--of-gray-500)">· additional</span></td><td>'+
+      (e.verified ? '<span class="pill g">Verified</span>' : '<span class="pill b">'+e.status+'</span>')+viewLink(e.link, e.label)+docReviewButtons(eRow)+'</td></tr>';
   });
   // §9.2: IRS Form 8821 is Underwriting-handled (wet signature) and never requested from the client —
   // surface it as its own TRACKED row whenever the flag is applied, so the full §9.2 set is visible on
@@ -2078,17 +2310,23 @@ function renderModel(m) {
   qsa('#docTable .js-nudge').forEach(function (b) {
     b.addEventListener('click', function () { nudgeClient(b.getAttribute('data-doc'), b); });
   });
+  qsa('#docTable .js-doc-ok').forEach(function (b) {
+    b.addEventListener('click', function () { reviewDoc(b.getAttribute('data-token'), b.getAttribute('data-label'), 'approve'); });
+  });
+  qsa('#docTable .js-doc-no').forEach(function (b) {
+    b.addEventListener('click', function () { reviewDoc(b.getAttribute('data-token'), b.getAttribute('data-label'), 'deny'); });
+  });
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';
   $('kDocs').textContent = docRec.uploadedCount + ' / ' + docRec.total;
   $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
   // UCC: automated check results + underwriter-added manual filings (parsed in the early block).
   renderUcc(m);
+  renderUccFiling(m);
 
   var r = m.review || {};
   setDecision(r.Decision2 || 'Pending');
-  $('tgAuthority').classList.toggle('on', !!r.Authority_Verified);
-  $('tgOwnership').classList.toggle('on', !!r.Ownership_Verified);
-  $('tgUcc').classList.toggle('on', !!r.UCC_Checked);
+  var sr = parseSectionReview(r);
+  REVIEW_SECTIONS.forEach(function (sec) { $(sec.toggle).classList.toggle('on', !!sr[sec.key]); });
   m.notesLog = r.UW_Notes || '';           // the running timestamped log persists in UW_Notes
   renderNotesLog(m.notesLog);
   if ($('uwNoteEntry')) $('uwNoteEntry').value = '';
@@ -2307,6 +2545,201 @@ function removeManualUcc(i){
   renderUcc(MODEL);
   persistManual('UCC filing removed.');
 }
+// ── UCC Filing — the UCC-1 OperFi places on this carrier ────────────────────────────────────
+// FILING IS MANUAL. This card captures the debtor block, links out to the right state's filing
+// office, copies the details for pasting into Middesk's form, and records the file number that
+// comes back. Nothing here files anything — a human stays between the form and the filing office.
+// Rationale + the verified API contract: docs/ops/MIDDESK_LIEN_FILING_API.md.
+function uccStateOptions(sel, blankLabel){
+  var codes = Object.keys(US_STATE_CODES).sort();
+  var out = '<option value="">' + escHtml(blankLabel || '—') + '</option>';
+  for (var i=0;i<codes.length;i++){
+    out += '<option value="' + codes[i] + '"' + (codes[i]===sel ? ' selected' : '') + '>' + codes[i] + '</option>';
+  }
+  return out;
+}
+// Debtor defaults from the application; every field stays editable because the legal debtor name
+// must match the STATE's record, which is not always what the applicant typed on the form.
+function uccPrefillDebtor(m){
+  var a = (m && m.application) || {};
+  var addr = String(a.Physical_Address || '');
+  // "1420 Industrial Pkwy, Columbus, OH 43201" → street / city / state / zip. A shape we can't
+  // parse leaves the pieces blank rather than guessing — a wrong address on a UCC-1 is worse
+  // than an empty box the underwriter has to fill.
+  var mm = addr.match(/^\s*(.+?),\s*([^,]+?),\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$/);
+  return {
+    type: 'ORGANIZATION',
+    organization_name: a.Business_Name || a.DBA || '',
+    first_name: '', last_name: '',
+    address: {
+      address_line1: mm ? mm[1].trim() : '',
+      address_line2: '',
+      city: mm ? mm[2].trim() : '',
+      state: (mm ? mm[3] : stateFromAddress(addr) || '').toUpperCase(),
+      zip: mm && mm[4] ? mm[4] : ''
+    }
+  };
+}
+function uccFormEls(){
+  return { org:$('ucfOrgName'), first:$('ucfFirstName'), last:$('ucfLastName'), street:$('ucfStreet'),
+           apt:$('ucfApt'), city:$('ucfCity'), state:$('ucfState'), zip:$('ucfZip'),
+           fileState:$('ucfFileState'), collateral:$('ucfCollateral') };
+}
+function readUccFilingForm(){
+  var e = uccFormEls();
+  if (!e.org) return {};
+  var type = (qsa('input[name="ucfType"]:checked')[0] || {}).value || 'ORGANIZATION';
+  return {
+    debtor: {
+      type: type,
+      organization_name: type === 'ORGANIZATION' ? (e.org.value || '').trim() : '',
+      first_name: type === 'INDIVIDUAL' ? (e.first.value || '').trim() : '',
+      last_name:  type === 'INDIVIDUAL' ? (e.last.value  || '').trim() : '',
+      address: { address_line1:(e.street.value||'').trim(), address_line2:(e.apt.value||'').trim(),
+                 city:(e.city.value||'').trim(), state:e.state.value||'', zip:(e.zip.value||'').trim() }
+    },
+    states: e.fileState.value ? [e.fileState.value] : [],
+    collateral: (e.collateral.value || '').trim(),
+    // The record of the filing the underwriter actually made.
+    fileNumber: ($('ucfFileNumber').value || '').trim(),
+    filedAt: ($('ucfFiledAt').value || '').trim(),
+    lapseAt: ($('ucfLapseAt').value || '').trim()
+  };
+}
+// A filing is REAL once it has a file number from the filing office. Dates alone don't count —
+// someone typing a date they intend to file on must not turn the card green.
+function uccIsFiled(f){ return !!((f || {}).fileNumber || '').trim(); }
+// The debtor block as plain text, ready to paste into Middesk's UCC Filing form. This is the
+// whole point of a manual flow that still removes the double entry.
+function uccCopyText(f){
+  f = f || {};
+  var d = f.debtor || {}, a = d.address || {};
+  var lines = ['Debtor: ' + (d.type === 'INDIVIDUAL' ? 'Individual' : 'Organization'),
+               'Name: ' + uccDebtorName(d),
+               'Street: ' + (a.address_line1 || '')];
+  if (a.address_line2) lines.push('Apt/Suite: ' + a.address_line2);
+  lines.push('City: ' + (a.city || ''), 'State: ' + (a.state || ''), 'Zip: ' + (a.zip || ''),
+             'Filing state: ' + ((f.states || [])[0] || ''));
+  if (f.collateral) lines.push('Collateral: ' + f.collateral);
+  return lines.join('\n');
+}
+function uccDebtorName(d){
+  d = d || {};
+  return (d.type === 'INDIVIDUAL')
+    ? ((d.first_name || '') + ' ' + (d.last_name || '')).trim()
+    : (d.organization_name || d.name || '').trim();
+}
+// Snapshot of the form as this function last painted it. If what's on screen no longer matches,
+// the underwriter has typed since — so a re-render must not overwrite them.
+//
+// Why a snapshot and not an input listener: renderModel() is called by half a dozen unrelated
+// actions (approving a document, adding an owner, running the automated review) and each
+// re-renders every card. A listener only helps if it was bound before the edit, which couples
+// correctness to boot order. Comparing against what we painted is self-contained and can't be
+// defeated that way. Without this, typing a corrected legal name or a file number and then
+// touching anything else on the page silently discarded it.
+var _uccPainted = null;
+// `force` = the caller deliberately changed the data (debtor type switch, owner picked, save), so
+// the inputs SHOULD be rewritten even mid-edit. Everything else leaves typed values alone.
+function renderUccFiling(m, force){
+  if (!$('uccFilingForm')) return;
+  var f = (m && m.uccFiling) || {};
+  var e = uccFormEls();
+  var edited = _uccPainted !== null && JSON.stringify(readUccFilingForm()) !== _uccPainted;
+  var keepTyping = edited && !force;
+  // While the underwriter is mid-edit the FORM is the source of truth, not the stored model —
+  // otherwise the pill and note would describe data that is no longer on screen.
+  var live = keepTyping ? readUccFilingForm() : null;
+  var d = (live && live.debtor) || f.debtor || uccPrefillDebtor(m);
+  var addr = d.address || {};
+
+  // Owner picker — only meaningful for an Individual debtor (a sole proprietor / guarantor).
+  var owners = (m && m.owners) || [];
+  $('ucfOwnerPick').innerHTML = '<option value="">— choose an owner —</option>' + owners.map(function(o,i){
+    return '<option value="' + i + '">' + escHtml(((o.First_Name1||'') + ' ' + (o.Last_Name1||'')).trim() || ('Owner ' + (i+1))) + '</option>';
+  }).join('');
+
+  qsa('input[name="ucfType"]').forEach(function(r){ r.checked = (r.value === (d.type || 'ORGANIZATION')); });
+  var isInd = (d.type === 'INDIVIDUAL');
+  $('ucfOrgWrap').style.display = isInd ? 'none' : '';
+  $('ucfIndWrap').style.display = isInd ? '' : 'none';
+  $('ucfOwnerPickWrap').style.display = isInd ? '' : 'none';
+
+  var fileState = ((live ? live.states : f.states) || [])[0] || (addr.state || '');
+  fileState = String(fileState).toUpperCase();
+  // The <select>s need their options built at least once; rebuilding mid-edit would drop the
+  // user's selection, so only re-stamp them when we're allowed to write.
+  if (!keepTyping || !e.state.options.length) e.state.innerHTML = uccStateOptions((addr.state || '').toUpperCase(), '—');
+  if (!keepTyping || !e.fileState.options.length) e.fileState.innerHTML = uccStateOptions(fileState, 'Select a state');
+
+  if (!keepTyping) {
+    e.org.value = d.organization_name || '';
+    e.first.value = d.first_name || '';
+    e.last.value = d.last_name || '';
+    e.street.value = addr.address_line1 || '';
+    e.apt.value = addr.address_line2 || '';
+    e.city.value = addr.city || '';
+    e.zip.value = addr.zip || addr.postal_code || '';
+    e.collateral.value = f.collateral || '';
+    $('ucfFileNumber').value = f.fileNumber || '';
+    $('ucfFiledAt').value = f.filedAt || '';
+    $('ucfLapseAt').value = f.lapseAt || '';
+  }
+  $('ucfStateLinks').innerHTML = renderStateFilings(fileState, 'Filing Office');
+
+  var shown = live || f;
+  var filed = uccIsFiled(shown);
+  var pill = $('uccFilingStatus'), note = $('uccFilingNote');
+  pill.textContent = filed ? ('Filed · ' + (shown.fileNumber || '')) : 'Not filed';
+  note.className = 'ucf-note';
+  if (filed){
+    note.className = 'ucf-note on good';
+    note.innerHTML = 'Recorded as filed. Changing the debtor now needs an amendment at the filing ' +
+                     'office, not an edit here.';
+  } else if (!fileState){
+    note.className = 'ucf-note on warn';
+    note.innerHTML = 'Choose the filing state to get the filing-office link.';
+  } else {
+    note.className = 'ucf-note on warn';
+    note.innerHTML = 'Not filed yet. File it in Middesk or the state portal above, then paste the ' +
+                     'file number here so the review has a record.';
+  }
+  // Only re-baseline when we actually painted. Adopting the user's typing as the baseline would
+  // make the NEXT render see no difference and overwrite them — the edit has to keep looking like
+  // an edit until it is saved or deliberately replaced.
+  if (!keepTyping) _uccPainted = JSON.stringify(readUccFilingForm());
+}
+function saveUccFiling(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var form = readUccFilingForm();
+  // A file number without a state is a record nobody can act on later — a UCC-1 is only
+  // meaningful against a jurisdiction.
+  if (uccIsFiled(form) && !form.states.length){
+    showStatus('Choose the filing state that file number belongs to.', 'error'); return;
+  }
+  MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
+  renderUccFiling(MODEL, true);            // force: what's on screen is now what's stored
+  persistManual(uccIsFiled(form) ? 'UCC filing recorded.' : 'UCC filing details saved.');
+}
+function copyUccDetails(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var text = uccCopyText(readUccFilingForm());
+  var done = function(){ showStatus('Debtor details copied — paste them into the filing form.', 'success'); };
+  var fail = function(){ showStatus('Could not copy automatically — select the fields and copy manually.', 'error'); };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, fail); return; }
+  } catch (e) { /* fall through to the textarea path below */ }
+  // execCommand fallback: older embeds and any context where the async clipboard API is blocked.
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    ok ? done() : fail();
+  } catch (e2) { fail(); }
+}
+
 // Persist every underwriter-added record (owners/contacts/customers/related/UCC) by saving the
 // Underwriting_Review — the Manual_* arrays ride in the payload via readState → buildReviewPayload.
 // Reuses the existing /uw-review-save route; no per-type endpoint needed.
@@ -2322,6 +2755,75 @@ function persistManual(okMsg){
 // Nudge the client for a document they still owe: texts them a reminder and logs it to the shared
 // Sales_Notes trail, so the sales pipeline's Notes & Activity shows Underwriting already chased it.
 // Success requires BOTH r.ok AND j.ok — the sales version once faked success against a 404 route.
+// Approve/deny one uploaded document. Deny collects a reason (required — a bare "Rejected" tells the
+// client nothing they can act on) and offers to text them; the reason is what shows on their portal.
+function reviewDoc(token, label, decision){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  if (!token) return;
+  if (decision === 'approve'){
+    confirmAction({
+      icon: '✓', iconCls: 'approve', title: 'Approve this document?',
+      sub: 'Marks <b>' + escHtml(label) + '</b> as Verified. The client will no longer be able to remove or replace it.',
+      goCls: 'green', goText: 'Approve',
+      onGo: function(){ sendDocReview(token, label, 'approve', '', false); }
+    });
+    return;
+  }
+  confirmAction({
+    icon: '✕', iconCls: 'decline', title: 'Deny this document?',
+    sub: '<div style="margin-bottom:8px">Tell <b>' + escHtml(label) + '</b>’s uploader what to fix — this text is shown to the client on their portal.</div>' +
+         '<textarea id="docDenyReason" rows="3" maxlength="255" placeholder="e.g. Expired — policy ended 06/2026. Please upload a current certificate." ' +
+         'style="width:100%;box-sizing:border-box;font:inherit;padding:6px 8px;border:1px solid var(--of-beige-line);border-radius:6px"></textarea>' +
+         '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px">' +
+         '<input type="checkbox" id="docDenyNotify" checked> Text the client a reminder</label>',
+    goCls: 'red', goText: 'Deny document',
+    onGo: function(){
+      // confirmAction closes the modal before onGo runs, so read the fields into locals up front —
+      // by the time this fires the nodes are gone.
+      showStatus('Denying "' + label + '"…', 'loading');
+      sendDocReview(token, label, 'deny', MODEL._denyReason || '', !!MODEL._denyNotify);
+    }
+  });
+  // Capture the inputs live so onGo (which runs after the modal closes) has their final values.
+  var ta = $('docDenyReason'), cb = $('docDenyNotify');
+  MODEL._denyReason = ''; MODEL._denyNotify = true;
+  if (ta){ ta.focus(); ta.addEventListener('input', function(){ MODEL._denyReason = ta.value; }); }
+  if (cb){ cb.addEventListener('change', function(){ MODEL._denyNotify = cb.checked; }); }
+}
+
+function sendDocReview(token, label, decision, reason, notify){
+  if (decision === 'deny' && !String(reason || '').trim()){
+    showStatus('Denying a document needs a reason — it’s what the client sees.', 'error');
+    return;
+  }
+  if (MODEL._demo || typeof fetch !== 'function'){
+    showStatus('✓ Demo: "' + label + '" would be marked ' + (decision === 'approve' ? 'Verified' : 'Rejected') + '.', 'success');
+    return;
+  }
+  showStatus((decision === 'approve' ? 'Approving' : 'Denying') + ' "' + label + '"…', 'loading');
+  fetch(API_BASE + DOCREVIEW_PATH, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ application_id: MODEL.appId, token: token, decision: decision,
+                           reason: reason || '', rep: uwAuthor(), notify: !!notify }) })
+    .then(function (r){ return r.json().catch(function(){ return {}; })
+                          .then(function (j){ return { httpOk: r.ok, j: j || {} }; }); })
+    .then(function (res){
+      if (!res.httpOk || !res.j.ok) throw new Error(res.j.error || res.j.detail || 'could not update the document');
+      // Same targeted refresh the nudge uses: the server hands back the full new Sales_Notes, so the
+      // decision lands in its chronological slot without a full load() wiping transient row state.
+      if (res.j.sales_notes){
+        MODEL.application = MODEL.application || {};
+        MODEL.application.Sales_Notes = res.j.sales_notes;
+        renderNoteHistory(MODEL.clientMessageStored, res.j.sales_notes);
+      }
+      // Reflect the new status locally so the row's buttons update without a round trip.
+      (MODEL.documents || []).forEach(function (d){ if (docToken(d) === token && Array.isArray(d)) d[2] = res.j.status; });
+      renderModel(MODEL);
+      showStatus('✓ "' + label + '" marked ' + res.j.status +
+        (res.j.notified ? ' — client texted.' : (decision === 'deny' ? ' — the reason is now on their portal.' : '.')), 'success');
+    })
+    .catch(function (e){ showStatus('Could not update "' + label + '": ' + (e && e.message ? e.message : e), 'error'); });
+}
+
 function nudgeClient(docType, btn){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
   if (!docType) return;
@@ -2487,6 +2989,44 @@ function boot() {
   wireAdd('addRelatedToggle','addRelatedForm','arSave','related',readRelatedForm);
   if ($('addUccToggle')) $('addUccToggle').addEventListener('click', function(){ var f=$('addUccForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
   if ($('aucSave')) $('aucSave').addEventListener('click', addUcc);
+  // UCC Filing card. The radio and owner picker deliberately rewrite fields, so they force a full
+  // repaint; every other re-render preserves whatever the underwriter has typed (see _uccPainted).
+  qsa('input[name="ucfType"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      if (!MODEL) return;
+      var form = readUccFilingForm();
+      form.debtor.type = r.value;
+      MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
+      renderUccFiling(MODEL, true);
+    });
+  });
+  if ($('ucfOwnerPick')) $('ucfOwnerPick').addEventListener('change', function(){
+    if (!MODEL) return;
+    var o = ((MODEL.owners || [])[parseInt(this.value, 10)]) || null;
+    if (!o) return;
+    var form = readUccFilingForm();
+    form.debtor.type = 'INDIVIDUAL';
+    form.debtor.first_name = o.First_Name1 || '';
+    form.debtor.last_name = o.Last_Name1 || '';
+    // An owner's own address only overwrites the debtor address when they actually have one.
+    var oa = String(o.Address || '');
+    var mm = oa.match(/^\s*(.+?),\s*([^,]+?),\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$/);
+    if (mm) form.debtor.address = { address_line1:mm[1].trim(), address_line2:'', city:mm[2].trim(),
+                                    state:mm[3].toUpperCase(), zip:mm[4] || '' };
+    MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
+    renderUccFiling(MODEL, true);
+  });
+  if ($('ucfState')) $('ucfState').addEventListener('change', function(){
+    // Keep the filing state following the debtor state until the underwriter sets it themselves.
+    if (!MODEL) return;
+    var fs = $('ucfFileState');
+    if (fs && !fs.value) { fs.value = this.value; $('ucfStateLinks').innerHTML = renderStateFilings(this.value, 'Filing Office'); }
+  });
+  if ($('ucfFileState')) $('ucfFileState').addEventListener('change', function(){
+    $('ucfStateLinks').innerHTML = renderStateFilings(this.value, 'Filing Office');
+  });
+  if ($('ucfSave')) $('ucfSave').addEventListener('click', saveUccFiling);
+  if ($('ucfCopy')) $('ucfCopy').addEventListener('click', copyUccDetails);
   if ($('addDocReqToggle')) $('addDocReqToggle').addEventListener('click', function(){ var f=$('addDocReqForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
   if ($('rdSave')) $('rdSave').addEventListener('click', requestDoc);
   if ($('hrvToggle')) $('hrvToggle').addEventListener('click', function(){ var f=$('hrvForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
@@ -2506,7 +3046,7 @@ function boot() {
   if ($('hrvClear')) $('hrvClear').addEventListener('click', clearHighRiskVolume);
   $('btnRunReview').addEventListener('click', runReview);
   $('usdotInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') load(this.value); });
-  ['tgAuthority','tgOwnership','tgUcc','tgBuyout'].forEach(bindToggle);
+  REVIEW_SECTIONS.map(function (sec) { return sec.toggle; }).concat(['tgBuyout']).forEach(bindToggle);
   // The Factoring Fee also decides WHICH California disclosure gets attached — preview it live.
   ['uwLimit','uwRate'].forEach(function(id){
     $(id).addEventListener('input', function(){ renderGate(); renderCaDisclosureNote(); });
@@ -2522,11 +3062,17 @@ function boot() {
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ var b = $('cfBackdrop'); if (b && !b.classList.contains('hidden')) closeConfirm(); } });
   if ($('btnSendAgreement')) $('btnSendAgreement').addEventListener('click', agreementPrimaryClick);
   if ($('btnAgrConfirm')) $('btnAgrConfirm').addEventListener('click', prepareAgreement);
-  if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){ $('agrPanel').style.display = 'none'; });
+  if ($('btnAgrCancel')) $('btnAgrCancel').addEventListener('click', function(){
+    $('agrPanel').style.display = 'none';
+    if (MODEL) MODEL._agrRebuild = false;   // backing out must not leave a rebuild armed
+  });
+  if ($('btnAgrRebuild')) $('btnAgrRebuild').addEventListener('click', rebuildAgreement);
   // Changing the packet or the CA flag changes the ENVELOPE, so the open signer panel's action_ids
   // (reconciled by Zoho per merge set) go stale — re-fetch it, don't just repaint the banner.
   function agrConfigChanged(){
+    if (MODEL) MODEL._agrPacketTouched = true;   // stop renderAgreement resetting it to the draft's packet
     renderCaDisclosureNote();
+    renderPacketMismatch();
     if ($('agrPanel') && $('agrPanel').style.display === 'block') openAgreementPanel();
   }
   if ($('agrCaRow')) $('agrCaRow').addEventListener('click', function(){

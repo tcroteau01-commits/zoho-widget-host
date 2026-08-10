@@ -323,8 +323,13 @@ function reconcileDocs(required, documents) {
   // Staff-requested docs that aren't in the base checklist and haven't been uploaded yet. Underwriting
   // requests these (ad-hoc or the §9.2 set) and they're real Document records — without this bucket
   // they matched neither checklist nor extras and were silently dropped from the sales view.
-  var requested = documents.filter(function (d) { return !reqTypes[normType(docType(d))] && !isUploadedStatus(docStatus(d)) && isRequestedStatus(docStatus(d)); })
-    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Requested', link: docUrl(d) }; });
+  // REJECTED ones ride here too: a denied off-checklist doc matches neither isUploadedStatus nor
+  // isRequestedStatus, so it used to vanish from this view exactly when the rep needed to chase it.
+  var isRejected = function (s) { return /rejected/i.test(String(s || '')); };
+  var requested = documents.filter(function (d) { var st = docStatus(d);
+      return !reqTypes[normType(docType(d))] && !isUploadedStatus(st) && (isRequestedStatus(st) || isRejected(st)); })
+    .map(function (d) { return { label: docType(d) || 'Document', type: docType(d) || '', status: docStatus(d) || 'Requested', link: docUrl(d),
+                                 rejected: isRejected(docStatus(d)) }; });
   return {
     checklist: checklist, extras: extras, requested: requested,
     uploadedCount: checklist.filter(function (c) { return c.uploaded; }).length,

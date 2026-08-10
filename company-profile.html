@@ -458,6 +458,12 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   </div>
 
+  <!-- Users & Access (PERM3) -->
+  <div class="card" id="access-card" style="margin-top:18px;">
+    <div class="card-title">Users &amp; Access <span class="count" id="access-count"></span></div>
+    <div id="access-list"></div>
+  </div>
+
   <div id="logo-section" class="card" style="margin-top:18px;"></div>
 
   <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-16.1</div>
@@ -567,6 +573,25 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   </div>
 </div>
 
+<!-- Access drawer (PERM3) -->
+<div class="modal" id="access-drawer" style="display:none">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span id="access-drawer-name"></span>
+      <button data-act="close-access">&times;</button>
+    </div>
+    <label class="field">
+      <span>Template</span>
+      <select id="access-template"></select>
+    </label>
+    <div id="access-tree"></div>
+    <div class="modal-foot">
+      <button data-act="save-access" class="btn-primary">Save</button>
+      <button data-act="close-access" class="btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script>
@@ -610,6 +635,7 @@ function bootApp() {
     console.log('[CompanyProfile] Booted as', brokerEmail);
     loadAccount();
     loadUsers();
+    loadAccess();
   }
   if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
     showCardError('getInitParams not available on this SDK build.');
@@ -660,6 +686,15 @@ function bindGlobalUI() {
   });
 
   document.getElementById('modal-submit').addEventListener('click', submitContact);
+
+  // Access drawer (PERM3)
+  document.querySelectorAll('[data-act="close-access"]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.getElementById('access-drawer').style.display = 'none';
+    });
+  });
+  var saveAccessBtn = document.querySelector('[data-act="save-access"]');
+  if (saveAccessBtn) saveAccessBtn.addEventListener('click', saveAccess);
 
   // Inline error clearing
   ['m-first','m-last','m-email','m-phone'].forEach(function(id) {
@@ -1311,6 +1346,167 @@ function esc(s) {
   });
 }
 
+// --- PERM3 Access tab -----------------------------------------------------
+// The backend is the enforcement point (permissions_gate). Everything here is
+// presentation: what an admin can see and understand about someone's access.
+var accessCatalog = null;
+var accessTemplates = [];
+var currentDrawerTemplate = null;
+var currentDrawerUser = null;
+var adminCeiling = [];
+
+function renderAccessTab(users, templates) {
+  accessTemplates = templates || [];
+  var list = document.getElementById('access-list');
+  var count = document.getElementById('access-count');
+  if (!list) return;
+  list.innerHTML = '';
+  count.textContent = users.length ? '(' + users.length + ')' : '';
+
+  users.forEach(function (u) {
+    var row = document.createElement('div');
+    row.setAttribute('data-access-row', u.portal_user_id);
+    row.className = 'access-row';
+
+    var bits = [u.name || u.email, u.email, u.template_name || 'No template'];
+    var d = u.delta || { added: [], removed: [] };
+    if (d.added.length) bits.push('+' + d.added.length + ' added');
+    if (d.removed.length) bits.push('-' + d.removed.length + ' removed');
+    if (u.status === 'disabled') bits.push('Disabled');
+    if (u.is_owner) bits.push('Account owner');
+    row.textContent = bits.join('  ·  ');
+
+    // The owner always holds everything, so there is nothing to edit and an
+    // edit control would only invite a confusing no-op.
+    if (!u.is_owner) {
+      var edit = document.createElement('button');
+      edit.setAttribute('data-act', 'edit-access');
+      edit.textContent = 'Edit access';
+      edit.onclick = function () { openAccessDrawer(u); };
+      row.appendChild(edit);
+    }
+    list.appendChild(row);
+  });
+}
+
+function buildCapabilityTree(catalog, selected, ceiling) {
+  // `ceiling` is the ADMIN's own effective set. Capabilities outside it render
+  // disabled WITH a reason rather than vanishing: a control that silently is not
+  // there teaches nothing and generates a support call.
+  var sel = selected || [];
+  var ceil = ceiling || [];
+  var wrap = document.createElement('div');
+  wrap.setAttribute('data-cap-tree', '1');
+
+  (catalog.groups || []).forEach(function (g) {
+    var h = document.createElement('div');
+    h.className = 'cap-group';
+    h.textContent = g.group;
+    wrap.appendChild(h);
+
+    g.capabilities.forEach(function (c) {
+      var rowEl = document.createElement('label');
+      rowEl.setAttribute('data-cap-row', c.key);
+      var box = document.createElement('input');
+      box.type = 'checkbox';
+      box.setAttribute('data-cap', c.key);
+      box.checked = sel.indexOf(c.key) !== -1;
+      box.disabled = ceil.indexOf(c.key) === -1;
+      if (box.disabled) {
+        rowEl.setAttribute('title',
+          'You do not have this access yourself, so you cannot grant it.');
+      }
+      rowEl.appendChild(box);
+      rowEl.appendChild(document.createTextNode(' ' + c.label));
+      wrap.appendChild(rowEl);
+    });
+  });
+  return wrap;
+}
+
+function collectDrawerSelection() {
+  // Overrides are computed as a DELTA against the template, never as an absolute
+  // list, so editing the template still propagates to everyone on it.
+  var tplCaps = (currentDrawerTemplate || {}).capabilities || [];
+  var boxes = document.querySelectorAll('[data-cap-tree] [data-cap]');
+  var added = [], removed = [];
+  Array.prototype.forEach.call(boxes, function (b) {
+    var key = b.getAttribute('data-cap');
+    var inTpl = tplCaps.indexOf(key) !== -1;
+    if (b.checked && !inTpl) added.push(key);
+    if (!b.checked && inTpl) removed.push(key);
+  });
+  return { grants_added: added, grants_removed: removed };
+}
+
+function openAccessDrawer(user) {
+  currentDrawerUser = user;
+  currentDrawerTemplate = accessTemplates.filter(function (t) {
+    return t.template_id === user.template_id;
+  })[0] || { capabilities: [] };
+
+  document.getElementById('access-drawer-name').textContent = user.name || user.email;
+  var picker = document.getElementById('access-template');
+  picker.innerHTML = '';
+  accessTemplates.forEach(function (t) {
+    var o = document.createElement('option');
+    o.value = t.template_id;
+    o.textContent = t.name;
+    o.selected = t.template_id === user.template_id;
+    picker.appendChild(o);
+  });
+
+  var d = user.delta || { added: [], removed: [] };
+  var selected = (currentDrawerTemplate.capabilities || [])
+    .filter(function (k) { return d.removed.indexOf(k) === -1; })
+    .concat(d.added);
+
+  var tree = document.getElementById('access-tree');
+  tree.innerHTML = '';
+  tree.appendChild(buildCapabilityTree(accessCatalog, selected, adminCeiling));
+  document.getElementById('access-drawer').style.display = 'block';
+}
+
+function saveAccess() {
+  var sel = collectDrawerSelection();
+  return fetch(BROKER_API_BASE + '/permissions/user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: brokerEmail,
+      portal_user_id: currentDrawerUser.portal_user_id,
+      template_id: document.getElementById('access-template').value,
+      grants_added: sel.grants_added,
+      grants_removed: sel.grants_removed
+    })
+  }).then(function (r) { return r.json().then(function (b) { return { r: r, b: b }; }); })
+    .then(function (res) {
+      if (res.r.status === 409) { showCardError(res.b.error); return; }
+      if (res.r.status === 403) {
+        showCardError('That is beyond your own access, so you cannot grant it.');
+        return;
+      }
+      document.getElementById('access-drawer').style.display = 'none';
+      loadAccess();
+    });
+}
+
+function loadAccess() {
+  var q = '?email=' + encodeURIComponent(brokerEmail);
+  return Promise.all([
+    fetch(BROKER_API_BASE + '/permissions/catalog').then(function (r) { return r.json(); }),
+    fetch(BROKER_API_BASE + '/permissions/templates' + q).then(function (r) { return r.json(); }),
+    fetch(BROKER_API_BASE + '/permissions/users' + q).then(function (r) { return r.json(); }),
+    fetch(BROKER_API_BASE + '/me/permissions' + q).then(function (r) { return r.json(); })
+  ]).then(function (out) {
+    accessCatalog = out[0];
+    adminCeiling = (out[3] || {}).capabilities || [];
+    renderAccessTab((out[2] || {}).users || [], (out[1] || {}).templates || []);
+  }).catch(function (err) {
+    console.error('[CompanyProfile] access load failed', err);
+  });
+}
+
 // ── expose for tests (no-op in production; window overrides are unset live) ──
 window.submitContact = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
@@ -1349,6 +1545,31 @@ window.removeLogo = function() {
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
   if (typeof window.canManage === 'boolean') canManage = window.canManage;
   return removeLogo.apply(this, arguments);
+};
+window.renderAccessTab = function() {
+  return renderAccessTab.apply(this, arguments);
+};
+window.buildCapabilityTree = function() {
+  return buildCapabilityTree.apply(this, arguments);
+};
+window.collectDrawerSelection = function() {
+  if (window.currentDrawerTemplate !== undefined) currentDrawerTemplate = window.currentDrawerTemplate;
+  return collectDrawerSelection.apply(this, arguments);
+};
+window.openAccessDrawer = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  return openAccessDrawer.apply(this, arguments);
+};
+window.loadAccess = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  return loadAccess.apply(this, arguments);
+};
+window.saveAccess = function() {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  return saveAccess.apply(this, arguments);
 };
 
 })();

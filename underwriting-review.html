@@ -467,6 +467,8 @@ tr:last-child td { border-bottom:none; }
             </div>
           </div>
           <table id="docTable"></table>
+          <!-- Where a nudge goes out from and where the client's reply surfaces. Filled by renderAll. -->
+          <div class="hint" id="smsRoute" style="display:none;font-size:11px;color:var(--of-gray-500);margin:8px 0 0"></div>
           <div class="add-wrap">
             <button class="btn ghost sm" id="addDocReqToggle">+ Request document</button>
             <div class="add-form" id="addDocReqForm" style="display:none">
@@ -834,6 +836,23 @@ function nudgeButton(docType, sent) {
     : ' <button type="button" class="btn ghost sm js-nudge" data-doc="' + escHtml(docType) + '">Nudge client</button>';
 }
 
+// Where this client's texts come from and where their replies surface. Answers the question a nudge
+// otherwise leaves hanging: "I texted them, so where do I watch for the answer?"
+// The `sms` block comes from /application-by-usdot — derived server-side so the broker-line cutover
+// stays one Render env var instead of a constant copied into every widget. Returns '' when the block
+// is absent, so an older backend degrades to today's UI rather than an empty or wrong chip.
+function smsRouteHint(sms) {
+  if (!sms || !sms.from) return '';
+  var num = String(sms.from).replace(/^\+1/, '');
+  var pretty = /^\d{10}$/.test(num) ? '(' + num.slice(0,3) + ') ' + num.slice(3,6) + '-' + num.slice(6) : String(sms.from);
+  // live=false means this client is NOT on the relay (broker line not cut over, or the relay is
+  // unconfigured) — their replies come back as email, not a Slack thread. Say so; pointing staff at
+  // a Slack channel that will stay empty is worse than saying nothing.
+  return sms.live && sms.channel
+    ? 'Texts send from ' + pretty + ' · replies land in ' + sms.channel
+    : 'Texts send from ' + pretty + ' · replies come to ' + (sms.replyTo || 'the onboarding inbox');
+}
+
 // ── Approve / deny a client-uploaded document ─────────────────────────────────
 // Approve → Verified (which also stops the client deleting it). Deny → Rejected + a reason the
 // client sees on their portal, so they fix the right thing instead of re-uploading the same file.
@@ -1195,7 +1214,7 @@ function agreementRolesUrl(base, usdot, cfg){
 }
 
 var OFUW = { computeGate: computeGate, validateDecision: validateDecision, buildReviewPayload: buildReviewPayload, buildBuyoutPayload: buildBuyoutPayload, computeRecommendation: computeRecommendation, requiredDocs: requiredDocs, reconcileDocs: reconcileDocs, docViewButton: docViewButton, APPLICATION_LOOKUP: APPLICATION_LOOKUP,
-  canNudge: canNudge, nudgeButton: nudgeButton, canReviewDoc: canReviewDoc, docReviewButtons: docReviewButtons, docToken: docToken,
+  canNudge: canNudge, nudgeButton: nudgeButton, smsRouteHint: smsRouteHint, canReviewDoc: canReviewDoc, docReviewButtons: docReviewButtons, docToken: docToken,
   defaultPromoRate: defaultPromoRate, fmtTerm: fmtTerm, buildApplicationTerms: buildApplicationTerms,
   composeNotesLog: composeNotesLog, formatStamp: formatStamp, checksFromReview: checksFromReview, parseSalesNotes: parseSalesNotes, uwAuthor: uwAuthor, runChecks: runChecks,
   parseClientMsg: parseClientMsg, noteTime: noteTime, buildNoteHistory: buildNoteHistory, saferUrl: saferUrl, carrierOkUrl: carrierOkUrl,
@@ -1397,6 +1416,7 @@ function loadByUSDOT(usdot) {
           // The saved run stamp wins over the vendor's own field, so the "· last run" display is reliable.
           checkedAt: (j.review && j.review.Checks_Run_At) || (c && c.checkedAt) || '',
           uccFiling: parseUccFiling(j.review),
+          sms: j.sms || null,               // which line texts this client + where their replies land
           review: j.review || {}
         };
       });
@@ -2317,6 +2337,8 @@ function renderModel(m) {
     b.addEventListener('click', function () { reviewDoc(b.getAttribute('data-token'), b.getAttribute('data-label'), 'deny'); });
   });
   $('docCount').textContent = docRec.uploadedCount + ' / ' + docRec.total + ' received';
+  var routeHint = smsRouteHint(m.sms), routeEl = $('smsRoute');
+  if (routeEl) { routeEl.textContent = routeHint; routeEl.style.display = routeHint ? '' : 'none'; }
   $('kDocs').textContent = docRec.uploadedCount + ' / ' + docRec.total;
   $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
   // UCC: automated check results + underwriter-added manual filings (parsed in the early block).

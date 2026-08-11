@@ -491,7 +491,8 @@ function loadDetail(app) {
         // Creator checkbox ("true"/"false"); the date comes back as "15-Aug-2026 00:00:00" → drop the time.
         buyoutRequired: String(rev.Buyout_Required).toLowerCase() === 'true',
         buyoutFactor: rev.Buyout_Factor || '', buyoutDate: (rev.Estimated_Buyout_Date || '').split(' ')[0],
-        buyoutNotes: rev.Buyout_Notes || '' };
+        buyoutNotes: rev.Buyout_Notes || '',
+        sms: j.sms || null };            // which line texts this client + where their replies land
     })
     .catch(function () { return { application: app, documents: [], owners: [], physicalAddress: app.loc || '', uwNotes: '', uwWhen: '', clientMessage: '', salesNotes: app[SALES_NOTES_FIELD] || '', buyoutRequired: false, buyoutFactor: '', buyoutDate: '', buyoutNotes: '' }; });
 }
@@ -518,6 +519,24 @@ function parseClientNotes(raw){
     return { text: body, stamp: (parts[0] || '').trim(), who: (parts[1] || '').trim() };
   }).filter(function (e){ return e.text; });
 }
+// Where this client's texts come from and where their replies surface. Answers the question a nudge
+// otherwise leaves hanging: "I texted them, so where do I watch for the answer?"
+// The `sms` block comes from /application-by-usdot — derived server-side so the broker-line cutover
+// stays one Render env var instead of a constant copied into every widget. Returns '' when the block
+// is absent, so an older backend degrades to today's UI rather than an empty or wrong chip.
+// Duplicated verbatim in underwriting-review.html; keep the two in step.
+function smsRouteHint(sms) {
+  if (!sms || !sms.from) return '';
+  var num = String(sms.from).replace(/^\+1/, '');
+  var pretty = /^\d{10}$/.test(num) ? '(' + num.slice(0,3) + ') ' + num.slice(3,6) + '-' + num.slice(6) : String(sms.from);
+  // live=false means this client is NOT on the relay (broker line not cut over, or the relay is
+  // unconfigured) — their replies come back as email, not a Slack thread. Say so; pointing staff at
+  // a Slack channel that will stay empty is worse than saying nothing.
+  return sms.live && sms.channel
+    ? 'Texts send from ' + pretty + ' · replies land in ' + sms.channel
+    : 'Texts send from ' + pretty + ' · replies come to ' + (sms.replyTo || 'the onboarding inbox');
+}
+
 // Applicant profile rows for the sales detail — a general picture of the client, mirroring the
 // underwriting "Submitted Application" card's field map plus the contact info sales wants. Reads the
 // full Application record loadDetail now captures (from /application-by-usdot). Returns rows HTML.
@@ -715,7 +734,8 @@ function renderDetail(app, d) {
     '<div class="card"><div class="card-title">Application</div><div class="appkv">' + appSummaryRows(d.application) + '</div></div>' +
 
     '<div class="grid2"><div class="card"><div class="card-title">Documents <span class="count">' + docRec.uploadedCount + ' / ' + docRec.total + ' received</span></div>' + docsHtml +
-      '<div class="hint">Documents the prospect uploads appear here as Received. Use “Nudge client” on a still-needed item to send a reminder — Sales can’t mark docs received.</div></div>' +
+      '<div class="hint">Documents the prospect uploads appear here as Received. Use “Nudge client” on a still-needed item to send a reminder — Sales can’t mark docs received.</div>' +
+      (smsRouteHint(d.sms) ? '<div class="hint">' + esc(smsRouteHint(d.sms)) + '</div>' : '') + '</div>' +
 
       '<div class="card"><div class="card-title">Estimated Terms <span class="count">from rate engine</span></div><div class="rate-box">' +
         '<div class="rate-item"><div class="rv">' + esc(terms.rate) + '</div><div class="rl">Est. Rate</div></div>' +

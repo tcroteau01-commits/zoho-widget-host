@@ -28,16 +28,30 @@ const CASES = [
 for (const [name, smsRouteHint] of CASES) {
   test(`${name}: a live carrier names the line and the Slack channel`, () => {
     assert.equal(
-      smsRouteHint({ from: '+16826889619', line: 'carrier', live: true, channel: '#texts-carrier-ops', replyTo: '' }),
+      smsRouteHint({ from: '+16826889619', line: 'carrier', inbound: 'slack', live: true, channel: '#texts-carrier-ops', replyTo: '' }),
       'Texts send from (682) 688-9619 · replies land in #texts-carrier-ops');
   });
 
-  test(`${name}: a held-back broker points at the inbox, never an empty channel`, () => {
-    // Saying "#texts-sales-onboarding" for a client who isn't on the relay sends staff to a channel
-    // their reply will never appear in — worse than saying nothing.
-    const out = smsRouteHint({ from: '+15550000000', line: 'broker', live: false, channel: '', replyTo: 'onboarding@operfi.com' });
+  test(`${name}: a broker pre-cutover is warned that replies reach NOBODY`, () => {
+    // The state that only exists for brokers right now: correct permanent number, but a reply goes
+    // nowhere. Naming a channel or an inbox would leave staff waiting on an answer that can't come.
+    const out = smsRouteHint({ from: '+16829002324', line: 'broker', inbound: 'none', live: false, channel: '', replyTo: '' });
+    assert.equal(out, 'Texts send from (682) 900-2324 · ⚠ replies do NOT reach us yet — call or email instead');
+    assert.doesNotMatch(out, /#texts/);
+  });
+
+  test(`${name}: off the relay entirely, replies are named as the inbox`, () => {
+    const out = smsRouteHint({ from: '+15550000000', line: 'broker', inbound: 'email', live: false, channel: '', replyTo: 'onboarding@operfi.com' });
     assert.equal(out, 'Texts send from (555) 000-0000 · replies come to onboarding@operfi.com');
     assert.doesNotMatch(out, /#texts/);
+  });
+
+  test(`${name}: a block without 'inbound' still reads correctly off 'live'`, () => {
+    // Back-compat: a deployed widget may briefly out-run the backend that adds the field.
+    assert.match(smsRouteHint({ from: '+16826889619', live: true, channel: '#texts-carrier-ops' }),
+      /replies land in #texts-carrier-ops/);
+    assert.match(smsRouteHint({ from: '+15550000000', live: false, replyTo: 'onboarding@operfi.com' }),
+      /replies come to onboarding@operfi\.com/);
   });
 
   test(`${name}: no block means no hint, so an older backend renders today's UI`, () => {
@@ -47,8 +61,8 @@ for (const [name, smsRouteHint] of CASES) {
     assert.equal(smsRouteHint({ from: '' }), '');
   });
 
-  test(`${name}: live but channel-less still degrades to the inbox wording`, () => {
-    const out = smsRouteHint({ from: '+16826889619', live: true, channel: '' });
+  test(`${name}: slack but channel-less still degrades to the inbox wording`, () => {
+    const out = smsRouteHint({ from: '+16826889619', inbound: 'slack', live: true, channel: '' });
     assert.match(out, /replies come to the onboarding inbox/);
   });
 

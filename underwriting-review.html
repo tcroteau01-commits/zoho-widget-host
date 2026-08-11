@@ -845,12 +845,13 @@ function smsRouteHint(sms) {
   if (!sms || !sms.from) return '';
   var num = String(sms.from).replace(/^\+1/, '');
   var pretty = /^\d{10}$/.test(num) ? '(' + num.slice(0,3) + ') ' + num.slice(3,6) + '-' + num.slice(6) : String(sms.from);
-  // live=false means this client is NOT on the relay (broker line not cut over, or the relay is
-  // unconfigured) — their replies come back as email, not a Slack thread. Say so; pointing staff at
-  // a Slack channel that will stay empty is worse than saying nothing.
-  return sms.live && sms.channel
-    ? 'Texts send from ' + pretty + ' · replies land in ' + sms.channel
-    : 'Texts send from ' + pretty + ' · replies come to ' + (sms.replyTo || 'the onboarding inbox');
+  // Three destinations, and the third one is the reason this hint exists. A broker is texted from
+  // the right (permanent) line before that line's inbound is cut over, so their reply reaches
+  // NOBODY. Staff who aren't told will sit waiting for an answer that cannot arrive.
+  var where = sms.inbound || (sms.live ? 'slack' : 'email');
+  if (where === 'slack' && sms.channel) return 'Texts send from ' + pretty + ' · replies land in ' + sms.channel;
+  if (where === 'none') return 'Texts send from ' + pretty + ' · ⚠ replies do NOT reach us yet — call or email instead';
+  return 'Texts send from ' + pretty + ' · replies come to ' + (sms.replyTo || 'the onboarding inbox');
 }
 
 // ── Approve / deny a client-uploaded document ─────────────────────────────────

@@ -114,7 +114,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .user-list { display: flex; flex-direction: column; gap: 6px; max-height: 540px; overflow-y: auto; padding-right: 4px; }
 .user-row {
   display: grid;
-  grid-template-columns: 36px 1.6fr 1.4fr 110px 90px auto;
+  /* The actions column is FIXED, not auto. The owner's row carries only View
+     while everyone else carries three buttons, and an auto column let that
+     difference resize the fr columns per row -- so phone and badge landed at a
+     different x on every line. */
+  grid-template-columns: 36px 1.6fr 1.4fr 110px 90px 232px;
   gap: 12px; align-items: center;
   padding: 10px 12px;
   background: #fff;
@@ -123,7 +127,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   transition: all 0.12s;
 }
 .user-row:hover { border-color: #c8c4b6; background: #fafaf6; }
-.user-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.user-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+/* Overrides, ownership and disabled state sit under the name, where there is
+   room, rather than being squeezed into the badge column. */
+.user-notes { font-size: 11px; color: #999; margin-top: 2px; }
+/* Disabled reads as inert without hiding the row -- the row is how you re-enable. */
+.user-row.is-disabled { background: #fbfbf9; }
+.user-row.is-disabled .user-name,
+.user-row.is-disabled .user-email { color: #a8a8a8; }
 .ua-btn { border: 1px solid #d8d8d8; background: #fff; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: #555; cursor: pointer; font-family: inherit; }
 .ua-btn:hover { border-color: #b8b8b8; background: #fafafa; }
 .ua-btn.danger { color: #c62828; border-color: #f0c4c4; }
@@ -446,23 +457,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .foot-actions .modal-btn { width: 100%; min-height: 44px; }
 }
 
-/* Users & Access (PERM3) -- every selector below is scoped to #access-card or
-   #access-drawer so it cannot reach the pre-existing Add Trusted Contact modal
-   or any other section of this file. */
-#access-card .count { font-size: 12px; font-weight: 600; color: #888; margin-left: 4px; }
-#access-card .access-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 4px; border-bottom: 1px solid #f0efe9;
-  font-size: 13px; color: #444;
-}
-#access-card .access-row:last-child { border-bottom: none; }
-#access-card .access-row button[data-act="edit-access"] {
-  flex-shrink: 0;
-  background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
-  padding: 6px 12px; font-size: 12px; font-weight: 600; color: #444;
-  cursor: pointer; font-family: inherit; transition: all 0.15s;
-}
-#access-card .access-row button[data-act="edit-access"]:hover { border-color: #b8b8b8; background: #fafafa; }
+/* The #access-card rules are gone with the card. Its controls now render as
+   .ua-btn inside the Authorized Users rows and inherit that styling.
+   #access-drawer selectors remain scoped so they cannot reach the pre-existing
+   Add Trusted Contact modal or any other section of this file. */
 #access-drawer .modal-box { padding: 24px 26px; }
 #access-drawer .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 #access-drawer .field > span {
@@ -484,10 +482,26 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 /* Templates tab + activity log (PERM3) -- scoped to #templates-card / #activity-card
    so nothing here can reach the Add Trusted Contact modal or the access drawer. */
+/* Capped measure. These cards sit outside .layout's two-column grid, so they
+   run the full page width -- and with space-between across ~1500px the buttons
+   ended up a screen away from the label they belong to. */
 #templates-card .template-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 4px; border-bottom: 1px solid #f0efe9;
+  display: flex; align-items: baseline; gap: 14px;
+  max-width: 880px;
+  padding: 11px 4px; border-bottom: 1px solid #f0efe9;
   font-size: 13px; color: #444;
+}
+#templates-card .tpl-meta {
+  flex: 1; min-width: 0;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+}
+#templates-card .tpl-name { font-weight: 700; color: #272727; }
+#templates-card .tpl-desc { color: #777; }
+#templates-card .tpl-count {
+  color: #999; font-size: 12px; white-space: nowrap;
+}
+#templates-card .tpl-actions {
+  display: flex; gap: 8px; flex-shrink: 0; align-self: center;
 }
 #templates-card .template-row:last-child { border-bottom: none; }
 #templates-card .template-row button {
@@ -601,11 +615,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
   </div>
 
-  <!-- Users & Access (PERM3) -->
-  <div class="card" id="access-card" style="margin-top:18px;">
-    <div class="card-title">Users &amp; Access <span class="count" id="access-count"></span></div>
-    <div id="access-list"></div>
-  </div>
+  <!-- Users & Access (PERM3) is no longer its own card: it listed the same
+       people as Authorized Users above, with a second and eventually
+       contradictory access label. Its badge and controls now live on those
+       rows. -->
 
   <div class="card" id="templates-card" style="margin-top:18px;">
     <div class="card-title">Permission Templates</div>
@@ -1066,6 +1079,24 @@ function renderUsers() {
     });
   });
 
+  // Access controls resolve through accessByEmail rather than a captured
+  // closure, so they always act on the CURRENT row for that person even after
+  // loadAccess() re-renders the list behind them.
+  body.querySelectorAll('.ua-btn[data-action="edit-access"]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var a = accessByEmail[String(btn.getAttribute('data-email') || '').toLowerCase()];
+      if (a) openAccessDrawer(a);
+    });
+  });
+  body.querySelectorAll('.ua-btn[data-action="toggle-status"]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var a = accessByEmail[String(btn.getAttribute('data-email') || '').toLowerCase()];
+      if (a) toggleUserStatus(a);
+    });
+  });
+
   // Summary counts based on full list, not filtered
   var fullCount = 0, vendorCount = 0;
   allUsers.forEach(function(u) {
@@ -1084,29 +1115,61 @@ function renderUsers() {
 function userRowHtml(u) {
   var name = displayContactName(u);
   var initials = nameInitials(name);
+  var a = accessFor(u);
+
+  // Prefer the real assigned template over Creator's User_Permissions. The
+  // fallback is not decoration: before the PERM3 call returns, and for anyone
+  // with no portal_users row, the row must read exactly as it did before.
   var full = hasFullAccess(u);
-  var permLabel = full ? 'Full Access' : 'Vendor Access';
-  var permClass = full ? 'full' : 'vendor';
+  var permLabel = a ? (a.template_name || 'No template')
+                    : (full ? 'Full Access' : 'Vendor Access');
+  var permClass = (a ? !!a.is_owner : full) ? 'full' : 'vendor';
+
+  // Anything that changes what this person can actually do belongs under their
+  // name, where there is room, rather than squeezed into the badge column.
+  var notes = [];
+  if (a) {
+    var d = a.delta || { added: [], removed: [] };
+    if (a.is_owner) notes.push('Account owner');
+    if (d.added && d.added.length) notes.push('+' + d.added.length + ' added');
+    if (d.removed && d.removed.length) notes.push('−' + d.removed.length + ' removed');
+    if (a.status === 'disabled') notes.push('Disabled');
+  }
+
   var added = parseDate(u.Added_Time);
   var addedLabel = added ? fmtDateShort(added) : '—';
 
-  return '<div class="user-row">' +
+  return '<div class="user-row' + (a && a.status === 'disabled' ? ' is-disabled' : '') + '">' +
     '<div class="user-avatar">' + esc(initials) + '</div>' +
     '<div>' +
       '<div class="user-name">' + esc(name) + '</div>' +
       '<div class="user-email">' + esc(u.Email || '') + '</div>' +
+      (notes.length ? '<div class="user-notes">' + esc(notes.join(' · ')) + '</div>' : '') +
     '</div>' +
     '<div class="user-phone">' + esc(formatPhone(u.Phone_Number)) + '</div>' +
-    '<div><span class="user-perm ' + permClass + '">' + permLabel + '</span></div>' +
+    '<div><span class="user-perm ' + permClass + '">' + esc(permLabel) + '</span></div>' +
     '<div class="user-added">' + esc(addedLabel) + '</div>' +
     userActionsHtml(u) +
   '</div>';
 }
 
 // Whole row opens the View Contact modal; Edit/Delete live inside it.
+// Access controls join it here rather than in a second list of the same people.
 function userActionsHtml(u) {
-  return '<div class="user-actions"><button class="ua-btn" data-action="view" data-id="' +
-    esc(String(u.ID || '')) + '">View</button></div>';
+  var a = accessFor(u);
+  var h = '<div class="user-actions">';
+  // The owner already holds everything, so there is nothing to edit and the
+  // control would only invite a confusing no-op. Same rule the old list used.
+  if (a && !a.is_owner) {
+    var em = esc(String(a.email || ''));
+    h += '<button class="ua-btn" data-action="edit-access" data-email="' + em +
+         '">Edit access</button>';
+    h += '<button class="ua-btn" data-action="toggle-status" data-email="' + em + '">' +
+         (a.status === 'disabled' ? 'Enable' : 'Disable') + '</button>';
+  }
+  h += '<button class="ua-btn" data-action="view" data-id="' +
+       esc(String(u.ID || '')) + '">View</button></div>';
+  return h;
 }
 
 function hasFullAccess(u) {
@@ -1584,47 +1647,28 @@ var adminCeiling = [];
 // to the wrong endpoint.
 var drawerMode = 'user';
 
+// email -> the /permissions/users row. Empty until that call returns, and the
+// user list renders exactly as it did before PERM3 while it is.
+var accessByEmail = {};
+
 function renderAccessTab(users, templates) {
+  // There is no longer a second user list. The PERM3 data is indexed by email
+  // and folded into the Authorized Users card, which was already rendering the
+  // same people from Creator -- two lists of the same team, with two different
+  // access labels, was confusing before enforcement and would have been wrong
+  // after it: the native badge reads Creator's User_Permissions, which stops
+  // being the truth once PERMISSIONS_V2 is on.
   accessTemplates = templates || [];
-  var list = document.getElementById('access-list');
-  var count = document.getElementById('access-count');
-  if (!list) return;
-  list.innerHTML = '';
-  count.textContent = users.length ? '(' + users.length + ')' : '';
-
-  users.forEach(function (u) {
-    var row = document.createElement('div');
-    row.setAttribute('data-access-row', u.portal_user_id);
-    row.className = 'access-row';
-
-    var bits = [u.name || u.email, u.email, u.template_name || 'No template'];
-    var d = u.delta || { added: [], removed: [] };
-    if (d.added.length) bits.push('+' + d.added.length + ' added');
-    if (d.removed.length) bits.push('-' + d.removed.length + ' removed');
-    if (u.status === 'disabled') bits.push('Disabled');
-    if (u.is_owner) bits.push('Account owner');
-    row.textContent = bits.join('  ·  ');
-
-    // The owner always holds everything, so there is nothing to edit and an
-    // edit control would only invite a confusing no-op.
-    if (!u.is_owner) {
-      var edit = document.createElement('button');
-      edit.setAttribute('data-act', 'edit-access');
-      edit.textContent = 'Edit access';
-      edit.onclick = function () { openAccessDrawer(u); };
-      row.appendChild(edit);
-
-      // Disable is the reversible action, not delete: a disabled user still
-      // shows up here (rather than vanishing) so the control always reads
-      // correctly for their current state.
-      var toggle = document.createElement('button');
-      toggle.setAttribute('data-act', 'toggle-status');
-      toggle.textContent = u.status === 'disabled' ? 'Enable' : 'Disable';
-      toggle.onclick = function () { toggleUserStatus(u); };
-      row.appendChild(toggle);
-    }
-    list.appendChild(row);
+  accessByEmail = {};
+  (users || []).forEach(function (u) {
+    var e = String(u.email || '').trim().toLowerCase();
+    if (e) accessByEmail[e] = u;
   });
+  if (typeof renderUsers === 'function' && allUsers.length) renderUsers();
+}
+
+function accessFor(u) {
+  return accessByEmail[String((u || {}).Email || '').trim().toLowerCase()] || null;
 }
 
 function buildCapabilityTree(catalog, selected, ceiling) {
@@ -1819,8 +1863,31 @@ function renderTemplatesTab(templates) {
     var row = document.createElement('div');
     row.setAttribute('data-template-row', t.template_id);
     row.className = 'template-row';
-    row.appendChild(document.createTextNode(
-      t.name + '  ·  ' + (t.description || '') + '  ·  ' + t.user_count + ' users'));
+
+    // Name, description and count were one run-on text node, which meant the
+    // row's only styleable children were the buttons -- so space-between threw
+    // them to the far edge of a full-width card. Wrapping the text lets it take
+    // the free space and the buttons group at the end of a capped measure.
+    var meta = document.createElement('div');
+    meta.className = 'tpl-meta';
+    var nm = document.createElement('span');
+    nm.className = 'tpl-name';
+    nm.textContent = t.name;
+    meta.appendChild(nm);
+    if (t.description) {
+      var ds = document.createElement('span');
+      ds.className = 'tpl-desc';
+      ds.textContent = t.description;
+      meta.appendChild(ds);
+    }
+    var ct = document.createElement('span');
+    ct.className = 'tpl-count';
+    ct.textContent = t.user_count === 1 ? '1 user' : t.user_count + ' users';
+    meta.appendChild(ct);
+    row.appendChild(meta);
+
+    var acts = document.createElement('div');
+    acts.className = 'tpl-actions';
 
     // A starter is OperFi's, shared by every client. Cloning is the only safe
     // edit: changing it in place would change it for everyone.
@@ -1831,14 +1898,14 @@ function renderTemplatesTab(templates) {
       openTemplateEditor({ name: t.name + ' (copy)', description: t.description,
                            capabilities: t.capabilities.slice() });
     };
-    row.appendChild(clone);
+    acts.appendChild(clone);
 
     if (!t.is_system) {
       var edit = document.createElement('button');
       edit.setAttribute('data-act', 'edit-template');
       edit.textContent = 'Edit';
       edit.onclick = function () { openTemplateEditor(t); };
-      row.appendChild(edit);
+      acts.appendChild(edit);
 
       var del = document.createElement('button');
       del.setAttribute('data-act', 'delete-template');
@@ -1851,8 +1918,9 @@ function renderTemplatesTab(templates) {
           t.user_count + ' users are on this template. Move them first.');
       }
       del.onclick = function () { deleteTemplate(t.template_id); };
-      row.appendChild(del);
+      acts.appendChild(del);
     }
+    row.appendChild(acts);
     list.appendChild(row);
   });
 }

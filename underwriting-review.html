@@ -206,6 +206,21 @@ tr:last-child td { border-bottom:none; }
 .ucf-note.good { background:#eaf7ef; border:1px solid #a9d9bd; color:#1e5c39; }
 .ucf-record { margin-top:14px; padding-top:12px; border-top:1px dashed var(--of-beige-line); }
 .ucf-req { font-weight:600; text-transform:none; letter-spacing:0; color:var(--of-gray-500); }
+/* The filings LIST above the editor. A carrier can carry more than one UCC-1 — one per filing
+   state, or a second against an individual guarantor — so the card summarises them all and the
+   form below edits whichever row is selected. */
+.ucf-pill { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; border-radius:20px; padding:2px 8px; white-space:nowrap; }
+.ucf-pill.filed { background:var(--of-green-soft); color:var(--of-green-text); border:1px solid #a9d9bd; }
+.ucf-pill.draft { background:var(--of-amber-soft); color:var(--of-amber-text); border:1px solid #f0d9a0; }
+.ucf-dtype { color:var(--of-gray-500); font-size:11.5px; }
+.ucf-empty { color:var(--of-gray-500); font-size:12.5px; padding:12px 10px; }
+#uccFilingList tr.sel > td { background:#fffaf0; }
+#uccFilingList tr.sel > td:first-child { box-shadow:inset 3px 0 0 var(--of-orange); }
+.ucf-ed-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:14px 0 12px; padding-bottom:8px; border-bottom:1px dashed var(--of-beige-line); }
+.ucf-ed-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--of-charcoal); }
+.ucf-ed-title em { font-style:normal; color:var(--of-gray-500); font-weight:700; text-transform:none; letter-spacing:0; }
+.ucf-row-acts { display:flex; gap:6px; justify-content:flex-end; }
+.ucf-nowrap { white-space:nowrap; }
 /* Client agreement (Zoho Sign) — matches .fld/.card tokens for a uniform look. */
 .agr-section { border-top:1px solid var(--of-beige-line); margin-top:16px; padding-top:14px; }
 .agr-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -409,12 +424,23 @@ tr:last-child td { border-bottom:none; }
              UCC Research above, which is the opposite question (what liens already exist AGAINST
              them). Different data, different lifecycle, and conflating the two would make it easy to
              read a prior lender's filing as our own.
-             FILING IS MANUAL by decision: this card captures the debtor block once, links straight
+             FILING IS MANUAL by decision: this card captures the debtor block, links straight
              to the right state's filing office, and records the file number that comes back. It
              does NOT call Middesk's filing API — see docs/ops/MIDDESK_LIEN_FILING_API.md for the
-             verified contract and why. -->
+             verified contract and why.
+             MULTIPLE filings per carrier: one per filing state, and/or a separate UCC-1 against an
+             individual owner as guarantor. The table lists them; the ONE form below edits whichever
+             row is selected. Deliberately not N stacked forms — the form's anti-clobber guard
+             (_uccPainted) is a single snapshot, and duplicating it per row re-derives the data-loss
+             bug it exists to prevent. -->
         <div class="card">
           <div class="card-title">UCC Filing <span class="count" id="uccFilingStatus">Not filed</span></div>
+          <table id="uccFilingList"></table>
+          <div class="add-wrap"><button class="btn ghost sm" id="addUccFilingToggle">+ Add filing</button></div>
+          <div class="ucf-ed-head" id="uccFilingEdHead">
+            <span class="ucf-ed-title" id="uccFilingEdTitle">New filing</span>
+            <button class="btn ghost sm" id="ucfCancel">Cancel</button>
+          </div>
           <div class="ucf-note" id="uccFilingNote"></div>
           <div class="add-form" id="uccFilingForm">
             <div class="fld"><label>Debtor</label>
@@ -450,7 +476,7 @@ tr:last-child td { border-bottom:none; }
             </div>
             <div class="ucf-actions">
               <button class="btn ghost sm" id="ucfCopy">Copy debtor details</button>
-              <button class="btn green sm" id="ucfSave">Save</button>
+              <button class="btn green sm" id="ucfSave">Save filing</button>
             </div>
           </div>
         </div>
@@ -1050,7 +1076,13 @@ function buildReviewPayload(s, appId) {
     UW_Notes: s.uwNotes || '',
     Client_Message: s.clientMessage || '',
     Manual_UCC: JSON.stringify(s.manualUcc || []),
-    UCC_Filing: JSON.stringify(s.uccFiling || {}),   // OUR UCC-1 (Manual_UCC is prior liens found)
+    // OUR UCC-1s (Manual_UCC is prior liens found AGAINST them). The list rides in `filings`, and
+    // filing #1 is ALSO written flat at the top level in the old single-filing shape. That mirror is
+    // deliberate: Creator caches this widget until the ?v= embed is bumped, and a stale copy reading
+    // a bare array would paint a blank card and overwrite every filing on save. With the mirror it
+    // still reads and round-trips filing #1. Costs a few hundred bytes; drop it only once no cached
+    // pre-multi-filing copy can still be served.
+    UCC_Filing: JSON.stringify(Object.assign({}, (s.uccFilings || [])[0] || {}, { filings: s.uccFilings || [] })),
     Manual_Owners: JSON.stringify(s.manualOwners || []),
     Manual: JSON.stringify(s.manualContacts || []),   // Creator field link-name is "Manual" (display "Manual_Contacts")
     Manual_Customers: JSON.stringify(s.manualCustomers || []),
@@ -1226,10 +1258,14 @@ var OFUW = { computeGate: computeGate, validateDecision: validateDecision, build
   STAGES: STAGES, computeStageCounts: computeStageCounts, appsInStage: appsInStage, visibleApps: visibleApps, within30: within30, staleOver30: staleOver30, isDecided: isDecided, recentApps: recentApps, stagePill: stagePill,
   buildOwnerRecord: buildOwnerRecord, buildCustomerRecord: buildCustomerRecord, buildContactRecord: buildContactRecord, buildRelatedRecord: buildRelatedRecord, buildUccRecord: buildUccRecord, buildUccEvent: buildUccEvent, UCC_EVENT_KINDS: UCC_EVENT_KINDS, recordHasContent: recordHasContent,
   STATE_LINKS: STATE_LINKS, stateFromAddress: stateFromAddress, stateLinks: stateLinks,
-  parseUccFiling: parseUccFiling, uccIsFiled: uccIsFiled, uccPrefillDebtor: uccPrefillDebtor, uccDebtorName: uccDebtorName, uccCopyText: uccCopyText,
+  parseUccFiling: parseUccFiling, parseUccFilings: parseUccFilings, uccIsFiled: uccIsFiled, uccPrefillDebtor: uccPrefillDebtor, uccDebtorName: uccDebtorName, uccCopyText: uccCopyText,
+  uccFilingHasContent: uccFilingHasContent, uccFilingIsBlank: uccFilingIsBlank, uccFilingsOf: uccFilingsOf, uccFilingSummary: uccFilingSummary, uccDuplicateIdx: uccDuplicateIdx,
   REVIEW_SECTIONS: REVIEW_SECTIONS, parseSectionReview: parseSectionReview, sectionsReviewed: sectionsReviewed, allSectionsReviewed: allSectionsReviewed,
   // Exported so the DOM round-trip (render → type → read back) is testable, not just the pure bits.
   renderUccFiling: renderUccFiling, readUccFilingForm: readUccFilingForm,
+  renderUccFilingCard: renderUccFilingCard, renderUccFilingList: renderUccFilingList,
+  addUccFiling: addUccFiling, editUccFiling: editUccFiling, cancelUccFiling: cancelUccFiling, removeUccFiling: removeUccFiling,
+  addUccFilingEvent: addUccFilingEvent, removeUccFilingEvent: removeUccFilingEvent, saveUccFiling: saveUccFiling,
   trucksOf: trucksOf, hrvDocs: function(){ return HRV_DOCS; }, hrvThreshold: function(){ return HRV_TRUCK_THRESHOLD; } };
 global.OFUW = OFUW;
 
@@ -1416,7 +1452,7 @@ function loadByUSDOT(usdot) {
           risk: (c && c.risk) || 'med',
           // The saved run stamp wins over the vendor's own field, so the "· last run" display is reliable.
           checkedAt: (j.review && j.review.Checks_Run_At) || (c && c.checkedAt) || '',
-          uccFiling: parseUccFiling(j.review),
+          uccFilings: parseUccFilings(j.review),
           sms: j.sms || null,               // which line texts this client + where their replies land
           review: j.review || {}
         };
@@ -1460,15 +1496,28 @@ function checksFromReview(review) {
   };
 }
 
-// The UCC-1 WE filed, as the underwriter recorded it on the review (saved via /uw-review-save).
-// Returns {} when nothing is stored or the JSON is unreadable — never throws, because a malformed
-// blob must not stop the whole review from rendering.
-function parseUccFiling(review) {
+// The UCC-1s WE filed, as the underwriter recorded them on the review (saved via /uw-review-save).
+// Always returns an ARRAY. Never throws — a malformed blob must not stop the whole review rendering.
+//
+// Three stored shapes have to read back, because records written before multi-filing are still live:
+//   1. { ..., filings: [...] }  the current shape (the flat keys are the mirror of filings[0])
+//   2. a bare single filing object   → one filing
+//   3. {} / unreadable / absent      → none
+// Case 2 must NOT produce a phantom row from an empty object: plenty of reviews hold a `{}` written
+// by opening the card and saving without entering anything.
+function parseUccFilings(review) {
   var raw = (review || {}).UCC_Filing;
-  if (!raw) return {};
-  try { var d = (typeof raw === 'string') ? JSON.parse(raw) : raw; return (d && typeof d === 'object') ? d : {}; }
-  catch (e) { return {}; }
+  if (!raw) return [];
+  var d;
+  try { d = (typeof raw === 'string') ? JSON.parse(raw) : raw; }
+  catch (e) { return []; }
+  if (!d || typeof d !== 'object') return [];
+  if (Array.isArray(d.filings)) return d.filings.filter(function (f) { return f && typeof f === 'object'; });
+  if (Array.isArray(d)) return d.filter(function (f) { return f && typeof f === 'object'; });
+  return uccFilingHasContent(d) ? [d] : [];
 }
+// The first filing, in the old single-object shape. Kept for callers that only ever wanted one.
+function parseUccFiling(review) { return parseUccFilings(review)[0] || {}; }
 
 // RUN the automated review on demand (POST) — IPQS + CarrierOK + Middesk KYB. Fired ONLY by the
 // "Run automated review" button, never on open. POSTs the fields the widget already loaded and
@@ -1644,7 +1693,7 @@ function readState() {
     noteEntry: ($('uwNoteEntry') && $('uwNoteEntry').value) || '',   // the pending new entry, folded in on submit
     clientMessage: (MODEL && MODEL.clientMessageStored) || '',   // the persisted (stamped) note; background saves re-send it unchanged. submit() recomputes from the box.
     manualUcc: (MODEL && MODEL.manualUcc) || [],
-    uccFiling: (MODEL && MODEL.uccFiling) || {},   // our own UCC-1 (draft or filed) — see renderUccFiling
+    uccFilings: uccFilingsOf(MODEL),   // our own UCC-1s (draft or filed) — see renderUccFilingCard
     manualOwners: (MODEL && MODEL.manualOwners) || [],
     manualContacts: (MODEL && MODEL.manualContacts) || [],
     manualCustomers: (MODEL && MODEL.manualCustomers) || [],
@@ -2344,7 +2393,7 @@ function renderModel(m) {
   $('kFraud').textContent = fraud.filter(function(f){return f.status!=='clear';}).length;
   // UCC: automated check results + underwriter-added manual filings (parsed in the early block).
   renderUcc(m);
-  renderUccFiling(m);
+  renderUccFilingCard(m);
 
   var r = m.review || {};
   setDecision(r.Decision2 || 'Pending');
@@ -2652,6 +2701,67 @@ function uccDebtorName(d){
     ? ((d.first_name || '') + ' ' + (d.last_name || '')).trim()
     : (d.organization_name || d.name || '').trim();
 }
+// ── Multiple UCC-1s ───────────────────────────────────────────────────────────
+// A carrier can carry more than one: one per filing state, and/or a separate filing against an
+// individual owner as guarantor (the case Middesk's filing API can't express, which is why filing
+// is manual and this card is the ONLY record of it).
+
+// Worth keeping if the underwriter put anything in it at all. An empty form must never become a
+// row, but every field they DID fill has to survive — collateral included, since it has no prefill,
+// so a stored collateral means somebody typed it.
+function uccFilingHasContent(f){
+  f = f || {};
+  return !!(uccDebtorName(f.debtor) || ((f.states || [])[0] || '') ||
+            ((f.fileNumber || '') + '').trim() || ((f.collateral || '') + '').trim());
+}
+// "Nothing entered here yet makes this a real UCC-1." Debtor and collateral deliberately do NOT
+// count: a second filing is SEEDED with both, so counting them would make "+ Add filing" then
+// Cancel leave a phantom duplicate row behind.
+function uccFilingIsBlank(f){
+  f = f || {};
+  return !(((f.states || [])[0]) || '') && !uccIsFiled(f) &&
+         !(((f.filedAt || '') + '').trim()) && !(((f.lapseAt || '') + '').trim()) &&
+         !((f.events || []).length);
+}
+// The filings on a model. Tolerates the legacy single-object `uccFiling` shape so a model built by
+// an older caller still paints instead of blanking the card.
+function uccFilingsOf(m){
+  if (!m) return [];
+  if (Array.isArray(m.uccFilings)) return m.uccFilings;
+  return uccFilingHasContent(m.uccFiling) ? [m.uccFiling] : [];
+}
+// Index of the filing the form is bound to, or null when the editor is closed.
+function uccEditIdx(m){
+  var i = m && m._uccEditIdx;
+  return (typeof i === 'number' && i >= 0) ? i : null;
+}
+// "2 filed · 1 draft". Only a file number counts as filed (see uccIsFiled).
+function uccFilingSummary(list){
+  list = list || [];
+  if (!list.length) return 'Not filed';
+  var filed = 0;
+  list.forEach(function(f){ if (uccIsFiled(f)) filed++; });
+  var parts = [];
+  if (filed) parts.push(filed + ' filed');
+  if (list.length - filed) parts.push((list.length - filed) + ' draft');
+  return parts.join(' · ');
+}
+// Another row with the same debtor AND the same filing state. Usually a mistake, occasionally
+// deliberate — so callers WARN and still save. Blocking would leave the underwriter who has a real
+// reason with nowhere to record it. Returns the other row's index, or -1.
+function uccDuplicateIdx(list, idx, f){
+  var name = uccDebtorName((f || {}).debtor).toUpperCase();
+  var st = (((f || {}).states || [])[0] || '').toUpperCase();
+  if (!name || !st) return -1;
+  list = list || [];
+  for (var j = 0; j < list.length; j++){
+    if (j === idx) continue;
+    var o = list[j] || {};
+    if (uccDebtorName(o.debtor).toUpperCase() === name &&
+        (((o.states || [])[0] || '').toUpperCase()) === st) return j;
+  }
+  return -1;
+}
 // Snapshot of the form as this function last painted it. If what's on screen no longer matches,
 // the underwriter has typed since — so a re-render must not overwrite them.
 //
@@ -2664,9 +2774,28 @@ function uccDebtorName(d){
 var _uccPainted = null;
 // `force` = the caller deliberately changed the data (debtor type switch, owner picked, save), so
 // the inputs SHOULD be rewritten even mid-edit. Everything else leaves typed values alone.
+// Which row `_uccPainted` describes. Switching rows must always repaint, or filing 2's form would
+// be read as "the underwriter has typed since" and filing 1's values would be left on screen.
+var _uccPaintedIdx = null;
+// Paints the whole card: the list of filings, then the editor bound to the selected row.
+function renderUccFilingCard(m, force){
+  renderUccFilingList(m);
+  renderUccFiling(m, force);
+}
 function renderUccFiling(m, force){
   if (!$('uccFilingForm')) return;
-  var f = (m && m.uccFiling) || {};
+  var list = uccFilingsOf(m);
+  // Nothing recorded yet → open the editor on a new first filing, so the ordinary one-filing case
+  // still takes no extra clicks.
+  if (!list.length && m && uccEditIdx(m) === null) m._uccEditIdx = 0;
+  var idx = uccEditIdx(m);
+  var open = idx !== null;
+  ['uccFilingForm','uccFilingEdHead','uccFilingNote'].forEach(function(id){
+    if ($(id)) $(id).style.display = open ? '' : 'none';
+  });
+  if (!open){ _uccPainted = null; _uccPaintedIdx = null; return; }
+  if (idx !== _uccPaintedIdx) force = true;
+  var f = list[idx] || {};
   var e = uccFormEls();
   var edited = _uccPainted !== null && JSON.stringify(readUccFilingForm()) !== _uccPainted;
   var keepTyping = edited && !force;
@@ -2688,7 +2817,10 @@ function renderUccFiling(m, force){
   $('ucfIndWrap').style.display = isInd ? '' : 'none';
   $('ucfOwnerPickWrap').style.display = isInd ? '' : 'none';
 
-  var fileState = ((live ? live.states : f.states) || [])[0] || (addr.state || '');
+  // Filing 1 defaults to the debtor's own state. A LATER filing does not: the reason to add one is
+  // almost always a different jurisdiction, and a silently inherited state files the UCC-1 in the
+  // wrong one. Make the underwriter choose.
+  var fileState = ((live ? live.states : f.states) || [])[0] || (idx === 0 ? (addr.state || '') : '');
   fileState = String(fileState).toUpperCase();
   // The <select>s need their options built at least once; rebuilding mid-edit would drop the
   // user's selection, so only re-stamp them when we're allowed to write.
@@ -2712,10 +2844,35 @@ function renderUccFiling(m, force){
 
   var shown = live || f;
   var filed = uccIsFiled(shown);
-  var pill = $('uccFilingStatus'), note = $('uccFilingNote');
-  pill.textContent = filed ? ('Filed · ' + (shown.fileNumber || '')) : 'Not filed';
+  var note = $('uccFilingNote');
+  // The editor's heading names which filing is being edited, so a card holding three of them can't
+  // leave you editing the wrong one by accident.
+  var head = $('uccFilingEdTitle');
+  if (head){
+    // "Started but not yet a filing": nothing that makes it a real UCC-1 has been entered. A second
+    // filing is seeded WITH the debtor, so a debtor alone doesn't count here — otherwise it would
+    // never read as new and the "copied from filing 1" hint would never show.
+    var fresh = uccFilingIsBlank(f);
+    var detail = uccIsFiled(f) ? (' <em>· ' + escHtml(f.fileNumber || '') + '</em>')
+               : (!fresh ? ''
+               : (idx > 0 ? ' <em>· debtor copied from filing 1</em>'
+                          : ' <em>· prefilled from the application</em>'));
+    head.innerHTML = ((fresh && !uccDebtorName(f.debtor)) || idx >= list.length
+                        ? 'New filing'
+                        : ('Editing filing ' + (idx + 1) + ' of ' + list.length)) + detail;
+  }
+  var dup = uccDuplicateIdx(list, idx, shown);
+  var saveBtn = $('ucfSave');
+  if (saveBtn) saveBtn.textContent = dup >= 0 ? 'Save filing anyway' : 'Save filing';
   note.className = 'ucf-note';
-  if (filed){
+  if (dup >= 0){
+    // Warn, never block — see uccDuplicateIdx.
+    note.className = 'ucf-note on bad';
+    note.innerHTML = 'Filing ' + (dup + 1) + ' already covers <b>' + escHtml(uccDebtorName(shown.debtor)) +
+                     '</b> in <b>' + escHtml(((shown.states || [])[0] || '')) + '</b>. If this is a correction, ' +
+                     'edit that filing instead — a second UCC-1 against the same debtor in the same state ' +
+                     'is saved, but it is rarely what you want.';
+  } else if (filed){
     note.className = 'ucf-note on good';
     note.innerHTML = 'Recorded as filed. Changing the debtor now needs an amendment at the filing ' +
                      'office, not an edit here.';
@@ -2730,18 +2887,159 @@ function renderUccFiling(m, force){
   // Only re-baseline when we actually painted. Adopting the user's typing as the baseline would
   // make the NEXT render see no difference and overwrite them — the edit has to keep looking like
   // an edit until it is saved or deliberately replaced.
-  if (!keepTyping) _uccPainted = JSON.stringify(readUccFilingForm());
+  if (!keepTyping){ _uccPainted = JSON.stringify(readUccFilingForm()); _uccPaintedIdx = idx; }
+}
+
+// The list of recorded filings above the editor. Rows carry the same "▸ (N)" expander as the manual
+// rows in UCC Research, and for the same reason: continuations and amendments belong under the
+// UCC-1 they amend, not in a flat list.
+function renderUccFilingList(m){
+  if (!$('uccFilingList')) return;
+  var list = uccFilingsOf(m), sel = uccEditIdx(m);
+  if (m) m._uccFilingExpanded = m._uccFilingExpanded || {};
+  var exp = (m && m._uccFilingExpanded) || {};
+  if ($('uccFilingStatus')) $('uccFilingStatus').textContent = uccFilingSummary(list);
+
+  var html = '<tr><th>Debtor</th><th>State</th><th>File #</th><th>Filed</th><th>Lapse</th><th></th><th></th></tr>';
+  if (!list.length){
+    html += '<tr><td colspan="7" class="ucf-empty">No UCC-1 recorded yet. Fill in the debtor below and ' +
+            'save it once the filing office returns a file number.</td></tr>';
+  }
+  list.forEach(function(f, i){
+    var ev = f.events || [], open = !!exp[i], filed = uccIsFiled(f);
+    var isInd = ((f.debtor || {}).type === 'INDIVIDUAL');
+    var caret = '<button class="ucc-expand js-ucf-expand" data-i="' + i + '">' + (open ? '▾' : '▸') +
+                (ev.length ? ' (' + ev.length + ')' : '') + '</button>';
+    html += '<tr' + (i === sel ? ' class="sel"' : '') + '>' +
+      '<td>' + caret + '<b>' + escHtml(uccDebtorName(f.debtor) || '—') + '</b>' +
+        '<br><span class="ucf-dtype">' + (isInd ? 'Individual' : 'Organization') + '</span></td>' +
+      '<td class="ucf-nowrap">' + escHtml(((f.states || [])[0] || '—')) + '</td>' +
+      '<td class="ucf-nowrap">' + escHtml(f.fileNumber || '—') + '</td>' +
+      '<td class="ucf-nowrap">' + escHtml(f.filedAt || '—') + '</td>' +
+      '<td class="ucf-nowrap">' + escHtml(f.lapseAt || '—') + '</td>' +
+      '<td><span class="ucf-pill ' + (filed ? 'filed">Filed' : 'draft">Draft') + '</span></td>' +
+      '<td><div class="ucf-row-acts">' +
+        '<button class="btn ghost sm js-ucf-edit" data-i="' + i + '">Edit</button>' +
+        '<button class="btn ghost sm js-ucf-del" data-i="' + i + '" title="Remove filing">✕</button>' +
+      '</div></td></tr>';
+    var evHtml = ev.map(function(e, j){
+      var meta = [e.filed, e.fileNumber ? 'File# ' + e.fileNumber : '', e.notes].filter(Boolean).map(escHtml).join(' · ');
+      return '<div class="ucc-ev">↳ <b>' + escHtml(e.kind || 'Event') + '</b>' + (meta ? ' · ' + meta : '') +
+        ' <button class="btn ghost sm js-ucfev-del" data-p="' + i + '" data-j="' + j + '" title="Remove event">✕</button></div>';
+    }).join('') || '<div class="ucc-ev" style="color:var(--of-gray-500)">No follow-on events yet.</div>';
+    var opts = UCC_EVENT_KINDS.map(function(k){ return '<option>' + k + '</option>'; }).join('');
+    html += '<tr class="ucc-sub"' + (open ? '' : ' style="display:none"') + '><td colspan="7">' + evHtml +
+      '<div class="ucc-ev-form">' +
+      '<select id="ucfev_kind_' + i + '">' + opts + '</select>' +
+      '<input type="text" id="ucfev_file_' + i + '" placeholder="File #">' +
+      '<input type="text" id="ucfev_filed_' + i + '" placeholder="Filed (YYYY-MM-DD)">' +
+      '<input type="text" id="ucfev_notes_' + i + '" placeholder="Notes">' +
+      '<button class="btn green sm js-ucfev-add" data-p="' + i + '">+ Add event</button></div></td></tr>';
+  });
+  $('uccFilingList').innerHTML = html;
+  // Rebind after every paint — this file uses no event delegation anywhere.
+  qsa('#uccFilingList .js-ucf-edit').forEach(function(b){ b.addEventListener('click', function(){ editUccFiling(parseInt(b.getAttribute('data-i'), 10)); }); });
+  qsa('#uccFilingList .js-ucf-del').forEach(function(b){ b.addEventListener('click', function(){ removeUccFiling(parseInt(b.getAttribute('data-i'), 10)); }); });
+  qsa('#uccFilingList .js-ucf-expand').forEach(function(b){ b.addEventListener('click', function(){
+    var i = parseInt(b.getAttribute('data-i'), 10);
+    MODEL._uccFilingExpanded[i] = !MODEL._uccFilingExpanded[i];
+    renderUccFilingList(MODEL);
+  }); });
+  qsa('#uccFilingList .js-ucfev-add').forEach(function(b){ b.addEventListener('click', function(){ addUccFilingEvent(parseInt(b.getAttribute('data-p'), 10)); }); });
+  qsa('#uccFilingList .js-ucfev-del').forEach(function(b){ b.addEventListener('click', function(){ removeUccFilingEvent(parseInt(b.getAttribute('data-p'), 10), parseInt(b.getAttribute('data-j'), 10)); }); });
+}
+
+// Fold an unsaved form edit that DELIBERATELY rewrites fields (debtor-type switch, owner picked)
+// into the selected row and repaint. Not a save — it only reaches Creator on Save filing.
+function writeUccFilingDraft(form){
+  if (!MODEL) return;
+  var idx = uccEditIdx(MODEL);
+  if (idx === null) return;
+  var list = MODEL.uccFilings = uccFilingsOf(MODEL);
+  list[idx] = Object.assign({}, list[idx] || {}, form);
+  renderUccFilingCard(MODEL, true);
+}
+// Start another UCC-1. The debtor carries over from filing 1 — retyping a legal name is how it gets
+// misspelled — but the filing STATE deliberately does not; see renderUccFiling.
+function addUccFiling(){
+  if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var list = MODEL.uccFilings = uccFilingsOf(MODEL);
+  var prev = list[0];
+  list.push(prev
+    ? { debtor: JSON.parse(JSON.stringify(prev.debtor || {})), states: [], collateral: prev.collateral || '' }
+    : { debtor: uccPrefillDebtor(MODEL), states: [], collateral: '' });
+  MODEL._uccEditIdx = list.length - 1;
+  renderUccFilingCard(MODEL, true);
+}
+// Bind the editor to an existing row. Always a forced repaint — see _uccPaintedIdx.
+function editUccFiling(i){
+  if (!MODEL) return;
+  MODEL._uccEditIdx = i;
+  renderUccFilingCard(MODEL, true);
+}
+// Close the editor. A row that was never filled in is dropped, so "+ Add filing" then Cancel
+// doesn't leave a blank draft in the list.
+function cancelUccFiling(){
+  if (!MODEL) return;
+  var i = uccEditIdx(MODEL), list = uccFilingsOf(MODEL);
+  if (i !== null && list[i] && uccFilingIsBlank(list[i])){ MODEL.uccFilings = list; list.splice(i, 1); }
+  MODEL._uccEditIdx = null;
+  renderUccFilingCard(MODEL, true);
+}
+function removeUccFiling(i){
+  if (!MODEL) return;
+  var list = MODEL.uccFilings = uccFilingsOf(MODEL);
+  if (!list[i]) return;
+  list.splice(i, 1);
+  var cur = uccEditIdx(MODEL);
+  if (cur === i) MODEL._uccEditIdx = null;
+  else if (cur !== null && cur > i) MODEL._uccEditIdx = cur - 1;
+  MODEL._uccFilingExpanded = {};   // rows shifted; stale expansion would point at the wrong filing
+  renderUccFilingCard(MODEL, true);
+  persistManual('UCC filing removed.');
+}
+// Lifecycle events (continuation / amendment / assignment / termination / partial release) nested
+// under filing #p. They ride in that filing's `events` array, inside the UCC_Filing blob.
+function addUccFilingEvent(p){
+  if (!MODEL) return;
+  var list = uccFilingsOf(MODEL);
+  if (!list[p]) return;
+  var ev = buildUccEvent({ kind:$('ucfev_kind_'+p).value, fileNumber:$('ucfev_file_'+p).value,
+                           filed:$('ucfev_filed_'+p).value, notes:$('ucfev_notes_'+p).value });
+  if (!ev.kind){ showStatus('Choose an event type to add.', 'error'); return; }
+  MODEL.uccFilings = list;
+  list[p].events = (list[p].events || []).concat([ev]);
+  MODEL._uccFilingExpanded = MODEL._uccFilingExpanded || {}; MODEL._uccFilingExpanded[p] = true;
+  renderUccFilingList(MODEL);
+  persistManual('✓ UCC filing event added.');
+}
+function removeUccFilingEvent(p, j){
+  if (!MODEL) return;
+  var list = uccFilingsOf(MODEL);
+  if (!list[p] || !list[p].events) return;
+  MODEL.uccFilings = list;
+  list[p].events.splice(j, 1);
+  MODEL._uccFilingExpanded = MODEL._uccFilingExpanded || {}; MODEL._uccFilingExpanded[p] = true;
+  renderUccFilingList(MODEL);
+  persistManual('UCC filing event removed.');
 }
 function saveUccFiling(){
   if (!MODEL){ showStatus('Open an application first.', 'error'); return; }
+  var idx = uccEditIdx(MODEL);
+  if (idx === null) return;
   var form = readUccFilingForm();
   // A file number without a state is a record nobody can act on later — a UCC-1 is only
   // meaningful against a jurisdiction.
   if (uccIsFiled(form) && !form.states.length){
     showStatus('Choose the filing state that file number belongs to.', 'error'); return;
   }
-  MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
-  renderUccFiling(MODEL, true);            // force: what's on screen is now what's stored
+  if (!uccFilingHasContent(form)){
+    showStatus('Enter a debtor name, a filing state or a file number to save this filing.', 'error'); return;
+  }
+  var list = MODEL.uccFilings = uccFilingsOf(MODEL);
+  // Object.assign, not replace: `events` lives on the row and the form knows nothing about it.
+  list[idx] = Object.assign({}, list[idx] || {}, form);
+  renderUccFilingCard(MODEL, true);        // force: what's on screen is now what's stored
   persistManual(uccIsFiled(form) ? 'UCC filing recorded.' : 'UCC filing details saved.');
 }
 function copyUccDetails(){
@@ -3019,8 +3317,7 @@ function boot() {
       if (!MODEL) return;
       var form = readUccFilingForm();
       form.debtor.type = r.value;
-      MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
-      renderUccFiling(MODEL, true);
+      writeUccFilingDraft(form);
     });
   });
   if ($('ucfOwnerPick')) $('ucfOwnerPick').addEventListener('change', function(){
@@ -3036,8 +3333,7 @@ function boot() {
     var mm = oa.match(/^\s*(.+?),\s*([^,]+?),\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$/);
     if (mm) form.debtor.address = { address_line1:mm[1].trim(), address_line2:'', city:mm[2].trim(),
                                     state:mm[3].toUpperCase(), zip:mm[4] || '' };
-    MODEL.uccFiling = Object.assign({}, MODEL.uccFiling || {}, form);
-    renderUccFiling(MODEL, true);
+    writeUccFilingDraft(form);
   });
   if ($('ucfState')) $('ucfState').addEventListener('change', function(){
     // Keep the filing state following the debtor state until the underwriter sets it themselves.
@@ -3047,9 +3343,16 @@ function boot() {
   });
   if ($('ucfFileState')) $('ucfFileState').addEventListener('change', function(){
     $('ucfStateLinks').innerHTML = renderStateFilings(this.value, 'Filing Office');
+    // Repaint UNFORCED so typing is preserved, but the note re-evaluates against the new state.
+    // Without this the duplicate warning would only surface after Save — too late to be a warning.
+    if (MODEL) renderUccFiling(MODEL);
   });
   if ($('ucfSave')) $('ucfSave').addEventListener('click', saveUccFiling);
   if ($('ucfCopy')) $('ucfCopy').addEventListener('click', copyUccDetails);
+  // List-level controls. The per-ROW buttons are bound inside renderUccFilingList instead, because
+  // they are re-created on every paint.
+  if ($('addUccFilingToggle')) $('addUccFilingToggle').addEventListener('click', addUccFiling);
+  if ($('ucfCancel')) $('ucfCancel').addEventListener('click', cancelUccFiling);
   if ($('addDocReqToggle')) $('addDocReqToggle').addEventListener('click', function(){ var f=$('addDocReqForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });
   if ($('rdSave')) $('rdSave').addEventListener('click', requestDoc);
   if ($('hrvToggle')) $('hrvToggle').addEventListener('click', function(){ var f=$('hrvForm'); if(f) f.style.display = (f.style.display==='none' ? 'block' : 'none'); });

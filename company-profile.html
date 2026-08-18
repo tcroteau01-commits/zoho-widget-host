@@ -503,6 +503,28 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   font-size: 12px; color: #555;
 }
 #activity-card #activity-list > div:last-child { border-bottom: none; }
+/* Collapsed audit trail. The summary carries the count and how recent the last
+   change was, so the section stays useful at one line high and only costs space
+   when someone actually wants it. */
+#activity-card .activity-summary {
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer; list-style: none; user-select: none;
+}
+#activity-card .activity-summary::-webkit-details-marker { display: none; }
+#activity-card .activity-count { font-size: 12px; color: #888; }
+#activity-card .activity-chevron {
+  margin-left: auto; color: #999; flex-shrink: 0;
+  transition: transform 0.15s;
+}
+#activity-card details[open] .activity-chevron { transform: rotate(180deg); }
+#activity-card .activity-summary:focus-visible {
+  outline: 2px solid #e8a020; outline-offset: 3px; border-radius: 4px;
+}
+/* Bounded so a busy account cannot push the rest of the page around. */
+#activity-card #activity-list {
+  margin-top: 6px;
+  max-height: 320px; overflow-y: auto;
+}
 #invite-template-field { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 0; }
 #invite-template-field > span {
   font-size: 11px; font-weight: 700; color: #555;
@@ -592,8 +614,21 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   </div>
 
   <div class="card" id="activity-card" style="margin-top:18px;">
-    <div class="card-title">Recent Access Changes</div>
-    <div id="activity-list"></div>
+    <!-- <details> rather than a JS toggle: open/closed state, keyboard access and
+         the disclosure semantics come from the browser, so there is no state of
+         our own to get out of sync. Collapsed by default -- this is an audit
+         trail, read occasionally, and the API returns up to 100 events. -->
+    <details id="activity-details">
+      <summary class="activity-summary">
+        <span class="card-title">Recent Access Changes</span>
+        <span class="activity-count" id="activity-count"></span>
+        <svg class="activity-chevron" viewBox="0 0 24 24" width="16" height="16"
+             fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </summary>
+      <div id="activity-list"></div>
+    </details>
   </div>
 
   <div id="logo-section" class="card" style="margin-top:18px;"></div>
@@ -1937,16 +1972,89 @@ function toggleUserStatus(user) {
     });
 }
 
+// The five actions permissions_store.write_audit can record. Anything not in
+// here falls back to the raw key rather than rendering blank, so a new action
+// added server-side degrades to something readable instead of disappearing.
+var ACTIVITY_ACTION = {
+  set_access:      'Changed access',
+  set_status:      'Changed status',
+  template_create: 'Created template',
+  template_edit:   'Edited template',
+  template_delete: 'Deleted template'
+};
+
+function activityDate(iso) {
+  // permissions_store._now() records tz-aware UTC, but PyMongo reads BSON dates
+  // back as NAIVE datetimes, so /permissions/activity serializes them with no
+  // offset: "2026-08-18T00:41:42.407000". JavaScript parses an offsetless
+  // date-time as LOCAL time, so rendering it directly shifts every entry by the
+  // viewer's UTC offset -- seven hours in Phoenix, enough to show yesterday's
+  // change as tomorrow's. Treat a bare timestamp as the UTC it actually is.
+  //
+  // Offset-bearing strings are passed through untouched, so this stays correct
+  // if the API is later fixed to emit +00:00.
+  if (typeof iso !== 'string' || !iso) return new Date(NaN);
+  return new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : iso + 'Z');
+}
+
+function activityWhen(iso) {
+  var d = activityDate(iso);
+  if (isNaN(d.getTime())) return iso || '';
+  return d.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+  });
+}
+
+function activityAgo(iso) {
+  var d = activityDate(iso);
+  if (isNaN(d.getTime())) return '';
+  var s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (s < 90) return 'just now';
+  var m = Math.round(s / 60);
+  if (m < 60) return m + ' min ago';
+  var h = Math.round(m / 60);
+  if (h < 24) return h === 1 ? 'an hour ago' : h + ' hours ago';
+  var days = Math.round(h / 24);
+  if (days < 30) return days === 1 ? 'yesterday' : days + ' days ago';
+  return 'on ' + activityWhen(iso);
+}
+
+function activityWhat(e) {
+  var label = ACTIVITY_ACTION[e.action] || e.action;
+  // Template events carry the template in before/after, and their
+  // subject_portal_user_id is the TEMPLATE's id rather than a user's -- which is
+  // why subject_email is always blank on them and the old fixed-length join left
+  // a dangling separator behind every one.
+  var tpl = (e.after && e.after.name) || (e.before && e.before.name) || '';
+  if (tpl) return label + ' "' + tpl + '"';
+  if (e.subject_email) return label + ' for ' + e.subject_email;
+  return label;
+}
+
 function renderActivity(events) {
   var list = document.getElementById('activity-list');
   if (!list) return;
+  events = events || [];
   list.innerHTML = '';
-  (events || []).forEach(function (e) {
+
+  var count = document.getElementById('activity-count');
+  if (count) {
+    // Events arrive newest first (list_account_activity sorts at: -1).
+    count.textContent = events.length
+      ? events.length + (events.length === 1 ? ' change · ' : ' changes · ')
+          + activityAgo(events[0].at)
+      : 'No changes yet';
+  }
+
+  events.forEach(function (e) {
     var line = document.createElement('div');
     var who = e.acting_as_portal_user_id
       ? 'OperFi support, on behalf of your admin'
       : 'Your admin';
-    line.textContent = [e.at, who, e.action, e.subject_email || ''].join('  ·  ');
+    // Built from parts and filtered, so a missing piece closes up instead of
+    // leaving a separator pointing at nothing.
+    line.textContent = [activityWhen(e.at), who, activityWhat(e)]
+      .filter(Boolean).join('  ·  ');
     list.appendChild(line);
   });
 }

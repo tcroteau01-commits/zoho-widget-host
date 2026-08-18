@@ -194,6 +194,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .modal-body { padding: 18px 18px; }
   .form-grid { grid-template-columns: 1fr; gap: 12px; }
   .perm-grid { grid-template-columns: 1fr; }
+  [data-cap-tree] { grid-template-columns: 1fr; }
   .modal-foot { flex-direction: column; align-items: stretch; gap: 10px; }
   .foot-actions { width: 100%; }
   .foot-actions .modal-btn { flex: 1; }
@@ -344,6 +345,57 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 }
 .full-warn.show { display: flex; }
 .full-warn .warn-icon { color: #e8a020; flex-shrink: 0; margin-top: 1px; }
+
+/* Capability tree — the template modal and the per-user access drawer both
+   render it through buildCapabilityTree().
+
+   Until now the tree had a class and two data attributes and NO rules at all.
+   Each capability is a <label>, which is inline by default, so the whole list
+   collapsed into one run-on paragraph with each checkbox trailing its own text.
+   It read as broken rather than as a list. */
+[data-cap-tree] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 14px;
+  margin-top: 4px;
+}
+.cap-group {
+  grid-column: 1 / -1;
+  font-size: 11px; font-weight: 700; color: #555;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-top: 16px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f0efe9;
+}
+.cap-note + .cap-group, .cap-group:first-child { margin-top: 0; }
+.cap-row {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 7px 10px;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  font-size: 13px; line-height: 1.4; color: #272727;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cap-row:hover { background: #fafaf6; border-color: #e0ddd2; }
+.cap-row input { margin: 1px 0 0; flex-shrink: 0; accent-color: #e8a020; }
+.cap-row input:focus-visible { outline: 2px solid #e8a020; outline-offset: 2px; }
+
+/* Outside the admin's own ceiling: you cannot grant access you do not hold.
+   Dimmed and visibly inert, because the reason used to live only in a title
+   attribute — discoverable by hovering the exact label, and invisible on
+   touch, which made a deliberate restriction look like a broken control. */
+.cap-row.is-locked { color: #a8a8a8; cursor: not-allowed; }
+.cap-row.is-locked:hover { background: transparent; border-color: transparent; }
+
+.cap-note {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  background: #fff8ec;
+  border: 1px solid #f5d99a;
+  border-radius: 8px;
+  font-size: 12px; color: #7a5b1a; line-height: 1.5;
+}
 
 .modal-msg {
   margin: 14px 26px 0;
@@ -1546,6 +1598,7 @@ function buildCapabilityTree(catalog, selected, ceiling) {
   // there teaches nothing and generates a support call.
   var sel = selected || [];
   var ceil = ceiling || [];
+  var anyLocked = false;
   var wrap = document.createElement('div');
   wrap.setAttribute('data-cap-tree', '1');
 
@@ -1558,12 +1611,15 @@ function buildCapabilityTree(catalog, selected, ceiling) {
     g.capabilities.forEach(function (c) {
       var rowEl = document.createElement('label');
       rowEl.setAttribute('data-cap-row', c.key);
+      rowEl.className = 'cap-row';
       var box = document.createElement('input');
       box.type = 'checkbox';
       box.setAttribute('data-cap', c.key);
       box.checked = sel.indexOf(c.key) !== -1;
       box.disabled = ceil.indexOf(c.key) === -1;
       if (box.disabled) {
+        rowEl.className = 'cap-row is-locked';
+        anyLocked = true;
         rowEl.setAttribute('title',
           'You do not have this access yourself, so you cannot grant it.');
       }
@@ -1572,6 +1628,19 @@ function buildCapabilityTree(catalog, selected, ceiling) {
       wrap.appendChild(rowEl);
     });
   });
+
+  // Say once, in the open, why some rows are inert. Only when at least one is:
+  // an admin who can grant everything should not be told about a restriction
+  // that is not affecting them. The commonest cause by far is an account whose
+  // users have not been migrated yet, which collapses the ceiling to almost
+  // nothing and makes the whole list look disabled for no stated reason.
+  if (anyLocked) {
+    var note = document.createElement('div');
+    note.className = 'cap-note';
+    note.textContent = 'Greyed-out items are access you do not have yourself, '
+      + 'so you cannot grant them to someone else.';
+    wrap.insertBefore(note, wrap.firstChild);
+  }
   return wrap;
 }
 

@@ -114,11 +114,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .user-list { display: flex; flex-direction: column; gap: 6px; max-height: 540px; overflow-y: auto; padding-right: 4px; }
 .user-row {
   display: grid;
-  /* The actions column is FIXED, not auto. The owner's row carries only View
-     while everyone else carries three buttons, and an auto column let that
-     difference resize the fr columns per row -- so phone and badge landed at a
-     different x on every line. */
-  grid-template-columns: 36px 1.6fr 1.4fr 110px 90px 232px;
+  /* Four columns: identity, access, one action. The previous six-column rule
+     reserved 528px of fixed width in a card that only gets 688, which wrapped
+     the name and truncated the phone. Every row now has exactly one flexible
+     column, so nothing shifts between rows either. */
+  /* The badge column is FIXED. Each row is a separate grid, so `auto` sizes to
+     that row's own badge and the column drifts from line to line -- measured at
+     three different x positions across four rows. */
+  grid-template-columns: 34px minmax(0, 1fr) 150px 30px;
   gap: 12px; align-items: center;
   padding: 10px 12px;
   background: #fff;
@@ -127,7 +130,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   transition: all 0.12s;
 }
 .user-row:hover { border-color: #c8c4b6; background: #fafaf6; }
-.user-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.user-actions { position: relative; display: flex; justify-content: flex-end; }
+.user-id { min-width: 0; }
 /* Overrides, ownership and disabled state sit under the name, where there is
    room, rather than being squeezed into the badge column. */
 .user-notes { font-size: 11px; color: #999; margin-top: 2px; }
@@ -135,10 +139,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .user-row.is-disabled { background: #fbfbf9; }
 .user-row.is-disabled .user-name,
 .user-row.is-disabled .user-email { color: #a8a8a8; }
-.ua-btn { border: 1px solid #d8d8d8; background: #fff; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: #555; cursor: pointer; font-family: inherit; }
-.ua-btn:hover { border-color: #b8b8b8; background: #fafafa; }
-.ua-btn.danger { color: #c62828; border-color: #f0c4c4; }
-.ua-btn.danger:hover { background: #fdecea; border-color: #e0a0a0; }
 .user-avatar {
   width: 36px; height: 36px; border-radius: 50%;
   background: #fff4e0; color: #b86e00;
@@ -147,8 +147,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 }
 .user-name { font-size: 13px; font-weight: 600; color: #272727; }
 .user-email { font-size: 11px; color: #888; word-break: break-all; }
-.user-phone { font-size: 12px; color: #555; }
 .user-perm {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 4px;
   padding: 3px 8px; border-radius: 4px;
   font-size: 11px; font-weight: 700;
@@ -156,7 +156,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 }
 .user-perm.full   { background: #e3f0fb; color: #0d4a8a; }
 .user-perm.vendor { background: #f0efe9; color: #555; }
-.user-added { font-size: 11px; color: #999; text-align: right; font-weight: 500; }
 
 .users-summary {
   display: flex; justify-content: space-between; align-items: center;
@@ -188,8 +187,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 @media (max-width: 1100px) {
   .layout { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
-  .user-row { grid-template-columns: 32px 1fr; }
-  .user-row > *:nth-child(n+3) { grid-column: 2; }
+  /* Narrow: identity on one line, badge and menu beneath it. */
+  .user-row { grid-template-columns: 32px 1fr auto; }
+  .user-row > *:nth-child(3) { grid-column: 2 / -1; }
 }
 
 @media (max-width: 600px) {
@@ -457,6 +457,72 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .foot-actions .modal-btn { width: 100%; min-height: 44px; }
 }
 
+/* ── Access panel tabs ──────────────────────────────────────────────────
+   Three panes in one card, replacing three stacked full-width cards. Only the
+   container changed: #templates-card and #activity-card keep their ids, so
+   every selector already scoped to them still applies. */
+.tabs {
+  display: flex; gap: 2px;
+  border-bottom: 1px solid #f0efe9;
+  margin-top: 14px;
+}
+.tabs [role="tab"] {
+  appearance: none; background: none; border: 0;
+  border-bottom: 2px solid transparent;
+  font: inherit; font-size: 13px; font-weight: 600; color: #999;
+  padding: 8px 12px; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  transition: color 0.12s;
+}
+.tabs [role="tab"]:hover { color: #555; }
+.tabs [role="tab"][aria-selected="true"] { color: #272727; border-bottom-color: #e8a020; }
+.tabs [role="tab"]:focus-visible { outline: 2px solid #e8a020; outline-offset: 2px; border-radius: 4px; }
+.tabs .pip {
+  font-size: 11px; font-weight: 700; color: #8a8a8a;
+  background: #f2f1ea; border-radius: 10px; padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+.tabs [role="tab"][aria-selected="true"] .pip { background: #fdf3e0; color: #b47100; }
+.tabs .pip:empty { display: none; }
+.pane { padding-top: 14px; }
+.pane[hidden] { display: none; }
+
+/* ── Row overflow menu ──────────────────────────────────────────────────
+   One control per row instead of three. The menu is positioned against
+   .user-actions, which is the row's only positioned ancestor. */
+.row-menu-btn {
+  width: 30px; height: 30px; flex-shrink: 0;
+  border: 1px solid transparent; border-radius: 7px;
+  background: none; cursor: pointer; color: #999;
+  font-size: 16px; line-height: 1; font-family: inherit;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s;
+}
+.row-menu-btn:hover { background: #fff; border-color: #e0ddd2; color: #444; }
+.row-menu-btn:focus-visible { outline: 2px solid #e8a020; outline-offset: 1px; }
+.row-menu {
+  position: absolute; right: 0; top: 34px; z-index: 20;
+  background: #fff; border: 1px solid #e0ddd2; border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.13);
+  padding: 5px; min-width: 160px; text-align: left;
+}
+.row-menu[hidden] { display: none; }
+.row-menu button {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 0; font: inherit; font-size: 12.5px;
+  color: #444; padding: 7px 10px; border-radius: 5px; cursor: pointer;
+}
+.row-menu button:hover { background: #fafaf6; }
+.row-menu button:focus-visible { outline: 2px solid #e8a020; outline-offset: -2px; }
+.row-menu button.danger { color: #9c3b2a; }
+.row-menu hr { border: 0; border-top: 1px solid #f0efe9; margin: 4px 0; }
+
+/* The activity pane keeps the "5 changes · 2 hours ago" line the accordion
+   summary used to carry, now at the top of the pane. */
+#activity-card .activity-count {
+  font-size: 12px; color: #888; margin-bottom: 10px;
+}
+
 /* The #access-card rules are gone with the card. Its controls now render as
    .ua-btn inside the Authorized Users rows and inherit that styling.
    #access-drawer selectors remain scoped so they cannot reach the pre-existing
@@ -520,20 +586,6 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 /* Collapsed audit trail. The summary carries the count and how recent the last
    change was, so the section stays useful at one line high and only costs space
    when someone actually wants it. */
-#activity-card .activity-summary {
-  display: flex; align-items: center; gap: 10px;
-  cursor: pointer; list-style: none; user-select: none;
-}
-#activity-card .activity-summary::-webkit-details-marker { display: none; }
-#activity-card .activity-count { font-size: 12px; color: #888; }
-#activity-card .activity-chevron {
-  margin-left: auto; color: #999; flex-shrink: 0;
-  transition: transform 0.15s;
-}
-#activity-card details[open] .activity-chevron { transform: rotate(180deg); }
-#activity-card .activity-summary:focus-visible {
-  outline: 2px solid #e8a020; outline-offset: 3px; border-radius: 4px;
-}
 /* Bounded so a busy account cannot push the rest of the page around. */
 #activity-card #activity-list {
   margin-top: 6px;
@@ -579,6 +631,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           </div>
         </div>
       </div>
+
+      <div id="logo-section" class="card" style="margin-top:18px;"></div>
     </div>
 
     <!-- Right: Authorized Users -->
@@ -586,11 +640,27 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="card">
         <div class="card-head">
           <div>
-            <div class="card-title">Authorized Users</div>
+            <div class="card-title">Access</div>
             <div class="card-sub" id="users-sub">Loading…</div>
           </div>
           <button class="btn primary" id="btn-add-contact"><span class="ic">＋</span>Add Trusted Contact</button>
         </div>
+
+        <!-- Users, Templates and Activity are the same job at different
+             frequencies: you are either managing people, managing what access
+             means, or checking what changed. Never two at once, which is the
+             case tabs are for -- and unlike stacked cards or an accordion, the
+             panel cannot grow the page. -->
+        <div class="tabs" role="tablist" aria-label="Access">
+          <button class="tab" role="tab" id="tab-users" aria-controls="pane-users"
+                  aria-selected="true">Users <span class="pip" id="pip-users"></span></button>
+          <button class="tab" role="tab" id="tab-templates" aria-controls="pane-templates"
+                  aria-selected="false" tabindex="-1">Templates <span class="pip" id="pip-templates"></span></button>
+          <button class="tab" role="tab" id="tab-activity" aria-controls="pane-activity"
+                  aria-selected="false" tabindex="-1">Activity <span class="pip" id="pip-activity"></span></button>
+        </div>
+
+        <div class="pane" id="pane-users" role="tabpanel" aria-labelledby="tab-users">
 
         <div class="users-toolbar">
           <div class="users-search">
@@ -610,41 +680,34 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <span id="users-summary-left">—</span>
           <span id="users-summary-right">—</span>
         </div>
+
+        </div><!-- /pane-users -->
+
+        <!-- Kept #templates-card and #activity-card as ids so every selector
+             already scoped to them still applies. Only the container changed. -->
+        <div class="pane" id="pane-templates" role="tabpanel" aria-labelledby="tab-templates" hidden>
+          <div id="templates-card">
+            <div id="templates-list"></div>
+            <button data-act="new-template" class="btn">Create a template</button>
+          </div>
+        </div>
+
+        <div class="pane" id="pane-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
+          <div id="activity-card">
+            <div class="activity-count" id="activity-count"></div>
+            <div id="activity-list"></div>
+          </div>
+        </div>
       </div>
     </div>
 
   </div>
 
-  <!-- Users & Access (PERM3) is no longer its own card: it listed the same
-       people as Authorized Users above, with a second and eventually
-       contradictory access label. Its badge and controls now live on those
-       rows. -->
-
-  <div class="card" id="templates-card" style="margin-top:18px;">
-    <div class="card-title">Permission Templates</div>
-    <div id="templates-list"></div>
-    <button data-act="new-template" class="btn">Create a template</button>
-  </div>
-
-  <div class="card" id="activity-card" style="margin-top:18px;">
-    <!-- <details> rather than a JS toggle: open/closed state, keyboard access and
-         the disclosure semantics come from the browser, so there is no state of
-         our own to get out of sync. Collapsed by default -- this is an audit
-         trail, read occasionally, and the API returns up to 100 events. -->
-    <details id="activity-details">
-      <summary class="activity-summary">
-        <span class="card-title">Recent Access Changes</span>
-        <span class="activity-count" id="activity-count"></span>
-        <svg class="activity-chevron" viewBox="0 0 24 24" width="16" height="16"
-             fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </summary>
-      <div id="activity-list"></div>
-    </details>
-  </div>
-
-  <div id="logo-section" class="card" style="margin-top:18px;"></div>
+  <!-- Templates and Activity used to be full-width cards below the grid, equal
+       in visual weight to the company record and stretching their rows across
+       ~1,400px. They are tabs in the Access panel now. The logo moved into the
+       left column, where the rest of the company's own details live, so the
+       page is two columns and nothing runs full width. -->
 
   <div style="text-align:right;font-size:10px;color:#bbb;padding:10px 8px 0;">v2026-06-16.1</div>
 </div>
@@ -832,6 +895,7 @@ function bootApp() {
     console.log('[CompanyProfile] Booted as', brokerEmail);
     loadAccount();
     loadUsers();
+    initAccessTabs();
     loadAccess();
   }
   if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
@@ -1048,6 +1112,105 @@ function applyUserFilter() {
   renderUsers();
 }
 
+// ── Row overflow menus ────────────────────────────────────────────────────
+// Delegated per render rather than one document-level handler, because the
+// list is re-rendered on every loadAccess() and captured closures would go
+// stale. Actions resolve through accessByEmail / allUsers at click time, so a
+// menu always acts on the CURRENT record for that person.
+function closeRowMenus(except) {
+  var open = document.querySelectorAll('.row-menu');
+  Array.prototype.forEach.call(open, function (m) {
+    if (m === except) return;
+    m.hidden = true;
+    var btn = document.querySelector('[data-row-menu="' + m.id.replace('row-menu-', '') + '"]');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function bindRowMenus(scope) {
+  Array.prototype.forEach.call(scope.querySelectorAll('.row-menu-btn'), function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var menu = document.getElementById('row-menu-' + btn.getAttribute('data-row-menu'));
+      if (!menu) return;
+      var wasOpen = !menu.hidden;
+      closeRowMenus();
+      menu.hidden = wasOpen;
+      btn.setAttribute('aria-expanded', wasOpen ? 'false' : 'true');
+      if (!wasOpen) {
+        var first = menu.querySelector('button');
+        if (first) first.focus();
+      }
+    });
+  });
+
+  Array.prototype.forEach.call(scope.querySelectorAll('.row-menu button'), function (item) {
+    item.addEventListener('click', function (e) {
+      e.stopPropagation();
+      closeRowMenus();
+      var act = item.getAttribute('data-menu-act');
+      if (act === 'view') {
+        var u = allUsers.filter(function (x) {
+          return String(x.ID) === String(item.getAttribute('data-id'));
+        })[0];
+        if (u && typeof openViewModal === 'function') openViewModal(u);
+        return;
+      }
+      var a = accessByEmail[String(item.getAttribute('data-email') || '').toLowerCase()];
+      if (!a) return;
+      if (act === 'edit-access') openAccessDrawer(a);
+      if (act === 'toggle-status') toggleUserStatus(a);
+    });
+  });
+}
+
+document.addEventListener('click', function () { closeRowMenus(); });
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') closeRowMenus();
+});
+
+// ── Access panel tabs ─────────────────────────────────────────────────────
+// Roving tabindex so the group is one tab stop and the arrows move within it,
+// which is what a screen reader user expects from role="tablist".
+function selectAccessTab(id) {
+  var tabs = document.querySelectorAll('.tabs [role="tab"]');
+  Array.prototype.forEach.call(tabs, function (t) {
+    var on = t.id === id;
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+    t.tabIndex = on ? 0 : -1;
+    var pane = document.getElementById(t.getAttribute('aria-controls'));
+    if (pane) pane.hidden = !on;
+  });
+  closeRowMenus();
+}
+
+function initAccessTabs() {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tabs [role="tab"]'));
+  if (!tabs.length) return;
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { selectAccessTab(t.id); });
+    t.addEventListener('keydown', function (e) {
+      var next = null;
+      if (e.key === 'ArrowRight') next = tabs[(i + 1) % tabs.length];
+      if (e.key === 'ArrowLeft') next = tabs[(i - 1 + tabs.length) % tabs.length];
+      if (e.key === 'Home') next = tabs[0];
+      if (e.key === 'End') next = tabs[tabs.length - 1];
+      if (!next) return;
+      e.preventDefault();
+      selectAccessTab(next.id);
+      next.focus();
+    });
+  });
+}
+
+// A count on the tab is what makes a hidden pane honest: you can see there are
+// seven templates without opening it. Blank rather than "0" when there is
+// nothing to count, so an empty pane does not advertise itself.
+function setTabCount(id, n) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = n ? String(n) : '';
+}
+
 function renderUsers() {
   var body = document.getElementById('users-body');
   var summary = document.getElementById('users-summary');
@@ -1072,42 +1235,43 @@ function renderUsers() {
   html += '</div>';
   body.innerHTML = html;
 
-  body.querySelectorAll('.ua-btn[data-action="view"]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var u = allUsers.filter(function(x){ return String(x.ID) === String(btn.getAttribute('data-id')); })[0];
-      if (u && typeof openViewModal === 'function') openViewModal(u);
-    });
-  });
+  bindRowMenus(body);
 
-  // Access controls resolve through accessByEmail rather than a captured
-  // closure, so they always act on the CURRENT row for that person even after
-  // loadAccess() re-renders the list behind them.
-  body.querySelectorAll('.ua-btn[data-action="edit-access"]').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var a = accessByEmail[String(btn.getAttribute('data-email') || '').toLowerCase()];
-      if (a) openAccessDrawer(a);
-    });
-  });
-  body.querySelectorAll('.ua-btn[data-action="toggle-status"]').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var a = accessByEmail[String(btn.getAttribute('data-email') || '').toLowerCase()];
-      if (a) toggleUserStatus(a);
-    });
-  });
-
-  // Summary counts based on full list, not filtered
-  var fullCount = 0, vendorCount = 0;
-  allUsers.forEach(function(u) {
-    if (hasFullAccess(u)) fullCount++; else vendorCount++;
-  });
+  // Summary counts based on full list, not filtered.
+  //
+  // Counted from the SAME source as the badges above. The old summary read
+  // Creator's User_Permissions and reported "1 Full Access / 3 Vendor Access"
+  // directly under rows badged Carrier Payments, Accounting and Owner -- two
+  // descriptions of one list, disagreeing. Falls back to the Creator split only
+  // while the PERM3 call has not returned.
   summary.style.display = 'flex';
   document.getElementById('users-summary-left').textContent =
     'Showing ' + filteredUsers.length + ' of ' + allUsers.length + ' users';
-  document.getElementById('users-summary-right').innerHTML =
-    '<strong style="color:#272727;">' + fullCount + '</strong> Full Access &middot; ' +
-    '<strong style="color:#272727;">' + vendorCount + '</strong> Vendor Access';
+
+  var known = allUsers.filter(function (u) { return !!accessFor(u); });
+  var right = '';
+  if (known.length) {
+    var owners = 0, disabled = 0;
+    known.forEach(function (u) {
+      var a = accessFor(u);
+      if (a.is_owner) owners++;
+      if (a.status === 'disabled') disabled++;
+    });
+    var active = known.length - disabled;
+    var bits = [];
+    if (owners) bits.push('<strong style="color:#272727;">' + owners + '</strong> owner' + (owners === 1 ? '' : 's'));
+    bits.push('<strong style="color:#272727;">' + active + '</strong> active');
+    if (disabled) bits.push('<strong style="color:#272727;">' + disabled + '</strong> disabled');
+    right = bits.join(' &middot; ');
+  } else {
+    var fullCount = 0, vendorCount = 0;
+    allUsers.forEach(function(u) {
+      if (hasFullAccess(u)) fullCount++; else vendorCount++;
+    });
+    right = '<strong style="color:#272727;">' + fullCount + '</strong> Full Access &middot; ' +
+            '<strong style="color:#272727;">' + vendorCount + '</strong> Vendor Access';
+  }
+  document.getElementById('users-summary-right').innerHTML = right;
 
   sub.textContent = (allUsers.length === 1 ? '1 user has' : allUsers.length + ' users have') + ' access to your OperFi portal';
 }
@@ -1121,34 +1285,35 @@ function userRowHtml(u) {
   // fallback is not decoration: before the PERM3 call returns, and for anyone
   // with no portal_users row, the row must read exactly as it did before.
   var full = hasFullAccess(u);
-  var permLabel = a ? (a.template_name || 'No template')
-                    : (full ? 'Full Access' : 'Vendor Access');
+  var permLabel = a
+    ? (a.is_owner ? 'Owner' : (a.template_name || 'No template'))
+    : (full ? 'Full Access' : 'Vendor Access');
   var permClass = (a ? !!a.is_owner : full) ? 'full' : 'vendor';
 
-  // Anything that changes what this person can actually do belongs under their
-  // name, where there is room, rather than squeezed into the badge column.
   var notes = [];
   if (a) {
     var d = a.delta || { added: [], removed: [] };
     if (a.is_owner) notes.push('Account owner');
-    if (d.added && d.added.length) notes.push('+' + d.added.length + ' added');
-    if (d.removed && d.removed.length) notes.push('−' + d.removed.length + ' removed');
+    if (d.added && d.added.length) notes.push(d.added.length + ' added');
+    if (d.removed && d.removed.length) notes.push(d.removed.length + ' removed');
     if (a.status === 'disabled') notes.push('Disabled');
   }
 
-  var added = parseDate(u.Added_Time);
-  var addedLabel = added ? fmtDateShort(added) : '—';
-
+  // Four columns, not six. Phone and Added were dropped from the row because
+  // this card gets 688px -- the narrow half of a 1fr/1.4fr grid in a 1320px
+  // page -- and six columns plus three buttons wrapped the name to two lines
+  // and truncated the phone to "+1602555". Both still appear in View, which is
+  // where you go for a person's details rather than scanning a list for them.
   return '<div class="user-row' + (a && a.status === 'disabled' ? ' is-disabled' : '') + '">' +
     '<div class="user-avatar">' + esc(initials) + '</div>' +
-    '<div>' +
+    '<div class="user-id">' +
       '<div class="user-name">' + esc(name) + '</div>' +
       '<div class="user-email">' + esc(u.Email || '') + '</div>' +
       (notes.length ? '<div class="user-notes">' + esc(notes.join(' · ')) + '</div>' : '') +
     '</div>' +
-    '<div class="user-phone">' + esc(formatPhone(u.Phone_Number)) + '</div>' +
-    '<div><span class="user-perm ' + permClass + '">' + esc(permLabel) + '</span></div>' +
-    '<div class="user-added">' + esc(addedLabel) + '</div>' +
+    '<div><span class="user-perm ' + permClass + '" title="' +
+      esc(a ? (a.template_name || 'No template') : permLabel) + '">' +
+      esc(permLabel) + '</span></div>' +
     userActionsHtml(u) +
   '</div>';
 }
@@ -1157,19 +1322,30 @@ function userRowHtml(u) {
 // Access controls join it here rather than in a second list of the same people.
 function userActionsHtml(u) {
   var a = accessFor(u);
-  var h = '<div class="user-actions">';
-  // The owner already holds everything, so there is nothing to edit and the
-  // control would only invite a confusing no-op. Same rule the old list used.
+  var id = esc(String(u.ID || ''));
+  var em = esc(String((a || {}).email || ''));
+
+  // One menu rather than three inline buttons. Four rows of three controls was
+  // twelve competing for attention in a 688px card, and it gives the owner --
+  // who has nothing to edit, because they already hold everything -- a row that
+  // looks deliberate instead of one with a conspicuous gap.
+  var items = '<button type="button" role="menuitem" data-menu-act="view" data-id="' + id +
+              '">View contact</button>';
   if (a && !a.is_owner) {
-    var em = esc(String(a.email || ''));
-    h += '<button class="ua-btn" data-action="edit-access" data-email="' + em +
-         '">Edit access</button>';
-    h += '<button class="ua-btn" data-action="toggle-status" data-email="' + em + '">' +
-         (a.status === 'disabled' ? 'Enable' : 'Disable') + '</button>';
+    items += '<button type="button" role="menuitem" data-menu-act="edit-access" data-email="' + em +
+             '">Edit access</button>' +
+             '<hr>' +
+             '<button type="button" role="menuitem" data-menu-act="toggle-status" data-email="' + em +
+             '"' + (a.status === 'disabled' ? '' : ' class="danger"') + '>' +
+             (a.status === 'disabled' ? 'Enable' : 'Disable') + '</button>';
   }
-  h += '<button class="ua-btn" data-action="view" data-id="' +
-       esc(String(u.ID || '')) + '">View</button></div>';
-  return h;
+
+  return '<div class="user-actions">' +
+    '<button type="button" class="row-menu-btn" aria-haspopup="menu" aria-expanded="false" ' +
+      'data-row-menu="' + id + '" aria-label="Actions for ' + esc(displayContactName(u)) + '">' +
+      '⋯</button>' +
+    '<div class="row-menu" role="menu" id="row-menu-' + id + '" hidden>' + items + '</div>' +
+  '</div>';
 }
 
 function hasFullAccess(u) {
@@ -1664,6 +1840,7 @@ function renderAccessTab(users, templates) {
     var e = String(u.email || '').trim().toLowerCase();
     if (e) accessByEmail[e] = u;
   });
+  setTabCount('pip-users', (users || []).length);
   if (typeof renderUsers === 'function' && allUsers.length) renderUsers();
 }
 
@@ -1858,6 +2035,7 @@ function loadAccess() {
 function renderTemplatesTab(templates) {
   var list = document.getElementById('templates-list');
   if (!list) return;
+  setTabCount('pip-templates', (templates || []).length);
   list.innerHTML = '';
   (templates || []).forEach(function (t) {
     var row = document.createElement('div');
@@ -2105,9 +2283,12 @@ function renderActivity(events) {
   events = events || [];
   list.innerHTML = '';
 
+  // The accordion summary that used to carry this is gone -- Activity is a tab
+  // now, so the count lives on the tab and the "how recent" line moves to the
+  // top of the pane, where it is still the first thing read.
+  setTabCount('pip-activity', events.length);
   var count = document.getElementById('activity-count');
   if (count) {
-    // Events arrive newest first (list_account_activity sorts at: -1).
     count.textContent = events.length
       ? events.length + (events.length === 1 ? ' change · ' : ' changes · ')
           + activityAgo(events[0].at)

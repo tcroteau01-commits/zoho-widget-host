@@ -574,25 +574,42 @@ function loadDashboard() {
     });
 }
 
-function bootApp() {
-  // Demo mode: populate __PREVIEW_DATA__ if not already set and we're in demo context
+// Render from an embedded payload rather than the API: preview/test mode
+// (__PREVIEW_DATA__ injected externally) or the OperFi Demo fixture. Returns true
+// when it rendered, so callers bail instead of also hitting the backend.
+//
+// Extracted because this widget is the odd one out among the 7 fixture widgets:
+// the other six consult isDemo() inside the function that fetches, which runs
+// after OPERFI_DEMO.ready(). This one consulted it once at the top of bootApp(),
+// before the SDK path was entered. That is fine for admin impersonation, where
+// localStorage makes isDemo() true synchronously at page load, but on the
+// DIRECT-LOGIN path the flag is not known that early, so the fixture branch was
+// skipped and control fell through to loadDashboard() -- which has no demo branch
+// at all -- and an invited demo user got "Could not load credit data: Unauthorized".
+function renderEmbedded() {
   if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo() && !window.__PREVIEW_DATA__) {
     window.__PREVIEW_DATA__ = window.OPERFI_DEMO.creditDashboard();
   }
-  // Preview/test mode: skip SDK + API entirely, use embedded payload.
-  if (window.__PREVIEW_DATA__) {
-    var payload = window.__PREVIEW_DATA__;
-    applySubtitle(payload, ' (PREVIEW MODE)');
-    if (!payload.debtors || !payload.debtors.length) {
-      showStatus('No credit reports on file yet.', 'empty');
-      renderKPIs(payload.client, []); renderTable([]);
-      return;
-    }
-    renderKPIs(payload.client, payload.debtors);
-    renderCharts(payload.debtors);
-    renderTable(payload.debtors);
-    return;
+  if (!window.__PREVIEW_DATA__) return false;
+  var payload = window.__PREVIEW_DATA__;
+  applySubtitle(payload, ' (PREVIEW MODE)');
+  if (!payload.debtors || !payload.debtors.length) {
+    showStatus('No credit reports on file yet.', 'empty');
+    renderKPIs(payload.client, []); renderTable([]);
+    return true;
   }
+  renderKPIs(payload.client, payload.debtors);
+  renderCharts(payload.debtors);
+  renderTable(payload.debtors);
+  return true;
+}
+
+function bootApp() {
+  // Called twice on purpose. Here it covers preview/test mode and admin
+  // impersonation; gotParams calls it again once ready() has settled the flag,
+  // which is the earliest the direct-login demo path can be known. If this call
+  // renders we return, so the second can never double-render.
+  if (renderEmbedded()) return;
 
   if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR) {
     showStatus('SDK unavailable — reload the page.', 'error');
@@ -605,9 +622,13 @@ function bootApp() {
       showStatus('Could not identify broker. Open DevTools (F12) for details.', 'error');
       return;
     }
-    // DEMOUSER1: settle the OperFi Demo account flag before the first render.
+    // DEMOUSER1: settle the OperFi Demo account flag, then re-check. This is the
+    // only point at which a directly-logged-in demo user can be identified.
     Promise.resolve(window.OPERFI_DEMO && window.OPERFI_DEMO.ready(brokerEmail))
-      .then(loadDashboard);
+      .then(function () {
+        if (renderEmbedded()) return;
+        loadDashboard();
+      });
   }
   if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
     showStatus('SDK shape unexpected — getInitParams unavailable.', 'error');

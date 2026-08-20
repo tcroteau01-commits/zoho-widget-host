@@ -385,14 +385,13 @@
   <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
   <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
   <script src="https://app.operfi.com/demo-ledger.js"></script>
-  <script src="https://app.operfi.com/demo-data.js"></script>
+  <script src="https://app.operfi.com/demo-data.js?v=2"></script>
   <script>
     (function () {
-      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
-        var s = document.createElement('script');
-        s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
-        document.head.appendChild(s);
-      }
+      // Covers the admin-impersonation path, where isDemo() is already true at page
+      // load. The direct-login path resolves later, so demo-data.js's ready() calls
+      // ensurePdfLib() again once /whoami answers. Idempotent, both may fire.
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) window.OPERFI_DEMO.ensurePdfLib();
     })();
   </script>
   <script>
@@ -471,6 +470,9 @@
             '<div class="loading" style="color:var(--of-red)">Unable to identify broker. Refresh the page or contact support.</div>';
           return;
         }
+        // DEMOUSER1: settle the OperFi Demo account flag before the first render.
+        return window.OPERFI_DEMO && window.OPERFI_DEMO.ready(brokerEmail);
+      }).then(function () {
         renderShell();
         fetchLoads();
       }).catch(function (err) {

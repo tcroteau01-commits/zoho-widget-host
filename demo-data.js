@@ -8,21 +8,87 @@
 (function () {
   'use strict';
 
+  var API_HOST = 'operfi-broker-api.onrender.com';
   var DEMO_EMAIL = 'demo@operfi.com';
   var DEMO_ACCOUNT_NAME = 'OperFi Demo';
-  // The admin impersonation picker shows one representative contact per account (not
-  // necessarily DEMO_EMAIL), and every contact under the OperFi Demo account displays
-  // as "OperFi Demo" in that picker with no way to tell them apart. So isDemo() must
-  // accept any authorized-user contact on the OperFi Demo account, not just DEMO_EMAIL,
-  // or picking the "wrong" (but still correct-looking) row silently falls through to
-  // the real backend instead of the fixture.
+  // Legacy trigger, kept only as a fallback. These are the four contacts that were on
+  // the OperFi Demo account when the fixture shipped. It is no longer load-bearing --
+  // ready() below covers every demo user, including ones invited later -- but leaving
+  // it costs nothing and means a slow or failing /whoami cannot break a live sales
+  // demo mid-pitch. Do not add to it; add the user to the OperFi Demo account instead.
   var DEMO_EMAILS = ['demo@operfi.com', 'morgan.ellis@operfidemo.com', 'jordan.price@operfidemo.com', 'casey.nguyen@operfidemo.com'];
 
-  function isDemo() {
+  // Set by ready(). Starts false, so a widget that renders before /whoami answers
+  // shows real data rather than guessing -- fixture numbers must never reach a real
+  // client, and the reverse (a demo user briefly seeing an error) is only cosmetic.
+  var demoAccount = false;
+  var readyPromise = null;
+
+  /* Load pdf-lib, which demo-data.js's pdfFromRows() hard-depends on (it rejects
+     with "pdf-lib not loaded" without it).
+
+     aging / loads-margins / reserve-report / vendor-payments each did this inline at
+     page load behind isDemo(). That check is synchronous and therefore runs BEFORE
+     ready() has answered, so on the direct-login path it was false and the PDF export
+     button silently did nothing. ready() now calls this again once the flag is known.
+     Idempotent, so both callers can fire. */
+  function ensurePdfLib() {
+    try {
+      if (window.PDFLib) return;
+      if (document.querySelector('script[data-operfi-pdflib]')) return;
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+      s.setAttribute('data-operfi-pdflib', '1');
+      document.head.appendChild(s);
+    } catch (e) {}
+  }
+
+  function legacyImpersonationMatch() {
     try {
       var t = window.OPERFI_IMP && window.OPERFI_IMP.target();
       return !!(t && DEMO_EMAILS.indexOf(t) !== -1);
     } catch (e) { return false; }
+  }
+
+  /* Resolve whether this session is acting on the OperFi Demo account, once per page.
+
+     Call this in a widget's getInitParams() chain and await it BEFORE the first
+     render, then keep calling isDemo() synchronously everywhere else:
+
+       .then(function (p) { state.email = p.loginUser; return OPERFI_DEMO.ready(state.email); })
+       .then(fetchAndRender)
+
+     The trigger is account membership, not an email list, so anyone added to the
+     OperFi Demo account through Company Profile -> Add Trusted Contact gets the
+     fixture with no code change. /whoami goes through the wrapped fetch, so
+     operfi-impersonate.js appends ?impersonate= and one flag covers both the
+     direct-login and the admin-impersonation paths.
+
+     Never rejects. Any failure leaves demoAccount false (fail closed) and still
+     resolves, so a widget chaining .then(render) on it always renders. */
+  function ready(email) {
+    if (readyPromise) return readyPromise;
+    // Deliberately NOT memoized: reserve-report resolves its email out of initParams,
+    // which comes back empty on the admin ?clientId= path, and caching that answer
+    // would pin isDemo() to false for the rest of the page.
+    if (!email) return Promise.resolve(false);
+    try {
+      readyPromise = window.fetch('https://' + API_HOST + '/whoami?email=' + encodeURIComponent(email))
+        .then(function (res) { return res.json(); })
+        .then(function (info) {
+          demoAccount = !!(info && info.is_demo);
+          if (demoAccount) ensurePdfLib();
+          return demoAccount;
+        })
+        .catch(function () { return false; });
+    } catch (e) {
+      readyPromise = Promise.resolve(false);
+    }
+    return readyPromise;
+  }
+
+  function isDemo() {
+    return demoAccount || legacyImpersonationMatch();
   }
 
   function todayISO() { return new Date().toISOString().slice(0, 10); }
@@ -478,7 +544,8 @@
 
   window.OPERFI_DEMO = {
     EMAIL: DEMO_EMAIL, ACCOUNT_NAME: DEMO_ACCOUNT_NAME,
-    isDemo: isDemo, todayISO: todayISO, offsetISO: offsetISO,
+    isDemo: isDemo, ready: ready, ensurePdfLib: ensurePdfLib,
+    todayISO: todayISO, offsetISO: offsetISO,
     wallet: wallet,
     csvFromRows: csvFromRows, downloadCSV: downloadCSV, pdfFromRows: pdfFromRows,
     dashboardSummary: dashboardSummary,

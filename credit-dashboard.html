@@ -256,7 +256,7 @@ tbody tr:hover { background: #fafaf6; }
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/demo-ledger.js"></script>
-<script src="https://app.operfi.com/demo-data.js"></script>
+<script src="https://app.operfi.com/demo-data.js?v=2"></script>
 <script>
 (function() {
 'use strict';
@@ -605,7 +605,9 @@ function bootApp() {
       showStatus('Could not identify broker. Open DevTools (F12) for details.', 'error');
       return;
     }
-    loadDashboard();
+    // DEMOUSER1: settle the OperFi Demo account flag before the first render.
+    Promise.resolve(window.OPERFI_DEMO && window.OPERFI_DEMO.ready(brokerEmail))
+      .then(loadDashboard);
   }
   if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
     showStatus('SDK shape unexpected — getInitParams unavailable.', 'error');

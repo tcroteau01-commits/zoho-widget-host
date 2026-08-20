@@ -152,14 +152,13 @@
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
 <script src="https://app.operfi.com/demo-ledger.js"></script>
-<script src="https://app.operfi.com/demo-data.js"></script>
+<script src="https://app.operfi.com/demo-data.js?v=2"></script>
 <script>
   (function () {
-    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
-      var s = document.createElement('script');
-      s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
-      document.head.appendChild(s);
-    }
+    // Covers the admin-impersonation path, where isDemo() is already true at page
+    // load. The direct-login path resolves later, so demo-data.js's ready() calls
+    // ensurePdfLib() again once /whoami answers. Idempotent, both may fire.
+    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) window.OPERFI_DEMO.ensurePdfLib();
   })();
 </script>
 <script>
@@ -196,6 +195,9 @@
       var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
       state.email = loginUser || '';
       if (!state.email) throw new Error('No login email returned from Creator.');
+      // DEMOUSER1: settle the OperFi Demo account flag before the first render.
+      return window.OPERFI_DEMO && window.OPERFI_DEMO.ready(state.email);
+    }).then(function () {
       onReady();
     }).catch(function (err) { showFatal(err.message || 'Failed to load.'); });
   }

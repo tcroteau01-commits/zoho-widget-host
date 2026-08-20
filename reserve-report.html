@@ -7,14 +7,13 @@
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=3"></script>
 <script src="https://app.operfi.com/demo-ledger.js"></script>
-<script src="https://app.operfi.com/demo-data.js"></script>
+<script src="https://app.operfi.com/demo-data.js?v=2"></script>
 <script>
   (function () {
-    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) {
-      var s = document.createElement('script');
-      s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
-      document.head.appendChild(s);
-    }
+    // Covers the admin-impersonation path, where isDemo() is already true at page
+    // load. The direct-login path resolves later, so demo-data.js's ready() calls
+    // ensurePdfLib() again once /whoami answers. Idempotent, both may fire.
+    if (window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo()) window.OPERFI_DEMO.ensurePdfLib();
   })();
 </script>
 <style>
@@ -602,7 +601,11 @@
   function bootstrap() {
     function onParams(p) {
       initParams = p || {};
-      loadActivity();
+      // DEMOUSER1: settle the OperFi Demo account flag before the first render.
+      // Promise.resolve() so this works whether or not demo-data.js loaded.
+      var email = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
+      Promise.resolve(window.OPERFI_DEMO && window.OPERFI_DEMO.ready(email))
+        .then(loadActivity);
     }
     function onErr(err) {
       console.error('getInitParams failed:', err);

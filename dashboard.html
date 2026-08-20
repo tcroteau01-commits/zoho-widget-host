@@ -81,7 +81,7 @@
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/demo-ledger.js"></script>
-<script src="https://app.operfi.com/demo-data.js"></script>
+<script src="https://app.operfi.com/demo-data.js?v=2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function () {
@@ -124,6 +124,11 @@
       state.email = loginUser || '';
       if (!state.email) throw new Error('No login email returned from Creator.');
       dbg('email resolved:', state.email);
+      // DEMOUSER1: isDemo() reads a flag resolved by an async /whoami call, so
+      // settle it before the first render or an invited demo user's page fetches
+      // the real backend and renders "HTTP 404" on every tile.
+      return window.OPERFI_DEMO && window.OPERFI_DEMO.ready(state.email);
+    }).then(function () {
       fetchAndRender();
     }).catch(function (e) { dbg('init failed:', e && e.message); showFatal(e); });
   }

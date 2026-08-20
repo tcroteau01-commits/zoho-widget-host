@@ -305,7 +305,7 @@
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/demo-ledger.js"></script>
-<script src="https://app.operfi.com/demo-data.js"></script>
+<script src="https://app.operfi.com/demo-data.js?v=2"></script>
 <script>
 (function () {
   'use strict';
@@ -350,6 +350,9 @@
       var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
       state.email = loginUser || '';
       if (!state.email) throw new Error('No login email returned from Creator. Open DevTools console (F12) for details.');
+      // DEMOUSER1: settle the OperFi Demo account flag before the first render.
+      return window.OPERFI_DEMO && window.OPERFI_DEMO.ready(state.email);
+    }).then(function () {
       fetchReserves();
       bindFormHandlers();
     }).catch(function (err) {

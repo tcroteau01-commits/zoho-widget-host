@@ -473,6 +473,10 @@
         // DEMOUSER1: settle the OperFi Demo account flag before the first render.
         return window.OPERFI_DEMO && window.OPERFI_DEMO.ready(brokerEmail);
       }).then(function () {
+        // The no-loginUser branch above bails with `return`, not `throw`, so it
+        // resolves this chain rather than skipping it. Re-check, or the error
+        // message gets painted over and fetchLoads() queries for a null broker.
+        if (!brokerEmail) return;
         renderShell();
         fetchLoads();
       }).catch(function (err) {

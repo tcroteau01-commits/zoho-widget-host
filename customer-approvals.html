@@ -576,9 +576,34 @@ if (typeof window !== 'undefined') {
   window.pillWarnHtml = pillWarnHtml;
 }
 
+// CRSTAT1: a BLANK Credit_Decision means nobody has decided yet, so it reads as
+// Awaiting Decision. Creator's form-level initial value only fires when a human opens
+// the form, and the form hides Credit_Decision on load, so every submission created
+// through the portal API landed blank. Blank was not a recognised status, so those
+// records dropped out of the Awaiting chip AND the Awaiting Decision KPI -- the credit
+// team's queue undercounted by a couple hundred submissions with nothing to show for it.
+//
+// The backend now stamps the field on create; this is the safety net for anything that
+// still slips through. A blank is the ONLY value assumed -- an unrecognised non-blank
+// value stays 'unknown' on purpose, so the next breakage is visible instead of masked.
 function statusMeta(rec) {
-  var raw = rec.Credit_Decision || '';
-  return STATUS_MAP[raw] || { key: 'unknown', label: raw || '—', pill: '' };
+  var raw = (rec && rec.Credit_Decision) || '';
+  if (STATUS_MAP[raw]) return STATUS_MAP[raw];
+  if (!String(raw).trim()) return STATUS_MAP['Awaiting Credit Decision'];
+  return { key: 'unknown', label: raw, pill: '' };
+}
+
+// The value the admin decision dropdown should open on. DECISION_VALUES[0] is 'Approved',
+// so a blank record with no option marked selected would leave the browser showing
+// "Approved" in the box on an untouched submission. Blank opens on Awaiting instead.
+function decisionSelectValue(rec) {
+  var raw = String((rec && rec.Credit_Decision) || '').trim();
+  return raw || 'Awaiting Credit Decision';
+}
+
+if (typeof window !== 'undefined') {
+  window.statusMeta = statusMeta;                    // exposed for tests (CRSTAT1)
+  window.decisionSelectValue = decisionSelectValue;
 }
 
 // ── Credit decision write (see-all / role context only) ─────────────────────
@@ -1013,7 +1038,7 @@ function renderPanel() {
   // renders byte-identically to before.
   var decisionSectionHtml = '';
   if (allClients) {
-    var curDecision = r.Credit_Decision || '';
+    var curDecision = decisionSelectValue(r);
     var isApproved = curDecision === 'Approved';
     var optsHtml = DECISION_VALUES.map(function(v) {
       return '<option value="' + esc(v) + '"' + (v === curDecision ? ' selected' : '') + '>' + esc(v) + '</option>';

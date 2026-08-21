@@ -393,6 +393,27 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
    NOT the denied red: nothing is wrong with the credit decision, there is just one
    more step before this customer can carry a load. */
 .billing-warn { margin-top:4px; font-size:11px; font-weight:600; color:#8a5a00; display:flex; align-items:center; gap:4px; }
+
+/* BPOC2 — the same warning riding the status pill. The row line is easy to skim past
+   and this generates real support calls, so it is flagged twice on purpose. Sits
+   OUTSIDE the pill: inside it would inherit the approved green and read as part of the
+   status, rather than as "approved, but". */
+.pill-cell { display:inline-flex; align-items:center; }
+.pill-warn { position:relative; display:inline-flex; align-items:center; margin-left:6px; font-size:13px; line-height:1; color:#b8860b; cursor:help; }
+/* Amber, not near-black: the detail panel's header is #272727, so a dark tooltip would
+   be invisible there. Amber reads on both the white row and the dark header, and ties
+   the tip to the warning it explains. */
+.pill-warn .pill-tip {
+  position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%);
+  background:#8a5a00; color:#fff; padding:6px 9px; border-radius:6px;
+  font-size:11px; font-weight:600; line-height:1.3; letter-spacing:0; text-transform:none;
+  white-space:nowrap; opacity:0; visibility:hidden; transition:opacity .12s; pointer-events:none; z-index:30;
+}
+.pill-warn .pill-tip::after { content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#8a5a00; }
+.pill-warn:hover .pill-tip { opacity:1; visibility:visible; }
+/* On the dark panel header the goldenrod glyph goes muddy, and the row's 8px flex gap
+   already spaces it. */
+.panel-status-row .pill-warn { color:#f0b849; margin-left:0; }
 .ca-billing-alert { margin-top:14px; border:1px solid #f0d9a8; background:#fdf7ea; border-radius:8px; padding:12px 14px; display:flex; align-items:flex-start; gap:10px; }
 .ca-billing-alert .cba-body { flex:1; }
 .ca-billing-alert .cba-title { font-size:12px; font-weight:700; color:#8a5a00; margin-bottom:3px; }
@@ -538,10 +559,21 @@ function billingAlertHtml(r) {
     '</div>';
 }
 
+// BPOC2: the marker that rides the status pill. Same sentence as the row line -- the
+// repetition is deliberate, this is the thing clients call about.
+var BILLING_WARN_TEXT = 'Billing contact required to submit loads';
+
+function pillWarnHtml(r) {
+  if (!needsBillingWarning(r)) return '';
+  return '<span class="pill-warn" role="img" aria-label="' + esc(BILLING_WARN_TEXT) + '">⚠' +
+    '<span class="pill-tip">' + esc(BILLING_WARN_TEXT) + '</span></span>';
+}
+
 if (typeof window !== 'undefined') {
   window.billingIncomplete = billingIncomplete;
   window.needsBillingWarning = needsBillingWarning;
   window.billingAlertHtml = billingAlertHtml;
+  window.pillWarnHtml = pillWarnHtml;
 }
 
 function statusMeta(rec) {
@@ -918,7 +950,7 @@ function rowHtml(r, idx) {
           ? '<div class="cell-val lg" style="color:' + limitColor + ';">' + esc(formatMoneyShort(limit)) + '</div>'
           : '<div class="cell-val" style="color:#999;">' + (s.key === 'app-rcvd' ? 'Pending review' : '—') + '</div>') +
       '</div>' +
-      '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
+      '<div class="pill-cell"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + pillWarnHtml(r) + '</div>' +
       '<div>' + actionCell + '</div>' +
       '<div class="chev cell-chev">›</div>' +
     '</div>';
@@ -1037,7 +1069,7 @@ function renderPanel() {
       '<div class="panel-meta">' +
         '<span>Submitted ' + (added ? fmtDateTime(added) : '—') + '</span>' +
       '</div>' +
-      '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
+      '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + pillWarnHtml(r) + '</div>' +
     '</div>' +
     '<div class="panel-body">' +
       fraudSectionHtml +

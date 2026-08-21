@@ -178,3 +178,62 @@ test('saving billing info clears the warning from the row behind the panel', asy
   assert.doesNotMatch(results(), /billing-warn/,
     'row warning should be gone after the save');
 });
+
+// ── BPOC2 — the warning also rides the status pill ───────────────────────────
+// Tom: "we get a lot of calls about it." The row line is easy to skim past; the pill
+// is where the eye lands, so flag it there too even though it repeats the message.
+
+test('the APPROVED pill carries a warning marker when billing is missing', () => {
+  const h = boot().rowHtml(rec({ Billing_Email: '' }), 0);
+  assert.match(h, /pill-warn/, 'the pill cell needs the warning marker');
+  assert.match(h, /⚠/);
+});
+
+test('the pill warning explains itself on hover with the same words as the row', () => {
+  const h = boot().rowHtml(rec({ Billing_Email: '' }), 0);
+  const tip = h.match(/class="pill-tip"[^>]*>([^<]+)</);
+  assert.ok(tip, 'a hover tip element must be present');
+  assert.strictEqual(tip[1], 'Billing contact required to submit loads');
+});
+
+test('a clean approved pill carries no warning marker', () => {
+  assert.doesNotMatch(boot().rowHtml(rec(), 0), /pill-warn/);
+});
+
+test('a denied customer missing billing gets no pill marker either', () => {
+  const h = boot().rowHtml(rec({ Credit_Decision: 'Denied', Billing_Email: '' }), 0);
+  assert.doesNotMatch(h, /pill-warn/);
+});
+
+test('the pill label itself still reads APPROVED, not something new', () => {
+  // The credit decision has not changed and must not look like it has.
+  const h = boot().rowHtml(rec({ Billing_Email: '' }), 0);
+  assert.match(h, /class="status-pill approved">Approved</);
+});
+
+test('the marker sits outside the pill so it does not inherit the green', () => {
+  // Inside the pill it would render in the approved palette and read as part of the
+  // status; outside, in amber, it reads as "approved, but".
+  const h = boot().rowHtml(rec({ Billing_Email: '' }), 0);
+  assert.match(h, /<\/span>\s*<span class="pill-warn"/,
+    'pill-warn must follow the closing status-pill tag, not sit inside it');
+});
+
+test('the detail panel pill gets the same marker', () => {
+  assert.match(html, /panel-status-row[\s\S]{0,200}pillWarnHtml/,
+    'the panel status row should use the same helper');
+});
+
+test('the hover tip style is defined and hidden until hover', () => {
+  assert.match(html, /\.pill-warn\s*\{/);
+  assert.match(html, /\.pill-warn:hover\s+\.pill-tip/);
+});
+
+test('the marker is legible on the dark panel header, not just on white rows', () => {
+  // .panel-header is #272727. A near-black tip and a goldenrod glyph both disappear
+  // against it, so the tip is amber and the panel glyph is lightened.
+  assert.doesNotMatch(html, /\.pill-warn \.pill-tip\s*\{[^}]*background:\s*#2[b7]/i,
+    'the tip must not be near-black');
+  assert.match(html, /\.panel-status-row \.pill-warn\s*\{[^}]*color:/,
+    'the panel needs its own glyph colour');
+});

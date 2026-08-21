@@ -453,6 +453,13 @@ function populateCustomers(customers) {
     .forEach(function(c){
       var o = document.createElement('option');
       o.value = c.customer_id; o.textContent = c.customer_name;
+      // BPOC1: /tms-submit refuses a load whose customer has no billing contact on
+      // file. Say so at booking rather than at submit. Only an explicit false blocks;
+      // a missing flag (older backend) fails open, with the server as the real gate.
+      if (c.billing_complete === false) {
+        o.disabled = true;
+        o.textContent = c.customer_name + ' — Billing contact required';
+      }
       sel.appendChild(o);
     });
 }
@@ -464,7 +471,14 @@ function ensureCustomerOption(id) {
   var sel = document.getElementById('f-customer_id');
   if (!sel) return;
   for (var i = 0; i < sel.options.length; i++) {
-    if (sel.options[i].value === String(id)) return;
+    if (sel.options[i].value === String(id)) {
+      // BPOC1: this is the customer the load is ALREADY booked to. If the billing gate
+      // disabled its option, the select cannot display it -- the field renders blank and
+      // a save from a blank select drops the customer off the load. Re-enable it; the
+      // label still says why, and /tms-submit still refuses the submission.
+      sel.options[i].disabled = false;
+      return;
+    }
   }
   var match = allCustomers.filter(function(c){ return String(c.customer_id) === String(id); })[0];
   if (match) {

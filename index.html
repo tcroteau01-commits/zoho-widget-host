@@ -379,6 +379,7 @@ textarea { resize: vertical; min-height: 90px; }
             <option value="">Select a customer…</option>
           </select>
           <div class="field-hint">Only approved customers are shown. If you don't see your customer, add them in your <strong>Customer Submission</strong> section first.</div>
+          <div class="field-hint" id="customer-billing-hint" style="display:none;">Customers marked <strong>Billing contact required</strong> need a billing point of contact, phone, and email on file before a load can be submitted. Add it under <strong>Customer Credit → Customer Approvals</strong>.</div>
           <div class="draft-warning" id="draft-customer-warning" style="display:none;"></div>
         </div>
 
@@ -580,6 +581,18 @@ function esc(s) {
 // (/funding-submit rejects anything else) and tms-load-detail.html's booking rule.
 var FUNDABLE_CREDIT_DECISIONS = ['Approved', 'Credit Boost Requested'];
 
+// BPOC1: a credit-approved customer still cannot be invoiced until its billing contact
+// (name, AP phone, billing email) is on file, so /funding-submit refuses it. Gray it out
+// here rather than letting the broker build the entire load and eat a 403 at the end.
+//
+// ONLY an explicit false blocks. An older backend omits the flag entirely, and treating
+// absence as incomplete would disable every customer in the portal at once; the server
+// is the real gate, so absence fails open.
+function customerBillingIncomplete(c) {
+  return (c || {}).billing_complete === false;
+}
+window.customerBillingIncomplete = customerBillingIncomplete;
+
 function loadCustomers() {
   var err = document.getElementById('customer-error');
   if (err) err.textContent = '';
@@ -590,10 +603,17 @@ function loadCustomers() {
         return FUNDABLE_CREDIT_DECISIONS.indexOf(String(c.credit_decision || '').trim()) !== -1;
       });
       var sel = document.getElementById('customer-select');
+      // Blocked customers stay LISTED, just disabled. Hiding them would reproduce the
+      // very confusion this fixes: the broker knows the customer is approved, cannot
+      // find it in the list, and calls support.
       sel.innerHTML = '<option value="">Select a customer…</option>' +
         approved.map(function (c) {
-          return '<option value="' + esc(c.customer_id) + '">' + esc(c.customer_name || '') + '</option>';
+          var blocked = customerBillingIncomplete(c);
+          return '<option value="' + esc(c.customer_id) + '"' + (blocked ? ' disabled' : '') + '>' +
+            esc(c.customer_name || '') + (blocked ? ' — Billing contact required' : '') + '</option>';
         }).join('');
+      var hint = document.getElementById('customer-billing-hint');
+      if (hint) hint.style.display = approved.some(customerBillingIncomplete) ? '' : 'none';
     })
     .catch(function () {
       var e = document.getElementById('customer-error');
@@ -1511,6 +1531,11 @@ function submitLoad() {
           // hiring-decision block reason) over the generic fallback when present.
           if (statusEl) statusEl.textContent = (res.j && res.j.error)
             || 'Submission failed. Your entries are kept — please try again.';
+          // BPOC1: reaching the billing gate means the picker let this customer through
+          // on a stale list (it was cached before someone cleared the billing fields, or
+          // the flag predates this build). Reload so the option actually grays out and
+          // the list agrees with the message the broker is reading.
+          if (res.j && res.j.code === 'billing_incomplete') loadCustomers();
           if (btn) btn.disabled = false;
           return;
         }

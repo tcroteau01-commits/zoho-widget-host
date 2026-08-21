@@ -718,18 +718,38 @@ function applyGroup(raw, value, ids, remember, kind){
     .catch(function(err){ showToast(patchErrorMessage(err)); });
 }
 
+// BPOC1: /draft-loads/submit skips a customer with no billing contact on file
+// (customer_billing_incomplete), so the picker grays it out rather than letting the
+// broker resolve a whole batch onto a customer that will be skipped anyway.
+//
+// Match candidates come from the name matcher and carry no billing flag of their own,
+// so the flag is looked up in the loaded customer list by id. A customer that is not in
+// that list yields undefined and is NOT blocked -- absence fails open, same as the Load
+// Details picker; the backend is the real gate.
+function customerBillingIncomplete(customerId){
+  var known = (__state.customers||[]).filter(function(c){ return c.customer_id===customerId; })[0];
+  return !!known && known.billing_complete === false;
+}
+window.customerBillingIncomplete = customerBillingIncomplete;
+
 function customerOptions(selectedId, candidates){
   var opts='', seen={};
+  function opt(id, label){
+    var blocked = customerBillingIncomplete(id);
+    return '<option value="'+esc(id)+'"'+(id===selectedId?' selected':'')+(blocked?' disabled':'')+'>'+
+      label+(blocked?' — Billing contact required':'')+'</option>';
+  }
   (candidates||[]).forEach(function(c){
     seen[c.customer_id]=true;
-    opts+='<option value="'+esc(c.customer_id)+'"'+(c.customer_id===selectedId?' selected':'')+'>'+esc(c.name||c.customer_name)+(c.score!=null?' — '+Math.round(c.score*100)+'% match':'')+'</option>';
+    opts+=opt(c.customer_id, esc(c.name||c.customer_name)+(c.score!=null?' — '+Math.round(c.score*100)+'% match':''));
   });
   __state.customers.forEach(function(c){
     if (seen[c.customer_id]) return;
-    opts+='<option value="'+esc(c.customer_id)+'"'+(c.customer_id===selectedId?' selected':'')+'>'+esc(c.customer_name)+'</option>';
+    opts+=opt(c.customer_id, esc(c.customer_name));
   });
   return '<option value="">— pick a customer —</option>'+opts;
 }
+window.customerOptions = customerOptions;
 // Short label suffix flagging a carrier's hiring-decision/DNU status in the picker.
 // '' for a clean, approved carrier. Mirrors index.html's carrierStatusSuffix.
 function carrierStatusSuffix(c){
@@ -841,6 +861,7 @@ var REASON_TEXT = {
   customer:'missing customer', carrier:'missing carrier',
   customer_not_on_account:'customer not on your account',
   customer_not_approved:'customer not credit-approved',
+  customer_billing_incomplete:'customer needs a billing contact (name, phone, and email) — add it under Customer Credit → Customer Approvals',
   carrier_not_on_account:'carrier not on your account',
   carrier_not_approved:'carrier not approved for hire',
   carrier_dnu:'carrier is on your Do Not Use list',
@@ -852,6 +873,7 @@ var REASON_TEXT = {
   not_found:'draft not found', not_authorized:'not your draft',
   promote_failed:'submit failed — try again'
 };
+window.REASON_TEXT = REASON_TEXT;   // exposed for tests
 function reasonText(code){
   return REASON_TEXT[code] || String(code||'').replace(/_/g,' ');
 }

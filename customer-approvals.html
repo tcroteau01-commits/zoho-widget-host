@@ -388,6 +388,17 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-contacts-head { display:flex; justify-content:space-between; align-items:center; }
 .ca-edit-billing-btn { border:1px solid #d8d8d8; background:#fff; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:600; color:#555; cursor:pointer; font-family:inherit; text-transform:none; letter-spacing:0; }
 .ca-edit-billing-btn:hover { border-color:#b8b8b8; background:#fafafa; }
+
+/* BPOC1 — an approved customer with no billing contact on file. Amber, deliberately
+   NOT the denied red: nothing is wrong with the credit decision, there is just one
+   more step before this customer can carry a load. */
+.billing-warn { margin-top:4px; font-size:11px; font-weight:600; color:#8a5a00; display:flex; align-items:center; gap:4px; }
+.ca-billing-alert { margin-top:14px; border:1px solid #f0d9a8; background:#fdf7ea; border-radius:8px; padding:12px 14px; display:flex; align-items:flex-start; gap:10px; }
+.ca-billing-alert .cba-body { flex:1; }
+.ca-billing-alert .cba-title { font-size:12px; font-weight:700; color:#8a5a00; margin-bottom:3px; }
+.ca-billing-alert .cba-msg { font-size:12px; color:#6b5426; line-height:1.45; }
+.ca-billing-alert .cba-fix { flex-shrink:0; border:1px solid #d9ab55; background:#fff; border-radius:6px; padding:5px 12px; font-size:11px; font-weight:700; color:#8a5a00; cursor:pointer; font-family:inherit; }
+.ca-billing-alert .cba-fix:hover { background:#fffaf0; border-color:#c2942f; }
 </style>
 </head>
 <body>
@@ -493,6 +504,46 @@ var STATUS_MAP = {
   'Denied':                            { key: 'denied',      label: 'Denied',            pill: 'denied' },
   'Expired':                           { key: 'expired',     label: 'Expired',           pill: 'expired' }
 };
+// ── BPOC1 — billing contact gate ────────────────────────────────────────────
+// A credit-approved customer still cannot be invoiced without a billing contact, and
+// /funding-submit refuses the load. The broker used to discover that at Submit Load,
+// after building the whole thing. Warn here, where the fix already lives (CA1).
+//
+// Must mirror the backend's _billing_complete exactly: all three fields, whitespace
+// does not count as filled.
+var BILLING_FIELDS = ['Billing_Point_of_Contact', 'Billing_AP_Contact_Number', 'Billing_Email'];
+
+function billingIncomplete(r) {
+  r = r || {};
+  return BILLING_FIELDS.some(function(f) { return !String(r[f] == null ? '' : r[f]).trim(); });
+}
+
+// Only customers that could actually carry a load today. Nagging about billing on one
+// still awaiting a credit decision is noise -- it may never be approved -- and it buries
+// the warnings that do matter.
+function needsBillingWarning(r) {
+  var k = statusMeta(r).key;
+  return (k === 'approved' || k === 'boost') && billingIncomplete(r);
+}
+
+function billingAlertHtml(r) {
+  if (!needsBillingWarning(r)) return '';
+  return '<div class="ca-billing-alert" id="ca-billing-alert">' +
+      '<div class="cba-body">' +
+        '<div class="cba-title">⚠ Billing contact required before you can submit a load</div>' +
+        '<div class="cba-msg">This customer is approved, but a billing point of contact ' +
+          'name, phone, and email must be on file before a load can be submitted for funding.</div>' +
+      '</div>' +
+      '<button class="cba-fix" id="ca-billing-alert-fix" type="button">Add Billing Info</button>' +
+    '</div>';
+}
+
+if (typeof window !== 'undefined') {
+  window.billingIncomplete = billingIncomplete;
+  window.needsBillingWarning = needsBillingWarning;
+  window.billingAlertHtml = billingAlertHtml;
+}
+
 function statusMeta(rec) {
   var raw = rec.Credit_Decision || '';
   return STATUS_MAP[raw] || { key: 'unknown', label: raw || '—', pill: '' };
@@ -852,6 +903,9 @@ function rowHtml(r, idx) {
         '<div class="cell-val lg">' + esc(r.Customer_Company_Name || '—') + '</div>' +
         (addr ? '<div class="cell-sub">' + esc(addr) + '</div>' : '') +
         (dateLine ? '<div class="cell-sub" style="color:#aaa;">' + esc(dateLine) + '</div>' : '') +
+        // BPOC1: the approved customer that cannot actually carry a load yet.
+        (needsBillingWarning(r)
+          ? '<div class="billing-warn">⚠ Billing contact required to submit loads</div>' : '') +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Contact</div>' +
@@ -1032,6 +1086,9 @@ function renderPanel() {
           '<span>Customer Contacts</span>' +
           '<button class="ca-edit-billing-btn" id="ca-edit-billing">Edit Billing Info</button>' +
         '</div>' +
+        // BPOC1: renders only for an approved customer with billing still missing.
+        // Its Add Billing Info button opens the CA1 editor below.
+        billingAlertHtml(r) +
         '<div class="field-grid">' +
           // Pair customer (left) and billing (right) so they line up row-by-row:
           // POC | Billing POC, Phone | Billing Phone, Email | Billing Email.
@@ -1101,13 +1158,18 @@ function wireBillingEdit(r) {
   var btn = document.getElementById('ca-edit-billing');
   if (!btn) return;
   var form = document.getElementById('ca-billing-edit');
-  btn.addEventListener('click', function() {
+  var openEditor = function() {
     document.getElementById('ca-bill-poc').value = r.Billing_Point_of_Contact || '';
     document.getElementById('ca-bill-phone').value = r.Billing_AP_Contact_Number || '';
     document.getElementById('ca-bill-email').value = r.Billing_Email || '';
     form.style.display = ''; btn.style.display = 'none';
     document.getElementById('ca-bill-poc').focus();
-  });
+  };
+  btn.addEventListener('click', openEditor);
+  // BPOC1: the amber callout's Add Billing Info opens the same editor, so the broker
+  // never has to hunt for the small Edit Billing Info button in the section header.
+  var alertFix = document.getElementById('ca-billing-alert-fix');
+  if (alertFix) alertFix.addEventListener('click', openEditor);
   document.getElementById('ca-bill-cancel').addEventListener('click', function() {
     form.style.display = 'none'; btn.style.display = '';
   });
@@ -1132,7 +1194,14 @@ function wireBillingEdit(r) {
         r.Billing_AP_Contact_Number = payload.billing_phone;
         r.Billing_Email = payload.billing_email;
         msg.textContent = '✓ Saved'; msg.className = 'dec-msg success';
-        setTimeout(function() { renderPanel(); }, 600);   // re-render with new values
+        setTimeout(function() {
+          renderPanel();
+          // BPOC1: `r` is the same object the list holds, so re-rendering the rows drops
+          // the billing warning from the row behind the panel. Without this the broker
+          // fixes the billing contact, closes the panel, and the warning is still sitting
+          // there -- reading as if the save did not take.
+          renderList();
+        }, 600);   // re-render with new values
       } else {
         var detail = rr.data.error || rr.data.message;
         msg.textContent = 'Could not save' + (detail ? ': ' + detail : '') + '.';

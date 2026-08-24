@@ -555,7 +555,15 @@
       var d = state.historyDates || defaultThisMonth();
       url += '&from=' + d.from + '&to=' + d.to;
     }
-    window.open(url, '_blank');
+    window.open(decorateImp(url), '_blank');
+  }
+
+  // window.open() bypasses the operfi-impersonate.js fetch wrapper, so decorate
+  // the export URL to carry the admin's impersonation target (no-op for real
+  // clients / when not impersonating). Without this the backend sees no
+  // impersonate= and falls back to the all-clients branch.
+  function decorateImp(url) {
+    return (window.OPERFI_IMP && window.OPERFI_IMP.decorate) ? window.OPERFI_IMP.decorate(url) : url;
   }
 
   function mockTotals(rows, tab) {

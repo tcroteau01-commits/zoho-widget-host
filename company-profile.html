@@ -752,7 +752,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         </div>
       </div>
 
-      <div class="perm-section">
+      <div class="perm-section" id="perm-section">
         <div class="perm-title">Permissions <span class="req">*</span></div>
         <div class="perm-help">Select one or more roles. Each role grants access to a specific area of the portal. Choose <b>Full Access</b> to grant admin privileges across all areas.</div>
 
@@ -1563,8 +1563,28 @@ function togglePermCard(card) {
   syncModalSubmit();
 }
 
+// PERM3 governs this account once the picker holds real templates. The starter
+// templates are seeded by a migration that runs AFTER this deploys, and an
+// account whose flag is off gets no templates and no backend requirement, so
+// "are there templates" is the same signal the submit handler already uses.
+function templatesGovern() {
+  var p = document.getElementById('invite-template');
+  return !!(p && p.options.length > 1);
+}
+
+// The 5 checkboxes and the template answer the SAME question. Since PERMDERIVE1
+// the server derives Creator's User_Permissions from the template and discards
+// whatever checkboxes were posted, so requiring them here blocks a submit on an
+// answer that is thrown away -- which is exactly what happened to Tom on
+// 2026-08-27 with a freshly created template.
 function syncModalSubmit() {
-  document.getElementById('modal-submit').disabled = selectedRoles.length === 0;
+  var byTemplate = templatesGovern();
+  var picker = document.getElementById('invite-template');
+  document.getElementById('modal-submit').disabled = byTemplate
+    ? !(picker && picker.value)
+    : selectedRoles.length === 0;
+  var block = document.getElementById('perm-section');
+  if (block) { block.hidden = byTemplate; }
 }
 
 function showModalMsg(text, type) {
@@ -1604,7 +1624,9 @@ function validateModal() {
 
 function submitContact() {
   if (!validateModal()) return;
-  if (!selectedRoles.length) return;
+  // Not when the template governs: the checkboxes are hidden and their answer
+  // is discarded server-side, so requiring one would be unreachable UI.
+  if (!templatesGovern() && !selectedRoles.length) return;
 
   var isEdit = !!editingContactId;
 
@@ -2195,6 +2217,8 @@ function renderInviteTemplatePicker(templates) {
   blank.value = '';
   blank.textContent = 'Choose a template';
   picker.appendChild(blank);
+  // Choosing a template is now what enables Submit, so it has to re-evaluate.
+  picker.onchange = syncModalSubmit;
   (templates || []).forEach(function (t) {
     var o = document.createElement('option');
     o.value = t.template_id;
@@ -2203,6 +2227,9 @@ function renderInviteTemplatePicker(templates) {
   });
   picker.required = true;
   picker.value = '';
+  // Templates arrive asynchronously, after resetModal has already run, so the
+  // button state and the checkbox block have to settle once they land.
+  syncModalSubmit();
 }
 
 function toggleUserStatus(user) {

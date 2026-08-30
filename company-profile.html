@@ -1446,12 +1446,21 @@ function openViewModal(u) {
   var name = displayContactName(u);
   var full = hasFullAccess(u);
   var added = parseDate(u.Added_Time);
+
+  // Same source as the row badge. 533b9ab fixed the list and left this pane
+  // reading Creator's User_Permissions, so a user badged "Template Testing" in
+  // the list opened to "Access Level: Vendor Access" -- the exact wrong word
+  // Tom reported, one click deeper.
+  var acc = accessFor(u);
+  var accessLabel = acc
+    ? (acc.is_owner ? 'Owner' : (acc.template_name || 'No template'))
+    : (full ? 'Full Access' : 'Vendor Access');
   document.getElementById('view-body').innerHTML =
     '<div class="form-grid">' +
       viewField('Name', name) +
       viewField('Email', u.Email || '—') +
       viewField('Phone', formatPhone(u.Phone_Number) || '—') +
-      viewField('Access Level', full ? 'Full Access' : 'Vendor Access') +
+      viewField('Access Level', accessLabel) +
       viewField('Added', added ? fmtDateShort(added) : '—') +
     '</div>';
   renderViewActions();

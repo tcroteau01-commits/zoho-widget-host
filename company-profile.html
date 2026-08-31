@@ -399,6 +399,27 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .cap-row.is-locked { color: #a8a8a8; cursor: not-allowed; }
 .cap-row.is-locked:hover { background: transparent; border-color: transparent; }
 
+/* TABPERM1: a capability that lives inside another. Indented with a guide rule
+   so the relationship reads at a glance -- "Payment History" is a tab on Carrier
+   Payments, not a page of its own. The guide is on the row rather than a wrapper
+   because the tree is a two-column grid and a wrapper would break the columns. */
+.cap-row.cap-child {
+  margin-left: 18px;
+  border-left: 2px solid #ece9dd;
+  border-radius: 0 8px 8px 0;
+  padding-left: 12px;
+}
+.cap-row.cap-child:hover { border-left-color: #e8a020; }
+.cap-kind {
+  margin-left: 7px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f0efe9;
+  color: #6b6b6b;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+
 .cap-note {
   grid-column: 1 / -1;
   padding: 10px 12px;
@@ -1895,24 +1916,48 @@ function buildCapabilityTree(catalog, selected, ceiling) {
     h.textContent = g.group;
     wrap.appendChild(h);
 
+    // TABPERM1: a capability that lives INSIDE another renders indented under
+    // it, so an admin can see that "Payment History" is a tab on Carrier
+    // Payments rather than a page of its own. Ordering is the catalog's, and the
+    // catalog already lists each parent immediately before its children, so a
+    // single pass places them correctly without a sort.
+    var byParent = {};
     g.capabilities.forEach(function (c) {
+      if (c.parent) (byParent[c.parent] = byParent[c.parent] || []).push(c);
+    });
+
+    function addRow(c, isChild) {
       var rowEl = document.createElement('label');
       rowEl.setAttribute('data-cap-row', c.key);
-      rowEl.className = 'cap-row';
+      rowEl.className = 'cap-row' + (isChild ? ' cap-child' : '');
+      if (c.parent) rowEl.setAttribute('data-cap-parent', c.parent);
       var box = document.createElement('input');
       box.type = 'checkbox';
       box.setAttribute('data-cap', c.key);
       box.checked = sel.indexOf(c.key) !== -1;
       box.disabled = ceil.indexOf(c.key) === -1;
       if (box.disabled) {
-        rowEl.className = 'cap-row is-locked';
+        rowEl.className += ' is-locked';
         anyLocked = true;
         rowEl.setAttribute('title',
           'You do not have this access yourself, so you cannot grant it.');
       }
       rowEl.appendChild(box);
       rowEl.appendChild(document.createTextNode(' ' + c.label));
+      if (isChild && c.is_tab) {
+        var tag = document.createElement('span');
+        tag.className = 'cap-kind';
+        tag.textContent = 'tab';
+        rowEl.appendChild(tag);
+      }
       wrap.appendChild(rowEl);
+      return rowEl;
+    }
+
+    g.capabilities.forEach(function (c) {
+      if (c.parent) return;              // placed under its parent, below
+      addRow(c, false);
+      (byParent[c.key] || []).forEach(function (child) { addRow(child, true); });
     });
   });
 
@@ -1928,6 +1973,48 @@ function buildCapabilityTree(catalog, selected, ceiling) {
       + 'so you cannot grant them to someone else.';
     wrap.insertBefore(note, wrap.firstChild);
   }
+
+  // TABPERM1: keep parent and child in step, because the server now DROPS a
+  // child whose parent is absent. Without this an admin could tick "Payment
+  // History", leave "Carrier Payments" unticked, save, and be told nothing --
+  // the grant would simply evaporate at resolve time. Enforcing it here means
+  // the checkbox state and the saved result always agree.
+  //
+  // Locked rows are never touched: they are outside the admin's own ceiling, and
+  // cascading into one would try to grant access they do not hold.
+  wrap.addEventListener('change', function (ev) {
+    var box = ev.target;
+    if (!box || !box.getAttribute || !box.getAttribute('data-cap')) return;
+    var key = box.getAttribute('data-cap');
+
+    function parentOf(capKey) {
+      var row = wrap.querySelector('[data-cap-row="' + capKey + '"]');
+      return row ? row.getAttribute('data-cap-parent') : null;
+    }
+
+    if (box.checked) {
+      // Ticking a child implies its page. Walks up so a nested chain resolves,
+      // and stops at a locked row rather than trying to grant past the ceiling.
+      var parentKey = parentOf(key);
+      while (parentKey) {
+        var pBox = wrap.querySelector('[data-cap="' + parentKey + '"]');
+        if (!pBox || pBox.disabled) break;
+        pBox.checked = true;
+        parentKey = parentOf(parentKey);
+      }
+    } else {
+      // Unticking a page takes its tabs with it, matching resolve_effective.
+      var kids = wrap.querySelectorAll('[data-cap-parent="' + key + '"]');
+      Array.prototype.forEach.call(kids, function (row) {
+        var kBox = row.querySelector('[data-cap]');
+        if (kBox && !kBox.disabled && kBox.checked) {
+          kBox.checked = false;
+          // Dispatch so a grandchild clears too, rather than only one level.
+          kBox.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+  });
   return wrap;
 }
 

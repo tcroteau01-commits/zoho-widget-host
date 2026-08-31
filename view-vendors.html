@@ -456,6 +456,12 @@ function loadAllRecords() {
     if (loadId !== currentLoadId) return;
     var data = payload.records || [];
     console.log('[ViewVendors] Got', data.length, 'vendors');
+    // VENDCAP1: /broker-report caps how many rows it will page through and has
+    // ALWAYS returned `truncated` when it hit that ceiling. Nothing read it, so
+    // Marek LLC -- 5,155 carrier relationships against a 5,000 cap -- showed
+    // 5,000 and said nothing, and Pat found the gap by counting. A partial list
+    // that looks complete is worse than an error.
+    showTruncationNotice(!!payload.truncated, data.length);
     onRecordsLoaded(data);
   }).catch(function(err) {
     if (loadId !== currentLoadId) return;
@@ -497,6 +503,27 @@ function sortRecords(records) {
     return (a.Vendor_Name || '').localeCompare(b.Vendor_Name || '');
   });
   return arr;
+}
+
+function showTruncationNotice(truncated, shown) {
+  var id = 'vendor-truncated';
+  var existing = document.getElementById(id);
+  if (!truncated) {
+    if (existing) existing.remove();
+    return;
+  }
+  if (existing) return;
+  var el = document.createElement('div');
+  el.id = id;
+  el.setAttribute('role', 'status');
+  el.style.cssText = 'margin:0 0 12px;padding:10px 14px;border-radius:8px;'
+    + 'background:#fff8ec;border:1px solid #f5d99a;color:#7a5b1a;'
+    + 'font-size:13px;line-height:1.5;';
+  el.textContent = 'Showing the first ' + shown.toLocaleString()
+    + ' carriers. Your account has more than this page can load, so search and '
+    + 'filters below cover only these. Contact OperFi if you need the full list.';
+  var results = document.getElementById('results');
+  if (results && results.parentNode) results.parentNode.insertBefore(el, results);
 }
 
 function onRecordsLoaded(records) {

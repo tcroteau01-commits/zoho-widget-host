@@ -399,10 +399,20 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .cap-row.is-locked { color: #a8a8a8; cursor: not-allowed; }
 .cap-row.is-locked:hover { background: transparent; border-color: transparent; }
 
-/* TABPERM1: a capability that lives inside another. Indented with a guide rule
-   so the relationship reads at a glance -- "Payment History" is a tab on Carrier
-   Payments, not a page of its own. The guide is on the row rather than a wrapper
-   because the tree is a two-column grid and a wrapper would break the columns. */
+/* TABPERM1: a page and its tabs are ONE block spanning both columns.
+
+   They were appended straight into the two-column grid, which flowed each child
+   into whatever cell came next -- so "Open AR" rendered directly under
+   "Dashboard", a page with no tabs at all, and the indent guide asserted a
+   relationship that did not exist. Spanning the block is what makes the
+   indentation mean what it looks like it means. */
+.cap-block { grid-column: 1 / -1; }
+.cap-children {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 14px;
+}
+
 .cap-row.cap-child {
   margin-left: 18px;
   border-left: 2px solid #ece9dd;
@@ -1926,11 +1936,12 @@ function buildCapabilityTree(catalog, selected, ceiling) {
       if (c.parent) (byParent[c.parent] = byParent[c.parent] || []).push(c);
     });
 
-    function addRow(c, isChild) {
+    function addRow(c, isChild, target) {
       var rowEl = document.createElement('label');
       rowEl.setAttribute('data-cap-row', c.key);
       rowEl.className = 'cap-row' + (isChild ? ' cap-child' : '');
       if (c.parent) rowEl.setAttribute('data-cap-parent', c.parent);
+      if (c.is_tab) rowEl.setAttribute('data-cap-tab', '1');
       var box = document.createElement('input');
       box.type = 'checkbox';
       box.setAttribute('data-cap', c.key);
@@ -1950,14 +1961,27 @@ function buildCapabilityTree(catalog, selected, ceiling) {
         tag.textContent = 'tab';
         rowEl.appendChild(tag);
       }
-      wrap.appendChild(rowEl);
+      (target || wrap).appendChild(rowEl);
       return rowEl;
     }
 
     g.capabilities.forEach(function (c) {
       if (c.parent) return;              // placed under its parent, below
-      addRow(c, false);
-      (byParent[c.key] || []).forEach(function (child) { addRow(child, true); });
+      var kids = byParent[c.key] || [];
+      if (!kids.length) { addRow(c, false, wrap); return; }
+      // A parent and its children must be ONE contiguous block spanning both
+      // columns. Appended straight into the two-column grid they flow into
+      // whatever cell comes next, so "Open AR" rendered directly beneath
+      // "Dashboard" -- which has no tabs -- and the indent guide asserted a
+      // relationship that does not exist. Tom caught exactly that.
+      var block = document.createElement('div');
+      block.className = 'cap-block';
+      addRow(c, false, block);
+      var kidWrap = document.createElement('div');
+      kidWrap.className = 'cap-children';
+      kids.forEach(function (child) { addRow(child, true, kidWrap); });
+      block.appendChild(kidWrap);
+      wrap.appendChild(block);
     });
   });
 
@@ -2002,6 +2026,22 @@ function buildCapabilityTree(catalog, selected, ceiling) {
         pBox.checked = true;
         parentKey = parentOf(parentKey);
       }
+
+      // Ticking a PAGE selects every tab on it, and the admin removes the ones
+      // they do not want. Tom, 2026-08-31: "default it to when you click on an
+      // upper level page it auto selects the ones underneath and it's the
+      // admins job to then remove a tab if they want." It also matches what
+      // holding a page has always meant -- every widget renders all its tabs --
+      // and what the backfill did to existing templates.
+      //
+      // TABS ONLY, never actions. Auto-ticking action children would hand out
+      // "Request a Credit Boost" to anyone given Customer Approvals, which is
+      // the same line permissions_catalog.is_tab draws server-side.
+      var tabs = wrap.querySelectorAll('[data-cap-parent="' + key + '"][data-cap-tab]');
+      Array.prototype.forEach.call(tabs, function (row) {
+        var tBox = row.querySelector('[data-cap]');
+        if (tBox && !tBox.disabled && !tBox.checked) tBox.checked = true;
+      });
     } else {
       // Unticking a page takes its tabs with it, matching resolve_effective.
       var kids = wrap.querySelectorAll('[data-cap-parent="' + key + '"]');

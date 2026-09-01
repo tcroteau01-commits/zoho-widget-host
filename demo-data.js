@@ -11,6 +11,7 @@
   var API_HOST = 'operfi-broker-api.onrender.com';
   var DEMO_EMAIL = 'demo@operfi.com';
   var DEMO_ACCOUNT_NAME = 'OperFi Demo';
+  var DEMO_BUY_LIMIT = 1250000;
   // Legacy trigger, kept only as a fallback. These are the four contacts that were on
   // the OperFi Demo account when the fixture shipped. It is no longer load-bearing --
   // ready() below covers every demo user, including ones invited later -- but leaving
@@ -291,7 +292,11 @@
 
     return {
       buckets: overallBuckets, customers: customers,
-      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, buyLimit: 750000, available: round2(750000 - totalOpen) },
+      // The buy limit has to clear the demo book's open AR (~$846k) with room to
+      // spare. At the old $750k the AR Aging KPI card rendered a NEGATIVE
+      // "available" figure, which reads on camera as an account already over its
+      // line rather than a healthy one.
+      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, buyLimit: DEMO_BUY_LIMIT, available: round2(DEMO_BUY_LIMIT - totalOpen) },
       asOf: todayISO(), dateBasis: dateBasis || 'purchase'
     };
   }

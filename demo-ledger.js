@@ -56,18 +56,49 @@
     });
   }); // 13 * 5 = 65 carriers
 
+  // Roughly a quarter of the carrier base is factored, so their money goes to their
+  // factor rather than to them. Vendor Payments renders the paid party off this, and
+  // it is the single row videos 05 and 08 both stop on ("paid to a factoring company
+  // rather than the carrier"). Every name here is invented for the demo.
+  var DEMO_FACTORS = ['Bluepine Capital Funding', 'Anchor Ridge Financial',
+    'Copperline Freight Capital', 'Waypoint Receivables Group'];
+  var PAY_TERMS = ['Quick Pay', 'Standard Net 30'];
+  carriers.forEach(function (c, idx) {
+    if (idx % 4 === 1) {
+      c.factor = DEMO_FACTORS[(idx / 4 | 0) % DEMO_FACTORS.length];
+      c.payTerms = 'Factoring Company';
+    } else {
+      c.factor = '';
+      c.payTerms = PAY_TERMS[idx % PAY_TERMS.length];
+    }
+  });
+
   var ESCROW_RATE = 0.065;
   var CASH_HOLD_RATE = 0.015;
   var CASH_RESERVE_TARGET = 18240.55;
   var RECENT_WINDOW_DAYS = 90;
   var LOADS_PER_MONTH = 340;
   var RECENT_LOAD_COUNT = Math.round(LOADS_PER_MONTH * (RECENT_WINDOW_DAYS / 30));
-  var STRAGGLER_COUNT = 18; // small tail of very-old open loads to populate the 90+ aging bucket
 
-  function buildLoad(i, daysAgo, forceOpen, debtorOverride) {
+  // The ONLY open invoices past 74 days, spelled out rather than generated. Two
+  // reasons this is an explicit list and not a random tail:
+  //   1. The demo account is the account every marketing video is shot in, so the
+  //      book has to read like a well-run brokerage. A five-figure 75+ balance
+  //      does not.
+  //   2. The Dashboard's Chargeback Risk card and the AR Aging donut both derive
+  //      from these exact rows, so the two can never disagree on screen.
+  // One customer past 75 (the 75 Day Reserve Notice beat) and one past 90 (the
+  // "over 90 matters under recourse" beat) is all the story needs.
+  var AGED_OPEN = [
+    { name: 'Highland Grocery Distribution', daysAgo: 78, amount: 2740.00 },
+    { name: 'Highland Grocery Distribution', daysAgo: 83, amount: 2185.50 },
+    { name: 'Union Steel Supply', daysAgo: 96, amount: 2610.25 }
+  ];
+
+  function buildLoad(i, daysAgo, forceOpen, debtorOverride, amountOverride) {
     var debtor = debtorOverride || pick(debtors);
     var carrier = pick(carriers);
-    var purchaseAmount = round2(rf(600, 3200));
+    var purchaseAmount = amountOverride != null ? round2(amountOverride) : round2(rf(600, 3200));
     var feePct = rf(0.022, 0.028);
     var marginPct = rf(0.15, 0.20);
     var discountFee = round2(-purchaseAmount * feePct);
@@ -81,6 +112,10 @@
     var status, closedDaysAgo;
     if (forceOpen) {
       status = 'open'; closedDaysAgo = null;
+    } else if (daysAgo > 74) {
+      // Past 74 days belongs exclusively to AGED_OPEN. Anything else that old is
+      // forced closed, which is what keeps the 75+ bucket equal to that list.
+      status = 'closed'; closedDaysAgo = ri(0, daysAgo);
     } else if (!isSlow && daysAgo > 60) {
       // Clean customers never carry aged-open AR — force older loads closed so
       // they drop out of open aging entirely.
@@ -106,10 +141,10 @@
   for (var i = 0; i < RECENT_LOAD_COUNT; i++) {
     loads.push(buildLoad(i, ri(0, RECENT_WINDOW_DAYS), false));
   }
-  for (var s = 0; s < STRAGGLER_COUNT; s++) {
-    var slowDebtor = slowPayerDebtors[s % slowPayerDebtors.length];
-    loads.push(buildLoad(RECENT_LOAD_COUNT + s, ri(RECENT_WINDOW_DAYS + 5, RECENT_WINDOW_DAYS + 60), true, slowDebtor));
-  }
+  AGED_OPEN.forEach(function (spec, s) {
+    var d = debtors.filter(function (x) { return x.name === spec.name; })[0];
+    loads.push(buildLoad(RECENT_LOAD_COUNT + s, spec.daysAgo, true, d, spec.amount));
+  });
 
   // ---- Reserve ledger: escrow held on every load at buy time, transferred to cash
   // when a load closes, then drawn down by weekly "Reserve Release" batches so the

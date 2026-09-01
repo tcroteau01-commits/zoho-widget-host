@@ -37,3 +37,15 @@ test('thisMonth marginPct falls within the 15-20% target band', () => {
   const s = boot().OPERFI_DEMO.dashboardSummary();
   assert.ok(s.snapshot.thisMonth.marginPct >= 14 && s.snapshot.thisMonth.marginPct <= 21);
 });
+
+// The dashboard paints the Chargeback Risk card and the AR Aging donut side by
+// side, both labelled "75+". Before this they came from different places — the
+// donut summed the real 75+ bucket while the card was a hardcoded zero — so the
+// demo showed $40k of 75+ money next to a card claiming there was none.
+test('the Chargeback Risk card equals the 75+ aging bucket', () => {
+  const s = boot().OPERFI_DEMO.dashboardSummary();
+  const b75 = s.insights.agingBuckets.find((b) => b.label === '75+');
+  assert.equal(s.watch.chargebackRisk.amount, b75.amount);
+  assert.equal(s.watch.chargebackRisk.invoiceCount, b75.count);
+  assert.ok(b75.amount > 0, 'the 75 Day Reserve Notice beat needs a non-zero 75+ balance');
+});

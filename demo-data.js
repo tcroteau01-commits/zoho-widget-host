@@ -189,6 +189,8 @@
       return { label: b.label, amount: _sum(matched, function (l) { return l.purchaseAmount; }), count: matched.length };
     });
 
+    var _b75 = agingBuckets.filter(function (b) { return b.label === '75+'; })[0] || { amount: 0, count: 0 };
+
     var byDebtor = {};
     open.forEach(function (l) { byDebtor[l.debtorId] = (byDebtor[l.debtorId] || 0) + l.purchaseAmount; });
     var totalOpen = _sum(open, function (l) { return l.purchaseAmount; });
@@ -222,7 +224,10 @@
       accountName: DEMO_ACCOUNT_NAME,
       header: { usdot: '9182734', mc: '1029384', status: 'Active' },
       watch: {
-        chargebackRisk: { amount: 0, invoiceCount: 0 },
+        // Read straight off the 75+ bucket above rather than carried as its own
+        // number. The card and the AR Aging donut render the same figure side by
+        // side on the dashboard, so they cannot be allowed to drift apart.
+        chargebackRisk: { amount: _b75.amount, invoiceCount: _b75.count },
         creditLimits: { customersAtRisk: 1 },
         dsoDays: 27
       },
@@ -500,7 +505,8 @@
       'Vendor Name': carrier ? carrier.name : '(unknown)', USDOT: '19' + l.carrierId.slice(1).padStart(5, '0'),
       'Vendor Amount': Math.abs(l.vendorPayable),
       'Date of Buy Date': offsetISO(l.daysAgo), 'Purchase Date': offsetISO(l.daysAgo),
-      'Vendor Pmt Terms': 'Quick Pay', 'Broker Pmt Terms': 'Net 30', 'Factoring Company': '',
+      'Vendor Pmt Terms': carrier ? carrier.payTerms : 'Quick Pay', 'Broker Pmt Terms': 'Net 30',
+      'Factoring Company': carrier ? carrier.factor : '',
       'Pmt Acct Number': 'ACCT' + l.carrierId.slice(1), 'Vendor Invoice #': 'V' + l.id.slice(3), 'Invoice #': l.id,
       'Payment Status': l.status === 'closed' ? 'Paid' : 'Pending', 'AR Balance': l.status === 'open' ? l.purchaseAmount : 0,
       'Vendor Gross Amt': Math.abs(l.vendorPayable), 'PO #': 'PO' + l.id.slice(3), 'Other Reference': ''

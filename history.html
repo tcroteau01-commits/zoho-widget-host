@@ -526,7 +526,7 @@ html, body {
   <div class="kpi-row" id="kpi-row">
     <div class="kpi"><div class="kpi-label">Total Submissions</div><div class="kpi-value" id="kpi-total">—</div></div>
     <div class="kpi processing"><div class="kpi-label">Processing</div><div class="kpi-value" id="kpi-processing">—</div></div>
-    <div class="kpi hold"><div class="kpi-label">On Hold</div><div class="kpi-value" id="kpi-hold">—</div></div>
+    <div class="kpi hold"><div class="kpi-label">On Hold &amp; Verifying</div><div class="kpi-value" id="kpi-hold">—</div></div>
     <div class="kpi purchased"><div class="kpi-label">Purchased</div><div class="kpi-value" id="kpi-purchased">—</div></div>
     <div class="kpi value"><div class="kpi-label">Total Volume</div><div class="kpi-value" id="kpi-volume">—</div></div>
   </div>
@@ -968,17 +968,46 @@ function onRecordsLoaded(records, truncated) {
 }
 
 // ── Filters & rendering ───────────────────────────────────────────────────
+// The chips a broker always sees, in the order a load moves through them. Zeros
+// are shown deliberately: "Processing 0" is information, not clutter.
+var CORE_CHIPS = [
+  { key: 'all',           label: 'All' },
+  { key: 'processing',    label: 'Processing' },
+  { key: 'hold',          label: 'On Hold' },
+  { key: 'verifying-noa', label: 'Verifying NOA' },
+  { key: 'verifying-inv', label: 'Verifying Invoice' },
+  { key: 'purchased',     label: 'Purchased' }
+];
+
 function buildChips() {
   var chips = document.getElementById('chips');
   var counts = countByStatus(allRecords);
-  var def = [
-    { key: 'all',           label: 'All' },
-    { key: 'processing',    label: 'Processing' },
-    { key: 'hold',          label: 'On Hold' },
-    { key: 'verifying-noa', label: 'Verifying NOA' },
-    { key: 'verifying-inv', label: 'Verifying Invoice' },
-    { key: 'purchased',     label: 'Purchased' }
-  ];
+  var def = CORE_CHIPS.slice();
+
+  // Any status present in the data that the core list does not cover gets its own
+  // chip. Without this a record could sit in All and be reachable by no filter at
+  // all: drafts and Pending Docs are both real Purchase_Status values that the
+  // core list omits, and statusMeta() buckets anything unrecognised as 'unknown'.
+  // A broker would see "All 7", click through every chip, and find three rows that
+  // never appear anywhere. Appending rather than hardcoding means a status added
+  // to the form later shows up on its own instead of silently going missing.
+  var covered = {};
+  CORE_CHIPS.forEach(function(c) { covered[c.key] = true; });
+  Object.keys(counts).forEach(function(k) {
+    if (covered[k] || !counts[k]) return;
+    var known = null;
+    for (var raw in STATUS_MAP) {
+      if (STATUS_MAP[raw].key === k) { known = STATUS_MAP[raw].label; break; }
+    }
+    def.push({ key: k, label: known || 'Other' });
+  });
+
+  // An appended chip only exists while that status is in the loaded range. If the
+  // broker was filtered to one and then narrowed the dates past it, the chip goes
+  // away but currentStatus would still point at it -- an empty list with nothing
+  // highlighted and no way to tell why. Fall back to All.
+  if (!def.some(function(c) { return c.key === currentStatus; })) currentStatus = 'all';
+
   chips.innerHTML = '';
   def.forEach(function(c) {
     var n = c.key === 'all' ? allRecords.length : (counts[c.key] || 0);
@@ -1592,6 +1621,13 @@ window.isDraft = isDraft;
 window.isEditable = isEditable;
 window.rowHtml = rowHtml;
 window.__setAllClients = function(v) { allClients = !!v; };  // exposed for tests (see-all row shape)
+// Exposed for tests (chip coverage + KPI rollup). allRecords and currentStatus are
+// closure state, so they need setters rather than direct assignment.
+window.buildChips = buildChips;
+window.renderKpis = renderKpis;
+window.__setRecords = function(v) { allRecords = v || []; };
+window.__setStatus = function(v) { currentStatus = v; };
+window.__getStatus = function() { return currentStatus; };
 window.portalUrl = portalUrl;
 window.navigateParent = navigateParent;
 window.goToDraftQueue = goToDraftQueue;

@@ -30,3 +30,15 @@ test('vendorPaymentsHistory() rows only include closed loads with a Paid Date', 
   r.rows.forEach((row) => { assert.ok(row['Paid Date']); assert.equal(row['Payment Status'], 'Paid'); });
   assert.equal(r.totals.paymentCount, r.rows.length);
 });
+
+// Videos 05 and 08 both hold on a Vendor Payments row paid to a factoring company
+// rather than to the carrier. Every fixture row used to carry an empty Factor
+// column, so that shot had nothing to point at.
+test('some payment rows are paid to a factoring company', () => {
+  const w = boot();
+  const rows = w.OPERFI_DEMO.vendorPaymentsHistory().rows;
+  const factored = rows.filter((r) => r['Factoring Company']);
+  assert.ok(factored.length > 0, 'no row is paid to a factor');
+  factored.forEach((r) => assert.equal(r['Vendor Pmt Terms'], 'Factoring Company'));
+  assert.ok(rows.some((r) => !r['Factoring Company']), 'every row is factored; need a mix');
+});

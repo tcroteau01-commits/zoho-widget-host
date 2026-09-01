@@ -11,6 +11,12 @@
   var API_HOST = 'operfi-broker-api.onrender.com';
   var DEMO_EMAIL = 'demo@operfi.com';
   var DEMO_ACCOUNT_NAME = 'OperFi Demo';
+  var DEMO_BUY_LIMIT = 1250000;
+  // Must match the OperFi Demo Accounts record in Creator (MC_Number / USDOT).
+  // The fixture used to carry its own invented pair, so a viewer reading the MC off
+  // the dashboard header and typing it into operfi.com/brokerpay matched nothing.
+  var DEMO_MC = '998877';
+  var DEMO_USDOT = '3999001';
   // Legacy trigger, kept only as a fallback. These are the four contacts that were on
   // the OperFi Demo account when the fixture shipped. It is no longer load-bearing --
   // ready() below covers every demo user, including ones invited later -- but leaving
@@ -189,6 +195,8 @@
       return { label: b.label, amount: _sum(matched, function (l) { return l.purchaseAmount; }), count: matched.length };
     });
 
+    var _b75 = agingBuckets.filter(function (b) { return b.label === '75+'; })[0] || { amount: 0, count: 0 };
+
     var byDebtor = {};
     open.forEach(function (l) { byDebtor[l.debtorId] = (byDebtor[l.debtorId] || 0) + l.purchaseAmount; });
     var totalOpen = _sum(open, function (l) { return l.purchaseAmount; });
@@ -220,9 +228,12 @@
 
     return {
       accountName: DEMO_ACCOUNT_NAME,
-      header: { usdot: '9182734', mc: '1029384', status: 'Active' },
+      header: { usdot: DEMO_USDOT, mc: DEMO_MC, status: 'Active' },
       watch: {
-        chargebackRisk: { amount: 0, invoiceCount: 0 },
+        // Read straight off the 75+ bucket above rather than carried as its own
+        // number. The card and the AR Aging donut render the same figure side by
+        // side on the dashboard, so they cannot be allowed to drift apart.
+        chargebackRisk: { amount: _b75.amount, invoiceCount: _b75.count },
         creditLimits: { customersAtRisk: 1 },
         dsoDays: 27
       },
@@ -286,7 +297,11 @@
 
     return {
       buckets: overallBuckets, customers: customers,
-      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, buyLimit: 750000, available: round2(750000 - totalOpen) },
+      // The buy limit has to clear the demo book's open AR (~$846k) with room to
+      // spare. At the old $750k the AR Aging KPI card rendered a NEGATIVE
+      // "available" figure, which reads on camera as an account already over its
+      // line rather than a healthy one.
+      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, buyLimit: DEMO_BUY_LIMIT, available: round2(DEMO_BUY_LIMIT - totalOpen) },
       asOf: todayISO(), dateBasis: dateBasis || 'purchase'
     };
   }
@@ -500,7 +515,8 @@
       'Vendor Name': carrier ? carrier.name : '(unknown)', USDOT: '19' + l.carrierId.slice(1).padStart(5, '0'),
       'Vendor Amount': Math.abs(l.vendorPayable),
       'Date of Buy Date': offsetISO(l.daysAgo), 'Purchase Date': offsetISO(l.daysAgo),
-      'Vendor Pmt Terms': 'Quick Pay', 'Broker Pmt Terms': 'Net 30', 'Factoring Company': '',
+      'Vendor Pmt Terms': carrier ? carrier.payTerms : 'Quick Pay', 'Broker Pmt Terms': 'Net 30',
+      'Factoring Company': carrier ? carrier.factor : '',
       'Pmt Acct Number': 'ACCT' + l.carrierId.slice(1), 'Vendor Invoice #': 'V' + l.id.slice(3), 'Invoice #': l.id,
       'Payment Status': l.status === 'closed' ? 'Paid' : 'Pending', 'AR Balance': l.status === 'open' ? l.purchaseAmount : 0,
       'Vendor Gross Amt': Math.abs(l.vendorPayable), 'PO #': 'PO' + l.id.slice(3), 'Other Reference': ''
@@ -537,7 +553,7 @@
       };
     });
     return {
-      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, mc: '1029384', mcNormalized: 'MC1029384', dot: '9182734' },
+      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, mc: DEMO_MC, mcNormalized: 'MC' + DEMO_MC, dot: DEMO_USDOT },
       debtorCount: debtors.length, totalSnapshots: L.ratings.length, debtors: debtors
     };
   }

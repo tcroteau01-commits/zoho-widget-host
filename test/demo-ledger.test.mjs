@@ -54,10 +54,32 @@ test('net cash reserve (sum of GL 2005+2006 reserveTxns) lands on the $18,240.55
   assert.ok(Math.abs(net - 18240.55) < 0.01, `net cash ${net} != 18240.55`);
 });
 
-test('at least a few loads sit in the 90+ day aging tail (open, daysAgo > 90)', () => {
+test('the 90+ aging tail exists but stays to a single invoice', () => {
   const w = boot();
   const stragglers = w.OPERFI_DEMO_LEDGER.loads.filter((l) => l.status === 'open' && l.daysAgo > 90);
-  assert.ok(stragglers.length >= 5, `expected some 90+ day open loads, got ${stragglers.length}`);
+  assert.equal(stragglers.length, 1, `expected exactly one 90+ open load, got ${stragglers.length}`);
+});
+
+// The 75+ balance is what the AR Aging donut and the dashboard's Chargeback Risk
+// card both render. It is deliberately tiny — the demo account is the marketing
+// shoot account, and a five-figure 75+ number undercuts the whole pitch.
+test('open AR past 74 days is exactly the three AGED_OPEN invoices', () => {
+  const w = boot();
+  const aged = w.OPERFI_DEMO_LEDGER.loads.filter((l) => l.status === 'open' && l.daysAgo > 74);
+  assert.equal(aged.length, 3);
+  const total = aged.reduce((s, l) => s + l.purchaseAmount, 0);
+  assert.ok(total < 10000, `75+ open balance ${total} should stay under $10k`);
+});
+
+test('a quarter of carriers are factored, each with a factor name and matching terms', () => {
+  const w = boot();
+  const carriers = w.OPERFI_DEMO_LEDGER.carriers;
+  const factored = carriers.filter((c) => c.factor);
+  assert.ok(factored.length >= 10, `expected a visible factored population, got ${factored.length}`);
+  factored.forEach((c) => assert.equal(c.payTerms, 'Factoring Company', `${c.name} terms`));
+  carriers.filter((c) => !c.factor).forEach((c) => {
+    assert.ok(['Quick Pay', 'Standard Net 30'].includes(c.payTerms), `${c.name} terms ${c.payTerms}`);
+  });
 });
 
 test('designates exactly 5 slow-payer debtors', () => {

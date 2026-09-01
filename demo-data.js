@@ -12,6 +12,11 @@
   var DEMO_EMAIL = 'demo@operfi.com';
   var DEMO_ACCOUNT_NAME = 'OperFi Demo';
   var DEMO_BUY_LIMIT = 1250000;
+  // Must match the OperFi Demo Accounts record in Creator (MC_Number / USDOT).
+  // The fixture used to carry its own invented pair, so a viewer reading the MC off
+  // the dashboard header and typing it into operfi.com/brokerpay matched nothing.
+  var DEMO_MC = '998877';
+  var DEMO_USDOT = '3999001';
   // Legacy trigger, kept only as a fallback. These are the four contacts that were on
   // the OperFi Demo account when the fixture shipped. It is no longer load-bearing --
   // ready() below covers every demo user, including ones invited later -- but leaving
@@ -223,7 +228,7 @@
 
     return {
       accountName: DEMO_ACCOUNT_NAME,
-      header: { usdot: '9182734', mc: '1029384', status: 'Active' },
+      header: { usdot: DEMO_USDOT, mc: DEMO_MC, status: 'Active' },
       watch: {
         // Read straight off the 75+ bucket above rather than carried as its own
         // number. The card and the AR Aging donut render the same figure side by
@@ -548,7 +553,7 @@
       };
     });
     return {
-      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, mc: '1029384', mcNormalized: 'MC1029384', dot: '9182734' },
+      client: { fvClientId: 'DEMO001', name: DEMO_ACCOUNT_NAME, mc: DEMO_MC, mcNormalized: 'MC' + DEMO_MC, dot: DEMO_USDOT },
       debtorCount: debtors.length, totalSnapshots: L.ratings.length, debtors: debtors
     };
   }

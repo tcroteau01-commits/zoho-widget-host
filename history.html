@@ -135,12 +135,24 @@ html, body {
 .date-popover {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  /* Anchored to the button's LEFT edge, opening rightward.
+     This was right:0, which right-aligns a fixed 380px panel to a trigger that
+     sits at the LEFT of the toolbar — so the panel extended 380px leftward, off
+     the widget and underneath the portal's sidebar. On a wide desktop monitor the
+     overhang still landed on canvas and looked fine; on a laptop the Quick Range
+     presets and half the custom-range row were behind the nav and unclickable.
+     The space is to the right of this control, so that is where it opens. */
+  left: 0;
+  right: auto;
   background: #fff;
   border: 1px solid #e6e3da;
   border-radius: 10px;
   padding: 14px 16px;
   width: 380px;
+  /* Belt and braces: whatever the toolbar does at some future width, the panel
+     can never be wider than the frame it lives in. */
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   z-index: 50;
   display: none;

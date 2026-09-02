@@ -2381,10 +2381,14 @@ function toggleUserStatus(user) {
     });
 }
 
-// The five actions permissions_store.write_audit can record. Anything not in
+// The six actions permissions_store.write_audit can record. Anything not in
 // here falls back to the raw key rather than rendering blank, so a new action
 // added server-side degrades to something readable instead of disappearing.
+//
+// `invite` is the newest: creating a user on a template is a GRANT of access,
+// and it was the only user-management action the audit log did not carry.
 var ACTIVITY_ACTION = {
+  invite:          'Invited user',
   set_access:      'Changed access',
   set_status:      'Changed status',
   template_create: 'Created template',

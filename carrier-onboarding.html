@@ -314,6 +314,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .field .help { font-size: 11px; color: #888; }
 .field-err { font-size: 11px; color: #c62828; display: none; }
 .field-err.show { display: block; }
+.field-note { font-size: 11px; color: #7a5b1a; background: #fff8ec;
+              border: 1px solid #f5d99a; border-radius: 4px;
+              padding: 6px 8px; margin-top: 5px; display: none; }
+.field-note.show { display: block; }
 
 .carrier-summary {
   background: #f3faf4;
@@ -529,6 +533,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div class="field">
         <label class="label">Primary Email <span class="req">*</span></label>
         <input class="input" id="m-send-to" type="email" placeholder="dispatch@carrier.com" autocomplete="off" />
+        <div class="field-note" id="m-send-to-note"></div>
         <div class="field-err" data-err-for="m-send-to">A valid email is required.</div>
       </div>
 
@@ -993,6 +998,18 @@ function cleanDot(v) {
   return String(v == null ? '' : v).replace(/\D/g, '');
 }
 
+// The ONE email predicate for this widget. openModal locks Primary Email to the
+// FMCSA address, validateModal decides whether the send may go -- and the invariant
+// that holds those together is "anything we lock must also pass validation". Two
+// copies of the rule cannot guarantee it. They diverged in exactly that way for DOT
+// 4409382, whose MCS-150 carries a business email truncated by FMCSA's own filing
+// system to `info@abramshoodexhaustcleani.` -- no TLD. openModal saw a non-empty
+// string and locked it; validateModal saw an invalid address and refused. Locked and
+// unsendable, with no override, so that carrier could never be sent a link at all.
+function isEmail(v) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v == null ? '' : v).trim());
+}
+
 function renderHistory() {
   var bounds = historyDateBounds();
   var filtered = historyRecords.filter(function(r) {
@@ -1161,8 +1178,15 @@ function openModal(type) {
     var c = lookupResult.carrier;
     document.getElementById('m-carrier-name').value = c.carrier_name || c.dba_name || '';
     dotEl.value = c.dot_number || '';
-    if (c.email_address) {
-      // FMCSA email on file -> mandatory recipient, cannot be changed (fraud guard).
+    // A USABLE FMCSA email on file -> mandatory recipient, cannot be changed
+    // (fraud guard). Gated on isEmail, not on mere presence: an FMCSA value that no
+    // mail server could accept is functionally the same case as a blank one, and
+    // locking it produced a carrier nobody could ever send a link to (see isEmail).
+    // Unlocking here does not leave the carrier unverified -- IDGATE1 verifies the
+    // carrier at the other end of the link against their FMCSA contacts on file,
+    // whoever we mailed it to.
+    var noteEl = document.getElementById('m-send-to-note');
+    if (isEmail(c.email_address)) {
       sendToEl.value = c.email_address;
       sendToEl.readOnly = true;
       sendToEl.classList.add('locked');
@@ -1170,6 +1194,16 @@ function openModal(type) {
       sendToEl.value = '';
       sendToEl.readOnly = false;
       sendToEl.classList.remove('locked');
+      if (c.email_address) {
+        // Show what FMCSA actually holds. The broker is being asked to type an
+        // address they would normally not be allowed to touch, and the reason is
+        // almost always visibly wrong data -- printing it is what makes that
+        // obvious rather than looking like the lock broke.
+        noteEl.innerHTML = 'FMCSA has no usable email on file for this carrier ' +
+          '(their filing shows <strong>' + esc(c.email_address) + '</strong>). ' +
+          'Enter the carrier\'s email to send the link.';
+        noteEl.classList.add('show');
+      }
     }
     var summary = document.getElementById('modal-carrier-summary');
     summary.style.display = 'block';
@@ -1210,6 +1244,12 @@ function resetModal() {
   var sendToEl = document.getElementById('m-send-to');
   sendToEl.readOnly = false;
   sendToEl.classList.remove('locked');
+  // Cleared here as well as re-set in openModal: the modal is reused for both link
+  // types and for a second carrier looked up in the same session, and a stale note
+  // would name the previous carrier's bad address.
+  var noteEl = document.getElementById('m-send-to-note');
+  noteEl.classList.remove('show');
+  noteEl.innerHTML = '';
   document.querySelectorAll('.field-err.show').forEach(function(e) { e.classList.remove('show'); });
   hideModalMsg();
   var submit = document.getElementById('modal-submit');
@@ -1246,11 +1286,11 @@ function validateModal() {
     }
   }
   check('m-carrier-name', function(v) { return v.length > 0; });
-  check('m-send-to',      function(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); });
+  check('m-send-to',      isEmail);
 
   // Additional email is optional but must be valid if filled
   var addl = document.getElementById('m-additional').value.trim();
-  if (addl && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addl)) {
+  if (addl && !isEmail(addl)) {
     document.getElementById('m-additional').classList.add('invalid');
     document.querySelector('[data-err-for="m-additional"]').classList.add('show');
     ok = false;

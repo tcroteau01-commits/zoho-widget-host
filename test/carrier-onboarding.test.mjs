@@ -231,6 +231,20 @@ async function runLookup(w) {
   await new Promise(r => setTimeout(r, 20));
 }
 
+// Type into a field the way a BROKER can, not the way a script can. Assigning
+// .value directly sails straight through readOnly -- readOnly only stops human
+// input -- so a test that assigns it proves a locked field is sendable when no
+// broker could ever have reached it. This refuses instead, which is what makes
+// "the broker can now fix the address" an actual assertion.
+function typeInto(w, id, value) {
+  const el = w.document.getElementById(id);
+  assert.ok(el, `#${id} exists`);
+  assert.ok(!el.readOnly && !el.disabled,
+    `#${id} must be editable for a broker to type into it`);
+  el.value = value;
+  el.dispatchEvent(new w.Event('input', { bubbles: true }));
+}
+
 test('clicking a send card before any lookup does NOT open the modal', async () => {
   const dom = makeLookupWidget({ dot_number: '92261', carrier_name: 'A&M', email_address: 'fmcsa@carrier.com' });
   const w = dom.window;
@@ -266,6 +280,102 @@ test('after lookup with NO FMCSA email, Send To is editable but DOT still shown'
   const sendTo = w.document.getElementById('m-send-to');
   assert.strictEqual(sendTo.readOnly, false, 'Send To editable when no FMCSA email');
   assert.strictEqual(w.document.getElementById('m-carrier-dot').value, '92261');
+  assert.ok(!w.document.getElementById('m-send-to-note').classList.contains('show'),
+    'no note when FMCSA simply has nothing on file');
+});
+
+// ── An FMCSA email that no mail server could accept ──────────────────────────
+// DOT 4409382's MCS-150 carries `info@abramshoodexhaustcleani.` -- truncated by
+// FMCSA's own filing system, no TLD. CarrierOK passes it through faithfully. The
+// old code locked the field on presence and validated on format, so this carrier
+// was locked to an address that could never pass validation: Send Link was
+// unreachable, permanently, with no override anywhere in the UI.
+const TRUNCATED = 'info@abramshoodexhaustcleani.';
+
+test('an unusable FMCSA email leaves Send To editable instead of locking it', async () => {
+  const dom = makeLookupWidget({ dot_number: '4409382',
+    carrier_name: 'R&C CONSULTING AND TRANSPORT LLC', email_address: TRUNCATED });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="pay"]').click();
+  const sendTo = w.document.getElementById('m-send-to');
+  assert.strictEqual(sendTo.readOnly, false, 'must not lock an unsendable address');
+  assert.ok(!sendTo.classList.contains('locked'));
+  assert.strictEqual(sendTo.value, '', 'the bad value is not prefilled into the field');
+});
+
+test('an unusable FMCSA email explains itself and prints what FMCSA holds', async () => {
+  const dom = makeLookupWidget({ dot_number: '4409382',
+    carrier_name: 'R&C CONSULTING AND TRANSPORT LLC', email_address: TRUNCATED });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="pay"]').click();
+  const note = w.document.getElementById('m-send-to-note');
+  assert.ok(note.classList.contains('show'), 'note is shown');
+  assert.match(note.textContent, /no usable email on file/i);
+  assert.ok(note.textContent.includes(TRUNCATED),
+    'the broker can see the malformed address FMCSA has on file');
+});
+
+test('a broker-typed address sends for a carrier whose FMCSA email is unusable', async () => {
+  const dom = makeLookupWidget({ dot_number: '4409382',
+    carrier_name: 'R&C CONSULTING AND TRANSPORT LLC', email_address: TRUNCATED });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="pay"]').click();
+  typeInto(w, 'm-send-to', 'info@abramshoodexhaustcleaning.com');
+  w.document.getElementById('modal-submit').click();
+  await new Promise(r => setTimeout(r, 30));
+  const posts = w._posts.filter(p => p.url.includes('/broker-send-onboarding-link'));
+  assert.equal(posts.length, 1, 'the send is no longer blocked');
+  assert.equal(posts[0].body.send_to, 'info@abramshoodexhaustcleaning.com');
+  assert.equal(posts[0].body.type, 'pay');
+});
+
+test('the note does not follow a second carrier looked up in the same session', async () => {
+  // The modal is reused across lookups; a stale note would name the wrong carrier's
+  // address next to a field that is now correctly locked.
+  const dom = makeLookupWidget(
+    { dot_number: '4409382', carrier_name: 'R&C', email_address: TRUNCATED },
+    {},
+    { dot_number: '92261', carrier_name: 'A&M', email_address: 'fmcsa@carrier.com' });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="pay"]').click();
+  assert.ok(w.document.getElementById('m-send-to-note').classList.contains('show'));
+  w.document.getElementById('modal-close').click();
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="pay"]').click();
+  const note = w.document.getElementById('m-send-to-note');
+  assert.ok(!note.classList.contains('show'), 'note cleared for the second carrier');
+  assert.strictEqual(note.textContent, '');
+  const sendTo = w.document.getElementById('m-send-to');
+  assert.strictEqual(sendTo.readOnly, true, 'the second carrier is locked as normal');
+  assert.strictEqual(sendTo.value, 'fmcsa@carrier.com');
+});
+
+test('a still-invalid broker-typed address is refused, and nothing is posted', async () => {
+  // Unlocking the field must not become a way to send to a malformed address.
+  const dom = makeLookupWidget({ dot_number: '4409382', carrier_name: 'R&C',
+    email_address: TRUNCATED });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="pay"]').click();
+  typeInto(w, 'm-send-to', TRUNCATED);
+  w.document.getElementById('modal-submit').click();
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(w._posts.filter(p => p.url.includes('/broker-send-onboarding-link')).length, 0);
+  assert.ok(w.document.querySelector('[data-err-for="m-send-to"]').classList.contains('show'));
 });
 
 test('send posts the locked FMCSA email and DOT', async () => {

@@ -76,6 +76,47 @@ html, body {
 }
 .hsep { width: 24px; height: 2px; background: #eee; flex-shrink: 0; }
 
+/* Sign-in gate (shown only when no broker identity can be resolved) */
+.signin-gate {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 50;
+  background: #f0efe9;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.signin-gate.show { display: flex; }
+.signin-card {
+  background: #fff;
+  border: 1px solid #e6e3da;
+  border-top: 3px solid #e8a020;
+  border-radius: 12px;
+  padding: 36px 34px 30px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+}
+.signin-mark { font-size: 20px; font-weight: 800; letter-spacing: -0.4px; color: #272727; margin-bottom: 22px; }
+.signin-mark span { color: #e8a020; }
+.signin-card h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.2px; color: #272727; margin-bottom: 10px; }
+.signin-lead { font-size: 13.5px; line-height: 1.6; color: #555; margin-bottom: 22px; }
+.signin-btn {
+  display: inline-block;
+  background: #e8a020; color: #fff;
+  font-size: 13.5px; font-weight: 700;
+  border-radius: 8px; padding: 11px 26px;
+  text-decoration: none;
+}
+.signin-btn:hover { background: #d18f18; }
+.signin-foot {
+  margin-top: 24px; padding-top: 18px;
+  border-top: 1px solid #eee;
+  font-size: 12.5px; color: #888; line-height: 1.7;
+}
+.signin-foot a { color: #555; }
+
 /* Two-column layout: main + sticky rail */
 .two { display: grid; grid-template-columns: 1fr 330px; gap: 18px; align-items: start; }
 .rail { position: sticky; top: 10px; }
@@ -337,6 +378,27 @@ textarea { resize: vertical; min-height: 90px; }
     <button id="reopen-overlay-close" type="button" hidden onclick="_hideReopenOverlay()">Close</button>
   </div>
 </div>
+<!-- SIGN-IN GATE. app.operfi.com serves this file at its bare root, so anyone who
+     types the domain lands on a Submit Load form. The form is inert for them --
+     brokerEmail only ever comes from the Creator SDK, and every endpoint 401s
+     without a resolvable broker -- but a dead form that silently does nothing is
+     the wrong thing to show a stranger, and the wrong thing to show a broker
+     whose identity call failed. It is an OVERLAY rather than a replacement: the
+     form stays in the DOM so nothing downstream has to care whether it rendered.
+     Hidden by default, so a widget that resolves normally never sees it. -->
+<div class="signin-gate" id="signin-gate">
+  <div class="signin-card">
+    <div class="signin-mark">Oper<span>Fi</span></div>
+    <h1>Sign in to continue</h1>
+    <p class="signin-lead">This page is part of the OperFi broker portal and cannot be opened directly.</p>
+    <a class="signin-btn" href="https://brokerhub.operfi.com">Go to the broker portal</a>
+    <div class="signin-foot">
+      Trouble signing in? Email
+      <a href="mailto:brokersupport@operfi.com">brokersupport@operfi.com</a>
+    </div>
+  </div>
+</div>
+
 <div class="page">
 
   <div class="head">
@@ -554,18 +616,39 @@ var fileStore = {};
 var docsOnFile = { customer: false, carrier: false };
 
 // ── Email / init resolution ─────────────────────────────────────────────────
+// Covers the overlay. Called from EVERY path that ends without an identity --
+// no SDK at all (a stranger at app.operfi.com), the SDK rejecting (the shell's
+// /portal/api/me failed), and the SDK resolving with no email. All three left a
+// dead form on screen before; none of them can be recovered from here.
+//
+// Never called on the happy path, so a widget inside Creator or the shell is
+// untouched by this.
+function showSignInGate() {
+  var gate = document.getElementById('signin-gate');
+  if (gate) { gate.className = 'signin-gate show'; }
+}
+
 function resolveEmail() {
   try {
     var p = ZOHO.CREATOR.UTIL.getInitParams();
     var go = function (params) {
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      // An empty email is not a slow load -- getInitParams has already answered.
+      // Continuing would render a form whose every fetch 401s.
+      if (!brokerEmail) { showSignInGate(); return; }
       _pendingDraftId = _resolveDraftId(params);
       _pendingVendorId = _resolveVendorId(params);
       if (typeof onReady === 'function') onReady();
     };
-    if (p && typeof p.then === 'function') { p.then(go); } else { go(p); }
+    if (p && typeof p.then === 'function') {
+      // Two-argument then, NOT .catch: a throw inside go() is a bug in our own
+      // render path, and turning that into "please sign in" would send a
+      // signed-in broker to a login screen for an unrelated fault.
+      p.then(go, function () { showSignInGate(); });
+    } else { go(p); }
   } catch (e) {
-    // later tasks surface an auth banner
+    // ZOHO is undefined -- served outside Creator and outside the shell.
+    showSignInGate();
   }
 }
 
@@ -1357,6 +1440,7 @@ window.stepValid = stepValid;
 window.refreshValidity = refreshValidity;
 window.canGoTo = canGoTo;
 window.resolveEmail = resolveEmail;
+window.showSignInGate = showSignInGate;
 window.mergeFilesToPDF = mergeFilesToPDF;
 window.onFileChange = onFileChange;
 window.loadCustomers = loadCustomers;

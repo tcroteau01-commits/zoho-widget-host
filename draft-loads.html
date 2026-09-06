@@ -339,6 +339,79 @@ function num(n){ return Number(String(n==null?'':n).replace(/[^0-9.\-]/g,''))||0
 function money(n){ var v = num(n); return (v<0?'-$':'$') + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function setText(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
 
+/* ---------------- bounded concurrency for bulk writes ----------------
+
+   WHY THIS EXISTS. Every bulk action on this page used to be
+   Promise.all(items.map(... fetch ...)), which starts ONE REQUEST PER ITEM AT
+   ONCE. The API runs `gunicorn --workers 2` and each of these writes is a
+   Creator round trip of 1.5-2s, so importing 50 rows fired 50 concurrent
+   writes at 2 workers.
+
+   Measured on 2026-09-04 23:52-23:54: a CSV import produced a sustained ~2
+   POST/second storm for 90+ seconds; requests logged their own start at
+   23:52:14 and did not reach the access log until 23:52:56, a 40-second queue.
+   Every one of them returned 200 -- nothing failed, they were just stuck behind
+   each other. Meanwhile GET /portal/ 502'd for want of a free worker, in front
+   of a live demo. The page was DDoSing its own API.
+
+   BEHAVES EXACTLY LIKE Promise.all so the six call sites keep their semantics:
+   results in input order, rejects on the first rejection. The one deliberate
+   difference is that it stops LAUNCHING new work once something has rejected --
+   Promise.all cannot do that, because map() already started everything.
+
+   TAKES THUNKS, NOT PROMISES. This is the whole point and it is easy to undo by
+   accident: `items.map(function(x){ return doFetch(x); })` has already sent
+   every request before Promise.all ever sees it. applyGroup() was written that
+   way. A limiter that accepts promises limits nothing. */
+
+// 2 workers, 1.5-2s per write. At 4 the queue behind a bulk action is ~2 deep,
+// so another broker waits a few seconds rather than a minute and a half. Raise
+// it only alongside the worker count.
+var BULK_WRITE_CONCURRENCY = 4;
+
+// Lower than the JSON writes on purpose. These are multipart PDF uploads: far
+// more bytes, far longer per request, and they occupy the same 2 workers.
+var BULK_UPLOAD_CONCURRENCY = 2;
+
+function mapLimit(items, limit, fn){
+  items = items || [];
+  var total = items.length;
+  if(!total) return Promise.resolve([]);
+  limit = Math.max(1, Math.min(limit || 1, total));
+  var results = new Array(total);
+  var next = 0;
+  var failed = false;
+
+  return new Promise(function(resolve, reject){
+    var active = 0;
+
+    function launch(){
+      // Stop feeding the queue once we know the whole thing is going to reject.
+      if(failed) return;
+      while(active < limit && next < total){
+        (function(i){
+          active++;
+          next++;
+          Promise.resolve()
+            .then(function(){ return fn(items[i], i); })
+            .then(function(value){
+              results[i] = value;
+              active--;
+              if(next >= total && active === 0){ resolve(results); }
+              else { launch(); }
+            }, function(err){
+              failed = true;
+              reject(err);
+            });
+        }(next));
+      }
+    }
+
+    launch();
+  });
+}
+window.mapLimit = mapLimit;
+
 function showToast(msg){
   var t=document.getElementById('toast'); if(!t) return;
   t.textContent=msg; t.classList.remove('hidden');
@@ -493,11 +566,11 @@ function deleteDrafts(ids){
   ids=(ids||[]).filter(Boolean);
   if(!ids.length) return Promise.resolve();
   if(!window.confirm('Delete '+ids.length+' draft'+(ids.length===1?'':'s')+'? This cannot be undone.')) return Promise.resolve();
-  return Promise.all(ids.map(function(id){
+  return mapLimit(ids, BULK_WRITE_CONCURRENCY, function(id){
     return fetch(BROKER_API_BASE+'/draft-loads/'+id+'?email='+encodeURIComponent(brokerEmail), { method:'DELETE' })
       .then(function(r){ return r && r.ok ? id : null; })
       .catch(function(){ return null; });
-  })).then(function(done){
+  }).then(function(done){
     var ok=done.filter(Boolean);
     __state.drafts=__state.drafts.filter(function(d){ return ok.indexOf(d.id)===-1; });
     __state.selected=__state.selected.filter(function(id){ return ok.indexOf(id)===-1; });
@@ -547,7 +620,7 @@ function openInlineEdit(tr, d, kind){
       ids=matchingUnresolved(sameRaw, kind).map(function(x){return x.id;});
     }
     var patchKey = kind==='customer'?'customer_id':'carrier_id';
-    Promise.all(ids.map(function(id){ var p={}; p[patchKey]=val; return patchDraft(id,p); }))
+    mapLimit(ids, BULK_WRITE_CONCURRENCY, function(id){ var p={}; p[patchKey]=val; return patchDraft(id,p); })
       .then(function(){ return loadQueue(); })
       .then(function(){ showToast('Updated'); })
       .catch(function(err){ showToast(patchErrorMessage(err)); });
@@ -580,12 +653,12 @@ function renderBulkBar(){
   setText('bulk-submit', 'Submit ('+n+')');
 }
 function bulkSetCustomer(customerId){
-  return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { customer_id: customerId }); }))
+  return mapLimit(__state.selected, BULK_WRITE_CONCURRENCY, function(id){ return patchDraft(id, { customer_id: customerId }); })
     .then(function(){ clearSelection(); return loadQueue(); })
     .catch(function(err){ showToast(patchErrorMessage(err)); });
 }
 function bulkSetCarrier(carrierId){
-  return Promise.all(__state.selected.map(function(id){ return patchDraft(id, { carrier_id: carrierId }); }))
+  return mapLimit(__state.selected, BULK_WRITE_CONCURRENCY, function(id){ return patchDraft(id, { carrier_id: carrierId }); })
     .then(function(){ clearSelection(); return loadQueue(); })
     .catch(function(err){ showToast(patchErrorMessage(err)); });
 }
@@ -705,8 +778,11 @@ function patchErrorMessage(err){
 function applyGroup(raw, value, ids, remember, kind){
   kind = kind||'customer';
   var patchKey = kind==='customer' ? 'customer_id' : 'carrier_id';
-  var patches = ids.map(function(id){ var p={}; p[patchKey]=value; return patchDraft(id, p); });
-  return Promise.all(patches).then(function(){
+  // NOT ids.map(...) into Promise.all -- map() would send every patch before the
+  // limiter ever saw them. mapLimit takes the work as a function for that reason.
+  return mapLimit(ids, BULK_WRITE_CONCURRENCY, function(id){
+    var p={}; p[patchKey]=value; return patchDraft(id, p);
+  }).then(function(){
     if (remember && kind==='customer'){
       var g=computeGroups(undefined,'customer').find(function(x){return x.raw===raw;});
       return fetch(BROKER_API_BASE+'/draft-loads/alias', {
@@ -1127,10 +1203,21 @@ function autoAssignCustomerId(cm){
   return '';
 }
 
+// Re-entry guard. Throttling one run is pointless if a second click starts a
+// second run beside it -- and with the import now taking visibly longer than
+// the old all-at-once version, a second click is MORE likely, not less. The
+// button had no guard at all.
+var __creatingDrafts = false;
+
 function createDraftsFromPreview(){
+  if(__creatingDrafts){ return Promise.resolve(); }
   var clean=creatableRows();
   if(!clean.length){ showToast('No rows to create'); return Promise.resolve(); }
-  return Promise.all(clean.map(function(row){
+  __creatingDrafts = true;
+  var release = function(v){ __creatingDrafts = false; return v; };
+  var fail = function(e){ __creatingDrafts = false; throw e; };
+  // The storm that started this: one POST per imported row, all at once.
+  return mapLimit(clean, BULK_WRITE_CONCURRENCY, function(row){
     var m=row.mapped||{}, cm=row.customer_match||{}, vm=row.carrier_match||{};
     var body={
       email: brokerEmail,
@@ -1160,7 +1247,7 @@ function createDraftsFromPreview(){
                carrier_name:carrierDisplayName(vm.vendor_id),
                carrier_mc:m.carrier_mc||'', carrier_dot:m.carrier_dot||'' };
     }).catch(function(){ return null; });
-  })).then(function(loads){
+  }).then(function(loads){
     var ok=loads.filter(function(l){ return l && l.id; });
     var total=clean.length, made=ok.length, failed=total-made;
     if(!made){
@@ -1174,7 +1261,7 @@ function createDraftsFromPreview(){
       showToast(made+' draft'+(made===1?'':'s')+' created — attach paperwork');
     }
     openPaperwork(ok);
-  });
+  }).then(release, fail);
 }
 
 /* ================= Task 20: paperwork assembly + auto-route ================= */
@@ -1468,18 +1555,29 @@ function commitPaperwork(){
   if(__pw.committing){ return Promise.resolve([]); }
   __pw.committing=true;
   var btn=document.getElementById('pw-commit'); if(btn){ btn.disabled=true; }
+  // The heaviest fan-out on the page, and it sits directly downstream of the
+  // import: createDraftsFromPreview ends in openPaperwork(). Two slots per load
+  // meant up to 2N concurrent MULTIPART UPLOADS -- 100 file posts for a 50-row
+  // import. This is the shape behind the /upload-doc + /funding-finalize 502
+  // clusters on 2026-09-03 15:01 and 2026-09-04 17:02.
+  //
+  // COLLECT DESCRIPTORS, DO NOT START THE WORK. The previous version pushed
+  // uploadSlot(...) itself, so every upload was already in flight before
+  // Promise.all was reached.
   var jobs=[];
   Object.keys(__pw.slots||{}).forEach(function(lid){
     ['customer','carrier'].forEach(function(s){
       if(__pw.slots[lid][s]==='pending' && (__pw.files[lid]&&__pw.files[lid][s]&&__pw.files[lid][s].length)){
-        jobs.push(uploadSlot(lid, s).then(function(ok){
-          if(ok){ __pw.slots[lid][s]='uploaded'; }
-          return { lid:lid, slot:s, ok:ok };
-        }));
+        jobs.push({ lid:lid, slot:s });
       }
     });
   });
-  return Promise.all(jobs).then(function(results){
+  return mapLimit(jobs, BULK_UPLOAD_CONCURRENCY, function(job){
+    return uploadSlot(job.lid, job.slot).then(function(ok){
+      if(ok){ __pw.slots[job.lid][job.slot]='uploaded'; }
+      return { lid:job.lid, slot:job.slot, ok:ok };
+    });
+  }).then(function(results){
     var failed=results.filter(function(r){ return !r.ok; }).length;
     renderPaperwork(__pw.loads);
     if(results.length){ showToast(failed ? (failed+' upload'+(failed===1?'':'s')+' failed — still here, retry') : 'All packets attached'); }

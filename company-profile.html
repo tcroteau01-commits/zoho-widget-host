@@ -30,6 +30,10 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   gap: 18px;
   align-items: start;
 }
+/* Access column withheld (no users.manage): collapse to one track, or the
+   company card renders at 42% width beside an empty 1.4fr gap, which reads as a
+   panel that failed to load rather than one the user was never meant to see. */
+.layout.solo { grid-template-columns: minmax(0, 620px); }
 
 /* Card base */
 .card {
@@ -666,8 +670,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <div id="logo-section" class="card" style="margin-top:18px;"></div>
     </div>
 
-    <!-- Right: Authorized Users -->
-    <div>
+    <!-- Right: Authorized Users.
+
+         Hidden outright unless the server says can_manage. The whole column is
+         delegated administration -- the roster, what access means, and who
+         changed it -- and none of it belongs to someone who cannot administer
+         users. It is markup rather than a capability check in JS because this
+         route is gated on page.company_profile, which is BASELINE and therefore
+         held by EVERY template: without hiding it, a Carrier Payments user
+         opening Company Profile saw every colleague's name, email and permission
+         label, an Add Trusted Contact button that 403s on submit, and a
+         Templates editor with nothing in it. Found live 2026-09-07. -->
+    <div id="access-col" hidden>
       <div class="card">
         <div class="card-head">
           <div>
@@ -1117,6 +1131,15 @@ function loadUsers() {
       console.log('[CompanyProfile] users:', data.length);
       selfContactId = (res && res.self_contact_id) ? String(res.self_contact_id) : '';
       canManage = !!(res && res.can_manage);
+      // Reveal the Access column only for someone who can actually administer
+      // users. It starts hidden in the markup so it is never painted first and
+      // then withdrawn -- the same reasoning as TABFLASH1's server-injected tab
+      // CSS: a control that appears and vanishes reads as a bug, and for a
+      // permissions surface it also briefly shows what it is meant to withhold.
+      var accessCol = document.getElementById('access-col');
+      if (accessCol) accessCol.hidden = !canManage;
+      var layout = document.querySelector('.layout');
+      if (layout) layout.classList.toggle('solo', !canManage);
       renderLogoSection(lastLogoUri);
       allUsers = data.slice().sort(function(a, b) {
         return parseDate(b.Added_Time) - parseDate(a.Added_Time);

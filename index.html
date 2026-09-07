@@ -116,6 +116,7 @@ html, body {
   font-size: 12.5px; color: #888; line-height: 1.7;
 }
 .signin-foot a { color: #555; }
+.signin-alt { margin-bottom: 10px; }
 
 /* Two-column layout: main + sticky rail */
 .two { display: grid; grid-template-columns: 1fr 330px; gap: 18px; align-items: start; }
@@ -391,8 +392,19 @@ textarea { resize: vertical; min-height: 90px; }
     <div class="signin-mark">Oper<span>Fi</span></div>
     <h1>Sign in to continue</h1>
     <p class="signin-lead">This page is part of the OperFi broker portal and cannot be opened directly.</p>
-    <a class="signin-btn" href="https://brokerhub.operfi.com">Go to the broker portal</a>
+    <!-- brokers.operfi.com, not the Creator portal. The shell is the destination
+         we are migrating everyone to, and it routes on its own: a signed-in
+         broker whose account has not been flipped is redirected back to Creator
+         by the server, so this one link is correct for both populations. -->
+    <a class="signin-btn" href="https://brokers.operfi.com">Go to the broker portal</a>
     <div class="signin-foot">
+      <!-- The escape hatch, deliberately quiet. The shell demands an active
+           portal_users row AND a WorkOS login, and only the flipped accounts
+           have been invited so far -- without this, a broker who has not been
+           migrated hits a sign-in screen they cannot pass and has nowhere to
+           go. Delete this line once every broker holds a WorkOS invite. -->
+      <div class="signin-alt">Still using the previous portal?
+        <a href="https://brokerhub.operfi.com">Sign in there instead</a></div>
       Trouble signing in? Email
       <a href="mailto:brokersupport@operfi.com">brokersupport@operfi.com</a>
     </div>

@@ -208,12 +208,42 @@ test('the gate leaves the form in the DOM', () => {
   assert.ok(w.document.getElementById('submit-btn'));
 });
 
-test('the gate points at the portal and at support', () => {
+test('the primary action is the new shell, not Creator', () => {
+  // brokers.operfi.com is where everyone is being migrated, and it routes on
+  // its own -- the server sends a signed-in but not-yet-flipped broker back to
+  // Creator. Leading with Creator would push traffic at the surface we are
+  // retiring.
   const w = boot();
   w.resolveEmail();
-  const text = gate(w).innerHTML;
-  assert.ok(text.includes('brokerhub.operfi.com'));
-  assert.ok(text.includes('brokersupport@operfi.com'));
+  const btn = gate(w).querySelector('.signin-btn');
+  assert.strictEqual(btn.getAttribute('href'), 'https://brokers.operfi.com');
+});
+
+test('a broker without a WorkOS login still has somewhere to go', () => {
+  // The shell needs an active portal_users row AND a WorkOS login, and only the
+  // flipped accounts have been invited. Without this escape hatch a broker who
+  // has not been migrated reaches a sign-in screen they cannot pass. Remove the
+  // test with the link, once every broker holds an invite.
+  const w = boot();
+  w.resolveEmail();
+  const alt = gate(w).querySelector('.signin-alt a');
+  assert.strictEqual(alt.getAttribute('href'), 'https://brokerhub.operfi.com');
+});
+
+test('the fallback is secondary, not competing with the primary action', () => {
+  const w = boot();
+  w.resolveEmail();
+  const g = gate(w);
+  // The button is the button; the fallback is a line of footer text.
+  assert.strictEqual(g.querySelectorAll('.signin-btn').length, 1);
+  assert.ok(g.querySelector('.signin-foot .signin-alt'),
+    'the fallback escaped the footer');
+});
+
+test('the gate points at support', () => {
+  const w = boot();
+  w.resolveEmail();
+  assert.ok(gate(w).innerHTML.includes('brokersupport@operfi.com'));
 });
 
 test('the gate names no vendor and no internal host', () => {

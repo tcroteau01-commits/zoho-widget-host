@@ -15,8 +15,12 @@ import { JSDOM } from 'jsdom';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-function boot(zoho) {
+// jsdom is top-level, which IS the app.operfi.com case -- and window.top is
+// non-configurable there, so the frame check is stubbed through isEmbedded()
+// rather than faked on the window. The real predicate is asserted separately.
+function boot(zoho, { embedded = true } = {}) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+  dom.window.isEmbedded = () => embedded;
   if (zoho !== undefined) { dom.window.ZOHO = zoho; }
   // jsdom has no fetch. The happy path calls onReady(), which immediately loads
   // customers and carriers -- without this every signed-in case fails on the
@@ -83,11 +87,86 @@ test('each of the three identity aliases counts as signed in', async () => {
   }
 });
 
-test('the gate is hidden before anything resolves', () => {
+test('the gate is hidden before an EMBEDDED page resolves', () => {
   // Guards against shipping it visible, which would black out the real widget
-  // for every broker at once.
+  // for every broker at once. Embedded only -- top-level gates immediately, and
+  // that is the whole point of the case below.
   const w = boot(sdk(() => new Promise(() => {})));
+  w.resolveEmail();
   assert.strictEqual(shown(w), false);
+});
+
+// --- the case the first version of this gate MISSED -------------------------
+
+test('TOP-LEVEL with a working SDK gates immediately', () => {
+  // THE REGRESSION. app.operfi.com loads Zoho's widget SDK from their CDN, so
+  // ZOHO is defined and the try/catch never fires. getInitParams() then waits
+  // for a postMessage from a parent Creator frame that does not exist: it never
+  // resolves and never rejects, so every path was dead and the form just sat
+  // there looking live. Shipped that way on 09-06 and caught by Tom, not by me.
+  const w = boot(sdk(() => new Promise(() => {})), { embedded: false });
+  w.resolveEmail();
+  assert.ok(shown(w), 'a stranger at app.operfi.com still sees the form');
+});
+
+test('an embedded page whose host never answers gates on the timeout', async () => {
+  const w = boot(sdk(() => new Promise(() => {})));
+  w.resolveEmail();
+  assert.strictEqual(shown(w), false, 'gated before giving the host a chance');
+  w.__gateTimer = null;
+  // Run the backstop directly rather than waiting 8s of real time.
+  w.__identityResolved = false;
+  w.showSignInGate();
+  assert.ok(shown(w));
+});
+
+test('the backstop is generous enough not to gate a slow broker', () => {
+  // A few seconds of an inert form for a stranger beats gating a signed-in
+  // broker on a bad connection.
+  const w = boot();
+  assert.ok(w.SIGNIN_GATE_TIMEOUT_MS >= 5000);
+});
+
+test('a late but valid identity clears a gate that already showed', async () => {
+  // Top-level raises the gate synchronously and the timeout can raise it on a
+  // slow host. Neither may outrank a real answer that arrives afterwards.
+  let resolveIt;
+  const w = boot(sdk(() => new Promise((res) => { resolveIt = res; })), { embedded: false });
+  w.resolveEmail();
+  assert.ok(shown(w), 'expected the top-level gate first');
+  resolveIt({ loginUser: 'broker@acme.com' });
+  await new Promise((r) => w.setTimeout(r, 0));
+  assert.strictEqual(shown(w), false, 'a valid identity did not clear the gate');
+  assert.strictEqual(w.brokerEmail, 'broker@acme.com');
+});
+
+test('resolving identity cancels the backstop', async () => {
+  const w = boot(sdk(() => Promise.resolve({ loginUser: 'broker@acme.com' })));
+  w.resolveEmail();
+  await new Promise((r) => w.setTimeout(r, 0));
+  assert.strictEqual(w.__identityResolved, true);
+  // The timer must be cancelled, or it fires 8s later over a working widget.
+  w.showSignInGate = () => { throw new Error('backstop fired after identity'); };
+  await new Promise((r) => w.setTimeout(r, 20));
+});
+
+test('a second resolveEmail after success does not re-raise the gate', async () => {
+  // The page calls resolveEmail() itself on DOMContentLoaded. A second call --
+  // from a test, or from any later feature that wants to refresh identity --
+  // would otherwise re-run the top-level check and gate a working widget.
+  const w = boot(sdk(() => Promise.resolve({ loginUser: 'broker@acme.com' })), { embedded: false });
+  w.resolveEmail();
+  await new Promise((r) => w.setTimeout(r, 0));
+  assert.strictEqual(shown(w), false);
+  w.resolveEmail();
+  assert.strictEqual(shown(w), false, 'a repeat call gated a signed-in broker');
+});
+
+test('the real isEmbedded() reports top-level for a bare page load', () => {
+  // The one test that exercises the predicate itself rather than the stub.
+  // jsdom's window IS top-level, same as a browser at app.operfi.com.
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+  assert.strictEqual(dom.window.isEmbedded(), false);
 });
 
 test('a bug inside our own render path does not become a login screen', () => {

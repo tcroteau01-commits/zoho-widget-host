@@ -628,7 +628,56 @@ function showSignInGate() {
   if (gate) { gate.className = 'signin-gate show'; }
 }
 
+function hideSignInGate() {
+  var gate = document.getElementById('signin-gate');
+  if (gate) { gate.className = 'signin-gate'; }
+}
+
+// Backstop for an EMBEDDED page whose identity call never answers. Generous on
+// purpose: gating a real broker on a slow network is far worse than a stranger
+// seeing an inert form for a few seconds, and the top-level check below already
+// covers the case that actually happens.
+var SIGNIN_GATE_TIMEOUT_MS = 8000;
+var __identityResolved = false;
+var __gateTimer = null;
+
+// Is this page inside a frame, i.e. does it have a host that could answer?
+//
+// Fails OPEN. A context where reading window.top throws is treated as embedded,
+// because wrongly gating a signed-in broker is the more expensive mistake --
+// and the timeout backstop still catches a genuine stranger seconds later.
+function isEmbedded() {
+  try { return window.top !== window.self; } catch (e) { return true; }
+}
+
 function resolveEmail() {
+  // Idempotent. In a browser this runs once, from DOMContentLoaded, but a
+  // second call after identity has already arrived would re-run the top-level
+  // check and raise the gate over a working widget. Answering twice must never
+  // be worse than answering once.
+  if (__identityResolved) { return; }
+
+  // 1. TOP-LEVEL IS NEVER A WIDGET CONTEXT.
+  //
+  // This is the check the first version of the gate was missing, and it is why
+  // app.operfi.com kept rendering a live-looking Submit Load form to anyone who
+  // typed the domain. The page loads Zoho's widget SDK from their CDN, so ZOHO
+  // IS defined there -- the try/catch never fired. getInitParams() then returns
+  // a promise that waits for a postMessage from a parent Creator frame that
+  // does not exist, so it never resolves AND never rejects. All three of the
+  // original paths were dead and the form just sat there.
+  //
+  // Both legitimate hosts frame this file: a Creator widget is an iframe, and
+  // the portal shell serves it into <iframe id="shell-frame">. So being the top
+  // window means there is no host to ask, and no amount of waiting will help.
+  //
+  if (!isEmbedded()) { showSignInGate(); }
+
+  // 2. And for an embedded page whose host never answers.
+  __gateTimer = setTimeout(function () {
+    if (!__identityResolved) { showSignInGate(); }
+  }, SIGNIN_GATE_TIMEOUT_MS);
+
   try {
     var p = ZOHO.CREATOR.UTIL.getInitParams();
     var go = function (params) {
@@ -636,6 +685,11 @@ function resolveEmail() {
       // An empty email is not a slow load -- getInitParams has already answered.
       // Continuing would render a form whose every fetch 401s.
       if (!brokerEmail) { showSignInGate(); return; }
+      // Identity arrived. Cancel the backstop and clear the gate in case one of
+      // the checks above already raised it -- a late but valid answer must win.
+      __identityResolved = true;
+      clearTimeout(__gateTimer);
+      hideSignInGate();
       _pendingDraftId = _resolveDraftId(params);
       _pendingVendorId = _resolveVendorId(params);
       if (typeof onReady === 'function') onReady();
@@ -647,7 +701,7 @@ function resolveEmail() {
       p.then(go, function () { showSignInGate(); });
     } else { go(p); }
   } catch (e) {
-    // ZOHO is undefined -- served outside Creator and outside the shell.
+    // ZOHO is undefined -- the SDK script itself failed to load.
     showSignInGate();
   }
 }
@@ -1441,6 +1495,8 @@ window.refreshValidity = refreshValidity;
 window.canGoTo = canGoTo;
 window.resolveEmail = resolveEmail;
 window.showSignInGate = showSignInGate;
+window.hideSignInGate = hideSignInGate;
+window.isEmbedded = isEmbedded;
 window.mergeFilesToPDF = mergeFilesToPDF;
 window.onFileChange = onFileChange;
 window.loadCustomers = loadCustomers;

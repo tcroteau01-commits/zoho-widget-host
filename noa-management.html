@@ -1307,7 +1307,22 @@ function runEngine(recordId) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
-  }).then(function(r){ return r.json(); });
+  }).then(function(r){
+    // The HTTP STATUS matters, not just the body. A refusal (403 read-only
+    // impersonation, 401, 500) answers with {error, code} and no `ok` field, so
+    // handing the raw body to the caller -- which only fails on ok === false --
+    // rendered the SUCCESS screen for a submission the engine never ran. Convert
+    // any non-2xx into the {ok:false, message} shape the caller already handles.
+    // r.status/r.ok absent (older test doubles) is treated as success, so a stub
+    // that only implements json() keeps meaning what it always meant.
+    var refused = r && (r.ok === false || (typeof r.status === 'number' && r.status >= 400));
+    return r.json().then(function(b){ return b; }, function(){ return {}; })
+      .then(function(body){
+        if (!refused) return body;
+        var msg = (body && (body.error || body.message)) || ('HTTP ' + (r && r.status));
+        return { ok: false, message: msg };
+      });
+  });
 }
 
 function submitNoa() {

@@ -106,3 +106,56 @@ test('submitNoa treats {code:3000,result:[{data:{ID}}]} as success and runs the 
   assert.equal(JSON.parse(eng[1].body).record_id, '3773785000015541008',
     'engine must get the real record id from res.result[0].data.ID');
 });
+
+// Bug F: runEngine read r.json() and never looked at the HTTP status, so ANY
+// non-2xx from /noa-submit was handed to the caller as if it were the engine's
+// success body. The caller only fails on `engRes.ok === false`, and a refusal
+// body carries {error, code} with no `ok` -- so a 403 rendered the SUCCESS
+// screen. Live on 2026-09-08 19:58: creator-write 200, upload-doc 200,
+// noa-submit 403 (impersonation is read-only), user saw a confirmation, and
+// nothing reached CRM, WorkDrive or the broker-carrier-pmt-change channel.
+test('submitNoa surfaces a 403 from /noa-submit instead of showing the success screen', async () => {
+  const { window } = makeWidget();
+  const REFUSAL = {
+    error: 'Impersonation is read-only. Sign in to the client\u2019s account, or use an OperFi admin tool that records you as the actor.',
+    code: 'impersonation_read_only'
+  };
+  window.ZOHO.CREATOR.DATA.addRecords = function () {
+    return Promise.resolve({ code: 3000, result: [{ code: 3000, data: { ID: 'rec_88' } }] });
+  };
+  window.fetch = (u) => Promise.resolve(/\/noa-submit/.test(String(u))
+    ? { ok: false, status: 403, json: () => Promise.resolve(REFUSAL) }
+    : { ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+  let tracked = false;
+  window.showTrack = function () { tracked = true; };
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  window.selectedDocFile = new window.File(['x'], 'noa.pdf', { type: 'application/pdf' });
+  await window.submitNoa();
+  const fb = window.document.getElementById('noa-submit-feedback').textContent;
+  assert.match(fb, /processing failed/i, 'a refused engine must report a failure, got: ' + fb);
+  assert.match(fb, /read-only/i, 'the server refusal must reach the user, got: ' + fb);
+  assert.equal(tracked, false, 'must NOT show the success/track screen when the engine was refused');
+});
+
+// The button must come back so the user can act, not sit disabled on "Submitting...".
+test('a refused engine re-enables the submit button', async () => {
+  const { window } = makeWidget();
+  window.ZOHO.CREATOR.DATA.addRecords = function () {
+    return Promise.resolve({ code: 3000, result: [{ code: 3000, data: { ID: 'rec_89' } }] });
+  };
+  window.fetch = (u) => Promise.resolve(/\/noa-submit/.test(String(u))
+    ? { ok: false, status: 500, json: () => Promise.resolve({}) }
+    : { ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+  window.showTrack = function () {};
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  window.selectedDocFile = new window.File(['x'], 'noa.pdf', { type: 'application/pdf' });
+  await window.submitNoa();
+  assert.equal(window.document.getElementById('noa-submit-btn').disabled, false,
+    'the submit button must be usable again after a refusal');
+});

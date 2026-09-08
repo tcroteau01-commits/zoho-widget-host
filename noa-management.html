@@ -6,6 +6,14 @@
 <title>NOA / LOR Management</title>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<!-- Demo mode. Without these this page talked to the LIVE stack on the demo
+     account: a real NOA_LOR_Updates record and a real file upload into live
+     Creator, then /noa-submit rejected it because OperFi Demo is the only
+     ACTIVE account with no FVClientID. Both files, in this order, matching the
+     seven widgets that were already demo-aware -- demo-data.js's shaping
+     helpers read window.OPERFI_DEMO_LEDGER. -->
+<script src="https://app.operfi.com/demo-ledger.js"></script>
+<script src="https://app.operfi.com/demo-data.js?v=2"></script>
 <script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-docviewer.js?v=3"></script>
 <style>
@@ -641,6 +649,44 @@ var vendorId = '';
 var noaAction = '';
 var statusPayload = null;
 
+// Demo submissions, in memory only. They are merged into every rendered status
+// list so the tracking row survives showList()'s re-fetch, and they are gone on
+// reload -- a demo account must leave nothing behind, in Creator or anywhere.
+var demoSubmissions = [];
+
+// Synchronous, and FALSE unless the demo shim positively says otherwise: a
+// missing or not-yet-resolved OPERFI_DEMO must never suppress a real broker's
+// submission. boot() awaits OPERFI_DEMO.ready(email) before anything reads this.
+function _isDemo() {
+  try { return !!(window.OPERFI_DEMO && window.OPERFI_DEMO.isDemo && window.OPERFI_DEMO.isDemo()); }
+  catch (e) { return false; }
+}
+
+// The tracking row a demo submit produces, shaped like a /noa-status carrier.
+function _demoRowFromForm() {
+  var sel = document.getElementById(
+    selectedType === 'Factoring Company Change' ? 'fc-change-select' : 'noa-factoring-select');
+  var factorName = (sel && sel.options && sel.selectedIndex >= 0 && sel.options[sel.selectedIndex])
+    ? sel.options[sel.selectedIndex].text : '';
+  var d = new Date();
+  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+  // Creator's own datetime shape (dd-MMM-yyyy HH:mm:ss) -- _linkedLabel parses it.
+  var stamp = p2(d.getDate()) + '-' + MON[d.getMonth()] + '-' + d.getFullYear() + ' '
+            + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+  return {
+    vendor_id: selectedVendorId || ('demo-' + demoSubmissions.length),
+    carrier_name: selectedCarrierName || '',
+    mc: '', dot: '',
+    factoring_company: factorName,
+    pay_term: selectedPayTerm || '',
+    submission_type: selectedType || '',
+    submitted_at: stamp,
+    doc_on_file: null,
+    status: 'pending'
+  };
+}
+
 // ---- Filter / search state ----
 var activeFilter = 'all';
 var searchTerm = '';
@@ -686,9 +732,17 @@ function boot() {
   if (result && typeof result.then === 'function') {
     result.then(function(params) {
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
-      loadStatus();
-      loadCarriers();
-      loadFactoringCompanies();
+      // ready() resolves is_demo from /whoami and memoises one promise. Nothing
+      // may read _isDemo() before it settles, or the demo account takes the
+      // LIVE branch and writes a real Creator record -- which is the bug this
+      // fixes. Its failure is not allowed to stop the page: a rejected ready()
+      // leaves _isDemo() false, which is the safe direction for a real broker.
+      var go = function () { loadStatus(); loadCarriers(); loadFactoringCompanies(); };
+      if (window.OPERFI_DEMO && window.OPERFI_DEMO.ready) {
+        Promise.resolve(window.OPERFI_DEMO.ready(brokerEmail)).then(go, go);
+      } else {
+        go();
+      }
     });
   }
 }
@@ -712,12 +766,24 @@ function _linkedLabel(s) {
   return m ? (' · Linked ' + m[2] + ' ' + m[3]) : '';
 }
 
+// Demo rows go on the FRONT of whatever the status read returned, so a demo
+// submission is visible immediately and is not wiped by showList()'s re-fetch.
+// A no-op with no demo submissions, so the live path is byte-identical.
+function _withDemoRows(p) {
+  if (!demoSubmissions.length) return p;
+  var out = {};
+  for (var k in p) { if (Object.prototype.hasOwnProperty.call(p, k)) out[k] = p[k]; }
+  out.carriers = demoSubmissions.concat((p && p.carriers) || []);
+  if (typeof (p && p.total_carriers) === 'number') out.total_carriers = p.total_carriers + demoSubmissions.length;
+  return out;
+}
+
 function loadStatus() {
   if (!brokerEmail) return;
   var qs = new URLSearchParams({ email: brokerEmail });
   return fetch(BROKER_API_BASE + '/noa-status?' + qs.toString())
     .then(function(r){ return r.json(); })
-    .then(function(p){ statusPayload = p; renderStatusList(p); });
+    .then(function(p){ statusPayload = _withDemoRows(p); renderStatusList(statusPayload); });
 }
 
 // Part B: fetch factoring companies from the API and populate the selects
@@ -1360,6 +1426,17 @@ function submitNoa() {
       if (fb) fb.textContent = 'Please attach the ' + docLabel + ' document before submitting.';
       return;
     }
+  }
+  // DEMO: every check above has already run, so the demo still teaches the real
+  // flow (pick a carrier, pick a factor, attach the document). From here the
+  // demo account makes NO network call at all -- no Creator record, no upload,
+  // no engine. Deliberately not "give the demo an FVClientID": that missing id
+  // is the only thing stopping demo fixtures from reaching the real CRM, since
+  // /noa-submit goes on to write Vendors and Factoring_Vendors links.
+  if (_isDemo()) {
+    demoSubmissions.unshift(_demoRowFromForm());
+    if (typeof showTrack === 'function') showTrack();
+    return Promise.resolve();
   }
   var btn = document.getElementById('noa-submit-btn');
   var btnLabel = btn ? btn.innerHTML : '';

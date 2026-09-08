@@ -25,7 +25,11 @@ export function makeWidget() {
     beforeParse(window) {
       window.ZOHO = { CREATOR: {
         UTIL: { getInitParams: () => new Promise(() => {}) },
-        DATA: { addRecords: (a) => { addCalls.push(a); return Promise.resolve({ code: 3000, result: [{ ID: 'rec_1' }] }); } },
+        // Real Creator wire shape for a wrapped add: the id is nested at
+        // result[0].data.ID. The old fixture invented {result:[{ID}]}, which
+        // Creator never sends -- that is what hid the id-reading bug from 70
+        // passing tests.
+        DATA: { addRecords: (a) => { addCalls.push(a); return Promise.resolve({ code: 3000, result: [{ code: 3000, data: { ID: 'rec_1' }, message: 'Data Added Successfully' }] }); } },
       }};
       window.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
     }

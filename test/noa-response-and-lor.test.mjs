@@ -73,3 +73,36 @@ test('uploadNoaDoc uploads the banking document for LOR Update when bank details
   });
   assert.ok(bankUpload, 'must upload the banking document to Banking_Document_Upload');
 });
+
+// Bug E: the second Creator shape. A wrapped add returns
+// {code:3000, result:[{code:3000, data:{ID}, message:"Data Added Successfully"}]}
+// -- the id is at result[0].data.ID, NOT result[0].ID. Bug A's fix guessed the
+// wrong path for this shape (and the harness fixture invented {result:[{ID}]},
+// which Creator never sends), so a real success still showed
+// "Submission failed: Data Added Successfully" while the record WAS created,
+// orphaning it with no document and no engine run.
+test('submitNoa treats {code:3000,result:[{data:{ID}}]} as success and runs the engine', async () => {
+  const { window } = makeWidget();
+  const calls = [];
+  window.ZOHO.CREATOR.DATA.addRecords = function () {
+    return Promise.resolve({
+      code: 3000,
+      result: [{ code: 3000, data: { ID: '3773785000015541008' }, message: 'Data Added Successfully' }]
+    });
+  };
+  window.fetch = (u, opts) => { calls.push([String(u), opts]); return Promise.resolve({ json: () => Promise.resolve({ ok: true }) }); };
+  window.brokerEmail = 'b@op.com';
+  window.statusPayload = { carriers: [] };
+  window.selectedType = 'NOA Update';
+  window.selectedVendorId = '1001';
+  window.selectedDocFile = new window.File(['x'], 'noa.pdf', { type: 'application/pdf' });
+  await window.submitNoa();
+  const fb = window.document.getElementById('noa-submit-feedback').textContent;
+  assert.ok(!/failed/i.test(fb), 'must not report failure on a 3000 success: ' + fb);
+  const up = calls.find((c) => /\/upload-doc/.test(c[0]));
+  assert.ok(up, 'the NOA document must upload on success');
+  const eng = calls.find((c) => /\/noa-submit/.test(c[0]));
+  assert.ok(eng, 'the /noa-submit engine must run on success');
+  assert.equal(JSON.parse(eng[1].body).record_id, '3773785000015541008',
+    'engine must get the real record id from res.result[0].data.ID');
+});

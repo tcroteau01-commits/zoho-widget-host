@@ -1358,17 +1358,21 @@ function submitNoa() {
   var data = buildNoaPayload();
   return ZOHO.CREATOR.DATA.addRecords({ app_link_name: 'funding-portal', form_name: 'NOA_LOR_Updates', payload: { data: data } })
     .then(function(res){
-      // Creator returns a single-record add as {code:3000, data:{ID}}; only a
-      // multi-record add uses {result:[{ID}]}. Read both so a real success isn't
-      // mistaken for a failure (which also skipped the doc upload + engine).
+      // Creator returns an add in two shapes: unwrapped {code:3000, data:{ID}},
+      // or wrapped {code:3000, result:[{code:3000, data:{ID}, message}]}. In the
+      // wrapped shape the id is at result[0].data.ID -- never result[0].ID. Read
+      // every position, because missing the id reports a real success as a
+      // failure and skips the doc upload + engine, orphaning the created record.
+      var rr0 = (res && res.result && res.result[0]) || null;
       var recId = (res && res.data && res.data.ID) ||
-                  (res && res.result && res.result[0] && res.result[0].ID);
+                  (rr0 && rr0.data && rr0.data.ID) ||
+                  (rr0 && rr0.ID);
       var okCode = res && (res.code === 3000 || res.code === '3000');
       if (!okCode || !recId) {
         // Surface the real Creator error instead of faking success. Creator puts the
         // detail in different places (top-level message, per-record result error, etc.),
         // so gather what we can and include the raw response for diagnosis.
-        var rr = res && res.result && res.result[0];
+        var rr = rr0;
         var parts = [];
         if (rr && rr.message) parts.push(rr.message);
         if (rr && rr.error) parts.push(typeof rr.error === 'string' ? rr.error : JSON.stringify(rr.error));

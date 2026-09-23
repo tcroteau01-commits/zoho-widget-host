@@ -787,18 +787,36 @@ function loadStatus() {
 }
 
 // Part B: fetch factoring companies from the API and populate the selects
+// FACTGATE1. Tom, 2026-09-23: "we need to filter out Pending and Denied
+// Factors from any selection list that the broker is using."
+//
+// These used to be rendered disabled, as '⚠ NAME (Not-Verified)'. They are now
+// omitted entirely -- a disabled option still names the factor and invites the
+// broker to go asking for it.
+//
+// 🚨 THE FULL LIST STAYS IN loadedFactoringCompanies AND MUST. showOnFile()
+// resolves a carrier's CURRENT factor id by NAME out of it, because
+// Vendors.Factoring_Company is plain text and not a lookup. Filter the list
+// itself and a carrier already on a Pending or Denied factor stops resolving:
+// selectedFactoringCompanyId stays null, and LOR Update -- which has no
+// dropdown of its own -- submits with no factor. Filter the <select>, never
+// the list.
+//
+// 🚨 THIS IS NOT THE CONTROL EITHER. It is a dropdown; the factor reaches the
+// backend off the Creator record, not off this element. /noa-submit checks
+// Factor_Status server-side (_factor_status_by_crm_id) and refuses there.
+// This only stops a broker picking one by accident.
 function _fillFactoringSelect(id, companies, onchange) {
   var sel = document.getElementById(id);
   if (!sel) return;
   companies.forEach(function(fc){
+    // An allowlist, not a denylist: the Creator picklist has four values
+    // today (Approved / Pending / Denied / In-Review) and a fifth added later
+    // must not become silently selectable.
+    if (fc.factor_status !== 'Approved') { return; }
     var opt = document.createElement('option');
     opt.value = fc.id;
-    if (fc.factor_status && fc.factor_status !== 'Approved') {
-      opt.disabled = true;
-      opt.textContent = '⚠ ' + fc.name + ' (Not-Verified)';
-    } else {
-      opt.textContent = fc.name;
-    }
+    opt.textContent = fc.name;
     sel.appendChild(opt);
   });
   sel.onchange = function(){ onchange(sel.value); };

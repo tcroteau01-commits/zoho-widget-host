@@ -34,6 +34,7 @@ import json
 import os
 import pathlib
 import sys
+from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import sync_playwright
 
@@ -242,9 +243,97 @@ BULK_STATUS = {
 }
 
 
+# ── CUSTEVENT1 -- the attention bell (OperFi staff only). Tom's own framing:
+# "if a trade ref completes a form and the customer is 20 down on the list ...
+# can we make some sort of bell icon on the filter bubbles." The fixture below
+# is built to tell exactly that story rather than a synthetic one: DELTA FOODS
+# (subject sub_1) applied a week ago and has been sinking down the newest-first
+# list ever since -- 18 more recent applicants sort ahead of it -- and its
+# second trade reference just came back, a couple hours ago. IRONWOOD
+# DISTRIBUTION (sub_2) is a second, more recent unread customer, so the bell's
+# count (2) is a real distinct-customer count and not just a 1/0 toggle, and
+# clearing Delta Foods leaves the bell decremented rather than gone.
+#
+# "at" timestamps are computed at capture time (real wall clock, not the
+# hard-coded Added_Time strings below) because fmtRelative in
+# customer-approvals.html diffs against Date.now() -- a stale hard-coded hour
+# would render as a nonsensical negative age if the capture ran later in the
+# day.
+def _iso_ago(hours=0):
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+
+
+# 18 filler customers, newer than Delta Foods, none carrying an unread event --
+# what pushes Delta Foods down the list. Added_Time is hard-coded (not computed)
+# the same way `record()`'s own Added_Time default is -- parseDate's regex only
+# needs day-level precision, and 2026-09-24 is this session's real date.
+ATTN_FILLERS = [
+    ("f1", "Cascade Produce Distributors", "24-Sep-2026", "Awaiting Credit Decision", ""),
+    ("f2", "Harbor Point Foods", "24-Sep-2026", "Credit App Sent - Awaiting Customer", ""),
+    ("f3", "Summit Ridge Logistics", "23-Sep-2026", "Credit App Rec'd - Pending Review", ""),
+    ("f4", "Bluegrass Wholesale Meats", "23-Sep-2026", "Approved", "50000"),
+    ("f5", "Pinecrest Cold Chain", "23-Sep-2026", "Awaiting Credit Decision", ""),
+    ("f6", "Riverside Grocers Co-op", "22-Sep-2026", "Credit App Sent - Awaiting Customer", ""),
+    ("f7", "Lonestar Ag Supply", "22-Sep-2026", "Approved", "40000"),
+    ("f8", "Meridian Foodservice", "22-Sep-2026", "Pending Credit Application", ""),
+    ("f9", "Granite State Produce", "21-Sep-2026", "Credit App Rec'd - Pending Review", ""),
+    ("f10", "Coastal Fresh Seafood", "21-Sep-2026", "Awaiting Credit Decision", ""),
+    ("f11", "Timberline Beverage Distributors", "21-Sep-2026", "Denied", ""),
+    ("f12", "Prairie Gold Grain Co", "20-Sep-2026", "Approved", "60000"),
+    ("f13", "Redwood Valley Produce", "20-Sep-2026", "Credit App Sent - Awaiting Customer", ""),
+    ("f14", "Blue Harbor Fisheries", "20-Sep-2026", "Awaiting Credit Decision", ""),
+    ("f15", "Emerald City Wholesale", "19-Sep-2026", "Credit App Rec'd - Pending Review", ""),
+    ("f16", "Ozark Trail Foods", "19-Sep-2026", "Approved", "35000"),
+    ("f17", "Silverleaf Dairy Co-op", "18-Sep-2026", "Awaiting Credit Decision", ""),
+    ("f18", "Canyon Ridge Produce", "18-Sep-2026", "Credit App Sent - Awaiting Customer", ""),
+]
+
+
+def attn_records():
+    records = [
+        record(ID=fid, Customer_Company_Name=name, Added_Time=added,
+              Credit_Decision=decision, Credit_Limit=limit,
+              Email="ap@" + name.lower().replace(" ", "").replace(",", "") + ".test")
+        for fid, name, added, decision, limit in ATTN_FILLERS
+    ]
+    # IRONWOOD DISTRIBUTION -- sub_2, the second unread customer, 3 days old.
+    records.append(record(
+        ID="sub_2", Customer_Company_Name="Ironwood Distribution", Added_Time="21-Sep-2026",
+        Credit_Decision="Credit App Rec'd - Pending Review",
+        Email="ap@ironwooddistribution.test", Customer_Point_of_Contact="Nate Ferris"))
+    # DELTA FOODS -- sub_1, a week old, the oldest record in this list, sorted
+    # dead last by newest-first -- exactly the customer this feature exists for.
+    records.append(record(
+        ID="sub_1", Customer_Company_Name="Delta Foods", Added_Time="17-Sep-2026",
+        Credit_Decision="Credit App Rec'd - Pending Review",
+        Email="ap@deltafoods.test", Customer_Point_of_Contact="Mia Tran"))
+    return records
+
+
+def attn_events_payload():
+    return {
+        "events": [
+            {"id": "e1", "subject_id": "sub_1", "account_id": "a1",
+             "kind": "reference_completed",
+             "summary": "Trade reference 2 completed — Delta Foods",
+             "detail": {}, "at": _iso_ago(hours=2)},
+            {"id": "e3", "subject_id": "sub_2", "account_id": "a2",
+             "kind": "reference_completed",
+             "summary": "Bank reference completed — Ironwood Distribution",
+             "detail": {}, "at": _iso_ago(hours=5)},
+            {"id": "e2", "subject_id": "sub_1", "account_id": "a1",
+             "kind": "credit_app_received",
+             "summary": "Credit application received — Delta Foods",
+             "detail": {}, "at": _iso_ago(hours=24 * 7)},
+        ],
+        "total": 2,
+        "counts": {"sub_1": 2, "sub_2": 1},
+    }
+
+
 def install_routes(page, rec, status_payload, nudge, all_clients=False,
                    application_payload=None, risk_payload=None, bulk_status=None,
-                   records=None):
+                   records=None, events_payload=None):
     def handler(route):
         req = route.request
         url = req.url
@@ -264,6 +353,20 @@ def install_routes(page, rec, status_payload, nudge, all_clients=False,
         if url.startswith(BROKER_API_BASE + "/credit-app/status-bulk"):
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"applications": bulk_status or {}}))
+            return
+        if url.startswith(BROKER_API_BASE + "/customer-events/clear") and req.method == "POST":
+            # Real "Mark reviewed" behavior: 200 always -- customer-approvals.html
+            # updates its own local state (customerEventsBySubject etc.) off the
+            # status code, not this body's cleared/count values.
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps({"cleared": ["e1", "e2"], "count": 2}))
+            return
+        if url.startswith(BROKER_API_BASE + "/customer-events?"):
+            if events_payload is None:
+                route.fulfill(status=404, content_type="application/json", body="{}")
+            else:
+                route.fulfill(status=200, content_type="application/json",
+                              body=json.dumps(events_payload))
             return
         if url.startswith(BROKER_API_BASE + "/credit-app/application"):
             if application_payload is None:
@@ -421,6 +524,95 @@ def capture_list_progress(pw, viewport, viewport_label, out_name):
         browser.close()
 
 
+def capture_attention_bell(pw, viewport, viewport_label):
+    """CUSTEVENT1 -- the attention bell, five states in one page load (one
+    /customer-events fetch, matching the widget's own one-bulk-call discipline):
+      37: chip row with the bell + its count, list unfiltered
+      38: the bell active as a filter -- only the 2 unread customers show
+      39: the row marker itself, zoomed to Delta Foods' row so its summary and
+          relative time are actually readable, not just present
+      40: the detail pane's Needs Attention section + Mark reviewed
+      41: right after Mark reviewed -- Delta Foods' marker gone, bell
+          decremented 2 -> 1, filter back off so the row stays visible
+    """
+    def out(n, name):
+        p = os.path.join(OUT_DIR, "%d-attn-bell-%s-%s.png" % (n, name, viewport_label))
+        if os.path.exists(p):
+            raise SystemExit("refusing to overwrite existing file: " + p)
+        return p
+
+    out_1 = out(37, "chip-unfiltered")
+    out_2 = out(38, "filter-active")
+    out_3 = out(39, "row-marker")
+    out_4 = out(40, "panel-unread")
+    out_5 = out(41, "after-mark-reviewed")
+
+    records = attn_records()
+    browser = pw.chromium.launch()
+    try:
+        context = browser.new_context(viewport=viewport)
+        page = context.new_page()
+        install_routes(page, records[0], None, None, all_clients=True,
+                       records=records, events_payload=attn_events_payload())
+        page.goto(pathlib.Path(HTML_PATH).as_uri())
+        page.wait_for_selector(".row", timeout=15000)
+        # fetchCustomerEventsBulk fires after the list itself renders and
+        # rebuilds the chip row once it resolves -- same discipline as the
+        # progress bulk fetch above.
+        page.wait_for_selector("#attn-bell", timeout=15000)
+        page.wait_for_selector(".ca-attn-marker", timeout=15000)
+
+        # 37 -- unfiltered, bell showing its count.
+        page.screenshot(path=out_1, full_page=True)
+        print("wrote", out_1)
+
+        # 39 -- Delta Foods' own row, zoomed, still unfiltered (this is the
+        # story: 18 newer customers sort ahead of it).
+        delta_row = page.locator(".row", has_text="Delta Foods").first
+        delta_row.scroll_into_view_if_needed()
+        delta_row.screenshot(path=out_3)
+        print("wrote", out_3)
+
+        # 38 -- the bell as a filter: only the 2 unread customers remain.
+        page.click("#attn-bell")
+        page.wait_for_function(
+            "document.getElementById('attn-bell').classList.contains('active')", timeout=5000)
+        page.screenshot(path=out_2, full_page=True)
+        print("wrote", out_2)
+
+        # Toggle the filter back off before opening the panel, so Delta Foods'
+        # row is still there (marker-less) to prove state 41's claim, rather
+        # than simply vanishing from a still-filtered list.
+        page.click("#attn-bell")
+        page.wait_for_function(
+            "!document.getElementById('attn-bell').classList.contains('active')", timeout=5000)
+
+        # 40 -- open Delta Foods, the Needs Attention section + Mark reviewed.
+        delta_row = page.locator(".row", has_text="Delta Foods").first
+        delta_row.click()
+        page.wait_for_selector("#panel.show", timeout=15000)
+        page.wait_for_function(
+            "document.getElementById('ca-attn-section')"
+            " && document.getElementById('ca-attn-section').style.display !== 'none'",
+            timeout=15000)
+        page.eval_on_selector("#ca-attn-section", "el => el.scrollIntoView({block: 'start'})")
+        page.locator("#panel").screenshot(path=out_4)
+        print("wrote", out_4)
+
+        # 41 -- Mark reviewed, then close the panel to show the list underneath
+        # rather than the dimmed/blurred scrim behind an open panel.
+        page.click("#ca-attn-clear")
+        page.wait_for_function(
+            "document.getElementById('ca-attn-section').style.display === 'none'", timeout=10000)
+        page.wait_for_timeout(150)
+        page.click("#p-close")
+        page.wait_for_timeout(200)
+        page.screenshot(path=out_5, full_page=True)
+        print("wrote", out_5)
+    finally:
+        browser.close()
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     if not os.path.exists(HTML_PATH):
@@ -452,6 +644,10 @@ def main():
         capture(pw, PHONE, "phone", "34-credit-app-full-submission-staff", MIDFLIGHT,
                {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
                all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
+
+        # CUSTEVENT1 -- the attention bell (37-41).
+        capture_attention_bell(pw, DESKTOP, "desktop")
+        capture_attention_bell(pw, PHONE, "phone")
 
 
 if __name__ == "__main__":

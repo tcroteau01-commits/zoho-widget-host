@@ -453,6 +453,37 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
   .ca-app-row { grid-template-columns: 1fr; }
   .ca-app-row-action { text-align: left; }
 }
+
+/* CREDITAPP1 Task 17 — the same tracker's progress, compressed onto the LIST row
+   so a broker sees an application moving without opening the panel. One bulk call
+   (/credit-app/status-bulk) feeds every row; a row with no application renders
+   nothing extra, exactly as today. */
+.ca-app-rowprog-wrap { position: relative; display: inline-block; margin-top: 4px; outline: none; }
+.ca-app-rowprog { display: flex; align-items: center; gap: 6px; cursor: help; }
+.ca-app-rowprog-bar { width: 60px; height: 5px; background: #eee; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+.ca-app-rowprog-fill { height: 100%; background: #b86e00; border-radius: 3px; }
+.ca-app-rowprog-text { font-size: 11px; font-weight: 600; color: #b86e00; white-space: nowrap; }
+/* Done reads as done, not as a full bar that still looks like more work. */
+.ca-app-rowprog-done { margin-top: 4px; font-size: 11px; font-weight: 600; color: #1f6321; }
+/* Same amber-on-dark tip as .pill-warn, sized for a short list of named parties instead
+   of one line. Reachable without a pointer: the wrap is tabindex="0" so Tab reveals it
+   via :focus for keyboard use; on a touch row (no hover) tapping it opens the panel,
+   whose own Credit Application section (Task 16) already names these same parties. */
+.ca-app-rowprog-tip {
+  position: absolute; bottom: calc(100% + 7px); left: 0; min-width: 200px; max-width: 260px;
+  background: #8a5a00; color: #fff; padding: 8px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 500; line-height: 1.4; text-align: left; white-space: normal;
+  opacity: 0; visibility: hidden; transition: opacity .12s; pointer-events: none; z-index: 30;
+}
+.ca-app-rowprog-tip-title { font-weight: 700; margin-bottom: 3px; }
+.ca-app-rowprog-tip ul { margin: 4px 0 0; padding-left: 14px; }
+.ca-app-rowprog-tip li { margin-bottom: 2px; }
+.ca-app-rowprog-wrap:hover .ca-app-rowprog-tip,
+.ca-app-rowprog-wrap:focus .ca-app-rowprog-tip,
+.ca-app-rowprog-wrap:focus-within .ca-app-rowprog-tip { opacity: 1; visibility: visible; }
+@media (max-width: 640px) {
+  .ca-app-rowprog-tip { left: auto; right: 0; }
+}
 </style>
 </head>
 <body>
@@ -806,6 +837,7 @@ function onRecordsLoaded(records) {
   allRecords = records;
   buildChips();
   applyFilters();
+  fetchCreditAppStatusBulk();   // one call for the whole list, see CREDITAPP1 Task 17 below
 }
 window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 
@@ -996,6 +1028,7 @@ function rowHtml(r, idx) {
         // BPOC1: the approved customer that cannot actually carry a load yet.
         (needsBillingWarning(r)
           ? '<div class="billing-warn">⚠ Billing contact required to submit loads</div>' : '') +
+        caAppRowProgressHtml(r) +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Contact</div>' +
@@ -1621,6 +1654,68 @@ function caAppScheduleReenable(btn, msgEl, hoursRemaining) {
   // runner open. No-op in a real browser tab, which has no such concept.
   if (timer && typeof timer.unref === 'function') timer.unref();
 }
+
+// ── CREDITAPP1 Task 17 — the same tracker, compressed onto the LIST row ────
+// Tom: "some sort of % completion bar on the main page so they can see it's in
+// progress and entice them to click into it." One call for the whole list
+// (/credit-app/status-bulk), never one fetch per row -- the list can hold 200
+// customers. Same withholding discipline as the panel tracker above: the
+// bulk endpoint sends only completed/total/waiting_on, never a risk/fraud
+// signal, and this renders only what it receives.
+var caAppBulkStatus = {};   // submission ID -> {status, completed, total, waiting_on}
+var caAppBulkSeq = 0;
+
+function fetchCreditAppStatusBulk() {
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  if (!email) return;
+  var seq = ++caAppBulkSeq;
+  // fetch may not exist at all in some test/embed contexts; a missing global is
+  // exactly the same "show nothing extra" case as a 404 or a dropped connection.
+  try {
+    fetch(BROKER_API_BASE + '/credit-app/status-bulk?email=' + encodeURIComponent(email))
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(payload) {
+        if (seq !== caAppBulkSeq) return;                // a newer list load overtook this one
+        var apps = payload && payload.applications;
+        if (!apps || typeof apps !== 'object') return;    // 404 (flag off) / malformed: leave list as-is
+        caAppBulkStatus = apps;
+        renderList();
+      })
+      .catch(function() { /* degrade quietly -- the list stays exactly as it is today */ });
+  } catch (e) { /* fetch unavailable -- same quiet degrade */ }
+}
+if (typeof window !== 'undefined') { window.fetchCreditAppStatusBulk = fetchCreditAppStatusBulk; }
+
+// A bar with no number is a decoration; a number alone is easy to miss -- always both.
+// A completed application reads as done, not as a full bar that still looks like more
+// work. Hover/focus names who we're waiting on, straight from waiting_on, the same
+// neutral copy the panel tracker uses -- never a reason, never a risk signal.
+function caAppRowProgressHtml(r) {
+  var entry = r && r.ID ? caAppBulkStatus[r.ID] : null;
+  if (!entry || !(entry.total > 0)) return '';   // no application on file -- row untouched
+  var completed = entry.completed > 0 ? entry.completed : 0;
+  var total = entry.total;
+  if (completed >= total) {
+    return '<div class="ca-app-rowprog-done">✓ Application complete</div>';
+  }
+  var pct = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+  var waiting = (entry.waiting_on || []).filter(Boolean);
+  var tipLabel = completed + ' of ' + total + ' complete' +
+    (waiting.length ? '. Waiting on ' + waiting.join('; ') : '');
+  var tipHtml = waiting.length
+    ? '<div class="ca-app-rowprog-tip"><div class="ca-app-rowprog-tip-title">Waiting on</div><ul>' +
+        waiting.map(function(w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+  return '' +
+    '<div class="ca-app-rowprog-wrap" tabindex="0" role="group" aria-label="Credit application: ' + esc(tipLabel) + '">' +
+      '<div class="ca-app-rowprog">' +
+        '<div class="ca-app-rowprog-bar"><div class="ca-app-rowprog-fill" style="width:' + pct + '%"></div></div>' +
+        '<span class="ca-app-rowprog-text">' + completed + ' of ' + total + '</span>' +
+      '</div>' +
+      tipHtml +
+    '</div>';
+}
+if (typeof window !== 'undefined') { window.caAppRowProgressHtml = caAppRowProgressHtml; }
 
 // Wire the see-all Decision section: live "required" affordance + Save handler.
 function wireDecisionSection(rec) {

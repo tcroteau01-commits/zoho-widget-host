@@ -522,9 +522,14 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .chip.chip-bell .count { background: rgba(13,74,138,0.12); color: #0d4a8a; }
 .chip.chip-bell.active .count { background: rgba(255,255,255,0.2); color: #fff; }
 
-/* The row marker: the reason a customer moved up is visible without opening it. */
+/* The row marker: the reason a customer moved up is visible without opening it.
+   A direct child of .row (not nested in the Customer cell) so it can span every
+   column -- the row's own grid auto-placement drops it onto its own line below
+   the columns since row 1 is already full. The gap the row grid already applies
+   between rows is the only spacing it needs. */
 .ca-attn-marker {
-  margin-top: 4px; display: flex; align-items: baseline; gap: 6px;
+  grid-column: 1 / -1;
+  display: flex; align-items: baseline; gap: 6px;
   font-size: 11px; font-weight: 600; color: #0d4a8a;
 }
 .ca-attn-marker .ca-attn-bell { flex-shrink: 0; }
@@ -1123,7 +1128,6 @@ function rowHtml(r, idx) {
         // BPOC1: the approved customer that cannot actually carry a load yet.
         (needsBillingWarning(r)
           ? '<div class="billing-warn">⚠ Billing contact required to submit loads</div>' : '') +
-        customerEventRowMarkerHtml(r) +
         caAppRowProgressHtml(r) +
       '</div>' +
       '<div>' +
@@ -1140,6 +1144,10 @@ function rowHtml(r, idx) {
       '<div class="pill-cell"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + pillWarnHtml(r) + '</div>' +
       '<div>' + actionCell + '</div>' +
       '<div class="chev cell-chev">›</div>' +
+      // Full-width, beneath the columns: a direct grid child (not nested in the
+      // Customer cell) so grid-column:1/-1 can give it the whole row instead of
+      // being squeezed into the narrow Customer track.
+      customerEventRowMarkerHtml(r) +
     '</div>';
 }
 

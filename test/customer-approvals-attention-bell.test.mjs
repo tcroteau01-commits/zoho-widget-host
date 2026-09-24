@@ -215,6 +215,31 @@ test('a row with unread events carries the marker with the latest summary', asyn
   assert.match(html, /class="ca-attn-time"/, 'a relative time accompanies the summary');
 });
 
+// Legibility fix: at desktop width the marker used to live inside the narrow
+// Customer cell, where CSS truncated the summary right after the em dash --
+// clipping the exact detail (which company/reference) the marker exists to
+// show. It must instead be a direct child of .row, spanning every column via
+// grid-column:1/-1, so it gets the row's full width rather than one column's.
+test('the row marker is a direct child of .row, not nested inside the Customer cell, and spans the full grid', async () => {
+  const w = await bootSettled();
+  const d = w.document;
+  w.brokerEmail = 'staff@operfi.com';
+  w.allClients = true;
+  w.fetch = fetchStub(function() { return Promise.resolve({ ok: true, json: function() { return Promise.resolve(eventsPayload()); } }); });
+  w.onRecordsLoaded([rec({ ID: '1', Customer_Company_Name: 'Delta Foods' })]);
+  await wait(30);
+  const row = [...d.querySelectorAll('.row')].find(function(el) { return /Delta Foods/.test(el.textContent); });
+  assert.ok(row);
+  const marker = row.querySelector(':scope > .ca-attn-marker');
+  assert.ok(marker, 'the marker must be a direct child of .row so grid-column:1/-1 can reach the full row width');
+  const customerCell = [...row.children].find(function(el) { return /Customer/i.test(el.textContent); });
+  assert.ok(customerCell);
+  assert.strictEqual(customerCell.querySelector('.ca-attn-marker'), null,
+    'the marker must not still be nested inside the narrow Customer column');
+  assert.match(html, /\.ca-attn-marker\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/,
+    'the marker spans every grid column instead of sitting in one');
+});
+
 test('a row with no unread events gets no marker', async () => {
   const w = await bootSettled();
   const d = w.document;

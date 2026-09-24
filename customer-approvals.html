@@ -421,6 +421,28 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-billing-alert .cba-fix { flex-shrink:0; border:1px solid #d9ab55; background:#fff; border-radius:6px; padding:5px 12px; font-size:11px; font-weight:700; color:#8a5a00; cursor:pointer; font-family:inherit; }
 .ca-billing-alert .cba-fix:hover { background:#fffaf0; border-color:#c2942f; }
 
+/* CREDITAPP1 — Application Details (every broker) + full submission (OperFi staff only) */
+.ca-app-doc-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #b86e00; margin: 18px 0 10px; }
+.ca-app-doc-head:first-child { margin-top: 0; }
+.ca-app-detail-refs { display: flex; flex-direction: column; gap: 8px; }
+.ca-app-detail-ref { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 10px; align-items: center; padding: 8px 10px; background: #fafafa; border: 1px solid #f0efe9; border-radius: 8px; font-size: 12px; }
+.ca-app-detail-ref-slot { font-weight: 700; color: #272727; }
+.ca-app-detail-ref-who { color: #444; }
+.ca-app-detail-ref-state { font-weight: 600; text-align: right; white-space: nowrap; }
+.ca-app-detail-ref-addr { grid-column: 1 / -1; color: #888; font-size: 11px; }
+.ca-app-staff-ref { border: 1px solid #f0efe9; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; background: #fafafa; }
+.ca-app-staff-ref-head { font-size: 12px; font-weight: 700; color: #272727; margin-bottom: 8px; }
+.ca-app-staff-risk { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px; margin-bottom: 8px; background: #eee; color: #777; }
+.ca-app-staff-risk-high { background:#fdecea; color:#c62828; }
+.ca-app-staff-risk-medium { background:#fff4e0; color:#b25e00; }
+.ca-app-staff-risk-low { background:#e8f5e9; color:#2e7d32; }
+.ca-app-staff-aging { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 8px; margin-top: 10px; }
+.ca-app-staff-aging-cell { background: #fff; border: 1px solid #f0efe9; border-radius: 6px; padding: 6px 8px; }
+@media (max-width: 640px) {
+  .ca-app-detail-ref { grid-template-columns: 1fr; }
+  .ca-app-detail-ref-state { text-align: left; }
+}
+
 /* CREDITAPP1 — the broker's own Credit Application tracker (Task 16). Reuses the
    panel-section shell; stays hidden until /credit-app/status answers 200 with at
    least one party, so an application that predates this build (or the feature
@@ -559,6 +581,13 @@ var allRecords = [];
 Object.defineProperty(window, 'allRecords', { get: function(){ return allRecords; }, configurable: true });  // exposed for tests
 var filteredRecords = [];
 var allClients = false;       // true when backend returns see-all (admin/credit, not impersonating)
+// get+set (unlike allRecords' read-only exposure above): fetchFraudCheck and
+// fetchCreditAppRisk gate an OperFi-staff-only fetch on this closure variable
+// directly (never window.allClients -- there is no production code path that
+// sets it), so a test needs a way to flip the real value fetchAll would set
+// from payload.all_clients without driving a full /broker-report round trip.
+Object.defineProperty(window, 'allClients',
+  { get: function(){ return allClients; }, set: function(v){ allClients = v; }, configurable: true });  // exposed for tests
 var currentStatus = 'all';
 
 // The owning broker is the dotted traversal field "Contact.Account_Name" (a lookup object),
@@ -1146,6 +1175,20 @@ function renderPanel() {
       '</div>';
   }
 
+  // CREDITAPP1 — full submission, OperFi staff only. Same allClients gate as
+  // the Domain Check section above: absent from the DOM entirely for a
+  // non-staff viewer, not merely hidden, so there is nothing for
+  // fetchCreditAppRisk to find and no way this ever fires its fetch for a
+  // broker.
+  var caAppStaffSectionHtml = '';
+  if (allClients) {
+    caAppStaffSectionHtml = '' +
+      '<div class="panel-section" id="ca-app-staff-section" style="display:none;">' +
+        '<div class="panel-section-title">Full Submission (OperFi Staff)</div>' +
+        '<div id="ca-app-staff-body"></div>' +
+      '</div>';
+  }
+
   var html = '' +
     '<div class="panel-top">' +
       '<span class="nav-btn' + prevDis + '" id="p-prev" title="Previous (k)">‹</span>' +
@@ -1202,6 +1245,20 @@ function renderPanel() {
           '<button type="button" class="btn" id="ca-app-nudge-all"></button>' +
         '</div>' +
       '</div>' +
+
+      // CREDITAPP1 — Application Details, every broker. GET /credit-app/application
+      // returns only what is operationally the client's own (see
+      // fetchCreditAppApplication's comment); hidden until that fills it, stays
+      // hidden on a 404 (flag off) or an application that predates this build,
+      // same discipline as the tracker section above.
+      '<div class="panel-section" id="ca-app-detail-section" style="display:none;">' +
+        '<div class="panel-section-title">Application Details</div>' +
+        '<div id="ca-app-detail-body"></div>' +
+      '</div>' +
+
+      // CREDITAPP1 — full submission, OperFi staff only (empty string for a
+      // non-staff viewer -- see caAppStaffSectionHtml above).
+      caAppStaffSectionHtml +
 
       // Customer Company
       '<div class="panel-section">' +
@@ -1285,6 +1342,8 @@ function renderPanel() {
   wireDecisionSection(r);
   fetchFraudCheck(r);
   fetchCreditAppStatus(r);
+  fetchCreditAppApplication(r);
+  fetchCreditAppRisk(r);
   wireBillingEdit(r);
   wireDocOpen(panel);   // delegated: open Supporting Documents in the shared viewer
 }
@@ -1716,6 +1775,350 @@ function caAppRowProgressHtml(r) {
     '</div>';
 }
 if (typeof window !== 'undefined') { window.caAppRowProgressHtml = caAppRowProgressHtml; }
+
+// ── CREDITAPP1 — Application Details (every broker) + full submission ──────
+// Two more reads layered on the same submission the tracker above already
+// names. /credit-app/application is the broker's own narrower read -- the
+// server enforces the line (never EIN, owners, formation detail, the bank
+// officer, any reference's answer, risk signals, or the PDF -- see
+// credit_app_routes.py's _client_application_payload docstring) and this
+// renders only the fields that payload sends, exactly the discipline the
+// tracker above already follows for its own neutral copy. /credit-app/risk
+// is OperFi-only and fetched ONLY when allClients is true -- the same
+// client-side gate fetchFraudCheck above already uses ahead of its own
+// staff-only endpoint. The server holds the real boundary (is_operfi_admin,
+// checked first thing on that route); this gate just means a broker's
+// account never makes the round trip it would 403 on anyway.
+
+// Creator's r.Address shape (address_line_1/district_city/state_province/
+// postal_Code) does not apply here -- the credit-app form stores
+// {line1, suite, city, state, postal, country, formatted}, its own already-
+// joined display string. Prefer `formatted`; fall back to building one for
+// an older/partial record that predates it.
+function caAppFormatAddress(addr) {
+  if (!addr) return '';
+  if (typeof addr === 'string') return addr;
+  if (addr.formatted) return addr.formatted;
+  var parts = [];
+  if (addr.line1) parts.push(addr.line1);
+  var cityState = [];
+  if (addr.city) cityState.push(addr.city);
+  if (addr.state) cityState.push(addr.state);
+  var cityStateStr = cityState.join(', ');
+  if (addr.postal) cityStateStr += (cityStateStr ? ' ' : '') + addr.postal;
+  if (cityStateStr) parts.push(cityStateStr);
+  return parts.join(', ');
+}
+if (typeof window !== 'undefined') { window.caAppFormatAddress = caAppFormatAddress; }
+
+var caAppDetailFetchSeq = 0;
+
+function fetchCreditAppApplication(r) {
+  var section = document.getElementById('ca-app-detail-section');
+  if (!section) return;
+  section.style.display = 'none';   // hide any previous record's block immediately
+  if (!r || !r.ID) return;
+  var seq = ++caAppDetailFetchSeq;
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  var qs = 'email=' + encodeURIComponent(email) + '&submission_id=' + encodeURIComponent(r.ID);
+  fetch(BROKER_API_BASE + '/credit-app/application?' + qs)
+    .then(function(res) { return res.ok ? res.json() : null; })
+    .then(function(payload) {
+      if (seq !== caAppDetailFetchSeq) return;          // a newer record opened meanwhile
+      if (!payload) return;                              // 404 (flag off) / non-200: stay hidden
+      renderCreditAppDetailSection(payload);
+    })
+    .catch(function() { /* degrade quietly -- no block, not a broken panel */ });
+}
+if (typeof window !== 'undefined') { window.fetchCreditAppApplication = fetchCreditAppApplication; }
+
+// Reads like a document: company, then billing, then what they asked for,
+// then who's vouching, then who signed -- never a risk signal, a score, or
+// anything that implies a reference's legitimacy (that split lives on the
+// server; see _client_application_payload's exclusion list). Billing
+// instructions is free text and may be long -- .note-block wraps
+// (white-space: pre-wrap), never truncates.
+function renderCreditAppDetailSection(payload) {
+  var section = document.getElementById('ca-app-detail-section');
+  var body = document.getElementById('ca-app-detail-body');
+  if (!section || !body) return;
+  var company = payload.company || {};
+  var billing = payload.billing || {};
+  var credit = payload.credit || {};
+  var bank = payload.bank || {};
+  var references = payload.references || [];
+  var signer = payload.signer || {};
+  var addr = caAppFormatAddress(company.address);
+
+  var html = '';
+  html += '<div class="ca-app-doc-head">Company</div>' +
+    '<div class="field-grid">' +
+      field('Legal Name', company.name) +
+      field('DBA', company.dba) +
+      field('Business Type', company.business_type) +
+      field('Phone', formatPhone(company.phone)) +
+      fieldLink('Website', company.website) +
+      field('Year Established', company.year_established) +
+      field('Parent / Affiliates', company.parent_companies) +
+      field('MC Number', company.mc) +
+      field('DOT Number', company.dot) +
+      field('Currently Factoring', company.currently_factoring) +
+    '</div>' +
+    (addr ? '<div style="margin-top: 14px;">' + addressFieldHtml(addr) + '</div>' : '');
+
+  html += '<div class="ca-app-doc-head">Billing</div>' +
+    '<div class="field-grid">' +
+      field('Billing Contact', billing.contact_name) +
+      field('Billing Phone', formatPhone(billing.phone)) +
+      field('AP / Invoice Email', billing.ap_email) +
+    '</div>' +
+    (billing.instructions
+      ? '<div style="margin-top: 14px;"><div class="field-label" style="margin-bottom: 6px;">Billing Instructions</div>' +
+        '<div class="note-block">' + esc(billing.instructions) + '</div></div>'
+      : '');
+
+  html += '<div class="ca-app-doc-head">Requested</div>' +
+    '<div class="field-grid">' +
+      field('Requested Credit Limit', credit.requested_limit ? fmtMoney(parseMoney(credit.requested_limit)) : '') +
+      field('Expected Monthly Volume', credit.expected_monthly_volume ? fmtMoney(parseMoney(credit.expected_monthly_volume)) : '') +
+      field('Bank', bank.name) +
+    '</div>';
+
+  if (references.length) {
+    html += '<div class="ca-app-doc-head">References</div>' +
+      '<div class="ca-app-detail-refs">' +
+      references.map(function(ref) {
+        var st = caAppPartyState(ref.status);
+        return '<div class="ca-app-detail-ref">' +
+          '<div class="ca-app-detail-ref-slot">' + esc(caAppSlotLabel(ref.slot)) + '</div>' +
+          '<div class="ca-app-detail-ref-who">' + esc([ref.company, ref.contact_name].filter(Boolean).join(', ') || '—') + '</div>' +
+          '<div class="ca-app-detail-ref-state ca-app-state-' + st.cls + '">' + esc(st.label) + '</div>' +
+        '</div>';
+      }).join('') +
+      '</div>';
+  }
+
+  html += '<div class="ca-app-doc-head">Signed</div>' +
+    '<div class="field-grid">' +
+      field('Signed By', [signer.name, signer.title].filter(Boolean).join(', ')) +
+      field('Signer Email', signer.email) +
+      field('Signed', payload.submitted_at ? fmtDateTime(parseDate(payload.submitted_at)) : '') +
+    '</div>';
+
+  body.innerHTML = html;
+  section.style.display = '';
+}
+if (typeof window !== 'undefined') { window.renderCreditAppDetailSection = renderCreditAppDetailSection; }
+
+var caAppRiskFetchSeq = 0;
+
+function fetchCreditAppRisk(r) {
+  // Client-side mirror of the server's real boundary (is_operfi_admin on
+  // /credit-app/risk itself) -- same gate, same reasoning, as fetchFraudCheck
+  // above. A non-staff viewer never reaches the fetch: the section this
+  // would fill isn't even in the DOM for them (caAppStaffSectionHtml above),
+  // so this returns before it can look for it.
+  if (!allClients) return;
+  var section = document.getElementById('ca-app-staff-section');
+  if (!section) return;
+  section.style.display = 'none';
+  if (!r || !r.ID) return;
+  var seq = ++caAppRiskFetchSeq;
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  var qs = 'email=' + encodeURIComponent(email) + '&submission_id=' + encodeURIComponent(r.ID);
+  fetch(BROKER_API_BASE + '/credit-app/risk?' + qs)
+    .then(function(res) { return res.ok ? res.json() : null; })   // 403/404/non-200: stay hidden, pane stays normal
+    .then(function(payload) {
+      if (seq !== caAppRiskFetchSeq) return;
+      if (!payload) return;
+      renderCreditAppStaffSection(payload);
+    })
+    .catch(function() { /* degrade quietly -- no staff block, not a broken panel */ });
+}
+if (typeof window !== 'undefined') { window.fetchCreditAppRisk = fetchCreditAppRisk; }
+
+// One reference's (or the bank officer's) full survey answer -- terms,
+// limits, balances, the aging split, rating, comments, the rep, verified
+// email -- plus whatever risk signals ran against it. OperFi-only payload;
+// this function is never called unless renderCreditAppStaffSection was, and
+// that only happens behind the allClients-gated fetch above.
+function caAppReferenceAnswerHtml(p) {
+  var resp = p.response;
+  var risk = p.risk;
+  var st = caAppPartyState(p.status);
+  var html = '<div class="ca-app-staff-ref">' +
+    '<div class="ca-app-staff-ref-head">' + esc(caAppSlotLabel(p.slot)) +
+      (p.company ? ' — ' + esc(p.company) : '') +
+      ' <span class="ca-app-state-' + st.cls + '">(' + esc(st.label) + ')</span>' +
+    '</div>';
+  if (risk) {
+    var level = risk.level || 'unknown';
+    html += '<div class="ca-app-staff-risk ca-app-staff-risk-' + esc(level) + '">Risk: ' + esc(level) + '</div>';
+    if (risk.signals && risk.signals.length) {
+      html += '<ul class="ca-fraud-reasons">' + risk.signals.map(function(s) {
+        return '<li>' + esc(s.code || '') + (s.detail ? ': ' + esc(s.detail) : '') + '</li>';
+      }).join('') + '</ul>';
+    }
+  }
+  if (resp) {
+    html += '<div class="field-grid">' +
+      field('Legal Name on File', resp.legal_name) +
+      field('Customer Since', resp.customer_since) +
+      field('Credit Limit', resp.credit_limit) +
+      field('High Credit', resp.high_credit) +
+      field('Rating', resp.rating) +
+      field('Verified Email', resp.verified_email) +
+      (p.slot === 'bank'
+        ? field('Financing Type', resp.financing_type) + field('Secured By', resp.secured_by) +
+          field('Avg Monthly Balance', resp.avg_monthly_balance) + field('Utilization', resp.utilisation)
+        : field('Net Terms', resp.net_terms) + field('Last Sale', resp.last_sale) + field('Balance', resp.balance)) +
+    '</div>';
+    var aging = resp.aging;
+    if (p.slot !== 'bank' && aging && Object.keys(aging).length) {
+      html += '<div class="ca-app-doc-head" style="margin:14px 0 8px;">Aging</div>' +
+        '<div class="ca-app-staff-aging">' +
+        Object.keys(aging).map(function(k) {
+          return '<div class="ca-app-staff-aging-cell"><div class="field-label">' + esc(k) + '</div>' +
+            '<div class="field-val">' + esc(String(aging[k])) + '</div></div>';
+        }).join('') +
+        '</div>';
+    }
+    if (resp.comments) {
+      html += '<div style="margin-top: 10px;"><div class="field-label" style="margin-bottom: 6px;">Comments</div>' +
+        '<div class="note-block">' + esc(resp.comments) + '</div></div>';
+    }
+    var rep = resp.rep;
+    if (rep && (rep.name || rep.email)) {
+      html += '<div class="field-grid" style="margin-top: 10px;">' +
+        field('Rep', rep.name) + field('Rep Title', rep.title) +
+        field('Rep Phone', formatPhone(rep.phone)) + field('Rep Email', rep.email) +
+      '</div>';
+    }
+  } else {
+    html += '<div class="doc-empty">No response yet.</div>';
+  }
+  html += '</div>';
+  return html;
+}
+if (typeof window !== 'undefined') { window.caAppReferenceAnswerHtml = caAppReferenceAnswerHtml; }
+
+// The full submission, OperFi-only: everything /credit-app/application
+// withholds from the broker (EIN, formation, owners, the bank officer,
+// every reference's actual answer, risk signals), plus whether a signed PDF
+// exists and where to retrieve it. `payload` is /credit-app/risk's response
+// body in full -- {status, parties, customer_verification, application, pdf}.
+function renderCreditAppStaffSection(payload) {
+  var section = document.getElementById('ca-app-staff-section');
+  var body = document.getElementById('ca-app-staff-body');
+  if (!section || !body) return;
+  var app = payload.application || {};
+  var company = app.company || {};
+  var billing = app.billing || {};
+  var credit = app.credit || {};
+  var owners = app.owners || [];
+  var bank = app.bank || {};
+  var references = app.references || [];
+  var signer = app.signer || {};
+  var addr = caAppFormatAddress(company.address);
+
+  var html = '';
+  html += '<div class="ca-app-doc-head">Applicant Detail</div>' +
+    '<div class="field-grid">' +
+      field('Legal Name', company.name) +
+      field('DBA', company.dba) +
+      field('EIN', company.ein) +
+      field('Business Type', app.business_type) +
+      field('Formation State', company.formation_state) +
+      field('Formation Date', company.formation_date) +
+      field('Year Established', company.year_established) +
+      fieldLink('Website', company.website) +
+      field('Parent / Affiliates', company.parent_companies) +
+      field('MC Number', company.mc) +
+      field('DOT Number', company.dot) +
+      field('Commodities', company.commodities) +
+      field('Currently Factoring', company.currently_factoring) +
+      field('Phone', formatPhone(company.phone)) +
+      field('Email', company.email) +
+    '</div>' +
+    (addr ? '<div style="margin-top: 14px;">' + addressFieldHtml(addr) + '</div>' : '');
+
+  if (owners.length) {
+    html += '<div class="ca-app-doc-head">Owners</div>' +
+      '<div class="ca-app-detail-refs">' + owners.map(function(o) {
+        return '<div class="ca-app-detail-ref">' +
+          '<div class="ca-app-detail-ref-who">' + esc(o.name || '—') + (o.title ? ' — ' + esc(o.title) : '') + '</div>' +
+          '<div class="ca-app-detail-ref-state">' + esc(o.percentage ? String(o.percentage) + '%' : '') + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+  }
+
+  html += '<div class="ca-app-doc-head">Billing</div>' +
+    '<div class="field-grid">' +
+      field('Billing Contact', billing.contact_name) +
+      field('Billing Phone', formatPhone(billing.phone)) +
+      field('AP / Invoice Email', billing.ap_email) +
+    '</div>' +
+    (billing.instructions
+      ? '<div style="margin-top: 14px;"><div class="field-label" style="margin-bottom: 6px;">Billing Instructions</div>' +
+        '<div class="note-block">' + esc(billing.instructions) + '</div></div>'
+      : '');
+
+  html += '<div class="ca-app-doc-head">Requested</div>' +
+    '<div class="field-grid">' +
+      field('Requested Credit Limit', credit.requested_limit ? fmtMoney(parseMoney(credit.requested_limit)) : '') +
+      field('Expected Monthly Volume', credit.expected_monthly_volume ? fmtMoney(parseMoney(credit.expected_monthly_volume)) : '') +
+    '</div>';
+
+  html += '<div class="ca-app-doc-head">Bank Reference (Officer)</div>' +
+    '<div class="field-grid">' +
+      field('Bank', bank.name) + field('Officer', bank.officer) +
+      field('Officer Phone', formatPhone(bank.phone)) + field('Officer Email', bank.email) +
+    '</div>';
+
+  if (app.risk_disclosure) {
+    html += '<div class="ca-app-doc-head">Risk Disclosure</div>' +
+      '<div class="note-block">' + esc(app.risk_disclosure) + '</div>';
+  }
+
+  if (references.length) {
+    html += '<div class="ca-app-doc-head">Reference Contact Records</div>' +
+      '<div class="ca-app-detail-refs">' + references.map(function(ref, i) {
+        var addrStr = caAppFormatAddress(ref.address);
+        return '<div class="ca-app-detail-ref">' +
+          '<div class="ca-app-detail-ref-slot">Trade Reference ' + (i + 1) + '</div>' +
+          '<div class="ca-app-detail-ref-who">' + esc([ref.company, ref.contact].filter(Boolean).join(', ') || '—') + '</div>' +
+          '<div class="ca-app-detail-ref-state">' + esc([formatPhone(ref.phone), ref.email].filter(Boolean).join(' · ')) + '</div>' +
+          (addrStr ? '<div class="ca-app-detail-ref-addr">' + esc(addrStr) + '</div>' : '') +
+        '</div>';
+      }).join('') + '</div>';
+  }
+
+  html += '<div class="ca-app-doc-head">Signed</div>' +
+    '<div class="field-grid">' +
+      field('Signed By', [signer.name, signer.title].filter(Boolean).join(', ')) +
+      field('Signer Phone', formatPhone(signer.phone)) +
+      field('Signer Email', signer.email) +
+      field('Signed', app.submitted_at ? fmtDateTime(parseDate(app.submitted_at)) : '') +
+    '</div>';
+
+  var parties = payload.parties || [];
+  if (parties.length) {
+    html += '<div class="ca-app-doc-head">Reference Answers</div>' +
+      parties.map(caAppReferenceAnswerHtml).join('');
+  }
+
+  if (payload.pdf && payload.pdf.exists && payload.pdf.retrieval_path) {
+    var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+    var sep = payload.pdf.retrieval_path.indexOf('?') === -1 ? '?' : '&';
+    var pdfUrl = BROKER_API_BASE + payload.pdf.retrieval_path + sep + 'email=' + encodeURIComponent(email);
+    html += '<div class="ca-app-doc-head">Signed Application</div>' +
+      '<div class="field"><a href="' + esc(pdfUrl) + '" target="_blank" rel="noopener">View signed PDF</a></div>';
+  }
+
+  body.innerHTML = html;
+  section.style.display = '';
+}
+if (typeof window !== 'undefined') { window.renderCreditAppStaffSection = renderCreditAppStaffSection; }
 
 // Wire the see-all Decision section: live "required" affordance + Save handler.
 function wireDecisionSection(rec) {

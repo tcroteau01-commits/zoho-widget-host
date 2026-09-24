@@ -512,6 +512,36 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
      has room for on either side. */
   .ca-app-rowprog-tip { min-width: 0; max-width: calc(100vw - 48px); }
 }
+
+/* CUSTEVENT1 — the attention bell (OperFi staff only). Blue, matching the "needs
+   review" language this screen already uses for app-rcvd/boost, not the denied red
+   or the billing amber -- both of those mean something else here. */
+.chip.chip-bell { border-color: #b8d4f0; background: #eaf3fc; color: #0d4a8a; }
+.chip.chip-bell:hover { border-color: #8db8e0; }
+.chip.chip-bell.active { background: #0d4a8a; color: #fff; border-color: #0d4a8a; }
+.chip.chip-bell .count { background: rgba(13,74,138,0.12); color: #0d4a8a; }
+.chip.chip-bell.active .count { background: rgba(255,255,255,0.2); color: #fff; }
+
+/* The row marker: the reason a customer moved up is visible without opening it. */
+.ca-attn-marker {
+  margin-top: 4px; display: flex; align-items: baseline; gap: 6px;
+  font-size: 11px; font-weight: 600; color: #0d4a8a;
+}
+.ca-attn-marker .ca-attn-bell { flex-shrink: 0; }
+.ca-attn-marker .ca-attn-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ca-attn-marker .ca-attn-time { color: #888; font-weight: 500; flex-shrink: 0; }
+
+/* The detail-pane list of unread events + Mark reviewed, reusing the .dec-row/.dec-msg
+   shell the decision section already established. */
+.ca-attn-events { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.ca-attn-event { background: #eaf3fc; border: 1px solid #b8d4f0; border-radius: 8px; padding: 10px 12px; }
+.ca-attn-event-summary { font-size: 13px; font-weight: 600; color: #272727; }
+.ca-attn-event-time { font-size: 11px; color: #888; margin-top: 2px; }
+
+@media (max-width: 640px) {
+  .ca-attn-marker { flex-wrap: wrap; }
+  .ca-attn-marker .ca-attn-summary { white-space: normal; }
+}
 </style>
 </head>
 <body>
@@ -611,6 +641,14 @@ var currentSearch = '';
 var currentSort = 'newest';
 var openIndex = -1;
 var currentLoadId = 0;
+
+// CUSTEVENT1 — the attention bell's state. Staff only (see fetchCustomerEventsBulk's
+// allClients gate); stays at its quiet defaults for every broker viewer.
+var customerEventsTotal = 0;          // distinct customers with unread events
+var customerEventsCounts = {};        // subject_id -> event count, straight from the payload
+var customerEventsBySubject = {};     // subject_id -> [events], newest first (server order)
+var attentionFilterActive = false;    // the bell chip's own on/off, independent of currentStatus
+var customerEventsSeq = 0;            // guards against a stale bulk response overtaking a newer load
 
 // ── Status mapping ────────────────────────────────────────────────────────
 // Maps Credit_Decision → { key, label, pill }
@@ -873,6 +911,7 @@ function onRecordsLoaded(records) {
   buildChips();
   applyFilters();
   fetchCreditAppStatusBulk();   // one call for the whole list, see CREDITAPP1 Task 17 below
+  fetchCustomerEventsBulk();    // one call for the whole list, see CUSTEVENT1 below
 }
 window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 
@@ -892,6 +931,24 @@ function buildChips() {
     { key: 'expired',    label: 'Expired',      count: counts['expired'] || 0 }
   ];
   chips.innerHTML = '';
+
+  // CUSTEVENT1 — the attention bell. Quiet when there is nothing: it renders nothing
+  // at all (not merely hidden) with no unread events, so the toolbar looks exactly as
+  // it does today for a non-staff viewer or a staff viewer with an empty queue.
+  if (allClients && customerEventsTotal > 0) {
+    var bell = document.createElement('span');
+    bell.className = 'chip chip-bell' + (attentionFilterActive ? ' active' : '');
+    bell.id = 'attn-bell';
+    bell.title = 'Customers with unread activity since you last cleared them';
+    bell.innerHTML = '🔔 Needs Attention <span class="count">' + customerEventsTotal + '</span>';
+    bell.addEventListener('click', function() {
+      attentionFilterActive = !attentionFilterActive;
+      buildChips();
+      applyFilters();
+    });
+    chips.appendChild(bell);
+  }
+
   def.forEach(function(c) {
     if (c.key === 'expired' && c.count === 0) return;  // hide rare chip when empty
     var el = document.createElement('span');
@@ -919,6 +976,9 @@ function countByStatus(records) {
 
 function applyFilters() {
   filteredRecords = sortRecords(allRecords).filter(function(r) {
+    // CUSTEVENT1 — the bell as a filter. Lifts a customer with unread activity above
+    // twenty newer, unchanged ones, independent of the status chip in effect.
+    if (attentionFilterActive && !hasUnreadEvents(r)) return false;
     if (currentStatus !== 'all') {
       var k = statusMeta(r).key;
       // "Awaiting" chip groups awaiting + pending-app
@@ -1063,6 +1123,7 @@ function rowHtml(r, idx) {
         // BPOC1: the approved customer that cannot actually carry a load yet.
         (needsBillingWarning(r)
           ? '<div class="billing-warn">⚠ Billing contact required to submit loads</div>' : '') +
+        customerEventRowMarkerHtml(r) +
         caAppRowProgressHtml(r) +
       '</div>' +
       '<div>' +
@@ -1181,6 +1242,23 @@ function renderPanel() {
       '</div>';
   }
 
+  // CUSTEVENT1 — the unread events for this customer + Mark reviewed. Same allClients
+  // gate as the sections below: absent from the DOM entirely for a non-staff viewer.
+  // Filled from the ONE bulk fetch onRecordsLoaded already made -- opening a record
+  // makes no new call of its own, so opening it can never itself clear anything.
+  var attnSectionHtml = '';
+  if (allClients) {
+    attnSectionHtml = '' +
+      '<div class="panel-section" id="ca-attn-section" style="display:none;">' +
+        '<div class="panel-section-title">Needs Attention</div>' +
+        '<div class="ca-attn-events" id="ca-attn-events"></div>' +
+        '<div class="dec-row" id="ca-attn-row" style="display:none;">' +
+          '<div class="dec-msg" id="ca-attn-msg"></div>' +
+          '<button class="btn primary" id="ca-attn-clear" type="button">Mark reviewed</button>' +
+        '</div>' +
+      '</div>';
+  }
+
   // CREDITAPP1 — full submission, OperFi staff only. Same allClients gate as
   // the Domain Check section above: absent from the DOM entirely for a
   // non-staff viewer, not merely hidden, so there is nothing for
@@ -1212,6 +1290,10 @@ function renderPanel() {
       '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + pillWarnHtml(r) + '</div>' +
     '</div>' +
     '<div class="panel-body">' +
+      // CUSTEVENT1 — first thing a reviewer sees: the reason this customer got pulled
+      // up, if any. Empty string for a non-staff viewer (attnSectionHtml above).
+      attnSectionHtml +
+
       fraudSectionHtml +
 
       // Make a Decision (see-all / role context only; empty string otherwise)
@@ -1350,6 +1432,7 @@ function renderPanel() {
   fetchCreditAppStatus(r);
   fetchCreditAppApplication(r);
   fetchCreditAppRisk(r);
+  renderCustomerEventsSection(r);
   wireBillingEdit(r);
   wireDocOpen(panel);   // delegated: open Supporting Documents in the shared viewer
 }
@@ -1781,6 +1864,177 @@ function caAppRowProgressHtml(r) {
     '</div>';
 }
 if (typeof window !== 'undefined') { window.caAppRowProgressHtml = caAppRowProgressHtml; }
+
+// ── CUSTEVENT1 — the attention bell (OperFi staff only) ─────────────────────
+// Tom, 2026-09-24: "if a trade ref completes a form and the customer is 20 down on
+// the list ... can we make some sort of bell icon on the filter bubbles so our
+// credit guy knows there was an update." One bulk call per list load
+// (/customer-events?scope=operfi), same discipline as fetchCreditAppStatusBulk
+// above: never a fetch per row, and any failure (403/404/malformed/network) leaves
+// the screen exactly as it renders today. Staff only -- gated on allClients before
+// the fetch is ever made, the same client-side mirror fetchCreditAppRisk uses
+// ahead of its own staff-only endpoint; the server holds the real boundary.
+
+function hasUnreadEvents(r) {
+  return !!(r && r.ID && customerEventsBySubject[r.ID] && customerEventsBySubject[r.ID].length);
+}
+if (typeof window !== 'undefined') { window.hasUnreadEvents = hasUnreadEvents; }
+
+function fetchCustomerEventsBulk() {
+  if (!allClients) return;
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  if (!email) return;
+  var seq = ++customerEventsSeq;
+  // fetch may not exist at all in some test/embed contexts -- same "show nothing
+  // extra" outcome as a 404 or a dropped connection.
+  try {
+    fetch(BROKER_API_BASE + '/customer-events?email=' + encodeURIComponent(email) + '&scope=operfi')
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(payload) {
+        if (seq !== customerEventsSeq) return;   // a newer list load overtook this one
+        if (!payload || typeof payload !== 'object' || !Array.isArray(payload.events)) return;  // 403/404/malformed: leave as-is
+        applyCustomerEventsPayload(payload);
+      })
+      .catch(function() { /* degrade quietly -- the bell simply never appears */ });
+  } catch (e) { /* fetch unavailable -- same quiet degrade */ }
+}
+if (typeof window !== 'undefined') { window.fetchCustomerEventsBulk = fetchCustomerEventsBulk; }
+
+function applyCustomerEventsPayload(payload) {
+  customerEventsTotal = payload.total || 0;
+  customerEventsCounts = payload.counts || {};
+  var bySubject = {};
+  (payload.events || []).forEach(function(ev) {
+    if (!ev || !ev.subject_id) return;
+    if (!bySubject[ev.subject_id]) bySubject[ev.subject_id] = [];
+    bySubject[ev.subject_id].push(ev);   // server sends newest first; order is preserved
+  });
+  customerEventsBySubject = bySubject;
+  if (customerEventsTotal <= 0) attentionFilterActive = false;  // the bell vanished -- stop filtering on it
+  buildChips();
+  applyFilters();
+}
+if (typeof window !== 'undefined') { window.applyCustomerEventsPayload = applyCustomerEventsPayload; }
+
+// The row marker: the most recent event for this customer + a relative time, so the
+// reason it got pulled up the list is visible without opening it. Same withholding
+// discipline as caAppRowProgressHtml above -- only what the payload sent.
+function customerEventRowMarkerHtml(r) {
+  if (!allClients) return '';
+  var list = r && r.ID ? customerEventsBySubject[r.ID] : null;
+  if (!list || !list.length) return '';
+  var latest = list[0];
+  var when = latest.at ? fmtRelative(parseDate(latest.at)) : '';
+  return '' +
+    '<div class="ca-attn-marker">' +
+      '<span class="ca-attn-bell" aria-hidden="true">🔔</span>' +
+      '<span class="ca-attn-summary">' + esc(latest.summary || '') + '</span>' +
+      (when ? '<span class="ca-attn-time">' + esc(when) + '</span>' : '') +
+    '</div>';
+}
+if (typeof window !== 'undefined') { window.customerEventRowMarkerHtml = customerEventRowMarkerHtml; }
+
+// The detail pane's list of unread events for the open customer, filled from the
+// bulk fetch above -- opening a record makes no call of its own, so opening it can
+// never itself clear anything. Absent from the DOM for a non-staff viewer
+// (attnSectionHtml's own allClients gate); hidden here when this customer has
+// nothing unread, same discipline as every other optional panel section.
+function renderCustomerEventsSection(r) {
+  var section = document.getElementById('ca-attn-section');
+  if (!section) return;
+  var body = document.getElementById('ca-attn-events');
+  var row = document.getElementById('ca-attn-row');
+  var msg = document.getElementById('ca-attn-msg');
+  var clearBtn = document.getElementById('ca-attn-clear');
+  if (msg) { msg.textContent = ''; msg.className = 'dec-msg'; }
+  var list = r && r.ID ? customerEventsBySubject[r.ID] : null;
+  if (!list || !list.length) {
+    section.style.display = 'none';
+    return;
+  }
+  body.innerHTML = list.map(function(ev) {
+    var when = ev.at ? fmtDateTime(parseDate(ev.at)) : '';
+    return '<div class="ca-attn-event">' +
+      '<div class="ca-attn-event-summary">' + esc(ev.summary || '') + '</div>' +
+      (when ? '<div class="ca-attn-event-time">' + esc(when) + '</div>' : '') +
+    '</div>';
+  }).join('');
+  row.style.display = '';
+  section.style.display = '';
+  if (clearBtn) {
+    clearBtn.disabled = false;
+    clearBtn.textContent = 'Mark reviewed';
+    clearBtn.addEventListener('click', function() { clearCustomerEvents(r, clearBtn, msg); });
+  }
+}
+if (typeof window !== 'undefined') { window.renderCustomerEventsSection = renderCustomerEventsSection; }
+
+// Clearing is explicit and team-wide: POST /customer-events/clear clears every
+// unread event for this customer for the whole desk. Only a 200 updates local
+// state, mirroring submitDecision's own error handling above.
+function clearCustomerEvents(r, btn, msg) {
+  if (!r || !r.ID) return;
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  btn.disabled = true;
+  var origLabel = btn.textContent;
+  btn.textContent = 'Marking reviewed…';
+  if (msg) { msg.textContent = ''; msg.className = 'dec-msg'; }
+  fetch(BROKER_API_BASE + '/customer-events/clear', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, subject_id: r.ID })
+  }).then(function(res) {
+    return res.text().then(function(t) {
+      var d = {}; try { d = t ? JSON.parse(t) : {}; } catch (e) {}
+      return { status: res.status, data: d };
+    });
+  }).then(function(rr) {
+    if (rr.status === 200) {
+      applyCustomerEventsClear(r.ID);
+      showToast('Marked reviewed');
+    } else {
+      btn.disabled = false;
+      btn.textContent = origLabel;
+      if (msg) {
+        msg.textContent = (rr.data && (rr.data.error || rr.data.message)) || 'Could not mark reviewed';
+        msg.className = 'dec-msg error';
+      }
+    }
+  }).catch(function() {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+    if (msg) { msg.textContent = 'Could not mark reviewed. Check your connection and try again.'; msg.className = 'dec-msg error'; }
+  });
+}
+if (typeof window !== 'undefined') { window.clearCustomerEvents = clearCustomerEvents; }
+
+// After a successful clear: drop the customer from local state, refresh the bell +
+// list, and reposition the panel exactly like applyDecisionResult does above --
+// stay open on the same record if it still matches the active filters, close it if
+// the active bell filter just excluded it.
+function applyCustomerEventsClear(subjectId) {
+  if (customerEventsBySubject[subjectId]) {
+    delete customerEventsBySubject[subjectId];
+    delete customerEventsCounts[subjectId];
+    customerEventsTotal = Math.max(0, customerEventsTotal - 1);
+  }
+  if (customerEventsTotal <= 0) attentionFilterActive = false;  // last one cleared -- the bell itself goes quiet
+  buildChips();
+  applyFilters();
+
+  var target = null;
+  for (var i = 0; i < allRecords.length; i++) {
+    if (allRecords[i] && allRecords[i].ID === subjectId) { target = allRecords[i]; break; }
+  }
+  if (!target) return;
+  var newIdx = filteredRecords.indexOf(target);
+  if (newIdx !== -1) {
+    openIndex = newIdx;
+    renderPanel();
+  } else {
+    closePanel();
+  }
+}
+if (typeof window !== 'undefined') { window.applyCustomerEventsClear = applyCustomerEventsClear; }
 
 // ── CREDITAPP1 — Application Details (every broker) + full submission ──────
 // Two more reads layered on the same submission the tracker above already

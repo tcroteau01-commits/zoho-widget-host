@@ -2455,9 +2455,21 @@ function renderCreditAppStaffSection(payload) {
       field('Officer Phone', formatPhone(bank.phone)) + field('Officer Email', bank.email) +
     '</div>';
 
-  if (app.risk_disclosure) {
+  if (app.risk_disclosure && typeof app.risk_disclosure === 'object') {
+    var rd = app.risk_disclosure;
     html += '<div class="ca-app-doc-head">Risk Disclosure</div>' +
-      '<div class="note-block">' + esc(app.risk_disclosure) + '</div>';
+      '<div class="field-grid">' +
+        field('Open Judgments, Liens or Suits', rd.judgments_liens_suits) +
+        field('Bankruptcy in Last 7 Years', rd.bankruptcy_7yr) +
+      '</div>';
+    if (rd.judgments_explanation) {
+      html += '<div style="margin-top: 14px;"><div class="field-label" style="margin-bottom: 6px;">Judgments / Liens / Suits — Explanation</div>' +
+        '<div class="note-block">' + esc(rd.judgments_explanation) + '</div></div>';
+    }
+    if (rd.bankruptcy_explanation) {
+      html += '<div style="margin-top: 14px;"><div class="field-label" style="margin-bottom: 6px;">Bankruptcy — Explanation</div>' +
+        '<div class="note-block">' + esc(rd.bankruptcy_explanation) + '</div></div>';
+    }
   }
 
   if (references.length) {

@@ -504,7 +504,13 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-app-rowprog-wrap:focus .ca-app-rowprog-tip,
 .ca-app-rowprog-wrap:focus-within .ca-app-rowprog-tip { opacity: 1; visibility: visible; }
 @media (max-width: 640px) {
-  .ca-app-rowprog-tip { left: auto; right: 0; }
+  /* The wrap sits at the row's left inset, so left:0 (same anchor as desktop)
+     never pushes the tip past the right edge -- flipping to right:0 here was
+     the actual bug: it anchored the tip's right edge at the wrap instead,
+     which drove the 200px min-width straight off the left side of the
+     viewport. Keep the anchor, just stop forcing a width wider than the row
+     has room for on either side. */
+  .ca-app-rowprog-tip { min-width: 0; max-width: calc(100vw - 48px); }
 }
 </style>
 </head>

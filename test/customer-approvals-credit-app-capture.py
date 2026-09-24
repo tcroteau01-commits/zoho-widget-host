@@ -189,7 +189,12 @@ RISK_PAYLOAD = {
                   {"name": "Marcus Reyes", "title": "Owner", "percentage": "40"}],
         "bank": {"name": "Test Bank", "officer": "Bank Officer Test",
                 "phone": "5559998888", "email": "officer@testbank.test"},
-        "risk_disclosure": "No open judgments, liens or suits. No bankruptcy in the last seven years.",
+        "risk_disclosure": {
+            "judgments_liens_suits": "Yes",
+            "judgments_explanation": "A supplier filed a lien in 2023 over a disputed invoice; released after payment in full.",
+            "bankruptcy_7yr": "No",
+            "bankruptcy_explanation": "",
+        },
         "references": [
             {"company": "ABC Produce", "contact": "Steve Alvarez", "phone": "5551112222",
              "email": "steve@abcproduce.test",
@@ -709,9 +714,9 @@ def main():
         #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
         #        all_clients=False, application_payload=APPLICATION_PAYLOAD)
         #
-        # capture(pw, DESKTOP, "desktop", "34-credit-app-full-submission-staff", MIDFLIGHT,
-        #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
-        #        all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
+        capture(pw, DESKTOP, "desktop", "34-credit-app-full-submission-staff", MIDFLIGHT,
+               {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
+               all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
         # capture(pw, PHONE, "phone", "34-credit-app-full-submission-staff", MIDFLIGHT,
         #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
         #        all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
@@ -720,8 +725,9 @@ def main():
         # capture_attention_bell(pw, PHONE, "phone")
 
         # ── New this pass: CUSTEVENT1 type breakdown (42-44) ───────────────
-        capture_attention_breakdown(pw, DESKTOP, "desktop")
-        capture_attention_breakdown(pw, PHONE, "phone")
+        # Already captured (42-44 exist on disk) -- not re-run this pass.
+        # capture_attention_breakdown(pw, DESKTOP, "desktop")
+        # capture_attention_breakdown(pw, PHONE, "phone")
 
 
 if __name__ == "__main__":

@@ -98,7 +98,10 @@ function staffPayload(over) {
                 instructions: LONG_BILLING_INSTRUCTIONS },
       credit: { requested_limit: '50000', expected_monthly_volume: '120000' },
       owners: [{ name: 'Jamie Rivera', title: 'Managing Member', percentage: '100' }],
-      risk_disclosure: 'No bankruptcies or judgments in the last 7 years.',
+      risk_disclosure: {
+        judgments_liens_suits: 'No', judgments_explanation: '',
+        bankruptcy_7yr: 'No', bankruptcy_explanation: '',
+      },
       bank: { name: 'First National Bank', officer: 'Jordan Banks', phone: '2145550202', email: 'jordan@fnb.com' },
       references: [
         { company: 'ABC Produce', contact: 'Steve Alvarez', phone: '2145550303',
@@ -294,8 +297,55 @@ test('renderCreditAppStaffSection renders the full applicant detail the broker b
   assert.match(body.innerHTML, /12-3456789/);          // EIN
   assert.match(body.innerHTML, /TX/);                   // formation state
   assert.match(body.innerHTML, /Jordan Banks/);          // bank officer, staff-only
-  assert.match(body.innerHTML, /No bankruptcies/);       // risk_disclosure
   assert.match(body.innerHTML, /Managing Member/);       // owner
+});
+
+// ── the risk disclosure: a structured object, not a string ─────────────────
+
+test('renderCreditAppStaffSection renders the risk disclosure as its questions and answers', () => {
+  const w = boot();
+  staffFixture(w);
+  w.renderCreditAppStaffSection(staffPayload({
+    application: Object.assign({}, staffPayload().application, {
+      risk_disclosure: {
+        judgments_liens_suits: 'Yes',
+        judgments_explanation: 'A supplier lien from 2023, since released.',
+        bankruptcy_7yr: 'No',
+        bankruptcy_explanation: '',
+      },
+    }),
+  }));
+  const body = w.document.getElementById('ca-app-staff-body');
+  assert.match(body.innerHTML, /Open Judgments, Liens or Suits/);
+  assert.match(body.innerHTML, /Yes/);
+  assert.match(body.innerHTML, /Bankruptcy in Last 7 Years/);
+  // The "No" answer must be shown too, not dropped just because it's negative.
+  assert.match(body.innerHTML, /Bankruptcy in Last 7 Years[\s\S]*?No/);
+  assert.match(body.innerHTML, /A supplier lien from 2023, since released\./);
+});
+
+test('renderCreditAppStaffSection shows both a "Yes" and a "No" risk-disclosure answer, not only the positive', () => {
+  const w = boot();
+  staffFixture(w);
+  w.renderCreditAppStaffSection(staffPayload({
+    application: Object.assign({}, staffPayload().application, {
+      risk_disclosure: {
+        judgments_liens_suits: 'No', judgments_explanation: '',
+        bankruptcy_7yr: 'No', bankruptcy_explanation: '',
+      },
+    }),
+  }));
+  const body = w.document.getElementById('ca-app-staff-body');
+  assert.match(body.innerHTML, /Open Judgments, Liens or Suits/);
+  assert.match(body.innerHTML, /Bankruptcy in Last 7 Years/);
+});
+
+test('no rendered text in the staff block ever contains "[object Object]"', () => {
+  const w = boot();
+  staffFixture(w);
+  w.renderCreditAppStaffSection(staffPayload());
+  const body = w.document.getElementById('ca-app-staff-body');
+  assert.doesNotMatch(body.innerHTML, /\[object Object\]/);
 });
 
 test('renderCreditAppStaffSection renders each reference\'s full answer: terms, limits, balance, aging, rating, comments, rep, verified email', () => {

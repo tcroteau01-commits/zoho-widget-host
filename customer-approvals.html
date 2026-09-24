@@ -420,6 +420,39 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-billing-alert .cba-msg { font-size:12px; color:#6b5426; line-height:1.45; }
 .ca-billing-alert .cba-fix { flex-shrink:0; border:1px solid #d9ab55; background:#fff; border-radius:6px; padding:5px 12px; font-size:11px; font-weight:700; color:#8a5a00; cursor:pointer; font-family:inherit; }
 .ca-billing-alert .cba-fix:hover { background:#fffaf0; border-color:#c2942f; }
+
+/* CREDITAPP1 — the broker's own Credit Application tracker (Task 16). Reuses the
+   panel-section shell; stays hidden until /credit-app/status answers 200 with at
+   least one party, so an application that predates this build (or the feature
+   flag off) renders this section as nothing, never as a broken panel. */
+.ca-app-summary { font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 600; color: #999; margin-left: 8px; }
+.ca-app-rows { display: flex; flex-direction: column; gap: 10px; }
+.ca-app-row {
+  display: grid; grid-template-columns: 1.3fr 1.4fr auto; gap: 10px; align-items: center;
+  padding: 10px 12px; background: #fafafa; border: 1px solid #f0efe9; border-radius: 8px;
+}
+.ca-app-row-label { font-size: 13px; font-weight: 700; color: #272727; }
+.ca-app-row-who { font-size: 12px; color: #777; margin-top: 2px; }
+.ca-app-row-state { font-size: 12px; font-weight: 600; }
+.ca-app-state-waiting, .ca-app-state-expired { color: #b86e00; }
+.ca-app-state-completed { color: #1f6321; }
+.ca-app-state-not-required { color: #999; }
+/* Bounced is the one state the broker can actually fix -- their own customer gave
+   a bad address -- so it gets the same alert-red as a denied decision, not amber. */
+.ca-app-state-bounced { color: #a31818; }
+.ca-app-row-action { text-align: right; }
+.ca-app-row-action .row-action { padding: 6px 11px; }
+.ca-app-msg { font-size: 11px; margin-top: 4px; color: #888; }
+.ca-app-msg.error { color: #a31818; }
+.ca-app-msg.ok { color: #1f6321; }
+.ca-app-contact { font-size: 12px; color: #555; white-space: nowrap; }
+.ca-app-contact a { color: #b86e00; text-decoration: none; }
+.ca-app-contact a:hover { text-decoration: underline; }
+.ca-app-nudgeall-row { margin-top: 12px; text-align: right; }
+@media (max-width: 640px) {
+  .ca-app-row { grid-template-columns: 1fr; }
+  .ca-app-row-action { text-align: left; }
+}
 </style>
 </head>
 <body>
@@ -1124,6 +1157,19 @@ function renderPanel() {
           : '') +
       '</div>' +
 
+      // CREDITAPP1 — Credit Application tracker (Task 16). Hidden until
+      // fetchCreditAppStatus fills it; stays hidden (renders as nothing, not
+      // broken) when the endpoint 404s (flag off) or answers anything but 200 --
+      // including an application that predates this build, which has no
+      // /credit-app/status document at all.
+      '<div class="panel-section" id="ca-app-section" style="display:none;">' +
+        '<div class="panel-section-title">Credit Application<span class="ca-app-summary" id="ca-app-summary-text"></span></div>' +
+        '<div class="ca-app-rows" id="ca-app-rows"></div>' +
+        '<div class="ca-app-nudgeall-row" id="ca-app-nudgeall-row" style="display:none;">' +
+          '<button type="button" class="btn" id="ca-app-nudge-all"></button>' +
+        '</div>' +
+      '</div>' +
+
       // Customer Company
       '<div class="panel-section">' +
         '<div class="panel-section-title">Customer Company</div>' +
@@ -1205,6 +1251,7 @@ function renderPanel() {
 
   wireDecisionSection(r);
   fetchFraudCheck(r);
+  fetchCreditAppStatus(r);
   wireBillingEdit(r);
   wireDocOpen(panel);   // delegated: open Supporting Documents in the shared viewer
 }
@@ -1311,6 +1358,268 @@ function renderFraudCheck(d) {
   if (meta.length) out += '<div class="ca-fraud-meta">' + meta.join(' · ') + '</div>';
   body.innerHTML = out;
   sec.style.display = '';
+}
+
+// ── CREDITAPP1 — Credit Application tracker (Task 16) ───────────────────────
+// Who we're waiting on, by name, and how long -- the whole point of this build
+// is that the broker can see this without calling OperFi. NEVER renders a fraud
+// signal or a reason: /credit-app/status does not send them (that split lives on
+// the server, see credit_app_routes.py's module docstring), and nothing here may
+// invent a way to display what the endpoint withholds.
+var CA_APP_SLOT_LABELS = {
+  customer: 'Customer application',
+  trade1: 'Trade reference 1',
+  trade2: 'Trade reference 2',
+  trade3: 'Trade reference 3',
+  bank: 'Bank reference'
+};
+var CA_APP_SLOT_ORDER = ['customer', 'trade1', 'trade2', 'trade3', 'bank'];
+
+// Mirrors credit_app_store.RESOLVED (completed, waived, bounced) -- a party in
+// one of these needs no Nudge button. Duplicated here rather than fetched from
+// the server, the same tradeoff credit_app_routes.py itself makes for TMS_BASE /
+// CREDIT_DECISION_RECEIVED: importing across the widget/backend boundary isn't
+// possible, so the constant is copied with a comment pointing at its source.
+var CA_APP_RESOLVED = ['completed', 'waived', 'bounced'];
+
+// Mirrors credit_app_store.NUDGE_COOLDOWN_HOURS. Used only to turn the server's
+// own "nudged Xh ago" text into a client-side re-enable timer -- if that wording
+// ever changes shape the regex in caAppHandleNudgeResult simply fails to match
+// and the button just stays disabled with the server's message shown, which is
+// still correct, only less convenient.
+var CA_APP_NUDGE_COOLDOWN_HOURS = 48;
+var CA_APP_NUDGE_LIMIT_MSG = 'nudge limit reached';
+
+function caAppSlotLabel(slot) { return CA_APP_SLOT_LABELS[slot] || slot; }
+
+// status -> { label, cls } in plain words. No numeric/coded state ever reaches
+// the broker -- an unrecognised value still renders (falls back to the raw
+// string) rather than breaking the row, same discipline as statusMeta's
+// 'unknown' branch above for Credit_Decision.
+function caAppPartyState(status) {
+  if (status === 'completed') return { label: 'Completed', cls: 'completed' };
+  if (status === 'waived')    return { label: 'Not required', cls: 'not-required' };
+  if (status === 'bounced')   return { label: 'Address bounced', cls: 'bounced' };
+  if (status === 'expired')   return { label: 'Expired', cls: 'expired' };
+  if (status === 'sent' || status === 'opened') return { label: 'Waiting', cls: 'waiting' };
+  return { label: status || 'Unknown', cls: 'waiting' };
+}
+
+function caAppWaitingText(days) {
+  if (days === null || days === undefined) return '';
+  if (days <= 0) return 'less than a day';
+  return days + (days === 1 ? ' day' : ' days');
+}
+
+// The one-line summary next to the section title. Built from the application's
+// top-level `status` (derived server-side from every party -- credit_app_store.
+// derive_status), never re-derived here from the party list, so this can never
+// disagree with what the rows below it show.
+var CA_APP_SUMMARY = {
+  sent: 'Waiting on the customer to complete the application',
+  app_received: 'Application received — references not sent yet',
+  references_pending: 'Waiting on references',
+  ready_for_review: 'All parties have responded'
+};
+
+if (typeof window !== 'undefined') {
+  window.caAppSlotLabel = caAppSlotLabel;
+  window.caAppPartyState = caAppPartyState;
+  window.caAppWaitingText = caAppWaitingText;
+}
+
+function caAppRowHtml(p) {
+  var st = caAppPartyState(p.status);
+  var nameCompany = [p.company, p.name].filter(Boolean).join(', ');
+  var detail;
+  if (st.cls === 'bounced') {
+    // The one thing the broker can actually fix -- ask their own customer for
+    // a working address for this party. No mention of why it bounced.
+    detail = 'Address bounced, ask your customer for a new one';
+  } else if (st.cls === 'waiting' || st.cls === 'expired') {
+    var waiting = caAppWaitingText(p.waiting_days);
+    detail = st.label + (waiting ? ' ' + waiting : '');
+  } else {
+    detail = st.label;
+  }
+  var canNudge = CA_APP_RESOLVED.indexOf(p.status) === -1;
+  var actionHtml = canNudge
+    ? '<button type="button" class="row-action ca-app-nudge" data-slot="' + esc(p.slot) + '">Nudge</button>' +
+      '<div class="ca-app-msg" data-slot-msg="' + esc(p.slot) + '"></div>'
+    : '';
+  return '' +
+    '<div class="ca-app-row" data-slot="' + esc(p.slot) + '">' +
+      '<div>' +
+        '<div class="ca-app-row-label">' + esc(caAppSlotLabel(p.slot)) + '</div>' +
+        (nameCompany ? '<div class="ca-app-row-who">' + esc(nameCompany) + '</div>' : '') +
+      '</div>' +
+      '<div class="ca-app-row-state ca-app-state-' + st.cls + '">' + esc(detail) + '</div>' +
+      '<div class="ca-app-row-action">' + actionHtml + '</div>' +
+    '</div>';
+}
+if (typeof window !== 'undefined') { window.caAppRowHtml = caAppRowHtml; }
+
+// Reorders into the fixed customer/trade1/trade2/trade3/bank sequence
+// regardless of the order the server happens to return the parties array in.
+function caAppOrderedParties(parties) {
+  var bySlot = {};
+  (parties || []).forEach(function(p) { if (p && p.slot) bySlot[p.slot] = p; });
+  return CA_APP_SLOT_ORDER.map(function(slot) { return bySlot[slot]; }).filter(Boolean);
+}
+if (typeof window !== 'undefined') { window.caAppOrderedParties = caAppOrderedParties; }
+
+// Race guard: prevents a slow response for a record the broker has since
+// navigated away from (j/k, or closing the panel) from painting the wrong
+// customer's tracker into the panel that's open now.
+var caAppFetchSeq = 0;
+
+function fetchCreditAppStatus(r) {
+  var section = document.getElementById('ca-app-section');
+  if (!section) return;
+  section.style.display = 'none';   // hide any previous record's tracker immediately
+  if (!r || !r.ID) return;
+  var seq = ++caAppFetchSeq;
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  var qs = 'email=' + encodeURIComponent(email) + '&submission_id=' + encodeURIComponent(r.ID);
+  fetch(BROKER_API_BASE + '/credit-app/status?' + qs)
+    .then(function(res) { return res.ok ? res.json() : null; })
+    .then(function(payload) {
+      if (seq !== caAppFetchSeq) return;               // a newer record opened meanwhile
+      if (!payload) return;                             // 404 (flag off) / non-200: stay hidden
+      renderCreditAppSection(r, payload);
+    })
+    .catch(function() { /* degrade quietly -- no tracker section, not a broken panel */ });
+}
+if (typeof window !== 'undefined') { window.fetchCreditAppStatus = fetchCreditAppStatus; }
+
+function renderCreditAppSection(r, payload) {
+  var section = document.getElementById('ca-app-section');
+  if (!section) return;
+  var ordered = caAppOrderedParties(payload && payload.parties);
+  if (!ordered.length) return;   // nothing to show -- stays hidden, not an empty shell
+
+  var summaryEl = document.getElementById('ca-app-summary-text');
+  if (summaryEl) summaryEl.textContent = CA_APP_SUMMARY[payload.status] || '';
+
+  var rowsEl = document.getElementById('ca-app-rows');
+  if (rowsEl) rowsEl.innerHTML = ordered.map(caAppRowHtml).join('');
+
+  var waiting = ordered.filter(function(p) { return CA_APP_RESOLVED.indexOf(p.status) === -1; });
+  var allRow = document.getElementById('ca-app-nudgeall-row');
+  var allBtn = document.getElementById('ca-app-nudge-all');
+  if (allRow && allBtn) {
+    if (waiting.length > 1) {
+      allRow.style.display = '';
+      allBtn.textContent = 'Nudge all waiting (' + waiting.length + ')';
+      allBtn.disabled = false;
+      allBtn.onclick = function() {
+        allBtn.disabled = true;
+        section.querySelectorAll('.ca-app-nudge').forEach(function(btn) {
+          if (!btn.disabled) caAppDoNudge(r, btn.dataset.slot, btn);
+        });
+      };
+    } else {
+      allRow.style.display = 'none';
+    }
+  }
+
+  section.querySelectorAll('.ca-app-nudge').forEach(function(btn) {
+    btn.addEventListener('click', function() { caAppDoNudge(r, btn.dataset.slot, btn); });
+  });
+
+  section.style.display = '';
+}
+if (typeof window !== 'undefined') { window.renderCreditAppSection = renderCreditAppSection; }
+
+function caAppMsgEl(section, slot) {
+  return section.querySelector('.ca-app-msg[data-slot-msg="' + slot + '"]');
+}
+
+// One party's Nudge click (also fired per-row by "Nudge all waiting"). Success
+// and every refusal are handled entirely from the server's own response --
+// this never guesses at WHY a nudge was refused beyond what credit_app_store's
+// CreditAppRefused text already says, and that text is shown verbatim.
+function caAppDoNudge(r, slot, btn) {
+  if (!btn || btn.disabled) return;
+  var section = document.getElementById('ca-app-section');
+  var msgEl = section ? caAppMsgEl(section, slot) : null;
+  btn.disabled = true;
+  btn.textContent = 'Nudging…';
+  if (msgEl) { msgEl.textContent = ''; msgEl.className = 'ca-app-msg'; }
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  fetch(BROKER_API_BASE + '/credit-app/nudge', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, submission_id: r.ID, slot: slot })
+  }).then(function(res) {
+    return res.text().then(function(t) {
+      var data = {}; try { data = t ? JSON.parse(t) : {}; } catch (e) {}
+      return { status: res.status, data: data };
+    });
+  }).then(function(rr) { caAppHandleNudgeResult(rr, btn, msgEl); })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Nudge';
+      if (msgEl) { msgEl.textContent = 'Could not nudge. Check your connection.'; msgEl.className = 'ca-app-msg error'; }
+    });
+}
+
+// Split from caAppDoNudge so the decision logic (what a given server response
+// means for the button) is testable without mocking fetch/timers.
+function caAppHandleNudgeResult(rr, btn, msgEl) {
+  if (rr.status === 200) {
+    btn.textContent = 'Nudged';
+    if (msgEl) { msgEl.textContent = 'Nudged just now'; msgEl.className = 'ca-app-msg ok'; }
+    // A successful nudge starts the very cooldown record_nudge enforces server-side --
+    // disable through it rather than let an immediate second click just 409.
+    caAppScheduleReenable(btn, msgEl, CA_APP_NUDGE_COOLDOWN_HOURS);
+    return;
+  }
+  if (rr.status === 409) {
+    var reason = (rr.data && rr.data.error) || 'Could not nudge';
+    if (reason === CA_APP_NUDGE_LIMIT_MSG) {
+      caAppReplaceWithContact(btn);
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Nudge';
+    if (msgEl) { msgEl.textContent = reason; msgEl.className = 'ca-app-msg error'; }
+    var m = /nudged\s+(\d+)h ago/i.exec(reason);
+    if (m) caAppScheduleReenable(btn, msgEl, CA_APP_NUDGE_COOLDOWN_HOURS - parseInt(m[1], 10));
+    // else: an unrecognised refusal shape -- stay disabled with the message shown
+    // rather than guess at a re-enable time.
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Nudge';
+  if (msgEl) { msgEl.textContent = 'Could not nudge. Try again.'; msgEl.className = 'ca-app-msg error'; }
+}
+if (typeof window !== 'undefined') { window.caAppHandleNudgeResult = caAppHandleNudgeResult; }
+
+// Permanent refusal (three nudges already sent): the button stops being a
+// button. credit@operfi.com is the one channel left for this party.
+function caAppReplaceWithContact(btn) {
+  var wrap = btn.closest('.ca-app-row-action');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="ca-app-contact">Contact <a href="mailto:credit@operfi.com">credit@operfi.com</a></div>';
+}
+if (typeof window !== 'undefined') { window.caAppReplaceWithContact = caAppReplaceWithContact; }
+
+function caAppScheduleReenable(btn, msgEl, hoursRemaining) {
+  btn.disabled = true;
+  if (!(hoursRemaining > 0)) return;   // eligible again already -- next panel open picks it up
+  var ms = Math.min(hoursRemaining, CA_APP_NUDGE_COOLDOWN_HOURS) * 3600000;
+  var timer = setTimeout(function() {
+    // The panel may have re-rendered (a different record, or this one closed)
+    // long before this fires -- only touch the button if it's still on screen.
+    if (btn && btn.isConnected) {
+      btn.disabled = false; btn.textContent = 'Nudge';
+      if (msgEl && msgEl.isConnected) msgEl.textContent = '';
+    }
+  }, ms);
+  // A cooldown timer can run up to 48h out; unref it (where supported -- Node's
+  // Timeout, not a browser timer id) so it can never itself hold a process/test
+  // runner open. No-op in a real browser tab, which has no such concept.
+  if (timer && typeof timer.unref === 'function') timer.unref();
 }
 
 // Wire the see-all Decision section: live "required" affordance + Save handler.

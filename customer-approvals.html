@@ -516,11 +516,33 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 /* CUSTEVENT1 — the attention bell (OperFi staff only). Blue, matching the "needs
    review" language this screen already uses for app-rcvd/boost, not the denied red
    or the billing amber -- both of those mean something else here. */
-.chip.chip-bell { border-color: #b8d4f0; background: #eaf3fc; color: #0d4a8a; }
+.chip.chip-bell { position: relative; border-color: #b8d4f0; background: #eaf3fc; color: #0d4a8a; }
 .chip.chip-bell:hover { border-color: #8db8e0; }
 .chip.chip-bell.active { background: #0d4a8a; color: #fff; border-color: #0d4a8a; }
 .chip.chip-bell .count { background: rgba(13,74,138,0.12); color: #0d4a8a; }
 .chip.chip-bell.active .count { background: rgba(255,255,255,0.2); color: #fff; }
+
+/* The bell's hover/focus breakdown -- what Tom actually asked for: "if they hover over
+   it it shows them where it's at." Same tip pattern as .ca-app-rowprog-tip (below):
+   absolutely positioned, invisible until :hover/:focus/:focus-within, reachable by
+   keyboard because the bell itself is tabindex="0". Anchored under the chip (not above
+   it, like the row-progress tip) since the bell sits at the top of the toolbar with no
+   room above it. */
+.ca-attn-tip {
+  position: absolute; top: calc(100% + 7px); left: 0; min-width: 180px; max-width: 280px;
+  background: #0d4a8a; color: #fff; padding: 8px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 600; line-height: 1.4; text-align: left; white-space: normal;
+  opacity: 0; visibility: hidden; transition: opacity .12s; pointer-events: none; z-index: 30;
+}
+.chip.chip-bell:hover .ca-attn-tip,
+.chip.chip-bell:focus .ca-attn-tip,
+.chip.chip-bell:focus-within .ca-attn-tip { opacity: 1; visibility: visible; }
+
+/* The same breakdown text, as a static line under the chip row instead of a hover tip --
+   the only way to reach it at 390px, where nothing is hovered. Shown only while the
+   attention filter is active, so it stays visible for the length of the filtered work
+   instead of disappearing the moment the pointer leaves the chip. */
+.ca-attn-breakdown-line { font-size: 12px; font-weight: 600; color: #0d4a8a; margin: -4px 0 10px; }
 
 /* The row marker: the reason a customer moved up is visible without opening it.
    A direct child of .row (not nested in the Customer cell) so it can span every
@@ -546,6 +568,12 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 @media (max-width: 640px) {
   .ca-attn-marker { flex-wrap: wrap; }
   .ca-attn-marker .ca-attn-summary { white-space: normal; }
+  /* Same off-screen fix as .ca-app-rowprog-tip above: left:0 anchored at the chip is
+     fine, the fixed min-width was what pushed past the viewport edge on a narrow
+     phone. Moot in practice since hover doesn't exist at 390px anyway -- the
+     .ca-attn-breakdown-line is what's actually reachable there -- but keyboard focus
+     still reveals this tip, so it must not run off-screen either. */
+  .ca-attn-tip { min-width: 0; max-width: calc(100vw - 48px); }
 }
 </style>
 </head>
@@ -585,6 +613,12 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
       <option value="name_desc">Name (Z–A)</option>
     </select>
   </div>
+
+  <!-- CUSTEVENT1 — the type breakdown, surfaced a second way for when the bell's own
+       hover/focus tip can't be reached (390px has no hover). Visible only while the
+       attention filter is active, so it stays put while working the filtered list
+       instead of vanishing when the pointer moves off the chip. -->
+  <div class="ca-attn-breakdown-line" id="attn-breakdown-line" style="display:none;"></div>
 
   <div id="results">
     <div class="state">
@@ -945,7 +979,16 @@ function buildChips() {
     bell.className = 'chip chip-bell' + (attentionFilterActive ? ' active' : '');
     bell.id = 'attn-bell';
     bell.title = 'Customers with unread activity since you last cleared them';
-    bell.innerHTML = '🔔 Needs Attention <span class="count">' + customerEventsTotal + '</span>';
+    // CUSTEVENT1 type breakdown -- what KIND of unread activity is waiting, not just
+    // how many customers. Reachable by keyboard (tabindex + :focus/:focus-within in
+    // the CSS above), not just by mouse hover.
+    bell.tabIndex = 0;
+    bell.setAttribute('role', 'button');
+    bell.setAttribute('aria-pressed', attentionFilterActive ? 'true' : 'false');
+    var bellBreakdown = customerEventsBreakdownText();
+    if (bellBreakdown) bell.setAttribute('aria-label', 'Needs Attention. ' + bellBreakdown);
+    bell.innerHTML = '🔔 Needs Attention <span class="count">' + customerEventsTotal + '</span>' +
+      (bellBreakdown ? '<span class="ca-attn-tip">' + esc(bellBreakdown) + '</span>' : '');
     bell.addEventListener('click', function() {
       attentionFilterActive = !attentionFilterActive;
       buildChips();
@@ -968,6 +1011,17 @@ function buildChips() {
     });
     chips.appendChild(el);
   });
+
+  // CUSTEVENT1 — the same breakdown as the bell's hover tip, but as a line that stays
+  // put while the attention filter is active (the case the tip can't cover at 390px,
+  // where nothing is hovered). Only shown while the filter is on; gone the moment it
+  // isn't, same as the tip only appearing on hover/focus.
+  var breakdownLine = document.getElementById('attn-breakdown-line');
+  if (breakdownLine) {
+    var lineText = (attentionFilterActive && customerEventsTotal > 0) ? customerEventsBreakdownText() : '';
+    breakdownLine.textContent = lineText;
+    breakdownLine.style.display = lineText ? '' : 'none';
+  }
 }
 
 function countByStatus(records) {
@@ -1887,6 +1941,64 @@ function hasUnreadEvents(r) {
   return !!(r && r.ID && customerEventsBySubject[r.ID] && customerEventsBySubject[r.ID].length);
 }
 if (typeof window !== 'undefined') { window.hasUnreadEvents = hasUnreadEvents; }
+
+// The type breakdown -- WHAT is waiting, not just how many customers. Reviewer-facing
+// wording ("3 references"), not the API's internal kind string. Order here doubles as
+// the display order, so a reviewer scans it the way they'd prioritize the afternoon.
+var CUSTOMER_EVENT_KIND_LABELS = {
+  reference_completed:    { one: 'reference',     many: 'references' },
+  credit_boost_requested: { one: 'boost request', many: 'boost requests' },
+  credit_app_received:    { one: 'application',   many: 'applications' },
+  credit_check_submitted: { one: 'new check',     many: 'new checks' }
+};
+// A kind the backend adds before this screen knows its label still counts -- it just
+// lands in one neutral bucket instead of being dropped or shown as a raw kind string.
+var CUSTOMER_EVENT_KIND_FALLBACK = { one: 'update', many: 'updates' };
+
+// Flattens every currently-unread event across every customer and groups by kind, in
+// the label map's declared order, with any unrecognized kind rolled into one fallback
+// bucket at the end.
+function customerEventsKindCounts() {
+  var counts = {};
+  var fallbackCount = 0;
+  Object.keys(customerEventsBySubject).forEach(function(subjectId) {
+    (customerEventsBySubject[subjectId] || []).forEach(function(ev) {
+      var kind = ev && ev.kind;
+      if (kind && CUSTOMER_EVENT_KIND_LABELS[kind]) {
+        counts[kind] = (counts[kind] || 0) + 1;
+      } else {
+        fallbackCount++;
+      }
+    });
+  });
+  var parts = [];
+  Object.keys(CUSTOMER_EVENT_KIND_LABELS).forEach(function(kind) {
+    if (counts[kind]) parts.push({ kind: kind, count: counts[kind], label: CUSTOMER_EVENT_KIND_LABELS[kind] });
+  });
+  if (fallbackCount) parts.push({ kind: '_other', count: fallbackCount, label: CUSTOMER_EVENT_KIND_FALLBACK });
+  return parts;
+}
+if (typeof window !== 'undefined') { window.customerEventsKindCounts = customerEventsKindCounts; }
+
+// "3 references", "1 boost request" -- singular/plural picked per count, not a
+// tacked-on 's' ("1 references" reads as a bug).
+function customerEventsKindPhrase(part) {
+  return part.count + ' ' + (part.count === 1 ? part.label.one : part.label.many);
+}
+
+// The full breakdown text, shared by both surfaces (the bell's hover/focus tip and the
+// active-filter line): "2 customers: 3 references · 1 boost request". The counts after
+// the colon are EVENTS, the leading number is CUSTOMERS -- the chip's own number --
+// spelled out so a reviewer never reads "3 references" under a "2" chip as a bug: one
+// customer can carry more than one unread event, so events routinely outnumber
+// customers.
+function customerEventsBreakdownText() {
+  var parts = customerEventsKindCounts();
+  if (!parts.length) return '';
+  var phrase = parts.map(customerEventsKindPhrase).join(' · ');
+  return customerEventsTotal + ' ' + (customerEventsTotal === 1 ? 'customer' : 'customers') + ': ' + phrase;
+}
+if (typeof window !== 'undefined') { window.customerEventsBreakdownText = customerEventsBreakdownText; }
 
 function fetchCustomerEventsBulk() {
   if (!allClients) return;

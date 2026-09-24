@@ -613,6 +613,73 @@ def capture_attention_bell(pw, viewport, viewport_label):
         browser.close()
 
 
+def capture_attention_breakdown(pw, viewport, viewport_label):
+    """CUSTEVENT1 -- the type breakdown, surfaced two ways: the bell's own
+    hover/focus tip (Tom's original ask -- "if they hover over it it shows
+    them where it's at"), and a line under the chip row while the attention
+    filter is active, which is what's reachable at 390px where nothing is
+    hovered. Reuses attn_records()/attn_events_payload() -- the same Delta
+    Foods/Ironwood Distribution fixture capture_attention_bell (37-41) tells
+    its story with -- rather than a new one: 2 customers, 3 events, split
+    2 references / 1 application, which is exactly the "customers differ
+    from events" case the wording exists to make obvious.
+
+      42 (desktop only -- hover doesn't exist at 390): the bell hovered,
+         its breakdown tip open: "2 customers: 2 references · 1 application"
+      43/44 (desktop/phone): the attention filter active, the breakdown
+         line visible under the chip row
+    """
+    def out(n, name):
+        p = os.path.join(OUT_DIR, "%d-attn-breakdown-%s-%s.png" % (n, name, viewport_label))
+        if os.path.exists(p):
+            raise SystemExit("refusing to overwrite existing file: " + p)
+        return p
+
+    records = attn_records()
+    browser = pw.chromium.launch()
+    try:
+        context = browser.new_context(viewport=viewport)
+        page = context.new_page()
+        install_routes(page, records[0], None, None, all_clients=True,
+                       records=records, events_payload=attn_events_payload())
+        page.goto(pathlib.Path(HTML_PATH).as_uri())
+        page.wait_for_selector(".row", timeout=15000)
+        # fetchCustomerEventsBulk fires after the list itself renders and
+        # rebuilds the chip row once it resolves -- same discipline as the
+        # other attention-bell captures above.
+        page.wait_for_selector("#attn-bell", timeout=15000)
+
+        if viewport_label == "desktop":
+            # 42 -- hover the bell; its breakdown tip opens.
+            out_hover = out(42, "hover")
+            page.hover("#attn-bell")
+            page.wait_for_selector(".ca-attn-tip", state="visible", timeout=5000)
+            page.wait_for_timeout(150)  # let the tooltip's opacity transition finish
+            page.screenshot(path=out_hover, full_page=True)
+            print("wrote", out_hover)
+            # Move off the chip so the next shot shows only the filter line,
+            # not the hover tip still hanging open on top of it.
+            page.mouse.move(0, 0)
+
+        # 43 (desktop) / 44 (phone) -- the attention filter active, the
+        # breakdown line visible under the chip row -- the surface that's
+        # actually reachable at 390px, where nothing is hovered.
+        out_line = out(43 if viewport_label == "desktop" else 44, "filter-line")
+        page.click("#attn-bell")
+        page.wait_for_function(
+            "document.getElementById('attn-bell').classList.contains('active')", timeout=5000)
+        page.wait_for_selector("#attn-breakdown-line", state="visible", timeout=5000)
+        # click() itself moves the mouse over the bell first, which triggers its
+        # :hover tip -- move off it so this shot shows only the persistent line,
+        # the surface this state is actually about, not the tip stacked on top.
+        page.mouse.move(0, 0)
+        page.wait_for_timeout(150)
+        page.screenshot(path=out_line, full_page=True)
+        print("wrote", out_line)
+    finally:
+        browser.close()
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     if not os.path.exists(HTML_PATH):
@@ -627,27 +694,34 @@ def main():
         #     capture(pw, DESKTOP, "desktop", out_name, status_payload, rec_overrides, nudge)
         #     capture(pw, PHONE, "phone", out_name, status_payload, rec_overrides, nudge)
 
-        # ── New this pass ────────────────────────────────────────────────
-        capture_list_progress(pw, DESKTOP, "desktop", "32-credit-app-list-progress")
-        capture_list_progress(pw, PHONE, "phone", "32-credit-app-list-progress")
+        # 32-41 are unchanged since the last capture (files already on disk;
+        # capture()/capture_list_progress()/capture_attention_bell() all refuse
+        # to overwrite) and are not re-run this pass. Left here, commented, for
+        # a future full re-run:
+        #
+        # capture_list_progress(pw, DESKTOP, "desktop", "32-credit-app-list-progress")
+        # capture_list_progress(pw, PHONE, "phone", "32-credit-app-list-progress")
+        #
+        # capture(pw, DESKTOP, "desktop", "33-credit-app-details-broker", MIDFLIGHT,
+        #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
+        #        all_clients=False, application_payload=APPLICATION_PAYLOAD)
+        # capture(pw, PHONE, "phone", "33-credit-app-details-broker", MIDFLIGHT,
+        #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
+        #        all_clients=False, application_payload=APPLICATION_PAYLOAD)
+        #
+        # capture(pw, DESKTOP, "desktop", "34-credit-app-full-submission-staff", MIDFLIGHT,
+        #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
+        #        all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
+        # capture(pw, PHONE, "phone", "34-credit-app-full-submission-staff", MIDFLIGHT,
+        #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
+        #        all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
+        #
+        # capture_attention_bell(pw, DESKTOP, "desktop")
+        # capture_attention_bell(pw, PHONE, "phone")
 
-        capture(pw, DESKTOP, "desktop", "33-credit-app-details-broker", MIDFLIGHT,
-               {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
-               all_clients=False, application_payload=APPLICATION_PAYLOAD)
-        capture(pw, PHONE, "phone", "33-credit-app-details-broker", MIDFLIGHT,
-               {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
-               all_clients=False, application_payload=APPLICATION_PAYLOAD)
-
-        capture(pw, DESKTOP, "desktop", "34-credit-app-full-submission-staff", MIDFLIGHT,
-               {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
-               all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
-        capture(pw, PHONE, "phone", "34-credit-app-full-submission-staff", MIDFLIGHT,
-               {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
-               all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
-
-        # CUSTEVENT1 -- the attention bell (37-41).
-        capture_attention_bell(pw, DESKTOP, "desktop")
-        capture_attention_bell(pw, PHONE, "phone")
+        # ── New this pass: CUSTEVENT1 type breakdown (42-44) ───────────────
+        capture_attention_breakdown(pw, DESKTOP, "desktop")
+        capture_attention_breakdown(pw, PHONE, "phone")
 
 
 if __name__ == "__main__":

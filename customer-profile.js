@@ -164,19 +164,56 @@ function renderIdentity(p) {
         field('FactorView Debtor ID', id.fv_debtor_id ? esc(id.fv_debtor_id) : emptyDash()) +
         field('Bound By', id.bound_by ? esc(id.bound_by) : emptyDash()) +
       '</div>';
-  } else {
-    var absentBtn = p.can_act
+  } else if (p.cs_search_failed) {
+    // An empty picker and a failed search must not look the same -- this is
+    // "we don't know" (search error), not "we looked, there is nothing".
+    var absentBtnFailed = p.can_act
       ? '<button type="button" class="btn" data-cs-absent="1">Not in Creditsafe</button>'
-      : '';
-    var searchInput = p.can_act
-      ? '<input type="text" class="dec-input" id="cp-cs-search" placeholder="Search Creditsafe by company name">'
       : '';
     body = '' +
       '<div class="cp-cs-picker">' +
-        '<div class="field-val muted">Creditsafe returned more than one possible match for this name. ' +
-          'Confirm the right company, or mark this customer as not present.</div>' +
-        '<div class="cp-cs-search-row">' + searchInput + absentBtn + '</div>' +
-        '<div id="cp-cs-results" class="cp-cs-results"></div>' +
+        '<div class="field-val muted">The Creditsafe search is unavailable right now. Try again shortly, ' +
+          'or mark this customer as not present.</div>' +
+        '<div class="cp-cs-search-row">' + absentBtnFailed + '</div>' +
+      '</div>';
+  } else if (p.cs_candidates && p.cs_candidates.length) {
+    var total = p.cs_total != null ? Number(p.cs_total) : p.cs_candidates.length;
+    var countNote = total > p.cs_candidates.length
+      ? esc(String(total)) + ' matches, showing ' + esc(String(p.cs_candidates.length))
+      : esc(String(total)) + ' match' + (total === 1 ? '' : 'es');
+    var absentBtn = p.can_act
+      ? '<button type="button" class="btn" data-cs-absent="1">Not in Creditsafe</button>'
+      : '';
+    body = '' +
+      '<div class="cp-cs-picker">' +
+        '<div class="field-val muted">Creditsafe returned ' + countNote +
+          ' for this name. Confirm the right company, or mark this customer as not present.</div>' +
+        '<div class="cp-candidates">' +
+        p.cs_candidates.map(function (c) {
+          var pickBtn = p.can_act
+            ? '<button type="button" class="btn primary" data-cs-pick="' + esc(c.connect_id) + '">Use this</button>'
+            : '';
+          return '' +
+            '<div class="cp-cs-candidate-row">' +
+              '<div class="cp-candidate-main">' +
+                '<div class="cp-candidate-name">' + esc(c.name) + '</div>' +
+                '<div class="cp-candidate-sub">' + (c.address ? esc(c.address) + ' · ' : '') +
+                  esc(c.status || '') + '</div>' +
+              '</div>' +
+              pickBtn +
+            '</div>';
+        }).join('') +
+        '</div>' +
+        '<div class="cp-cs-search-row">' + absentBtn + '</div>' +
+      '</div>';
+  } else {
+    var absentBtnEmpty = p.can_act
+      ? '<button type="button" class="btn" data-cs-absent="1">Not in Creditsafe</button>'
+      : '';
+    body = '' +
+      '<div class="cp-cs-picker">' +
+        '<div class="field-val muted">No Creditsafe match is on file for this name yet.</div>' +
+        '<div class="cp-cs-search-row">' + absentBtnEmpty + '</div>' +
       '</div>';
   }
   return section('Creditsafe Match', body);
@@ -268,14 +305,18 @@ function renderPriors(p) {
 
 function render(payload) {
   var p = payload || {};
+  // Order: header -> engine read -> Creditsafe picker (resolves the identity) ->
+  // our own history (the debtor OperFi's own losses are recorded against, and
+  // where the FactorView `restricted` deny signal lives) -> other clients'
+  // limits -> the credit bureau report, which is context once the rest is known.
   return '' +
     '<div class="cp-root">' +
       renderHeader(p) +
       renderEngine(p) +
       renderIdentity(p) +
-      renderSummary(p) +
       renderFactorView(p) +
       renderPriors(p) +
+      renderSummary(p) +
     '</div>';
 }
 
@@ -324,11 +365,12 @@ var CP_CSS = '' +
   '.cp-cs-results{margin-top:10px;}' +
   '.cp-candidates,.cp-priors{display:flex;flex-direction:column;gap:8px;margin-top:10px;}' +
   '.cp-candidate-row,.cp-prior-row{display:grid;grid-template-columns:1.4fr 1fr auto;gap:10px;align-items:center;padding:10px 12px;background:#fafafa;border:1px solid #f0efe9;border-radius:8px;}' +
+  '.cp-cs-candidate-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px 12px;background:#fafafa;border:1px solid #f0efe9;border-radius:8px;}' +
   '.cp-candidate-name,.cp-prior-broker{font-size:13px;font-weight:700;color:#1d1d1f;}' +
   '.cp-candidate-sub{font-size:11px;color:#888;margin-top:2px;}' +
   '.cp-candidate-limit,.cp-prior-limit{font-size:14px;font-weight:700;color:#1d1d1f;text-align:right;}' +
   '.cp-prior-date{font-size:11px;color:#888;text-align:right;}' +
-  '@media (max-width:640px){.field-grid{grid-template-columns:1fr;}.cp-candidate-row,.cp-prior-row{grid-template-columns:1fr;}.cp-candidate-limit,.cp-prior-date{text-align:left;}}';
+  '@media (max-width:640px){.field-grid{grid-template-columns:1fr;}.cp-candidate-row,.cp-prior-row,.cp-cs-candidate-row{grid-template-columns:1fr;}.cp-candidate-limit,.cp-prior-date{text-align:left;}}';
 
 function injectStyles() {
   if (typeof document === 'undefined') { return; }

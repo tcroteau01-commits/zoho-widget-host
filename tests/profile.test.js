@@ -120,3 +120,33 @@ test('a suggested limit becomes a one-click approve', () => {
   assert.ok(html.includes('Approve $20,000'));
   assert.ok(/id="cp-limit"[^>]*value="20000"/.test(html));
 });
+
+test('the creditsafe candidates render as a picker', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    cs_total: 39,
+    cs_candidates: [{ connect_id: 'US001-X-1', name: 'C.H. ROBINSON WORLDWIDE',
+                      address: 'Eden Prairie, MN', status: 'Active' }] }));
+  assert.ok(html.includes('data-cs-pick="US001-X-1"'));
+  assert.ok(html.includes('C.H. ROBINSON WORLDWIDE'));
+  assert.ok(html.includes('39'));
+});
+
+test('a failed creditsafe search does not look like no matches', () => {
+  const html = P.render(Object.assign({}, BASE, { cs_search_failed: true }));
+  assert.ok(/unavailable|could not|failed/i.test(html));
+});
+
+test('a viewer gets no creditsafe pick controls', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    can_act: false, cs_total: 39,
+    cs_candidates: [{ connect_id: 'US1', name: 'X', address: '', status: '' }] }));
+  assert.ok(!html.includes('data-cs-pick='));
+  assert.ok(!html.includes('data-cs-absent='));
+});
+
+test('a hostile candidate name cannot inject markup', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    cs_candidates: [{ connect_id: 'US1', name: '<img src=x onerror=alert(1)>',
+                      address: '', status: '' }] }));
+  assert.ok(!html.includes('<img src=x'));
+});

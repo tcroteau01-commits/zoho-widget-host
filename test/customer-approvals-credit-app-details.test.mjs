@@ -152,15 +152,26 @@ test('renderCreditAppDetailSection renders company, billing, and what was reques
   assert.match(body.innerHTML, /Jamie Rivera/);           // signer
 });
 
-test('renderCreditAppDetailSection lists each reference by slot/company/contact/status, in plain words', () => {
+// REPLACED 2026-09-25. This test used to assert the opposite: that this block
+// lists each reference by slot/company/contact/status. Tom hit the result live
+// -- the Credit Application tracker a few inches above renders the same four
+// references, same labels, same names, same statuses -- and the tracker won,
+// because it also carries waiting time, the stalled/bounced overlays, Nudge,
+// Nudge all waiting, and Report a problem. The old assertion was correct about
+// the code and wrong about the product, so it is inverted here rather than
+// deleted, and the duplication itself is pinned in
+// customer-approvals-credit-app-refs-once.test.mjs.
+test('renderCreditAppDetailSection does NOT list the references -- the tracker above owns them', () => {
   const w = boot();
   detailFixture(w);
   w.renderCreditAppDetailSection(clientPayload());
   const body = w.document.getElementById('ca-app-detail-body');
-  assert.match(body.innerHTML, /Trade reference 1/);
-  assert.match(body.innerHTML, /ABC Produce, Steve Alvarez/);
-  assert.match(body.innerHTML, /Completed/);
-  assert.match(body.innerHTML, /Bank reference/);
+  assert.doesNotMatch(body.innerHTML, /Trade reference 1/);
+  assert.doesNotMatch(body.innerHTML, /ABC Produce, Steve Alvarez/);
+  assert.doesNotMatch(body.innerHTML, />References</);
+  assert.equal(body.querySelectorAll('.ca-app-detail-ref').length, 0);
+  // The bank's own NAME is a Requested field, not a reference row, and stays.
+  assert.match(body.innerHTML, /First National Bank/);
 });
 
 test('billing instructions render in full and wrap, never truncate', () => {

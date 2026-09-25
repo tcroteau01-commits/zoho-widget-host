@@ -1586,6 +1586,28 @@ function renderProfile(rec, payload) {
       pinCustomer(rec, { connect_id: null });
     });
   });
+  root.querySelectorAll('[data-pull-report]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      // Disable immediately. A paid lookup that takes a few seconds invites a
+      // second click, and the cache only protects us once the FIRST one lands.
+      btn.disabled = true;
+      btn.textContent = 'Getting report…';
+      fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/report', {
+        method: 'POST', credentials: 'include'
+      }).then(function(res) {
+        return res.ok ? res.json() : res.json().catch(function() { return {}; })
+                                        .then(function(b) { return Promise.reject(b); });
+      }).then(function() { fetchProfile(rec); })
+        .catch(function(err) {
+          console.error('[CustomerApprovals] report pull failed', err);
+          btn.disabled = false;
+          btn.textContent = 'Get credit report';
+          showToast(err && err.reason === 'stale_id'
+            ? 'That Creditsafe company no longer resolves. Pick again.'
+            : 'Could not get the report. Try again.');
+        });
+    });
+  });
   // Reuse submitDecision -- there is one decision write path (POST /credit-decision)
   // and it stays that way. applyDecisionResult keeps allRecords/KPIs/the list in
   // sync the same way a decision made in the drawer already does.

@@ -241,24 +241,115 @@ function renderIdentity(p) {
 }
 
 // ---- the credit bureau report, once an identity is bound ----
+function num(n) {
+  if (n == null) { return emptyDash(); }
+  var v = Number(n);
+  if (!isFinite(v)) { return esc(String(n)); }
+  // 841 trade lines and 15000 employees sit side by side; without separators the
+  // second one has to be counted rather than read.
+  return esc(String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+}
+
+// A count that means something when it is zero. "0 judgments" is a finding an
+// analyst can rely on; a dash is an absence they cannot.
+function count(n) { return n == null ? emptyDash() : esc(String(Number(n) || 0)); }
+
+function pct(n) {
+  if (n == null) { return emptyDash(); }
+  return esc((Math.round(Number(n) * 100) / 100) + '%');
+}
+
+// The direction of travel. Creditsafe's own limit collapsing is the single
+// loudest signal in the file, and it is invisible from the current value alone.
+function trend(now, before, fmt) {
+  var f = fmt || num;
+  if (before == null) { return f(now); }
+  if (now == null) { return emptyDash(); }
+  var d = Number(now) - Number(before);
+  if (!d) { return f(now) + ' <span class="cp-trend muted">(no change)</span>'; }
+  var cls = d < 0 ? 'cp-trend cp-trend-down' : 'cp-trend cp-trend-up';
+  // Sign as a WORD, magnitude as a positive number. money(-250000) formats as
+  // "$-250,000", which reads as a typo at a glance and is the wrong thing to
+  // make an analyst parse twice on the one line that matters most.
+  var size = fmt === money ? money(Math.abs(d)) : String(Math.abs(d));
+  return f(now) + ' <span class="' + cls + '">(' + (d < 0 ? 'down ' : 'up ') +
+         esc(size) + ' from ' + f(before) + ')</span>';
+}
+
 function renderSummary(p) {
   var s = p.summary;
   var body;
   if (!s) {
-    body = '<div class="field-val muted">No Creditsafe report on file.</div>';
-  } else if (!s.scored) {
-    body = '<div class="field-val muted">Creditsafe has not scored this company yet.</div>';
+    // 🚨 "Nobody has bought it" and "we bought it and there is nothing" are
+    // different facts. Only the first one is fixable by clicking a button.
+    var pull = p.can_pull_report && p.can_act
+      ? '<div class="cp-cs-search-row">' +
+          '<button type="button" class="btn primary" data-pull-report="1">Get credit report</button>' +
+        '</div>' +
+        '<div class="field-val muted cp-note">Pulls the full Creditsafe file for the ' +
+          'company bound above. This is a paid lookup, and it is cached afterwards.</div>'
+      : '';
+    body = '<div class="field-val muted">' +
+             (p.can_pull_report ? 'No Creditsafe report has been pulled for this company yet.'
+                                : 'No Creditsafe report on file. Confirm the Creditsafe company above first.') +
+           '</div>' + pull;
+    return section('Credit Report', body);
+  }
+  if (!s.scored) {
+    // Not Rated is a real answer from a real report, not a missing one.
+    body = '<div class="field-val muted">Creditsafe returned a report but has not ' +
+           'scored this company. The trade and legal detail below still stands.</div>';
   } else {
     body = '' +
       '<div class="field-grid">' +
-        field('Score', s.score != null ? esc(String(s.score)) : emptyDash()) +
-        field('Grade', s.grade ? esc(s.grade) : emptyDash()) +
-        field('Recommended Limit', s.recommended_limit != null ? esc(money(s.recommended_limit)) : emptyDash()) +
-        field('Active Trade Lines', s.active_trade_lines != null ? esc(String(s.active_trade_lines)) : emptyDash()) +
-        field('Days Beyond Terms', s.dbt != null ? esc(String(s.dbt)) : emptyDash()) +
-        field('Established', s.established_year ? esc(String(s.established_year)) : emptyDash()) +
-        field('Address Type', s.address_type ? esc(s.address_type) : emptyDash()) +
+        field('Score', trend(s.score, s.previous_score)) +
+        field('Grade', s.grade ? esc(s.grade) + (s.grade_label ? ' <span class="muted">' + esc(s.grade_label) + '</span>' : '') : emptyDash()) +
+        field('Recommended Limit', trend(s.recommended_limit, s.previous_limit, money)) +
+        field('Limit Last Changed', s.limit_changed_at ? esc(String(s.limit_changed_at).slice(0, 10)) : emptyDash()) +
       '</div>';
+  }
+
+  // Payment behaviour. DBT against the industry is the comparison that matters:
+  // 30 days late means one thing in produce and another in steel.
+  body += '<div class="cp-subhead">Payment behaviour</div>' +
+    '<div class="field-grid">' +
+      field('Days Beyond Terms', num(s.dbt)) +
+      field('Industry DBT', num(s.industry_dbt)) +
+      field('Active Trade Lines', num(s.active_trade_lines)) +
+      field('Total Balance', s.balance != null ? esc(money(s.balance)) : emptyDash()) +
+      field('91+ Days', s.range91plus != null ? esc(money(s.range91plus)) : emptyDash()) +
+      field('% 91+ Days', pct(s.pct_91plus)) +
+    '</div>';
+
+  // The deny signals. These are counts, so zero is the answer and must show as 0.
+  body += '<div class="cp-subhead">Legal and risk</div>' +
+    '<div class="field-grid">' +
+      field('Bankruptcy', s.bankruptcy ? '<span class="cp-flag">Yes</span>' : 'No') +
+      field('Possible OFAC', s.possible_ofac ? '<span class="cp-flag">Yes</span>' : 'No') +
+      field('Tax Liens', count(s.tax_liens) +
+            (Number(s.tax_lien_value) ? ' <span class="muted">' + esc(money(s.tax_lien_value)) + '</span>' : '')) +
+      field('Judgments', count(s.judgments)) +
+      field('Suits', count(s.suits)) +
+      field('UCC Filings', count(s.ucc) +
+            (Number(s.cautionary_ucc) ? ' <span class="cp-flag">' + esc(String(s.cautionary_ucc)) + ' cautionary</span>' : '')) +
+    '</div>';
+
+  // Firmographics. Tom's gate rests on these, not on the score: age, a real
+  // street address and headcount predict our losses where the rating does not.
+  body += '<div class="cp-subhead">Company</div>' +
+    '<div class="field-grid">' +
+      field('Established', s.established_year ? esc(String(s.established_year)) : emptyDash()) +
+      field('Employees', num(s.employees)) +
+      field('Address Type', s.address_type ? esc(s.address_type) : emptyDash()) +
+      field('Tax ID', s.tax_id ? esc(s.tax_id) : emptyDash()) +
+    '</div>';
+
+  if (s.dbt_history && s.dbt_history.length) {
+    body += '<div class="cp-subhead">DBT history</div><div class="cp-dbt-history">' +
+      s.dbt_history.slice(-12).map(function (h) {
+        return '<span class="cp-dbt-cell"><b>' + esc(String(h.dbt)) + '</b>' +
+               (h.date ? '<i>' + esc(String(h.date).slice(0, 7)) + '</i>' : '') + '</span>';
+      }).join('') + '</div>';
   }
   return section('Credit Report', body);
 }
@@ -382,6 +473,20 @@ var CP_CSS = '' +
   '.cp-reasons li{margin:2px 0;}' +
   '.cp-reasons-wrap{margin-top:14px;}' +
   '.cp-cs-search-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}' +
+  // The report is long enough that an analyst scans it rather than reads it,
+  // so the groups need to be findable at a glance.
+  '.cp-subhead{margin:18px 0 8px;font-size:11px;font-weight:700;letter-spacing:.06em;' +
+    'text-transform:uppercase;color:#64748b;border-top:1px solid #e2e8f0;padding-top:12px;}' +
+  '.cp-flag{color:#b91c1c;font-weight:700;}' +
+  '.cp-trend{font-size:12px;font-weight:600;}' +
+  '.cp-trend-down{color:#b91c1c;}' +   // a falling limit is the loudest signal in the file
+  '.cp-trend-up{color:#15803d;}' +
+  '.cp-note{margin-top:6px;font-size:12px;}' +
+  '.cp-dbt-history{display:flex;gap:6px;flex-wrap:wrap;}' +
+  '.cp-dbt-cell{display:flex;flex-direction:column;align-items:center;min-width:44px;' +
+    'padding:6px 4px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;}' +
+  '.cp-dbt-cell b{font-size:13px;color:#0f172a;}' +
+  '.cp-dbt-cell i{font-size:10px;font-style:normal;color:#64748b;}' +
   '.cp-cs-search-row input{flex:1;min-width:200px;}' +
   '.cp-cs-results{margin-top:10px;}' +
   '.cp-candidates,.cp-priors{display:flex;flex-direction:column;gap:8px;margin-top:10px;}' +
@@ -435,6 +540,10 @@ function mount(root, payload, handlers) {
         }
         if (t.hasAttribute('data-cs-clear')) {
           if (handlers.onCsClear) { handlers.onCsClear(); }
+          return;
+        }
+        if (t.hasAttribute('data-pull-report')) {
+          if (handlers.onPullReport) { handlers.onPullReport(); }
           return;
         }
       }

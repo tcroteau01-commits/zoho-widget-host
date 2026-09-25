@@ -121,6 +121,84 @@ test('a bound Creditsafe company can be unpinned and picked again', () => {
   assert.ok(html.includes('data-cs-clear='));
 });
 
+// --- the credit report, which is the whole reason the page exists ----------
+
+const REPORT = {
+  scored: true, score: 72, previous_score: 78, grade: 'A',
+  grade_label: 'Very Low Risk', recommended_limit: 1000000,
+  previous_limit: 1250000, dbt: 5, industry_dbt: 11, active_trade_lines: 841,
+  balance: 52000000, range91plus: 310000, pct_91plus: 0.596,
+  bankruptcy: false, possible_ofac: false, tax_liens: 0, judgments: 2,
+  suits: 0, ucc: 14, cautionary_ucc: 1, tax_id: '41-1883630',
+  established_year: 1969, employees: 15000, address_type: 'Street Address',
+  dbt_history: [{ date: '2026-07-01', dbt: 6 }, { date: '2026-08-01', dbt: 5 }]
+};
+
+test('the report shows payment, legal and firmographic detail, not just a score', () => {
+  const html = P.render(Object.assign({}, BASE, { summary: REPORT }));
+  ['Industry DBT', '91+ Days', 'Bankruptcy', 'Possible OFAC', 'Judgments',
+   'UCC Filings', 'Employees', 'Tax ID', 'DBT history'].forEach((label) => {
+    assert.ok(html.includes(label), 'missing section: ' + label);
+  });
+});
+
+test('a zero count reads as zero, not as a dash', () => {
+  // "0 judgments" is a finding an analyst can rely on; a dash is an absence
+  // they cannot. Coercing one to the other loses the whole point of the check.
+  const html = P.render(Object.assign({}, BASE, { summary: REPORT }));
+  const suits = html.match(/Suits<\/div><div class="field-val">([^<]*)</);
+  assert.strictEqual(suits[1].trim(), '0');
+});
+
+test('a falling credit limit is shown as a fall, and reads as English', () => {
+  // 🚨 Creditsafe's own limit collapsing is the loudest signal in the file and
+  // is invisible from the current value alone. money(-250000) renders
+  // "$-250,000", which reads as a typo on the one line that matters most.
+  const html = P.render(Object.assign({}, BASE, { summary: REPORT }));
+  assert.ok(html.includes('down $250,000 from $1,250,000'));
+  assert.ok(html.includes('down 6 from 78'));
+  assert.ok(!html.includes('$-'));
+  assert.ok(html.includes('cp-trend-down'));
+});
+
+test('large counts are readable', () => {
+  const html = P.render(Object.assign({}, BASE, { summary: REPORT }));
+  assert.ok(html.includes('15,000'));
+});
+
+test('a Not Rated report is not treated as a missing one', () => {
+  // Not Rated is a real answer from a report we paid for. Offering "Get credit
+  // report" again would charge twice for the same answer.
+  const html = P.render(Object.assign({}, BASE, {
+    summary: { scored: false, judgments: 1 }, can_pull_report: true }));
+  assert.ok(/has not scored this company/i.test(html));
+  assert.ok(!html.includes('data-pull-report='));
+});
+
+test('a bound company with no report offers to buy one, and says it is paid', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    summary: null, can_pull_report: true,
+    identity: { connect_id: 'US1', not_in_creditsafe: false } }));
+  assert.ok(html.includes('data-pull-report='));
+  assert.ok(/paid lookup/i.test(html));
+});
+
+test('with nothing bound there is nothing to buy', () => {
+  // Guessing which of 39 candidates to charge for is the mistake the picker
+  // exists to prevent.
+  const html = P.render(Object.assign({}, BASE, {
+    summary: null, can_pull_report: false }));
+  assert.ok(!html.includes('data-pull-report='));
+  assert.ok(/Confirm the Creditsafe company/i.test(html));
+});
+
+test('a viewer is never offered a billable button', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    summary: null, can_pull_report: true, can_act: false,
+    identity: { connect_id: 'US1' } }));
+  assert.ok(!html.includes('data-pull-report='));
+});
+
 test('a viewer who may not act gets neither undo control', () => {
   const absent = P.render(Object.assign({}, BASE, {
     can_act: false,

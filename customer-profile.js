@@ -76,14 +76,39 @@ function section(title, bodyHtml, extraClass) {
 }
 
 // ---- header: customer, broker, status, engine verdict, decision controls ----
+// Approved is green, Denied is red, anything else is still open. Colour carries
+// the decision because that is what a glance reads, not the words.
+function statusTone(status) {
+  var s = String(status || '').trim().toLowerCase();
+  if (s === 'approved') { return 'cp-status-approved'; }
+  if (s === 'denied') { return 'cp-status-denied'; }
+  return 'cp-status-open';
+}
+
+// A decision a person has made and the system is no longer waiting on.
+function isSettled(status) {
+  var s = String(status || '').trim().toLowerCase();
+  return s === 'approved' || s === 'denied';
+}
+
 function renderHeader(p) {
   var engine = p.engine;
-  var verdictHtml;
-  if (engine && engine.suggested) {
-    var pillClass = engine.suggested === 'auto_approve' ? 'cp-pill-ok' : 'cp-pill-warn';
-    verdictHtml = '<span class="cp-pill ' + pillClass + '">' + esc(engineLabel(engine.suggested)) + '</span>';
-  } else {
-    verdictHtml = '<span class="cp-pill cp-pill-muted">No automated read yet</span>';
+  // 🚨 ONE status in the header. Tom, seeing APPROVED and REVIEW REQUIRED side
+  // by side: "These 2 pills don't make sense either. Review Required but
+  // Approved?" Once a person has decided, the engine's suggestion is history,
+  // not a competing state -- it stays in the Credit Engine card below, which is
+  // where a reader goes to ask how the decision was reached. The suggestion
+  // belongs in the header only while the decision is still OPEN, because that is
+  // the one time it tells the analyst what to do next.
+  var verdictHtml = '';
+  if (!isSettled(p.status)) {
+    if (engine && engine.suggested) {
+      var pillClass = engine.suggested === 'auto_approve' ? 'cp-pill-ok' : 'cp-pill-warn';
+      verdictHtml = '<span class="cp-pill ' + pillClass + '">' +
+        esc(engineLabel(engine.suggested)) + '</span>';
+    } else {
+      verdictHtml = '<span class="cp-pill cp-pill-muted">No automated read yet</span>';
+    }
   }
 
   // Tom, 2026-09-25: "Show decision on both." Decision controls live in the
@@ -99,10 +124,27 @@ function renderHeader(p) {
         prefill = String(n);
       }
     }
-    decisionHtml = '' +
+    // 🚨 Neither button is pre-coloured. Tom: "maybe the Approved or Denied
+    // buttons need to be the same color to start and they have to select their
+    // decision from there." An orange Approve sitting next to a plain Denied
+    // reads as the recommended action on every single customer, including the
+    // ones we should refuse.
+    var settledNote = isSettled(p.status)
+      ? '<div class="cp-decided cp-decided-' +
+        (statusTone(p.status) === 'cp-status-approved' ? 'yes' : 'no') + '">' +
+        esc(p.status) + (p.submitted && p.submitted.credit_limit
+          ? ' &middot; ' + esc(money(p.submitted.credit_limit)) : '') +
+        ' &middot; <span class="muted">changing it below overwrites this</span></div>'
+      : '';
+    decisionHtml = settledNote +
       '<div class="cp-decision-row">' +
-        '<button type="button" class="btn primary" data-decide="Approved">' + esc(approveLabel) + '</button>' +
-        '<button type="button" class="btn" data-decide="Denied">Denied</button>' +
+        '<button type="button" class="btn cp-decide cp-decide-approve" data-decide="Approved">' +
+          esc(approveLabel) + '</button>' +
+        '<button type="button" class="btn cp-decide cp-decide-deny" data-decide="Denied">Denied</button>' +
+        // The third decision a person is allowed to set. Everything else --
+        // app sent, received, expired, boost requested -- the system sets.
+        '<button type="button" class="btn cp-decide" data-decide="Pending Credit Application">' +
+          'Pending Credit App</button>' +
         '<input type="number" class="dec-input cp-limit-input" id="cp-limit" min="0" step="1" ' +
           'placeholder="Credit limit" value="' + esc(prefill) + '">' +
       '</div>';
@@ -135,7 +177,12 @@ function renderHeader(p) {
           '<div class="cp-broker">Submitted by ' + esc(p.broker) + '</div>' +
         '</div>' +
         '<div class="cp-header-status">' +
-          '<span class="cp-status-pill">' + esc(p.status) + '</span>' +
+          // 🚨 A settled decision must not read like an open one. Tom, after
+          // denying a customer: "nothing really changed on the UI except the
+          // denied bubble in the corner... if you glance quickly it looks like
+          // we approved it because the DENIED bubble blends in."
+          '<span class="cp-status-pill ' + esc(statusTone(p.status)) + '">' +
+            esc(p.status) + '</span>' +
           verdictHtml +
         '</div>' +
       '</div>' +
@@ -247,20 +294,25 @@ function renderIdentity(p) {
           var pickBtn = p.can_act
             ? '<button type="button" class="btn primary" data-cs-pick="' + esc(c.connect_id) + '">Use this</button>'
             : '';
-          // The address match, so a long list sorts itself for the eye. The
-          // server has already ordered these best-first; this says WHY.
-          var sc = c.address_score;
+          // 🚨 Say what actually matched. Two GW COUNTRY rows in Winfield, KS
+          // both read "address matches" against a submitted address that was
+          // neither of them -- they shared only the town and the zip. Same
+          // town is not the same company, and a badge that overstates it is
+          // worse than no badge at all.
           var scoreHtml = '';
-          if (sc != null && sc > 0) {
-            var scls = sc >= 70 ? 'cp-match-strong'
-                     : (sc >= 35 ? 'cp-match-part' : 'cp-match-weak');
-            scoreHtml = '<span class="cp-match ' + scls + '">' +
-              (sc >= 70 ? 'address matches' : 'partial address') + '</span>';
+          if (c.address_street_match) {
+            scoreHtml = '<span class="cp-match cp-match-strong">address matches</span>';
+          } else if (c.address_same_area) {
+            scoreHtml = '<span class="cp-match cp-match-part">same city, different street</span>';
           }
+          // Head office vs branch, which is often THE deciding field between
+          // two live rows for one company.
+          var officeHtml = c.office_type
+            ? '<span class="cp-office">' + esc(c.office_type) + '</span>' : '';
           return '' +
             '<div class="cp-cs-candidate-row">' +
               '<div class="cp-candidate-main">' +
-                '<div class="cp-candidate-name">' + esc(c.name) + scoreHtml + '</div>' +
+                '<div class="cp-candidate-name">' + esc(c.name) + scoreHtml + officeHtml + '</div>' +
                 '<div class="cp-candidate-sub">' + (c.address ? esc(c.address) + ' · ' : '') +
                   esc(c.status || '') + '</div>' +
               '</div>' +
@@ -693,6 +745,21 @@ var CP_CSS = '' +
   '.cp-pill-ok{background:#1f6321;color:#e3f4e3;}' +
   '.cp-pill-warn{background:#F97316;color:#fff;}' +
   '.cp-pill-muted{background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);}' +
+  // A settled decision has to survive a glance. The old pill was white-on-grey
+  // for every status, so DENIED and AWAITING looked identical in the corner.
+  '.cp-status-approved{background:#15803d;color:#fff;}' +
+  '.cp-status-denied{background:#b91c1c;color:#fff;}' +
+  '.cp-status-open{background:rgba(255,255,255,0.14);color:#fff;}' +
+  // Both choices start identical; colour arrives on hover, when the analyst is
+  // committing to one rather than being nudged toward it.
+  '.cp-decide{background:#fff;color:#1f2937;border:1px solid #d4d4d8;font-weight:600;}' +
+  '.cp-decide-approve:hover{background:#15803d;border-color:#15803d;color:#fff;}' +
+  '.cp-decide-deny:hover{background:#b91c1c;border-color:#b91c1c;color:#fff;}' +
+  '.cp-decided{margin:0 0 10px;padding:7px 12px;border-radius:8px;font-size:12px;' +
+    'font-weight:700;display:inline-block;}' +
+  '.cp-decided-yes{background:rgba(21,128,61,.18);color:#bbf7d0;}' +
+  '.cp-decided-no{background:rgba(185,28,28,.22);color:#fecaca;}' +
+  '.cp-decided .muted{font-weight:500;opacity:.8;}' +
   '.cp-header-contacts{margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.12);}' +
   '.cp-header-contacts .field-label{color:rgba(255,255,255,0.55);}' +
   '.cp-header-contacts .field-val{color:#fff;}' +
@@ -759,6 +826,9 @@ var CP_CSS = '' +
   '.cp-match-strong{background:#e8f5e9;color:#2e7d32;}' +
   '.cp-match-part{background:#fff4e0;color:#b25e00;}' +
   '.cp-match-weak{background:#eef2f7;color:#475569;}' +
+  '.cp-office{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;' +
+    'padding:2px 7px;border-radius:8px;background:#eef2ff;color:#3730a3;' +
+    'text-transform:uppercase;letter-spacing:.04em;}' +
   '.cp-header-contacts a{color:#fff;text-decoration:underline;}' +
   '.cp-submitted a{color:#1d4ed8;}' +
   '.cp-cs-search-row input{flex:1;min-width:200px;}' +

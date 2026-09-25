@@ -210,28 +210,116 @@ test('the profile renders without a submitted block at all', () => {
 
 // --- the Creditsafe picker, ranked by address ------------------------------
 
-test('the candidate whose address matches is flagged as such', () => {
+test('the candidate whose street matches is flagged as such', () => {
   const html = P.render(Object.assign({}, BASE, {
     submitted: SUBMITTED, cs_total: 27,
     cs_candidates: [
       { connect_id: 'US10373976', name: 'QUADREL, INC.', status: 'Active',
-        address: '7670 JENTHER DR, MENTOR, OH, 44060', address_score: 100 },
+        address: '7670 JENTHER DR, MENTOR, OH, 44060',
+        address_score: 100, address_street_match: true, address_same_area: true },
       { connect_id: 'US80400643', name: 'QUADREL, INC', status: 'Active',
-        address: '5001 BAUM BLVD STE 799, PITTSBURGH, PA, 15213', address_score: 0 }
+        address: '5001 BAUM BLVD STE 799, PITTSBURGH, PA, 15213',
+        address_score: 0, address_street_match: false, address_same_area: false }
     ] }));
   assert.ok(html.includes('address matches'));
-  // and only on the one that matches
   assert.strictEqual(html.split('address matches').length - 1, 1);
 });
 
-test('with no address to compare, no candidate claims a match', () => {
+test('same town is not the same address', () => {
+  // 🚨 The GW COUNTRY case. Two live rows in Winfield, KS -- 16590 121ST RD and
+  // 3512 LAKESHORE DR -- against a submitted 3105 CENTRAL AVENUE. They share
+  // only the town and the zip, and BOTH used to read "address matches".
+  const html = P.render(Object.assign({}, BASE, {
+    cs_total: 2,
+    cs_candidates: [
+      { connect_id: 'A', name: 'GW COUNTRY LLC', office_type: 'Branch',
+        address: '16590 121ST RD, WINFIELD, KS, 67156',
+        address_score: 40, address_street_match: false, address_same_area: true },
+      { connect_id: 'B', name: 'GW COUNTRY OF WINFIELD INC', office_type: 'Headquarters',
+        address: '3512 LAKESHORE DR, WINFIELD, KS, 67156',
+        address_score: 40, address_street_match: false, address_same_area: true }
+    ] }));
+  assert.ok(!html.includes('address matches'), 'overstated the match');
+  assert.strictEqual(html.split('same city, different street').length - 1, 2);
+});
+
+test('head office and branch are visible on the candidate', () => {
+  // Tom: "if i were selecting this in Creditsafe, I'd pick the headquarters one."
+  const html = P.render(Object.assign({}, BASE, {
+    cs_total: 2,
+    cs_candidates: [
+      { connect_id: 'A', name: 'GW COUNTRY LLC', office_type: 'Branch',
+        address: '16590 121ST RD, WINFIELD, KS, 67156' },
+      { connect_id: 'B', name: 'GW COUNTRY OF WINFIELD INC', office_type: 'Headquarters',
+        address: '3512 LAKESHORE DR, WINFIELD, KS, 67156' }] }));
+  assert.ok(html.includes('Headquarters'));
+  assert.ok(html.includes('Branch'));
+});
+
+test('with no address to compare, no candidate claims anything', () => {
   const html = P.render(Object.assign({}, BASE, {
     cs_total: 2,
     cs_candidates: [
       { connect_id: 'A', name: 'ONE', address: 'X', address_score: 0 },
       { connect_id: 'B', name: 'TWO', address: 'Y', address_score: 0 }] }));
   assert.ok(!html.includes('address matches'));
-  assert.ok(!html.includes('partial address'));
+  assert.ok(!html.includes('same city'));
+});
+
+// --- one status in the header ----------------------------------------------
+
+test('a settled decision does not sit beside a competing engine pill', () => {
+  // 🚨 Tom, seeing APPROVED and REVIEW REQUIRED together: "These 2 pills don't
+  // make sense either. Review Required but Approved?"
+  const html = P.render(Object.assign({}, BASE, {
+    status: 'Approved',
+    engine: { suggested: 'review_required', limit: null, engine_version: 'v1',
+              reasons: ['more than one Creditsafe match'], note: null } }));
+  // The Credit Engine section always renders, so it is a reliable boundary;
+  // "As Submitted" is not, and slicing on a -1 quietly tests nothing.
+  const header = html.slice(0, html.indexOf('Credit Engine'));
+  assert.ok(header.length > 0);
+  assert.ok(!/Review Required/i.test(header), 'engine pill still in the header');
+  // ...but the engine's read is still available where it belongs
+  assert.ok(/Review Required/i.test(html));
+});
+
+test('while the decision is open the engine read IS the headline', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    status: 'Awaiting Credit Decision',
+    engine: { suggested: 'review_required', limit: null, engine_version: 'v1',
+              reasons: [], note: null } }));
+  const header = html.slice(0, html.indexOf('Credit Engine'));
+  assert.ok(/Review Required/i.test(header));
+});
+
+test('Denied is visually a refusal, not another grey chip', () => {
+  const denied = P.render(Object.assign({}, BASE, { status: 'Denied' }));
+  const approved = P.render(Object.assign({}, BASE, { status: 'Approved' }));
+  const open = P.render(Object.assign({}, BASE, { status: 'Awaiting Credit Decision' }));
+  assert.ok(denied.includes('cp-status-denied'));
+  assert.ok(approved.includes('cp-status-approved'));
+  assert.ok(open.includes('cp-status-open'));
+});
+
+test('neither decision button is pre-selected by colour', () => {
+  // An orange Approve beside a plain Denied reads as the recommended action on
+  // every customer, including the ones we should refuse.
+  const html = P.render(BASE);
+  assert.ok(!/data-decide="Approved"[^>]*class="[^"]*primary/.test(html));
+  assert.ok(!/class="[^"]*primary[^"]*"[^>]*data-decide="Approved"/.test(html));
+  assert.ok(html.includes('cp-decide-approve'));
+  assert.ok(html.includes('cp-decide-deny'));
+});
+
+test('the three human decisions are offered and no others', () => {
+  // Tom: "The only ones our team should be able to choose should be Approved,
+  // Denied, or Pending Credit App."
+  const html = P.render(BASE);
+  const offered = (html.match(/data-decide="([^"]+)"/g) || [])
+    .map((m) => m.slice(13, -1));
+  assert.deepStrictEqual(offered.sort(),
+    ['Approved', 'Denied', 'Pending Credit Application']);
 });
 
 // --- CREDITAPP1: the customer's own application and its references ---------

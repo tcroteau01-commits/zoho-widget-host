@@ -15,6 +15,36 @@ test('the profile script is loaded', () => {
   assert.ok(/<script[^>]+src="customer-profile\.js"/.test(html));
 });
 
+// --- the drawer offers the same three decisions the profile does ------------
+//
+// Tom, 2026-09-25: "In the details pane, i noticed our team has the ability to
+// select all of the decision statuses. The only ones our team should be able to
+// choose should be Approved, Denied, or Pending Credit App. All the other
+// decisions should be handled programatically."
+
+test('the drawer dropdown is built from the three human decisions', () => {
+  assert.ok(/var HUMAN_DECISION_VALUES = \['Approved', 'Denied', 'Pending Credit Application'\]/
+            .test(html));
+  // and the dropdown maps over THAT, not the full vocabulary
+  const opts = html.match(/var optsHtml =[\s\S]*?\.join\(''\);/)[0];
+  assert.ok(opts.includes('HUMAN_DECISION_VALUES.map'));
+  assert.ok(!/\bDECISION_VALUES\.map/.test(opts.replace(/HUMAN_DECISION_VALUES/g, '')));
+});
+
+test('a status the system set is still shown, but not offered', () => {
+  // Otherwise the box reads "Approved" on a record sitting at "Credit App Sent"
+  // and the next save changes a status nobody meant to touch.
+  const opts = html.match(/var optsHtml =[\s\S]*?\.join\(''\);/)[0];
+  assert.ok(opts.includes('selected disabled'));
+  assert.ok(opts.includes('set automatically'));
+});
+
+test('the full vocabulary survives for reading stored values', () => {
+  // DECISION_VALUES is what a STORED value is validated against; narrowing it
+  // would make every machine-set status read as invalid.
+  assert.ok(/var DECISION_VALUES = \[[\s\S]*?'Expired'\]/.test(html));
+});
+
 // --- clicking "Use this" must visibly do something --------------------------
 //
 // 🚨 Confirming a company is no longer a quick write: it searches, buys a

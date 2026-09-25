@@ -819,6 +819,15 @@ var DECISION_VALUES = ['Approved','Awaiting Credit Decision','Pending Credit App
   'Credit Boost Requested','Denied','Expired'];
 window.DECISION_VALUES = DECISION_VALUES;
 
+// 🚨 The three a PERSON may set, mirroring the backend's HUMAN_CREDIT_DECISIONS.
+// Everything else in DECISION_VALUES is a state the SYSTEM moves a submission
+// into -- app sent, app received, boost requested, expired, awaiting -- and each
+// is written to Creator directly by the code that causes it. DECISION_VALUES
+// stays the full vocabulary because it is still what a STORED value is read
+// against; that is a different question from what a human may choose.
+var HUMAN_DECISION_VALUES = ['Approved', 'Denied', 'Pending Credit Application'];
+window.HUMAN_DECISION_VALUES = HUMAN_DECISION_VALUES;
+
 // Posts a decision. Returns {ok:true,...} or {ok:false,error}. Mirrors the server's
 // "Approved requires a positive limit" guard for instant feedback. Reads window.brokerEmail
 // so tests can drive it; falls back to the closure value in production.
@@ -1304,9 +1313,25 @@ function renderPanel() {
   if (allClients) {
     var curDecision = decisionSelectValue(r);
     var isApproved = curDecision === 'Approved';
-    var optsHtml = DECISION_VALUES.map(function(v) {
-      return '<option value="' + esc(v) + '"' + (v === curDecision ? ' selected' : '') + '>' + esc(v) + '</option>';
-    }).join('');
+    // 🚨 Only the three a PERSON may set. Tom, 2026-09-25: "The only ones our
+    // team should be able to choose should be Approved, Denied, or Pending
+    // Credit App. All the other decisions should be handled programatically."
+    // The backend refuses the rest outright, so offering them here would only
+    // produce a 400 the analyst cannot explain.
+    //
+    // The CURRENT value is still shown when the system set it -- otherwise the
+    // box silently reads "Approved" on a submission sitting at "Credit App Sent"
+    // and the next save would change a status nobody meant to touch. It is
+    // listed disabled: visible as where this record IS, not offered as a choice.
+    var machineSet = HUMAN_DECISION_VALUES.indexOf(curDecision) === -1 && curDecision;
+    var optsHtml = (machineSet
+      ? '<option value="' + esc(curDecision) + '" selected disabled>' +
+        esc(curDecision) + ' (set automatically)</option>'
+      : '') +
+      HUMAN_DECISION_VALUES.map(function(v) {
+        return '<option value="' + esc(v) + '"' +
+          (v === curDecision ? ' selected' : '') + '>' + esc(v) + '</option>';
+      }).join('');
     var curLimit = parseMoney(r.Credit_Limit);
     decisionSectionHtml = '' +
       '<div class="panel-section decision">' +

@@ -1497,6 +1497,23 @@ function openProfile(rec) {
   document.querySelector('.widget').style.display = 'none';
   var root = document.getElementById('ca-profile');
   root.style.display = '';
+  // 🚨 Check the renderer is HERE before spending anything. customer-profile.js
+  // is served through the portal's asset allowlist, and when it is missing the
+  // only symptom is this global being undefined -- which used to surface as a
+  // TypeError inside the fetch's .then, land in its .catch, and tell the analyst
+  // to check their connection. Worse, the GET had already run server-side and
+  // bought a billable Creditsafe search for a page that could never draw.
+  if (typeof OperFiCustomerProfile === 'undefined') {
+    console.error('[CustomerApprovals] customer-profile.js did not load — ' +
+                  'is it in broker_portal.py ALLOWED_ASSETS?');
+    root.innerHTML =
+      '<div class="state"><div class="state-title">The profile view failed to load.</div>' +
+      '<div class="state-msg">A required script is missing. This is a deploy problem, ' +
+      'not your connection — please report it.</div></div>' +
+      '<button type="button" class="btn" id="ca-profile-back">‹ Back to customers</button>';
+    document.getElementById('ca-profile-back').addEventListener('click', closeProfile);
+    return;
+  }
   root.innerHTML = '<div class="state"><div class="spinner"></div>' +
     '<div class="state-title">Loading customer profile…</div></div>';
   fetchProfile(rec);

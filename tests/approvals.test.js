@@ -53,6 +53,18 @@ test('a permissions failure does not read as a network problem', () => {
   assert.ok(/403/.test(html));
 });
 
+test('a missing renderer is reported as a deploy problem, not a network one', () => {
+  // 🚨 customer-profile.js is served through broker_portal.py's ALLOWED_ASSETS,
+  // and CUSTPROF1 shipped without it listed. The page said "Check your
+  // connection and try again" -- the one diagnosis that was certainly wrong --
+  // after the GET had already bought a billable Creditsafe search.
+  assert.ok(/typeof OperFiCustomerProfile === 'undefined'/.test(html));
+  assert.ok(/not your connection/i.test(html));
+  // and the guard must come BEFORE the fetch, or the search is already paid for
+  assert.ok(html.indexOf("typeof OperFiCustomerProfile === 'undefined'")
+            < html.indexOf('fetchProfile(rec);'));
+});
+
 test("the profile's own styles reach the browser", () => {
   // injectStyles() is only reachable through mount() inside customer-profile.js;
   // render() alone never calls it. renderProfile must call it itself, or the

@@ -1556,6 +1556,19 @@ function renderProfile(rec, payload) {
       pinCustomer(rec, { not_in_creditsafe: true });
     });
   });
+  // The two ways back out of a binding. An explicit false / null is how the pin
+  // route clears a field -- omitting the key would leave it exactly as it was.
+  root.querySelectorAll('[data-cs-unabsent]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      pinCustomer(rec, { not_in_creditsafe: false });
+    });
+  });
+  root.querySelectorAll('[data-cs-clear]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (!window.confirm('Unpin this Creditsafe company and search again?')) return;
+      pinCustomer(rec, { connect_id: null });
+    });
+  });
   // Reuse submitDecision -- there is one decision write path (POST /credit-decision)
   // and it stays that way. applyDecisionResult keeps allRecords/KPIs/the list in
   // sync the same way a decision made in the drawer already does.

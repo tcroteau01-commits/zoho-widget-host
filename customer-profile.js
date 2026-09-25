@@ -25,6 +25,11 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 function money(n) {
+  // 🚨 Number(null) is 0, so without this an ABSENT limit renders as "$0" --
+  // the one reading Tom called out as wrong: "$0 could just mean we dropped
+  // their credit limit because we haven't purchased that customer in a while."
+  // A decided zero and no limit on file are different facts to an analyst.
+  if (n === null || n === undefined || n === '') { return '—'; }
   var v = Number(n);
   if (!isFinite(v)) { return '—'; }
   return '$' + Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -151,11 +156,24 @@ function renderEngine(p) {
 function renderIdentity(p) {
   var id = p.identity;
   var body;
+  // 🚨 Both resolved states carry a way back. A binding is not a display
+  // preference: "Not in Creditsafe" stops the engine searching for this
+  // customer forever, and a wrong Connect ID points every future submission at
+  // another company's credit file. Neither is something an analyst should be
+  // stuck with because they clicked the wrong row once.
+  var undoBtn = function (attr, label) {
+    return p.can_act
+      ? '<button type="button" class="btn cp-undo" ' + attr + '="1">' + label + '</button>'
+      : '';
+  };
   if (id && id.not_in_creditsafe) {
     body = '' +
       '<div class="cp-identity-resolved">' +
         '<span class="cp-badge cp-badge-muted">Not in Creditsafe</span>' +
         (id.bound_by ? '<div class="field-val muted">Marked by ' + esc(id.bound_by) + '</div>' : '') +
+        '<div class="cp-cs-search-row">' +
+          undoBtn('data-cs-unabsent', 'Search Creditsafe again') +
+        '</div>' +
       '</div>';
   } else if (id && id.connect_id) {
     body = '' +
@@ -163,6 +181,9 @@ function renderIdentity(p) {
         field('Creditsafe Connect ID', esc(id.connect_id)) +
         field('FactorView Debtor ID', id.fv_debtor_id ? esc(id.fv_debtor_id) : emptyDash()) +
         field('Bound By', id.bound_by ? esc(id.bound_by) : emptyDash()) +
+      '</div>' +
+      '<div class="cp-cs-search-row">' +
+        undoBtn('data-cs-clear', 'Wrong company? Pick again') +
       '</div>';
   } else if (p.cs_search_failed) {
     // An empty picker and a failed search must not look the same -- this is
@@ -406,6 +427,14 @@ function mount(root, payload, handlers) {
         }
         if (t.hasAttribute('data-cs-absent')) {
           if (handlers.onCsAbsent) { handlers.onCsAbsent(); }
+          return;
+        }
+        if (t.hasAttribute('data-cs-unabsent')) {
+          if (handlers.onCsUnabsent) { handlers.onCsUnabsent(); }
+          return;
+        }
+        if (t.hasAttribute('data-cs-clear')) {
+          if (handlers.onCsClear) { handlers.onCsClear(); }
           return;
         }
       }

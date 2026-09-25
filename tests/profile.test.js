@@ -101,6 +101,37 @@ test('a customer recorded as absent from Creditsafe says so', () => {
   assert.ok(/not in Creditsafe/i.test(html));
 });
 
+// --- every binding an analyst can set, they can take back -------------------
+//
+// A binding is not a display preference. "Not in Creditsafe" stops the engine
+// searching for this customer forever; a wrong Connect ID points every future
+// submission at another company's credit file. Both were one click with no way
+// back, and for a customer OperFi has never funded there was no other control
+// on the page either.
+
+test('marking a customer absent from Creditsafe can be undone', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    identity: { connect_id: null, fv_debtor_id: null, not_in_creditsafe: true } }));
+  assert.ok(html.includes('data-cs-unabsent='));
+});
+
+test('a bound Creditsafe company can be unpinned and picked again', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    identity: { connect_id: 'US1', fv_debtor_id: '2030', not_in_creditsafe: false } }));
+  assert.ok(html.includes('data-cs-clear='));
+});
+
+test('a viewer who may not act gets neither undo control', () => {
+  const absent = P.render(Object.assign({}, BASE, {
+    can_act: false,
+    identity: { connect_id: null, fv_debtor_id: null, not_in_creditsafe: true } }));
+  const bound = P.render(Object.assign({}, BASE, {
+    can_act: false,
+    identity: { connect_id: 'US1', fv_debtor_id: null, not_in_creditsafe: false } }));
+  assert.ok(!absent.includes('data-cs-unabsent='));
+  assert.ok(!bound.includes('data-cs-clear='));
+});
+
 test('the decision controls are in the header for someone who may act', () => {
   const html = P.render(BASE);
   assert.ok(html.includes('data-decide="Approved"'));

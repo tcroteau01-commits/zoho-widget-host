@@ -456,7 +456,7 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-app-row-label { font-size: 13px; font-weight: 700; color: #272727; }
 .ca-app-row-who { font-size: 12px; color: #777; margin-top: 2px; }
 .ca-app-row-state { font-size: 12px; font-weight: 600; }
-.ca-app-state-waiting, .ca-app-state-expired { color: #b86e00; }
+.ca-app-state-waiting, .ca-app-state-expired, .ca-app-state-opened { color: #b86e00; }
 .ca-app-state-completed { color: #1f6321; }
 .ca-app-state-not-required { color: #999; }
 /* Bounced is the one state the broker can actually fix -- their own customer gave
@@ -1639,12 +1639,28 @@ function caAppSlotLabel(slot) { return CA_APP_SLOT_LABELS[slot] || slot; }
 // the broker -- an unrecognised value still renders (falls back to the raw
 // string) rather than breaking the row, same discipline as statusMeta's
 // 'unknown' branch above for Credit_Decision.
+//
+// 'sent' and 'opened' used to collapse onto the same "Waiting" label -- the
+// backend now sets 'opened' the first time a party actually follows their
+// emailed link (credit_app_store.mark_opened_if_sent), so the two are split
+// here on purpose: "never opened" (check the address, resend) and "opened,
+// still no answer" (the address is fine, go call them) call for opposite
+// broker actions, and one label telling both cannot tell either.
+// 'opened' gets its own cls (ca-app-state-opened) so it's a distinct DOM
+// hook, but that class is styled identically to 'waiting' -- same calm
+// amber, no new pill colour -- because this is still ordinary, expected
+// waiting, not an alarm. See caAppRowHtml below for why the day count next
+// to "Opened" still reads "waiting Xd", not "opened Xd ago": the API only
+// ever sends waiting_days, measured from sent_at, never a separate
+// opened-to-now figure, so the word next to the number has to be the one
+// the number actually measures.
 function caAppPartyState(status) {
   if (status === 'completed') return { label: 'Completed', cls: 'completed' };
   if (status === 'waived')    return { label: 'Not required', cls: 'not-required' };
   if (status === 'bounced')   return { label: 'Address bounced', cls: 'bounced' };
   if (status === 'expired')   return { label: 'Expired', cls: 'expired' };
-  if (status === 'sent' || status === 'opened') return { label: 'Waiting', cls: 'waiting' };
+  if (status === 'opened')    return { label: 'Opened', cls: 'opened' };
+  if (status === 'sent')      return { label: 'Waiting', cls: 'waiting' };
   return { label: status || 'Unknown', cls: 'waiting' };
 }
 
@@ -1679,6 +1695,13 @@ function caAppRowHtml(p) {
     // The one thing the broker can actually fix -- ask their own customer for
     // a working address for this party. No mention of why it bounced.
     detail = 'Address bounced, ask your customer for a new one';
+  } else if (st.cls === 'opened') {
+    // waiting_days is measured from sent_at, not opened_at (the API sends
+    // only one clock -- see caAppPartyState above) -- so the number here
+    // still has to be introduced by "waiting", never "opened ... ago", or
+    // the label would claim a timestamp the data doesn't have.
+    var openedWaiting = caAppWaitingText(p.waiting_days);
+    detail = st.label + (openedWaiting ? ', waiting ' + openedWaiting : '');
   } else if (st.cls === 'waiting' || st.cls === 'expired') {
     var waiting = caAppWaitingText(p.waiting_days);
     detail = st.label + (waiting ? ' ' + waiting : '');

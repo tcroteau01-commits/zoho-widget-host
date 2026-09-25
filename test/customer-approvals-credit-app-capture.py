@@ -118,6 +118,16 @@ BOUNCED = {
     "status": "references_pending",
     "parties": parties("completed", ("completed",), ("bounced",), ("sent", 2), ("sent", 2)),
 }
+# CREDITAPP1 -- the opened/sent split (mark_opened_if_sent finally wired up
+# server-side). trade1 never opened its link; trade2 opened its link 5 days
+# ago and still has not answered -- the exact "we're waiting on Steve, 3
+# days" distinction the whole tracker exists for, now visible as two
+# adjacent rows so a broker can see the difference at a glance rather than
+# have it described.
+OPENED_VS_SENT = {
+    "status": "references_pending",
+    "parties": parties("completed", ("sent", 2), ("opened", 5), ("sent", 1), ("sent", 6)),
+}
 
 # ── Scenarios: (out_name, status_payload_or_None, record_overrides, nudge) ──
 # nudge is None, or (slot, response_status, response_body) to click that row's
@@ -714,9 +724,15 @@ def main():
         #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
         #        all_clients=False, application_payload=APPLICATION_PAYLOAD)
         #
-        capture(pw, DESKTOP, "desktop", "34-credit-app-full-submission-staff", MIDFLIGHT,
-               {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
-               all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
+        # 34 already exists on disk (not re-run this pass):
+        # capture(pw, DESKTOP, "desktop", "34-credit-app-full-submission-staff", MIDFLIGHT,
+        #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
+        #        all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
+
+        # CREDITAPP1 -- opened vs. sent, side by side in the broker's own
+        # tracker (Task 16 panel), the label/aging split this pass adds.
+        capture(pw, DESKTOP, "desktop", "45-credit-app-opened-vs-sent", OPENED_VS_SENT,
+               {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None)
         # capture(pw, PHONE, "phone", "34-credit-app-full-submission-staff", MIDFLIGHT,
         #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
         #        all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)

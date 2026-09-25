@@ -251,7 +251,7 @@ function renderFactorView(p) {
       '<div class="field-grid">' +
         field('Company', esc(d.name)) +
         field('FactorView ID', esc(d.company_id)) +
-        field('Buy Limit', esc(money(d.buy_limit))) +
+        field('Buy Limit', d.buy_limit != null ? esc(money(d.buy_limit)) : emptyDash()) +
         field('State', d.state ? esc(d.state) : emptyDash()) +
         field('Active', d.is_active ? 'Yes' : 'No') +
         field('Restricted', d.restricted ? '<span class="cp-badge cp-badge-danger">Restricted</span>' : 'No') +
@@ -272,7 +272,7 @@ function renderFactorView(p) {
               '<div class="cp-candidate-sub">' + (c.state ? esc(c.state) + ' · ' : '') +
                 (c.is_active ? 'Active' : 'Inactive') + '</div>' +
             '</div>' +
-            '<div class="cp-candidate-limit">' + esc(money(c.buy_limit)) + '</div>' +
+            '<div class="cp-candidate-limit">' + (c.buy_limit != null ? esc(money(c.buy_limit)) : emptyDash()) + '</div>' +
             pickBtn +
           '</div>';
       }).join('') +
@@ -293,7 +293,7 @@ function renderPriors(p) {
       return '' +
         '<div class="cp-prior-row">' +
           '<div class="cp-prior-broker">' + esc(pr.broker) + '</div>' +
-          '<div class="cp-prior-limit">' + esc(money(pr.limit)) + '</div>' +
+          '<div class="cp-prior-limit">' + (pr.limit != null ? esc(money(pr.limit)) : emptyDash()) + '</div>' +
           '<div class="cp-prior-date">' + (pr.decided_at ? esc(pr.decided_at) : emptyDash()) + '</div>' +
         '</div>';
     }).join('') + '</div>';

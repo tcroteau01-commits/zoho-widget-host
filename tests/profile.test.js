@@ -150,3 +150,26 @@ test('a hostile candidate name cannot inject markup', () => {
                       address: '', status: '' }] }));
   assert.ok(!html.includes('<img src=x'));
 });
+
+test('a missing limit is not shown as a decided zero', function () {
+  var missing = P.render(Object.assign({}, BASE, {
+    fv_debtor: { company_id: '2030', name: 'C.H. ROBINSON', buy_limit: null,
+                 restricted: false, is_active: true, state: 'IL' } }));
+  assert.ok(!/\$0\b/.test(missing));
+
+  // A real zero still reads as a real zero. At OperFi a $0 FactorView limit is
+  // meaningful -- it means the team walked that debtor down -- so it must not
+  // be hidden behind the same dash that means "no record".
+  var zero = P.render(Object.assign({}, BASE, {
+    fv_debtor: { company_id: '2030', name: 'C.H. ROBINSON', buy_limit: 0,
+                 restricted: false, is_active: true, state: 'IL' } }));
+  assert.ok(/\$0\b/.test(zero));
+});
+
+test('a missing prior limit and a missing candidate limit read the same way', function () {
+  var html = P.render(Object.assign({}, BASE, {
+    priors: [{ submission_id: '1', broker: 'Cascade', limit: null, decided_at: '' }],
+    fv_candidates: [{ company_id: '9271', name: 'CH ROBINSON INTERNATIONAL',
+                      buy_limit: null, restricted: false, is_active: true, state: '' }] }));
+  assert.ok(!/\$0\b/.test(html));
+});

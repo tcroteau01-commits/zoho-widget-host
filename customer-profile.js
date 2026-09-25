@@ -414,5 +414,5 @@ function mount(root, payload, handlers) {
   });
 }
 
-if (typeof module !== 'undefined' && module.exports) { module.exports = { render: render, mount: mount, esc: esc, money: money }; }
-if (typeof window !== 'undefined') { window.OperFiCustomerProfile = { render: render, mount: mount }; }
+if (typeof module !== 'undefined' && module.exports) { module.exports = { render: render, mount: mount, injectStyles: injectStyles, esc: esc, money: money }; }
+if (typeof window !== 'undefined') { window.OperFiCustomerProfile = { render: render, mount: mount, injectStyles: injectStyles }; }

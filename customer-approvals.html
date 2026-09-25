@@ -1259,6 +1259,16 @@ function renderPanel() {
     footerActionsHtml = '<button class="btn primary" id="p-resubmit">Resubmit</button>';
   }
 
+  // CUSTPROF1 — the full profile is an OperFi-staff-only read (the backend's own
+  // is_staff gate answers 403 for a broker), same population as allClients below.
+  // Offering the button to a broker would just hand them a control that cannot
+  // work and a failure that reads as their connection, not their access.
+  var openProfileHtml = '';
+  if (allClients) {
+    openProfileHtml =
+      '<button type="button" class="btn primary" id="ca-open-profile" style="width:100%;margin-bottom:14px;">Open full profile</button>';
+  }
+
   // Decision section — see-all / role context only (backend enforces the role regardless).
   // ADDITIVE + GATED: when allClients is false this is the empty string, so the panel
   // renders byte-identically to before.
@@ -1361,10 +1371,9 @@ function renderPanel() {
       fraudSectionHtml +
 
       // CUSTPROF1 — opens the full-screen customer profile: Creditsafe identity,
-      // FactorView history, other clients' limits, credit report. Unconditional
-      // (every viewer can read it); the profile itself gates action controls on
-      // payload.can_act, same as the decision controls below are gated here.
-      '<button type="button" class="btn primary" id="ca-open-profile" style="width:100%;margin-bottom:14px;">Open full profile</button>' +
+      // FactorView history, other clients' limits, credit report. Gated on
+      // allClients (empty string otherwise) -- see openProfileHtml above.
+      openProfileHtml +
 
       // Make a Decision (see-all / role context only; empty string otherwise)
       decisionSectionHtml +
@@ -1418,10 +1427,27 @@ function renderPanel() {
       // non-staff viewer -- see caAppStaffSectionHtml above).
       caAppStaffSectionHtml +
 
-      // CUSTPROF1 — Customer Company, Customer Contacts (+ its billing editor)
-      // and Broker Comments moved OUT of this drawer and into the full-screen
-      // profile (Open full profile, above). The drawer stays a decision tool;
-      // the profile is where the analyst reads and resolves everything else.
+      // CUSTPROF1 — Customer Company and Broker Comments (read-only displays)
+      // moved OUT of this drawer into the full-screen profile, which shows the
+      // same contact fields. The billing editor below is an ACTION, not a
+      // display -- same reason the decision form above stayed -- so it stays too.
+      '<div class="panel-section">' +
+        '<div class="panel-section-title ca-contacts-head">' +
+          '<span>Billing Info</span>' +
+          '<button class="ca-edit-billing-btn" id="ca-edit-billing">Edit Billing Info</button>' +
+        '</div>' +
+        '<div id="ca-billing-edit" style="display:none;">' +
+          '<div class="dec-field"><label class="dec-label" for="ca-bill-poc">Billing Point of Contact</label>' +
+            '<input class="dec-input" id="ca-bill-poc" type="text"></div>' +
+          '<div class="dec-field"><label class="dec-label" for="ca-bill-phone">Billing Phone</label>' +
+            '<input class="dec-input" id="ca-bill-phone" type="text"></div>' +
+          '<div class="dec-field"><label class="dec-label" for="ca-bill-email">Billing Email</label>' +
+            '<input class="dec-input" id="ca-bill-email" type="email"></div>' +
+          '<div class="dec-row"><div class="dec-msg" id="ca-bill-msg"></div>' +
+            '<button class="btn" id="ca-bill-cancel">Cancel</button>' +
+            '<button class="btn primary" id="ca-bill-save">Save Billing Info</button></div>' +
+        '</div>' +
+      '</div>' +
 
       // Supporting Documents
       '<div class="panel-section">' +
@@ -1483,13 +1509,22 @@ function closeProfile() {
 
 function fetchProfile(rec) {
   fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID, { credentials: 'include' })
-    .then(function(res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
+    .then(function(res) {
+      if (res.status === 403) { return Promise.reject({ permissionDenied: true }); }
+      return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status));
+    })
     .then(function(payload) { renderProfile(rec, payload); })
     .catch(function(err) {
       console.error('[CustomerApprovals] customer-profile fetch failed', err);
+      // A 403 is a permissions matter, not a connection problem -- say so, rather
+      // than sending an OperFi-only page's own broker off to check their wifi.
+      var title = (err && err.permissionDenied) ? 'This page is for the OperFi credit team.'
+                                                 : 'Could not load customer profile';
+      var msg = (err && err.permissionDenied) ? 'You do not have access to the full customer profile.'
+                                               : 'Check your connection and try again.';
       document.getElementById('ca-profile').innerHTML =
-        '<div class="state"><div class="state-title">Could not load customer profile</div>' +
-        '<div class="state-msg">Check your connection and try again.</div></div>' +
+        '<div class="state"><div class="state-title">' + esc(title) + '</div>' +
+        '<div class="state-msg">' + esc(msg) + '</div></div>' +
         '<button type="button" class="btn" id="ca-profile-back">‹ Back to customers</button>';
       var backBtn = document.getElementById('ca-profile-back');
       if (backBtn) backBtn.addEventListener('click', closeProfile);
@@ -1498,6 +1533,8 @@ function fetchProfile(rec) {
 
 function renderProfile(rec, payload) {
   var root = document.getElementById('ca-profile');
+  OperFiCustomerProfile.injectStyles();   // render() is pure HTML; the profile's own CSS
+                                           // (cp-* classes) only reaches the browser here.
   root.innerHTML =
     '<button type="button" class="btn" id="ca-profile-back" style="margin-bottom:14px;">‹ Back to customers</button>' +
     OperFiCustomerProfile.render(payload);

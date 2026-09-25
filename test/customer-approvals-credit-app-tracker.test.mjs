@@ -26,11 +26,57 @@ function party(over) {
 test('caAppPartyState maps every documented party status to a plain-words label', () => {
   const w = boot();
   assert.equal(w.caAppPartyState('sent').label, 'Waiting');
-  assert.equal(w.caAppPartyState('opened').label, 'Waiting');
+  assert.equal(w.caAppPartyState('opened').label, 'Opened');
   assert.equal(w.caAppPartyState('completed').label, 'Completed');
   assert.equal(w.caAppPartyState('waived').label, 'Not required');
   assert.equal(w.caAppPartyState('bounced').label, 'Address bounced');
   assert.equal(w.caAppPartyState('expired').label, 'Expired');
+});
+
+// 'sent' and 'opened' used to collapse onto the same "Waiting" label -- the
+// whole point of this build is a broker can tell "never opened" (check the
+// address, resend) from "opened, still no answer" (call them), so the two
+// must render differently: a different label AND a different class hook,
+// but the SAME calm amber the rest of the waiting family already uses (no
+// new pill colour). A completed party is untouched by any of this.
+test('opened renders distinctly from sent -- own class, own label, same calm colour', () => {
+  const w = boot();
+  const sentState = w.caAppPartyState('sent');
+  const openedState = w.caAppPartyState('opened');
+  assert.notEqual(openedState.label, sentState.label);
+  assert.notEqual(openedState.cls, sentState.cls);
+  assert.equal(openedState.cls, 'opened');
+  assert.match(html, /\.ca-app-state-waiting,\s*\.ca-app-state-expired,\s*\.ca-app-state-opened\s*\{\s*color:\s*#b86e00;/);
+});
+
+test('a sent party row reads "Waiting Xd", anchored to sent_at as it always has', () => {
+  const w = boot();
+  const h = w.caAppRowHtml(party({ status: 'sent', waiting_days: 3 }));
+  assert.match(h, /ca-app-row-state ca-app-state-waiting/);
+  assert.match(h, />Waiting 3 days</);
+});
+
+test('an opened party row reads "Opened, waiting Xd" -- never "opened Xd ago" (the API has no opened-to-now clock)', () => {
+  const w = boot();
+  const h = w.caAppRowHtml(party({ status: 'opened', waiting_days: 3 }));
+  assert.match(h, /ca-app-row-state ca-app-state-opened/);
+  assert.match(h, />Opened, waiting 3 days</);
+  assert.doesNotMatch(h, /Opened 3 days ago/);
+  assert.doesNotMatch(h, />Waiting</);
+});
+
+test('an opened party still offers a Nudge -- opened is not resolved', () => {
+  const w = boot();
+  const h = w.caAppRowHtml(party({ status: 'opened', waiting_days: 3 }));
+  assert.match(h, /class="row-action ca-app-nudge" data-slot="trade1">Nudge</);
+});
+
+test('a completed party is unaffected by the opened/sent split', () => {
+  const w = boot();
+  const h = w.caAppRowHtml(party({ status: 'completed', waiting_days: 9 }));
+  assert.match(h, /ca-app-row-state ca-app-state-completed/);
+  assert.match(h, />Completed</);
+  assert.doesNotMatch(h, /ca-app-nudge/);
 });
 
 test('caAppPartyState never breaks on an unrecognised status', () => {

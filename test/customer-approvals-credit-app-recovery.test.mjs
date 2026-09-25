@@ -104,43 +104,49 @@ test('opened never reads as stalled, even with a large waiting_days -- is_stalle
   assert.doesNotMatch(h, /never opened/);
 });
 
-// ── 2b. defect fix: the nudge-all "waiting" count no longer reads bounced as answered ──
+// ── 2b. fix round 1: the nudge-all label/threshold must count what it can actually deliver ──
+//
+// Round-0 fixed the "waiting" LIST (CA_APP_ANSWERED) so a bounced party is no
+// longer misread as answered -- correct, and still true for anywhere the
+// question is "has this party answered" (each row's own state text, and the
+// staff-controls gate in caAppReferenceAnswerHtml). But that same fix, reused
+// for the nudge-all button's own label/threshold, created a NEW mismatch: the
+// label counted bounced as "waiting" while the click handler (unchanged,
+// still gated on CA_APP_NEEDS_NO_NUDGE via each row's own Nudge button) never
+// acts on it. "Nudge all waiting (2)" that only ever nudges 1 is the same
+// species of bug as the bounced copy fixed in defect 1 -- the screen promising
+// an action the product will not perform. Fixed by having the label and the
+// >1 visibility threshold both count the nudgeable set (CA_APP_NEEDS_NO_NUDGE
+// excluded), the exact set canNudge already uses per row.
+//
+// A fixture of exactly one bounced + one sent party cannot exercise this
+// through the rendered label at all: with only one truly nudgeable party,
+// the pre-existing (untouched by either fix) ">1" visibility rule hides the
+// button entirely (see 'renderCreditAppSection hides the nudge-all control
+// with 0 or 1 waiting party' in the tracker suite) and its text is never
+// even set. Two nudgeable parties plus one bounced is the smallest fixture
+// where the label is actually rendered, so that is what proves the fix.
 
-test('a bounced party still counts toward "waiting" for the nudge-all label -- it has not answered', () => {
-  const w = boot();
-  trackerFixture(w);
-  w.renderCreditAppSection({ ID: '9' }, {
-    status: 'references_pending',
-    parties: [
-      party({ slot: 'customer', status: 'completed' }),
-      party({ slot: 'trade1', status: 'bounced' }),
-      party({ slot: 'bank', status: 'sent' }),
-    ],
-  });
-  const d = w.document;
-  // Two parties have not answered (trade1 bounced, bank sent) -> nudge-all shows.
-  assert.notEqual(d.getElementById('ca-app-nudgeall-row').style.display, 'none');
-  assert.match(d.getElementById('ca-app-nudge-all').textContent, /Nudge all waiting \(2\)/);
-});
-
-test('the nudge-all click only ever fires on rows that actually have a Nudge button (bounced is skipped)', async () => {
+test('nudge-all counts what it will actually nudge, not every unanswered party -- a bounced party does not inflate the label', async () => {
   const w = boot();
   trackerFixture(w);
   w.brokerEmail = 'broker@customer.com';
   w.renderCreditAppSection({ ID: '9' }, {
     status: 'references_pending',
     parties: [
-      party({ slot: 'customer', status: 'completed' }),
       party({ slot: 'trade1', status: 'bounced' }),
+      party({ slot: 'trade2', status: 'sent' }),
       party({ slot: 'bank', status: 'sent' }),
     ],
   });
   const d = w.document;
-  // A 200 nudge schedules the real 48h cooldown timer (caAppScheduleReenable) --
-  // stub it inert exactly as customer-approvals-credit-app-tracker.test.mjs's
-  // own stubTimersInert does, or the real OS timer left running hangs the test
-  // process rather than failing it.
-  w.setTimeout = () => 0;
+  // Fails against the pre-fix code, which counted the bounced party too and
+  // showed "Nudge all waiting (3)".
+  assert.notEqual(d.getElementById('ca-app-nudgeall-row').style.display, 'none');
+  assert.match(d.getElementById('ca-app-nudge-all').textContent, /Nudge all waiting \(2\)/);
+  assert.doesNotMatch(d.getElementById('ca-app-nudge-all').textContent, /\(3\)/);
+
+  w.setTimeout = () => 0;   // inert: a 200 nudge schedules a real 48h cooldown timer
   w.clearTimeout = () => {};
   var nudgedSlots = [];
   w.fetch = (u, opts) => {
@@ -149,7 +155,24 @@ test('the nudge-all click only ever fires on rows that actually have a Nudge but
   };
   d.getElementById('ca-app-nudge-all').click();
   await new Promise(r => setTimeout(r, 10));
-  assert.deepEqual(nudgedSlots, ['bank'], 'bounced has no Nudge button to click, so only bank is nudged');
+  // Exactly the two the label promised -- never the bounced slot, and never
+  // fewer than the label said either.
+  assert.deepEqual(nudgedSlots.sort(), ['bank', 'trade2'],
+    'the label said 2 and the button must deliver exactly 2, matching what it counted');
+});
+
+test('with only one nudgeable party (the other bounced), nudge-all stays hidden rather than show a count it cannot back up', () => {
+  const w = boot();
+  trackerFixture(w);
+  w.renderCreditAppSection({ ID: '9' }, {
+    status: 'references_pending',
+    parties: [
+      party({ slot: 'trade1', status: 'bounced' }),
+      party({ slot: 'bank', status: 'sent' }),
+    ],
+  });
+  const d = w.document;
+  assert.equal(d.getElementById('ca-app-nudgeall-row').style.display, 'none');
 });
 
 // ── 3a. staff-only: Correct address / Waive absent from the DOM for a broker ──

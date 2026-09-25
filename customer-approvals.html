@@ -1848,20 +1848,25 @@ function renderCreditAppSection(r, payload) {
   var rowsEl = document.getElementById('ca-app-rows');
   if (rowsEl) rowsEl.innerHTML = ordered.map(caAppRowHtml).join('');
 
-  // CREDITAPP2 fix: this used to filter on CA_APP_NEEDS_NO_NUDGE (which
-  // includes 'bounced'), so a send failure read as "answered" the moment it
-  // happened and the party silently dropped out of "waiting" here -- the same
-  // bug the API's own derive_status was fixed against. CA_APP_ANSWERED is the
-  // set that actually means answered (mirrors the server's
-  // COUNTS_AS_ANSWERED); a bounced party stays counted as still waiting,
-  // exactly as the label above it says.
-  var waiting = ordered.filter(function(p) { return CA_APP_ANSWERED.indexOf(p.status) === -1; });
+  // CREDITAPP2 fix round 1: two different questions, two different sets.
+  // "Has this party answered" is CA_APP_ANSWERED (completed/waived only) --
+  // that is what each row's own state text already reflects, and it is what
+  // rendering-side code should reach for whenever the question is whether a
+  // reference has come back. It is deliberately NOT what gates the button
+  // below: the nudge-all label and its show/hide threshold have to count the
+  // set the button actually acts on, or "(2)" promises a second nudge the
+  // click handler will not deliver. That set is CA_APP_NEEDS_NO_NUDGE's
+  // complement -- the exact same filter that decides whether a row gets a
+  // Nudge button in the first place (caAppRowHtml's own canNudge) -- so a
+  // bounced party, which needs no nudge, is excluded from both the count and
+  // the threshold, never just from the count.
+  var nudgeable = ordered.filter(function(p) { return CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1; });
   var allRow = document.getElementById('ca-app-nudgeall-row');
   var allBtn = document.getElementById('ca-app-nudge-all');
   if (allRow && allBtn) {
-    if (waiting.length > 1) {
+    if (nudgeable.length > 1) {
       allRow.style.display = '';
-      allBtn.textContent = 'Nudge all waiting (' + waiting.length + ')';
+      allBtn.textContent = 'Nudge all waiting (' + nudgeable.length + ')';
       allBtn.disabled = false;
       allBtn.onclick = function() {
         allBtn.disabled = true;

@@ -1386,8 +1386,16 @@ function renderPanel() {
     '<div class="panel-header">' +
       '<div class="panel-eyebrow">Credit Submission</div>' +
       '<div class="panel-customer">' + esc(r.Customer_Company_Name || '—') + '</div>' +
+      // 🚨 Tom, 2026-09-25: "I don't see their address anywhere." The record
+      // carried it all along -- formatAddress and the CSV export both read it --
+      // it was simply never on screen. It is the field that tells one company
+      // from another of the same name, so it sits under the name.
+      '<div class="panel-meta">' +
+        '<span>' + esc(formatAddress(r) || 'No address on file') + '</span>' +
+      '</div>' +
       '<div class="panel-meta">' +
         '<span>Submitted ' + (added ? fmtDateTime(added) : '—') + '</span>' +
+        (phoneOf(r) ? '<span> · ' + esc(phoneOf(r)) + '</span>' : '') +
       '</div>' +
       '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + pillWarnHtml(r) + '</div>' +
     '</div>' +
@@ -3246,6 +3254,9 @@ function formatMoneyShort(v) {
   var n = parseMoney(v);
   return '$' + Math.floor(n).toLocaleString('en-US');
 }
+function phoneOf(r) {
+  return r.Phone_Number1 || r.Phone_Number || '';
+}
 function formatAddress(r) {
   var addr = r.Address;
   if (!addr) return '';
@@ -3256,7 +3267,13 @@ function formatAddress(r) {
   if (addr.district_city)  cityState.push(addr.district_city);
   if (addr.state_province) cityState.push(addr.state_province);
   var cityStateStr = cityState.join(', ');
-  if (addr.postal_Code) cityStateStr += (cityStateStr ? ' ' : '') + addr.postal_Code;
+  // 🚨 Creator's field is postal_code, lower-case c. The capital-C spelling
+  // matched nothing, so every address this helper formatted silently lost its
+  // zip -- and the zip is the strongest single signal for telling one
+  // "QUADREL, INC." from another. Both spellings read here so a record saved
+  // under either shape still renders.
+  var zip = addr.postal_code || addr.postal_Code;
+  if (zip) cityStateStr += (cityStateStr ? ' ' : '') + zip;
   if (cityStateStr) parts.push(cityStateStr);
   return parts.join(', ');
 }

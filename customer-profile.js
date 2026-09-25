@@ -24,6 +24,19 @@ function esc(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+// 🚨 A URL goes in an href, so escaping is NOT enough: "javascript:alert(1)"
+// survives esc() intact and runs on click. These values come from a broker
+// typing into a Creator form, so only http and https are ever rendered as a
+// link; anything else is shown as plain text and cannot be clicked.
+function link(url) {
+  if (!url) { return emptyDash(); }
+  var u = String(url).trim();
+  if (!/^https?:\/\//i.test(u)) { return esc(u); }
+  var label = u.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' +
+         esc(label) + '</a>';
+}
+
 function money(n) {
   // 🚨 Number(null) is 0, so without this an ABSENT limit renders as "$0" --
   // the one reading Tom called out as wrong: "$0 could just mean we dropped
@@ -95,17 +108,23 @@ function renderHeader(p) {
       '</div>';
   }
 
+  // 🚨 Tom, 2026-09-25: "it needs to show somewhere prominent so you know who
+  // you're searching for." The address in particular: it is what tells one
+  // QUADREL, INC. from the other four, and it was on the page nowhere at all.
   var contactsHtml = '';
-  var c = p.contacts;
-  if (c) {
-    contactsHtml = '' +
-      '<div class="field-grid cp-header-contacts">' +
-        field('POC', c.poc ? esc(c.poc) : emptyDash()) +
-        field('POC Email', c.email ? esc(c.email) : emptyDash()) +
-        field('Billing POC', c.billing_poc ? esc(c.billing_poc) : emptyDash()) +
-        field('Billing Email', c.billing_email ? esc(c.billing_email) : emptyDash()) +
-      '</div>';
-  }
+  var c = p.contacts || {};
+  var s = p.submitted || {};
+  contactsHtml = '' +
+    '<div class="field-grid cp-header-contacts">' +
+      field('Address', s.address ? esc(s.address) : emptyDash()) +
+      field('Phone', s.phone ? esc(s.phone) : emptyDash()) +
+      field('Website', link(s.website)) +
+      field('LinkedIn', link(s.linkedin)) +
+      field('POC', c.poc ? esc(c.poc) : emptyDash()) +
+      field('POC Email', c.email ? esc(c.email) : emptyDash()) +
+      field('Billing POC', c.billing_poc ? esc(c.billing_poc) : emptyDash()) +
+      field('Billing Email', c.billing_email ? esc(c.billing_email) : emptyDash()) +
+    '</div>';
 
   return '' +
     '<div class="cp-header">' +
@@ -214,10 +233,20 @@ function renderIdentity(p) {
           var pickBtn = p.can_act
             ? '<button type="button" class="btn primary" data-cs-pick="' + esc(c.connect_id) + '">Use this</button>'
             : '';
+          // The address match, so a long list sorts itself for the eye. The
+          // server has already ordered these best-first; this says WHY.
+          var sc = c.address_score;
+          var scoreHtml = '';
+          if (sc != null && sc > 0) {
+            var scls = sc >= 70 ? 'cp-match-strong'
+                     : (sc >= 35 ? 'cp-match-part' : 'cp-match-weak');
+            scoreHtml = '<span class="cp-match ' + scls + '">' +
+              (sc >= 70 ? 'address matches' : 'partial address') + '</span>';
+          }
           return '' +
             '<div class="cp-cs-candidate-row">' +
               '<div class="cp-candidate-main">' +
-                '<div class="cp-candidate-name">' + esc(c.name) + '</div>' +
+                '<div class="cp-candidate-name">' + esc(c.name) + scoreHtml + '</div>' +
                 '<div class="cp-candidate-sub">' + (c.address ? esc(c.address) + ' · ' : '') +
                   esc(c.status || '') + '</div>' +
               '</div>' +
@@ -415,6 +444,43 @@ function renderPriors(p) {
   return section('Other Clients’ Limits', body);
 }
 
+// ---- everything the broker submitted, with a field for every box -----------
+// Tom, 2026-09-25: "it should show all the data that the client submitted or at
+// least have fields for everything submitted." An empty field is information:
+// it says the broker left the box blank, which is different from the page not
+// carrying that box at all.
+function renderSubmitted(p) {
+  var s = p.submitted;
+  if (!s) { return ''; }
+  var a = s.address_parts || {};
+  var body = '<div class="field-grid">' +
+      field('Company Name', s.company_name ? esc(s.company_name) : emptyDash()) +
+      field('Address', s.address ? esc(s.address) : emptyDash()) +
+      field('City', a.city ? esc(a.city) : emptyDash()) +
+      field('State', a.state ? esc(a.state) : emptyDash()) +
+      field('Postal Code', a.postal ? esc(a.postal) : emptyDash()) +
+      field('Phone', s.phone ? esc(s.phone) : emptyDash()) +
+      field('Website', link(s.website)) +
+      field('LinkedIn', link(s.linkedin)) +
+      field('Other Social', link(s.social)) +
+      field('FactorView ID', s.fv_id ? esc(s.fv_id) : emptyDash()) +
+      field('Credit App Sent', s.credit_app_sent ? 'Yes' : 'No') +
+      field('Sent To', s.credit_app_sent_to ? esc(s.credit_app_sent_to) : emptyDash()) +
+      field('Submitted', s.submitted_at ? esc(s.submitted_at) : emptyDash()) +
+      field('Supporting Documents',
+            s.supporting_documents ? esc(String(s.supporting_documents)) : '0') +
+    '</div>';
+  if (s.comments) {
+    body += '<div class="cp-subhead">Broker Comments</div>' +
+            '<div class="cp-quote">' + esc(s.comments) + '</div>';
+  }
+  if (s.credit_notes) {
+    body += '<div class="cp-subhead">Credit Notes</div>' +
+            '<div class="cp-quote">' + esc(s.credit_notes) + '</div>';
+  }
+  return '<div class="cp-submitted">' + section('As Submitted', body) + '</div>';
+}
+
 // ---- CREDITAPP1: the customer's own application and its references ---------
 // The only first-hand evidence on the page. Everything above it is somebody
 // else's opinion of the customer; this is what the customer and their trade
@@ -574,6 +640,7 @@ function render(payload) {
   return '' +
     '<div class="cp-root">' +
       renderHeader(p) +
+      renderSubmitted(p) +
       renderEngine(p) +
       renderIdentity(p) +
       renderFactorView(p) +
@@ -665,6 +732,13 @@ var CP_CSS = '' +
   // What a person wrote, shown as their words rather than reflowed into a field.
   '.cp-quote{margin-top:10px;padding:8px 12px;border-left:3px solid #cbd5e1;' +
     'background:#fff;font-size:13px;color:#334155;white-space:pre-wrap;}' +
+  '.cp-match{display:inline-block;margin-left:8px;font-size:10px;font-weight:700;' +
+    'padding:2px 7px;border-radius:8px;text-transform:uppercase;letter-spacing:.04em;}' +
+  '.cp-match-strong{background:#e8f5e9;color:#2e7d32;}' +
+  '.cp-match-part{background:#fff4e0;color:#b25e00;}' +
+  '.cp-match-weak{background:#eef2f7;color:#475569;}' +
+  '.cp-header-contacts a{color:#fff;text-decoration:underline;}' +
+  '.cp-submitted a{color:#1d4ed8;}' +
   '.cp-cs-search-row input{flex:1;min-width:200px;}' +
   '.cp-cs-results{margin-top:10px;}' +
   '.cp-candidates,.cp-priors{display:flex;flex-direction:column;gap:8px;margin-top:10px;}' +

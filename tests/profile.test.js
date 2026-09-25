@@ -121,6 +121,94 @@ test('a bound Creditsafe company can be unpinned and picked again', () => {
   assert.ok(html.includes('data-cs-clear='));
 });
 
+// --- what the broker submitted ---------------------------------------------
+//
+// Tom, 2026-09-25: "it needs to show somewhere prominent so you know who you're
+// searching for." The address in particular decides which of five companies
+// called QUADREL, INC. this one is, and it was on the page nowhere at all.
+
+const SUBMITTED = {
+  company_name: 'QUADREL, INC. DBA QUADREL LABELING SYSTEMS',
+  address: '7670 JENTHER DRIVE, MENTOR, OH, 44060',
+  address_parts: { line1: '7670 JENTHER DRIVE', city: 'MENTOR', state: 'OH',
+                   postal: '44060' },
+  phone: '440-602-4700', website: 'https://www.quadrel.com/',
+  linkedin: null, social: null, comments: null, credit_notes: null,
+  fv_id: null, credit_app_sent: false, credit_app_sent_to: null,
+  submitted_at: '25-Sep-2026 09:56:45', supporting_documents: 0
+};
+
+test('the address is in the header, not buried further down', () => {
+  const html = P.render(Object.assign({}, BASE, { submitted: SUBMITTED }));
+  const header = html.slice(0, html.indexOf('As Submitted'));
+  assert.ok(header.includes('7670 JENTHER DRIVE, MENTOR, OH, 44060'));
+  assert.ok(header.includes('440-602-4700'));
+});
+
+test('every submitted box has a field, even the ones left blank', () => {
+  const html = P.render(Object.assign({}, BASE, { submitted: SUBMITTED }));
+  ['Company Name', 'Address', 'City', 'State', 'Postal Code', 'Phone',
+   'Website', 'LinkedIn', 'Other Social', 'FactorView ID', 'Credit App Sent',
+   'Submitted', 'Supporting Documents'].forEach((label) => {
+    assert.ok(html.includes(label), 'no field for: ' + label);
+  });
+});
+
+test('a website renders as a usable link', () => {
+  const html = P.render(Object.assign({}, BASE, { submitted: SUBMITTED }));
+  assert.ok(html.includes('href="https://www.quadrel.com/"'));
+  assert.ok(html.includes('rel="noopener noreferrer"'));
+});
+
+test('a Creator URL object never reaches the page as [object Object]', () => {
+  // Company_Website arrives as {value, url} and LinkedIn_Profile as {} when
+  // empty. The server flattens them; this is the guard that it stays flattened.
+  const html = P.render(Object.assign({}, BASE, { submitted: SUBMITTED }));
+  assert.ok(!html.includes('[object Object]'));
+});
+
+test('a hostile URL is never made clickable', () => {
+  // 🚨 esc() alone is not enough for an href: "javascript:alert(1)" survives it
+  // intact and runs on click. Only http and https become links.
+  const html = P.render(Object.assign({}, BASE, { submitted: Object.assign(
+    {}, SUBMITTED, { website: 'javascript:alert(1)',
+                     linkedin: '" onmouseover="alert(1)' }) }));
+  assert.ok(!/href\s*=\s*["']?javascript:/i.test(html));
+  assert.ok(!/"\s+on[a-z]+\s*=/.test(html));   // no attribute escaped its quotes
+  assert.ok(html.includes('&quot; onmouseover=&quot;'));  // shown as inert text
+});
+
+test('the profile renders without a submitted block at all', () => {
+  assert.ok(P.render(Object.assign({}, BASE, { submitted: null }))
+             .includes('Credit Submission'));
+});
+
+// --- the Creditsafe picker, ranked by address ------------------------------
+
+test('the candidate whose address matches is flagged as such', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    submitted: SUBMITTED, cs_total: 27,
+    cs_candidates: [
+      { connect_id: 'US10373976', name: 'QUADREL, INC.', status: 'Active',
+        address: '7670 JENTHER DR, MENTOR, OH, 44060', address_score: 100 },
+      { connect_id: 'US80400643', name: 'QUADREL, INC', status: 'Active',
+        address: '5001 BAUM BLVD STE 799, PITTSBURGH, PA, 15213', address_score: 0 }
+    ] }));
+  assert.ok(html.includes('address matches'));
+  // and only on the one that matches
+  assert.strictEqual(html.split('address matches').length - 1, 1);
+});
+
+test('with no address to compare, no candidate claims a match', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    cs_total: 2,
+    cs_candidates: [
+      { connect_id: 'A', name: 'ONE', address: 'X', address_score: 0 },
+      { connect_id: 'B', name: 'TWO', address: 'Y', address_score: 0 }] }));
+  assert.ok(!html.includes('address matches'));
+  assert.ok(!html.includes('partial address'));
+});
+
 // --- CREDITAPP1: the customer's own application and its references ---------
 //
 // The only first-hand evidence on the page. Shaped from the REAL CH ROBINSON

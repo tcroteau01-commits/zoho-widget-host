@@ -2287,19 +2287,17 @@ function renderCreditAppDetailSection(payload) {
       field('Bank', bank.name) +
     '</div>';
 
-  if (references.length) {
-    html += '<div class="ca-app-doc-head">References</div>' +
-      '<div class="ca-app-detail-refs">' +
-      references.map(function(ref) {
-        var st = caAppPartyState(ref.status);
-        return '<div class="ca-app-detail-ref">' +
-          '<div class="ca-app-detail-ref-slot">' + esc(caAppSlotLabel(ref.slot)) + '</div>' +
-          '<div class="ca-app-detail-ref-who">' + esc([ref.company, ref.contact_name].filter(Boolean).join(', ') || '—') + '</div>' +
-          '<div class="ca-app-detail-ref-state ca-app-state-' + st.cls + '">' + esc(st.label) + '</div>' +
-        '</div>';
-      }).join('') +
-      '</div>';
-  }
+  // 🚨 NO References block here, deliberately. It rendered slot,
+  // company+contact and status -- a STRICT SUBSET of the tracker card above,
+  // which shows those same three WITH Nudge and Report a problem attached.
+  // Tom, 2026-09-25: "showing it up top and then below is duplicate info in
+  // an already data filled summary pane."
+  //
+  // Enriching it instead was not available: _application_payload carries only
+  // slot, company, contact_name and status. A reference's email and phone are
+  // withheld on purpose, so there is no richer version of this block to build
+  // -- those three fields ARE the whole broker-visible surface. Merging them
+  // therefore means deleting this one, not moving the buttons down.
 
   html += '<div class="ca-app-doc-head">Signed</div>' +
     '<div class="field-grid">' +

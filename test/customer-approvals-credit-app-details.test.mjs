@@ -152,15 +152,27 @@ test('renderCreditAppDetailSection renders company, billing, and what was reques
   assert.match(body.innerHTML, /Jamie Rivera/);           // signer
 });
 
-test('renderCreditAppDetailSection lists each reference by slot/company/contact/status, in plain words', () => {
+test('renderCreditAppDetailSection does NOT repeat the references the tracker already shows', () => {
+  // Tom, 2026-09-25: "showing it up top and then below is duplicate info in an
+  // already data filled summary pane." This block used to render slot,
+  // company+contact and status -- a strict subset of the tracker card above,
+  // which carries the same three WITH Nudge and Report a problem.
+  //
+  // It could not be made non-redundant instead: _application_payload carries
+  // only slot, company, contact_name and status. A reference's email and phone
+  // are withheld from the broker on purpose, so there was no richer version to
+  // build. The staff pane keeps its own "Reference Contact Records" block,
+  // which DOES carry phone, email and address -- see the staff test below.
   const w = boot();
   detailFixture(w);
   w.renderCreditAppDetailSection(clientPayload());
   const body = w.document.getElementById('ca-app-detail-body');
-  assert.match(body.innerHTML, /Trade reference 1/);
-  assert.match(body.innerHTML, /ABC Produce, Steve Alvarez/);
-  assert.match(body.innerHTML, /Completed/);
-  assert.match(body.innerHTML, /Bank reference/);
+  assert.doesNotMatch(body.innerHTML, /Trade reference 1/);
+  assert.doesNotMatch(body.innerHTML, /ABC Produce, Steve Alvarez/);
+  // The rest of the application still renders -- this removed one block, not
+  // the pane.
+  assert.match(body.innerHTML, /First National Bank/);
+  assert.match(body.innerHTML, /Jamie Rivera/);
 });
 
 test('billing instructions render in full and wrap, never truncate', () => {

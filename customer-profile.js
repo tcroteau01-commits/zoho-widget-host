@@ -415,12 +415,162 @@ function renderPriors(p) {
   return section('Other Clients’ Limits', body);
 }
 
+// ---- CREDITAPP1: the customer's own application and its references ---------
+// The only first-hand evidence on the page. Everything above it is somebody
+// else's opinion of the customer; this is what the customer and their trade
+// references actually said, and who has not answered yet.
+
+var SLOT_LABELS = { trade1: 'Trade Reference 1', trade2: 'Trade Reference 2',
+                    trade3: 'Trade Reference 3', bank: 'Bank Reference' };
+
+var APP_STATUS_LABELS = {
+  sent: 'Sent, awaiting the customer',
+  app_received: 'Application received',
+  references_pending: 'Waiting on references',
+  ready_for_review: 'Ready for review'
+};
+
+function statusPill(status) {
+  var done = status === 'completed';
+  var cls = done ? 'cp-pill-done'
+          : (status === 'bounced' ? 'cp-pill-bad'
+          : (status === 'waived' ? 'cp-pill-waived' : 'cp-pill-wait'));
+  return '<span class="cp-pill ' + cls + '">' + esc(status || 'not sent') + '</span>';
+}
+
+function riskBadge(level, signals) {
+  if (!level) { return ''; }
+  var cls = level === 'high' ? 'cp-risk-high'
+          : (level === 'review' ? 'cp-risk-review' : 'cp-risk-ok');
+  var out = '<div class="cp-risk ' + cls + '">Risk: ' + esc(level) + '</div>';
+  if (signals && signals.length) {
+    out += '<ul class="cp-risk-list">' + signals.map(function (s) {
+      return '<li>' + esc(String(s.code || '').replace(/_/g, ' ')) +
+             (s.detail ? ' <span class="muted">' + esc(s.detail) + '</span>' : '') + '</li>';
+    }).join('') + '</ul>';
+  }
+  return out;
+}
+
+function agingGrid(a) {
+  if (!a) { return ''; }
+  var cells = [['Current', a.d0_30], ['31-60', a.d31_60], ['61+', a.d61_plus]];
+  return '<div class="cp-aging">' + cells.map(function (c) {
+    return '<div class="cp-aging-cell"><i>' + esc(c[0]) + '</i><b>' +
+           (c[1] == null ? emptyDash() : esc(money(c[1]))) + '</b></div>';
+  }).join('') + '</div>';
+}
+
+function renderReference(r) {
+  var body = '<div class="cp-ref-head">' +
+    esc(SLOT_LABELS[r.slot] || r.slot) + ' &middot; ' + esc(r.company || r.name || '—') +
+    ' ' + statusPill(r.status) + '</div>';
+  body += '<div class="field-grid">' +
+    field('Contact', r.name ? esc(r.name) : emptyDash()) +
+    field('Email', r.email ? esc(r.email) : emptyDash()) +
+    field('Phone', r.phone ? esc(r.phone) : emptyDash()) +
+    field('Completed', r.completed_at ? esc(String(r.completed_at).slice(0, 10))
+          : (r.opened_at ? '<span class="muted">opened, not returned</span>' : emptyDash())) +
+  '</div>';
+  body += riskBadge(r.risk_level, r.risk_signals);
+  var resp = r.response;
+  if (resp) {
+    body += '<div class="field-grid cp-ref-answers">' +
+      field('They know them as', resp.legal_name ? esc(resp.legal_name) : emptyDash()) +
+      field('Customer Since', resp.customer_since ? esc(resp.customer_since) : emptyDash()) +
+      field('Credit Limit', resp.credit_limit != null ? esc(money(resp.credit_limit)) : emptyDash()) +
+      field('High Credit', resp.high_credit != null ? esc(money(resp.high_credit)) : emptyDash()) +
+      field('Net Terms', resp.net_terms != null ? esc(String(resp.net_terms)) : emptyDash()) +
+      field('Rating', resp.rating != null ? esc(String(resp.rating)) : emptyDash()) +
+      field('Current Balance', resp.balance != null ? esc(money(resp.balance)) : emptyDash()) +
+      field('Last Sale', resp.last_sale ? esc(String(resp.last_sale).slice(0, 10)) : emptyDash()) +
+    '</div>';
+    body += agingGrid(resp.aging);
+    if (resp.comments) {
+      body += '<div class="cp-quote">' + esc(resp.comments) + '</div>';
+    }
+  }
+  return '<div class="cp-ref">' + body + '</div>';
+}
+
+function renderApplicationBody(customer) {
+  var resp = customer && customer.response;
+  if (!resp) { return ''; }
+  var co = resp.company || {};
+  var bank = resp.bank || {};
+  var signer = resp.signer || {};
+  var bill = resp.billing || {};
+  var out = '<div class="cp-subhead">What the customer told us</div>' +
+    '<div class="field-grid">' +
+      field('Legal Name', co.name ? esc(co.name) : emptyDash()) +
+      field('DBA', co.dba ? esc(co.dba) : emptyDash()) +
+      field('Business Type', resp.business_type ? esc(resp.business_type) : emptyDash()) +
+      field('Address', (co.address && co.address.formatted) ? esc(co.address.formatted) : emptyDash()) +
+      field('EIN', co.ein ? esc(co.ein) : emptyDash()) +
+      field('MC / DOT', esc([co.mc, co.dot].filter(Boolean).join(' / ') || '—')) +
+      field('Formed', esc([co.formation_date, co.formation_state].filter(Boolean).join(', ') || '—')) +
+      field('Website', co.website ? esc(co.website) : emptyDash()) +
+      // 🚨 A customer who is already factoring changes the whole question: the
+      // receivable may already be assigned to someone else.
+      field('Currently Factoring', co.currently_factoring ? esc(co.currently_factoring) : emptyDash()) +
+      field('Parent Companies', co.parent_companies ? esc(co.parent_companies) : emptyDash()) +
+    '</div>';
+  out += '<div class="cp-subhead">Signed by</div>' +
+    '<div class="field-grid">' +
+      field('Name', signer.name ? esc(signer.name) : emptyDash()) +
+      field('Title', signer.title ? esc(signer.title) : emptyDash()) +
+      field('Phone', signer.phone ? esc(signer.phone) : emptyDash()) +
+      // The address that actually passed the one-time code, which is not
+      // necessarily the one the broker typed into the submission.
+      field('Verified Email', resp.verified_email ? esc(resp.verified_email) : emptyDash()) +
+    '</div>';
+  out += '<div class="cp-subhead">Bank and billing</div>' +
+    '<div class="field-grid">' +
+      field('Bank', bank.name ? esc(bank.name) : emptyDash()) +
+      field('Officer', bank.officer ? esc(bank.officer) : emptyDash()) +
+      field('Bank Phone', bank.phone ? esc(bank.phone) : emptyDash()) +
+      field('AP Email', bill.ap_email ? esc(bill.ap_email) : emptyDash()) +
+      field('Billing Contact', bill.contact_name ? esc(bill.contact_name) : emptyDash()) +
+      field('Billing Phone', bill.phone ? esc(bill.phone) : emptyDash()) +
+    '</div>';
+  if (bill.instructions) {
+    out += '<div class="cp-quote">' + esc(bill.instructions) + '</div>';
+  }
+  return out;
+}
+
+function renderCreditApp(p) {
+  var a = p.credit_app;
+  if (!a) {
+    return section('Credit Application',
+      '<div class="field-val muted">No credit application has been sent for this customer.</div>');
+  }
+  var head = '<div class="field-grid">' +
+      field('Status', esc(APP_STATUS_LABELS[a.status] || a.status || '—')) +
+      field('References Back',
+            esc(String(a.references_completed || 0)) + ' of ' +
+            esc(String(a.references_total || 0))) +
+      field('Sent', a.sent_at ? esc(String(a.sent_at).slice(0, 10)) : emptyDash()) +
+      field('Application Received',
+            a.app_received_at ? esc(String(a.app_received_at).slice(0, 10))
+                              : '<span class="muted">not yet</span>') +
+    '</div>';
+  head += renderApplicationBody(a.customer);
+  if (a.references && a.references.length) {
+    head += '<div class="cp-subhead">References</div>' +
+            a.references.map(renderReference).join('');
+  }
+  return section('Credit Application', head);
+}
+
 function render(payload) {
   var p = payload || {};
   // Order: header -> engine read -> Creditsafe picker (resolves the identity) ->
   // our own history (the debtor OperFi's own losses are recorded against, and
   // where the FactorView `restricted` deny signal lives) -> other clients'
-  // limits -> the credit bureau report, which is context once the rest is known.
+  // limits -> the credit bureau report -> the customer's own application and
+  // its references, which is the first-hand evidence and so reads last, after
+  // the analyst knows who they are looking at.
   return '' +
     '<div class="cp-root">' +
       renderHeader(p) +
@@ -429,6 +579,7 @@ function render(payload) {
       renderFactorView(p) +
       renderPriors(p) +
       renderSummary(p) +
+      renderCreditApp(p) +
     '</div>';
 }
 
@@ -487,6 +638,33 @@ var CP_CSS = '' +
     'padding:6px 4px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;}' +
   '.cp-dbt-cell b{font-size:13px;color:#0f172a;}' +
   '.cp-dbt-cell i{font-size:10px;font-style:normal;color:#64748b;}' +
+  // CREDITAPP1. Each reference is a card: an analyst compares them against each
+  // other, so they must not run together the way a flat list would.
+  '.cp-ref{border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;' +
+    'margin-bottom:10px;background:#fafafa;}' +
+  '.cp-ref-head{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:10px;}' +
+  '.cp-ref-answers{margin-top:10px;}' +
+  '.cp-pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;' +
+    'border-radius:9px;margin-left:6px;text-transform:uppercase;letter-spacing:.04em;}' +
+  '.cp-pill-done{background:#e8f5e9;color:#2e7d32;}' +
+  '.cp-pill-wait{background:#fff4e0;color:#b25e00;}' +
+  '.cp-pill-waived{background:#eef2f7;color:#475569;}' +
+  '.cp-pill-bad{background:#fdecea;color:#c62828;}' +
+  '.cp-risk{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;' +
+    'border-radius:8px;margin-top:8px;}' +
+  '.cp-risk-high{background:#fdecea;color:#c62828;}' +
+  '.cp-risk-review{background:#fff4e0;color:#b25e00;}' +
+  '.cp-risk-ok{background:#e8f5e9;color:#2e7d32;}' +
+  '.cp-risk-list{margin:6px 0 0;padding-left:18px;font-size:12px;color:#b25e00;}' +
+  '.cp-aging{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));' +
+    'gap:8px;margin-top:10px;}' +
+  '.cp-aging-cell{background:#fff;border:1px solid #e2e8f0;border-radius:6px;' +
+    'padding:6px 8px;display:flex;flex-direction:column;}' +
+  '.cp-aging-cell i{font-size:10px;font-style:normal;color:#64748b;}' +
+  '.cp-aging-cell b{font-size:13px;color:#0f172a;}' +
+  // What a person wrote, shown as their words rather than reflowed into a field.
+  '.cp-quote{margin-top:10px;padding:8px 12px;border-left:3px solid #cbd5e1;' +
+    'background:#fff;font-size:13px;color:#334155;white-space:pre-wrap;}' +
   '.cp-cs-search-row input{flex:1;min-width:200px;}' +
   '.cp-cs-results{margin-top:10px;}' +
   '.cp-candidates,.cp-priors{display:flex;flex-direction:column;gap:8px;margin-top:10px;}' +

@@ -121,6 +121,110 @@ test('a bound Creditsafe company can be unpinned and picked again', () => {
   assert.ok(html.includes('data-cs-clear='));
 });
 
+// --- CREDITAPP1: the customer's own application and its references ---------
+//
+// The only first-hand evidence on the page. Shaped from the REAL CH ROBINSON
+// document in Atlas rather than invented: app completed, trade2 back with a
+// risk flag, trade1/trade3/bank still out.
+
+const APP = {
+  status: 'references_pending', sent_at: '2026-09-25T04:30:00Z',
+  app_received_at: '2026-09-25T04:40:41Z',
+  references_completed: 1, references_total: 4,
+  customer: { slot: 'customer', status: 'completed', response: {
+    business_type: 'Freight Broker',
+    company: { name: 'CH ROBINSON', dba: 'CHRW', ein: '123132123', mc: '123456',
+               dot: '4324322', currently_factoring: 'No',
+               address: { formatted: '6026 West Poncho Lane, Magna, UT 84044' } },
+    bank: { name: 'National Bank', officer: 'Billy Banker' },
+    signer: { name: 'John Smith', title: 'CEO' },
+    verified_email: 't.croteau01@gmail.com',
+    billing: { ap_email: 'ap@chrobinson.com', instructions: 'Send the BOL' } } },
+  references: [
+    { slot: 'trade1', name: 'John A', company: 'ABC 1', status: 'sent', response: null },
+    { slot: 'trade2', name: 'Jane John', company: 'ABC 2', status: 'completed',
+      completed_at: '2026-09-25T04:43:00Z', risk_level: 'review',
+      risk_signals: [{ code: 'domain_does_not_match_company', detail: 'gmail.com vs ABC 2' }],
+      response: { legal_name: 'ABC LLC 2', customer_since: '2 years',
+                  credit_limit: '40000', high_credit: '40000', rating: 5,
+                  net_terms: '34', last_sale: '2026-09-14', balance: '40000',
+                  comments: 'Good to go',
+                  aging: { d0_30: '40000', d31_60: '0', d61_plus: '0' } } },
+    { slot: 'trade3', name: 'Jeff Smith', company: 'ABC 3', status: 'sent', response: null },
+    { slot: 'bank', name: 'Billy Banker', company: 'National Bank', status: 'sent', response: null }
+  ]
+};
+
+test('the application the customer submitted is shown in full', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: APP }));
+  ['CH ROBINSON', 'CHRW', '123132123', '6026 West Poncho Lane',
+   'Freight Broker', 'John Smith', 'ap@chrobinson.com',
+   't.croteau01@gmail.com'].forEach((v) => {
+    assert.ok(html.includes(v), 'missing from the application: ' + v);
+  });
+});
+
+test('a completed reference shows the numbers it gave us', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: APP }));
+  ['ABC LLC 2', '2 years', '$40,000', 'Net Terms', '2026-09-14',
+   'Good to go'].forEach((v) => {
+    assert.ok(html.includes(v), 'missing from the reference: ' + v);
+  });
+  // the aging buckets, which is how a limit gets sized rather than guessed
+  assert.ok(html.includes('31-60') && html.includes('61+'));
+});
+
+test('a reference we are still waiting on is visibly outstanding', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: APP }));
+  assert.ok(html.includes('1 of 4'));
+  assert.ok(html.includes('Trade Reference 3'));
+  assert.ok(html.includes('Bank Reference'));
+});
+
+test('a reference risk signal is shown to the credit team', () => {
+  // 🚨 The rule is that a fraud signal never reaches the SUBMITTER, who may be
+  // the fraudster. It was never that the credit team should be blind to it.
+  const html = P.render(Object.assign({}, BASE, { credit_app: APP }));
+  assert.ok(html.includes('Risk: review'));
+  assert.ok(html.includes('domain does not match company'));
+  assert.ok(html.includes('gmail.com vs ABC 2'));
+});
+
+test('"currently factoring" is not buried', () => {
+  // A customer already factoring changes the whole question: the receivable
+  // may already be assigned to somebody else.
+  const html = P.render(Object.assign({}, BASE, { credit_app: APP }));
+  assert.ok(html.includes('Currently Factoring'));
+});
+
+test('no application says so rather than rendering an empty shell', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: null }));
+  assert.ok(/No credit application has been sent/i.test(html));
+});
+
+test('an application sent but not returned still lists who we are waiting on', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: {
+    status: 'sent', sent_at: '2026-09-25T04:30:00Z', app_received_at: null,
+    references_completed: 0, references_total: 0,
+    customer: { slot: 'customer', status: 'sent', response: null }, references: [] } }));
+  assert.ok(/awaiting the customer/i.test(html));
+  assert.ok(/not yet/i.test(html));
+});
+
+test('a hostile reference comment cannot inject markup', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: {
+    status: 'ready_for_review', references_completed: 1, references_total: 1,
+    customer: null,
+    references: [{ slot: 'trade1', name: '<script>a</script>', company: 'X',
+                   status: 'completed',
+                   risk_signals: [{ code: 'x', detail: '<script>c</script>' }],
+                   risk_level: 'high',
+                   response: { comments: '<script>b</script>' } }] } }));
+  assert.ok(!html.includes('<script>a'));
+  assert.ok(!html.includes('<script>b'));
+  assert.ok(!html.includes('<script>c'));
+});
+
 // --- the credit report, which is the whole reason the page exists ----------
 
 const REPORT = {

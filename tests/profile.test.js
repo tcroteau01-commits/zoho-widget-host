@@ -409,6 +409,62 @@ test('while the decision is open the engine read IS the headline', () => {
   assert.ok(/Review Required/i.test(header));
 });
 
+test('every status wears its own colour', () => {
+  // 🚨 A record at "Credit App Sent - Awaiting Customer" wore the same grey chip
+  // as one nobody had touched. Tom: "The Credit App Sent pill is still hard to
+  // see." Telling states apart at a glance is the whole job of the chip.
+  const tones = {
+    'Approved': 'cp-status-approved',
+    'Denied': 'cp-status-denied',
+    'Pending Credit Application': 'cp-status-pending',
+    'Credit App Sent - Awaiting Customer': 'cp-status-sent',
+    "Credit App Rec'd - Pending Review": 'cp-status-back',
+    'Credit Boost Requested': 'cp-status-back',
+    'Expired': 'cp-status-expired',
+    'Awaiting Credit Decision': 'cp-status-open'
+  };
+  const seen = new Set();
+  Object.keys(tones).forEach((status) => {
+    const html = P.render(Object.assign({}, BASE, { status }));
+    const m = html.match(/cp-status-pill (cp-status-[a-z]+)/);
+    assert.ok(m, 'no status chip for ' + status);
+    assert.strictEqual(m[1], tones[status], status);
+    seen.add(m[1]);
+  });
+  // and they are genuinely different colours, not all aliased to one class
+  assert.ok(seen.size >= 6, 'statuses collapse onto too few tones');
+});
+
+test('any status past the opening one counts as decided', () => {
+  // 🚨 The list of states that COUNT kept missing new ones -- first Pending
+  // Credit App, then Credit App Sent -- and each miss looked the same to Tom:
+  // a stale engine pill beside a status the record had plainly moved on from,
+  // and no banner saying a decision already exists. Inverted, so only an
+  // untouched record is open and a new status cannot reintroduce the bug.
+  ["Credit App Sent - Awaiting Customer", "Credit App Rec'd - Pending Review",
+   'Credit Boost Requested', 'Expired'].forEach((status) => {
+    const html = P.render(Object.assign({}, BASE, {
+      status,
+      engine: { suggested: 'review_required', limit: null, reasons: [],
+                engine_version: 'v1' } }));
+    const header = html.slice(0, html.indexOf('Credit Engine'));
+    assert.ok(!/Review Required/i.test(header), status + ': stale engine pill');
+    assert.ok(/cp-decided /.test(header), status + ': no decided banner');
+  });
+});
+
+test('an untouched submission is still open', () => {
+  ['Awaiting Credit Decision', ''].forEach((status) => {
+    const html = P.render(Object.assign({}, BASE, {
+      status,
+      engine: { suggested: 'review_required', limit: null, reasons: [],
+                engine_version: 'v1' } }));
+    const header = html.slice(0, html.indexOf('Credit Engine'));
+    assert.ok(/Review Required/i.test(header), 'engine read should lead here');
+    assert.ok(!/cp-decided /.test(header), 'claimed a decision that never happened');
+  });
+});
+
 test('Pending Credit App is a decision too', () => {
   // 🚨 It was missing from the "has a human decided" test, so after choosing it
   // the engine's Review Required stayed in the header beside it and the chip

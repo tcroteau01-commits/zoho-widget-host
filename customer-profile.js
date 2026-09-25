@@ -90,22 +90,36 @@ function section(title, bodyHtml, extraClass) {
 // Colour carries the decision, because that is what a glance reads. Green for
 // approved, red for denied, amber for waiting on the customer -- matching the
 // chip the customer list already shows for the same record.
+// 🚨 EVERY status gets its own colour, not just the three a person sets. A
+// record sitting at "Credit App Sent - Awaiting Customer" wore the same grey
+// chip as one nobody had touched, so the two read identically at a glance --
+// which is the whole job of the chip.
+var STATUS_TONES = {
+  'approved': 'cp-status-approved',                          // green, done
+  'denied': 'cp-status-denied',                              // red, done
+  'pending credit application': 'cp-status-pending',         // amber, we act next
+  'credit app sent - awaiting customer': 'cp-status-sent',   // blue, THEY act next
+  "credit app rec'd - pending review": 'cp-status-back',     // violet, back to us
+  'credit boost requested': 'cp-status-back',                // violet, back to us
+  'expired': 'cp-status-expired'                             // slate, lapsed
+};
+
 function statusTone(status) {
-  var s = String(status || '').trim().toLowerCase();
-  if (s === 'approved') { return 'cp-status-approved'; }
-  if (s === 'denied') { return 'cp-status-denied'; }
-  if (s === 'pending credit application') { return 'cp-status-pending'; }
-  return 'cp-status-open';
+  return STATUS_TONES[String(status || '').trim().toLowerCase()]
+         || 'cp-status-open';
 }
 
-// 🚨 A decision a PERSON made, which is not the same as a closed one. Pending
-// Credit App was missing here, so after choosing it the engine's "Review
-// Required" stayed in the header beside it and the status chip stayed neutral --
-// the page still read as undecided on a record the analyst had just decided.
-// The test is "has a human answered", not "is this finished".
+// 🚨 "Has this record moved past the opening state", NOT "is it finished".
+//
+// It first read approved-or-denied, then gained Pending Credit App, and both
+// times the miss looked the same to Tom: the engine's stale "Review Required"
+// stayed in the header beside a status the record had plainly moved on from,
+// and the banner explaining that a decision already exists never appeared.
+// Listing the states that COUNT keeps reproducing that bug as statuses are
+// added, so the test is inverted -- only an untouched record is open.
 function isDecided(status) {
   var s = String(status || '').trim().toLowerCase();
-  return s === 'approved' || s === 'denied' || s === 'pending credit application';
+  return !!s && s !== 'awaiting credit decision';
 }
 
 function renderHeader(p) {
@@ -153,7 +167,8 @@ function renderHeader(p) {
     // Three tones, not two: a binary yes/no painted Pending Credit App red, as
     // though waiting on the customer were a refusal.
     var DECIDED_TONE = { 'cp-status-approved': 'yes', 'cp-status-denied': 'no',
-                         'cp-status-pending': 'wait' };
+                         'cp-status-pending': 'wait', 'cp-status-sent': 'sent',
+                         'cp-status-back': 'wait', 'cp-status-expired': 'wait' };
     var settledNote = isDecided(p.status)
       ? '<div class="cp-decided cp-decided-' +
         (DECIDED_TONE[statusTone(p.status)] || 'wait') + '">' +
@@ -860,6 +875,11 @@ var CP_CSS = '' +
   // Amber, matching the chip the customer LIST already shows for this status --
   // the same record must not read as two different states on two screens.
   '.cp-status-pending{background:#b45309;color:#fff;}' +
+  // Blue: sent, and the ball is in the CUSTOMER's court -- nothing for us to do.
+  '.cp-status-sent{background:#1d4ed8;color:#fff;}' +
+  // Violet: it has come back and is waiting on US again.
+  '.cp-status-back{background:#6d28d9;color:#fff;}' +
+  '.cp-status-expired{background:#475569;color:#fff;}' +
   '.cp-status-open{background:rgba(255,255,255,0.14);color:#fff;}' +
   // Both choices start identical; colour arrives on hover, when the analyst is
   // committing to one rather than being nudged toward it.
@@ -871,6 +891,7 @@ var CP_CSS = '' +
   '.cp-decided-yes{background:rgba(21,128,61,.18);color:#bbf7d0;}' +
   '.cp-decided-no{background:rgba(185,28,28,.22);color:#fecaca;}' +
   '.cp-decided-wait{background:rgba(180,83,9,.25);color:#fed7aa;}' +
+  '.cp-decided-sent{background:rgba(29,78,216,.28);color:#bfdbfe;}' +
   '.cp-decided .muted{font-weight:500;opacity:.8;}' +
   '.cp-header-contacts{margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.12);}' +
   '.cp-header-contacts .field-label{color:rgba(255,255,255,0.55);}' +

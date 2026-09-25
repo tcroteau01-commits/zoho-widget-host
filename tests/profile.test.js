@@ -121,6 +121,31 @@ test('a bound Creditsafe company can be unpinned and picked again', () => {
   assert.ok(html.includes('data-cs-clear='));
 });
 
+// --- a stale verdict must not read like a current one ----------------------
+//
+// 🚨 The submit-time read is not merely old. It says "no Creditsafe record
+// found" about a company whose full credit file is on the same page, because it
+// ran before anyone confirmed which company this is.
+
+test('a submit-time verdict is labelled as pre-confirmation', () => {
+  const html = P.render(Object.assign({}, BASE, { engine: {
+    suggested: 'review_required', limit: null, engine_version: 'v1',
+    reasons: ['no Creditsafe record found'], note: null,
+    at: '2026-09-25T14:56:51Z' } }));
+  assert.ok(/before the company was confirmed/i.test(html));
+  assert.ok(/confirmed which company this is/i.test(html));
+});
+
+test('a re-run verdict says so and drops the warning', () => {
+  const html = P.render(Object.assign({}, BASE, { engine: {
+    suggested: 'auto_approve', limit: 30000, engine_version: 'v1', reasons: [],
+    note: 'RE-EVALUATED after the identity was confirmed',
+    at: '2026-09-25T16:20:00Z' } }));
+  assert.ok(/After the identity was confirmed/i.test(html));
+  assert.ok(!/confirmed which company this is/i.test(html));
+  assert.ok(html.includes('$30,000'));
+});
+
 // --- what the broker submitted ---------------------------------------------
 //
 // Tom, 2026-09-25: "it needs to show somewhere prominent so you know who you're

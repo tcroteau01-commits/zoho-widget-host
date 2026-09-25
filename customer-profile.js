@@ -159,14 +159,28 @@ function renderEngine(p) {
     } else {
       reasonsHtml = '<div class="field-val muted">No reasons given.</div>';
     }
+    // 🚨 A verdict from submit time and one from after the analyst confirmed the
+    // company mean very different things. The stale one is not just old, it is
+    // WRONG in a specific way: it reports "no Creditsafe record found" about a
+    // company now sitting on the same page. Say which read this is.
+    var fresh = /RE-EVALUATED/i.test(e.note || '');
+    var basis = fresh
+      ? '<span class="cp-pill cp-pill-ok">After the identity was confirmed</span>'
+      : '<span class="cp-pill cp-pill-muted">At submission, before the company was confirmed</span>';
     body = '' +
+      '<div class="cp-engine-basis">' + basis + '</div>' +
       '<div class="field-grid">' +
         field('Suggested', esc(engineLabel(e.suggested))) +
         field('Suggested Limit', e.limit != null ? esc(money(e.limit)) : emptyDash()) +
         field('Engine Version', e.engine_version ? esc(e.engine_version) : emptyDash()) +
-        field('Evaluated', e.at ? esc(e.at) : emptyDash()) +
+        field('Evaluated', e.at ? esc(String(e.at).replace('T', ' ').slice(0, 19)) : emptyDash()) +
       '</div>' +
-      '<div class="cp-reasons-wrap"><div class="field-label">Reasons</div>' + reasonsHtml + '</div>';
+      '<div class="cp-reasons-wrap"><div class="field-label">Reasons</div>' + reasonsHtml +
+      (fresh ? '' :
+        '<div class="field-val muted cp-note">These reasons were produced before anyone ' +
+        'confirmed which company this is. Confirm the Creditsafe match below and the ' +
+        'engine will read the real file.</div>') +
+      '</div>';
   }
   return section('Credit Engine', body);
 }
@@ -732,6 +746,7 @@ var CP_CSS = '' +
   // What a person wrote, shown as their words rather than reflowed into a field.
   '.cp-quote{margin-top:10px;padding:8px 12px;border-left:3px solid #cbd5e1;' +
     'background:#fff;font-size:13px;color:#334155;white-space:pre-wrap;}' +
+  '.cp-engine-basis{margin-bottom:12px;}' +
   '.cp-match{display:inline-block;margin-left:8px;font-size:10px;font-weight:700;' +
     'padding:2px 7px;border-radius:8px;text-transform:uppercase;letter-spacing:.04em;}' +
   '.cp-match-strong{background:#e8f5e9;color:#2e7d32;}' +

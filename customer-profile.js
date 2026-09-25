@@ -747,6 +747,13 @@ var CP_CSS = '' +
   '.cp-quote{margin-top:10px;padding:8px 12px;border-left:3px solid #cbd5e1;' +
     'background:#fff;font-size:13px;color:#334155;white-space:pre-wrap;}' +
   '.cp-engine-basis{margin-bottom:12px;}' +
+  // Confirming a company searches, buys a report and re-runs the gate, so it is
+  // SECONDS of server work behind one click. Without this the button looks dead.
+  '.cp-spin{display:inline-block;width:11px;height:11px;margin-right:7px;' +
+    'vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;' +
+    'border-radius:50%;animation:cp-spin .6s linear infinite;}' +
+  '@keyframes cp-spin{to{transform:rotate(360deg);}}' +
+  '.cp-root button[disabled]{opacity:.55;cursor:not-allowed;}' +
   '.cp-match{display:inline-block;margin-left:8px;font-size:10px;font-weight:700;' +
     'padding:2px 7px;border-radius:8px;text-transform:uppercase;letter-spacing:.04em;}' +
   '.cp-match-strong{background:#e8f5e9;color:#2e7d32;}' +

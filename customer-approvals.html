@@ -1604,38 +1604,42 @@ function renderProfile(rec, payload) {
 
   root.querySelectorAll('[data-cs-pick]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      pinCustomer(rec, { connect_id: btn.getAttribute('data-cs-pick') });
+      // The label names the slow part. "Saving…" would be a lie: the wait is the
+      // report purchase and the re-run behind it, not the write.
+      pinCustomer(rec, { connect_id: btn.getAttribute('data-cs-pick') },
+                  btn, 'Getting report…');
     });
   });
   root.querySelectorAll('[data-fv-pick]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      pinCustomer(rec, { fv_debtor_id: btn.getAttribute('data-fv-pick') });
+      pinCustomer(rec, { fv_debtor_id: btn.getAttribute('data-fv-pick') },
+                  btn, 'Saving…');
     });
   });
   root.querySelectorAll('[data-cs-absent]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      pinCustomer(rec, { not_in_creditsafe: true });
+      pinCustomer(rec, { not_in_creditsafe: true }, btn, 'Saving…');
     });
   });
   // The two ways back out of a binding. An explicit false / null is how the pin
   // route clears a field -- omitting the key would leave it exactly as it was.
   root.querySelectorAll('[data-cs-unabsent]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      pinCustomer(rec, { not_in_creditsafe: false });
+      pinCustomer(rec, { not_in_creditsafe: false }, btn, 'Searching…');
     });
   });
   root.querySelectorAll('[data-cs-clear]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       if (!window.confirm('Unpin this Creditsafe company and search again?')) return;
-      pinCustomer(rec, { connect_id: null });
+      pinCustomer(rec, { connect_id: null }, btn, 'Searching…');
     });
   });
   root.querySelectorAll('[data-pull-report]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      // Disable immediately. A paid lookup that takes a few seconds invites a
-      // second click, and the cache only protects us once the FIRST one lands.
-      btn.disabled = true;
-      btn.textContent = 'Getting report…';
+      // Lock the whole profile, not just this button. A paid lookup that takes
+      // a few seconds invites a second click, and the cache only protects us
+      // once the FIRST one lands.
+      var undo = setProfileBusy(btn, 'Getting report…');
       fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/report', {
         method: 'POST', credentials: 'include'
       }).then(function(res) {
@@ -1644,8 +1648,7 @@ function renderProfile(rec, payload) {
       }).then(function() { fetchProfile(rec); })
         .catch(function(err) {
           console.error('[CustomerApprovals] report pull failed', err);
-          btn.disabled = false;
-          btn.textContent = 'Get credit report';
+          undo();
           showToast(err && err.reason === 'stale_id'
             ? 'That Creditsafe company no longer resolves. Pick again.'
             : 'Could not get the report. Try again.');
@@ -1678,7 +1681,37 @@ function renderProfile(rec, payload) {
   });
 }
 
-function pinCustomer(rec, body) {
+// Every control on the profile that starts server work.
+// 🚨 Confirming a company is no longer a quick write: it searches, buys a
+// billable Creditsafe report and re-runs the gate, which is SECONDS. The button
+// gave no sign it had been pressed, so the analyst's natural next move is to
+// click again -- and a second click on a DIFFERENT candidate races two pins,
+// with the loser silently overwriting the winner's binding.
+var PROFILE_ACTIONS = '[data-cs-pick],[data-fv-pick],[data-cs-absent],' +
+  '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide]';
+
+// Locks the whole profile and marks the pressed button. Returns the undo, which
+// only the FAILURE path calls: on success the profile re-renders from scratch
+// and the controls must stay dead until it does.
+function setProfileBusy(btn, label) {
+  var root = document.getElementById('ca-profile');
+  if (!root) return function() {};
+  var locked = root.querySelectorAll(PROFILE_ACTIONS);
+  var restore = [];
+  for (var i = 0; i < locked.length; i++) {
+    restore.push({ el: locked[i], was: locked[i].disabled });
+    locked[i].disabled = true;
+  }
+  var old = btn ? btn.innerHTML : null;
+  if (btn) btn.innerHTML = '<span class="cp-spin"></span>' + esc(label || 'Working…');
+  return function undo() {
+    for (var j = 0; j < restore.length; j++) restore[j].el.disabled = restore[j].was;
+    if (btn && old !== null) btn.innerHTML = old;
+  };
+}
+
+function pinCustomer(rec, body, btn, label) {
+  var undo = setProfileBusy(btn, label || 'Saving…');
   fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/pin', {
     method: 'POST',
     credentials: 'include',
@@ -1688,10 +1721,14 @@ function pinCustomer(rec, body) {
     .then(function() {
       // The reward for resolving the ambiguity: re-fetch so the analyst immediately
       // sees the report and history the pin just unlocked, not a stale picker.
+      // Deliberately NOT undoing the busy state first -- the pin has landed and
+      // the fetch that follows is another wait, so the page stays visibly busy
+      // rather than flicking back to live buttons for a second.
       fetchProfile(rec);
     })
     .catch(function(err) {
       console.error('[CustomerApprovals] customer-profile pin failed', err);
+      undo();
       showToast('Could not save. Try again.');
     });
 }

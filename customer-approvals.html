@@ -2670,7 +2670,6 @@ function renderCreditAppDetailSection(payload) {
   var billing = payload.billing || {};
   var credit = payload.credit || {};
   var bank = payload.bank || {};
-  var references = payload.references || [];
   var signer = payload.signer || {};
   var addr = caAppFormatAddress(company.address);
 
@@ -2708,20 +2707,19 @@ function renderCreditAppDetailSection(payload) {
       field('Bank', bank.name) +
     '</div>';
 
-  if (references.length) {
-    html += '<div class="ca-app-doc-head">References</div>' +
-      '<div class="ca-app-detail-refs">' +
-      references.map(function(ref) {
-        var st = caAppPartyState(ref.status);
-        return '<div class="ca-app-detail-ref">' +
-          '<div class="ca-app-detail-ref-slot">' + esc(caAppSlotLabel(ref.slot)) + '</div>' +
-          '<div class="ca-app-detail-ref-who">' + esc([ref.company, ref.contact_name].filter(Boolean).join(', ') || '—') + '</div>' +
-          '<div class="ca-app-detail-ref-state ca-app-state-' + st.cls + '">' + esc(st.label) + '</div>' +
-        '</div>';
-      }).join('') +
-      '</div>';
-  }
-
+  // No References list here on purpose. The Credit Application tracker a few
+  // inches above this block (renderCreditAppSection / caAppRowHtml) already
+  // names every reference -- same slot label from the same caAppSlotLabel,
+  // same company and contact, same caAppPartyState status -- and adds what
+  // this block never had: how long each one has been waiting, the stalled
+  // and bounced overlays, Nudge, Nudge all waiting, and Report a problem.
+  // This list was a strict subset of that one (it even blanked the bank
+  // slot's contact, which the tracker shows), so it read as the same four
+  // rows twice in one pane. Both audiences see the tracker -- it is not
+  // gated on allClients, and /credit-app/status carries the same flag and
+  // account scoping as /credit-app/application, so this block can never be
+  // on screen while the tracker is missing. payload.references is still sent
+  // and is deliberately unread here.
   html += '<div class="ca-app-doc-head">Signed</div>' +
     '<div class="field-grid">' +
       field('Signed By', [signer.name, signer.title].filter(Boolean).join(', ')) +

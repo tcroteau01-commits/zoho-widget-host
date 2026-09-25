@@ -2529,6 +2529,25 @@ function caAppReferenceAnswerHtml(p) {
       (p.company ? ' — ' + esc(p.company) : '') +
       ' <span class="ca-app-state-' + st.cls + '">(' + esc(st.label) + ')</span>' +
     '</div>';
+  // CREDITAPP2 final review, Fix 1 -- WHY the send failed, not just that it
+  // did. ms_graph returns (False, "Could not obtain a Graph token.") without
+  // raising, and the API turns that into 'bounced' on every party, so an
+  // expired app secret reads identically to four typed addresses. Credit
+  // cannot tell a typo from an outage without the recorded detail, and the
+  // only exits from 'bounced' are correct-address (which re-sends into the
+  // same broken mail path) and waive. Staff-only by construction: this whole
+  // block is absent from the DOM for a broker (caAppStaffSectionHtml's
+  // allClients gate) and send_error is on the risk payload only, never
+  // /credit-app/status. Timestamp shown as stored, labelled UTC rather than
+  // run through parseDate -- that helper is for Creator's Central wall-clock
+  // strings and would relabel this one wrongly.
+  if (p.send_error && (p.send_error.detail || p.send_error.at)) {
+    var seAt = p.send_error.at
+      ? String(p.send_error.at).replace('T', ' ').slice(0, 16) + ' UTC' : '';
+    html += '<div class="ca-app-staff-risk ca-app-staff-risk-high">Send failed' +
+      (seAt ? ' ' + esc(seAt) : '') + ': ' + esc(p.send_error.detail || 'no detail recorded') +
+      '</div>';
+  }
   if (risk) {
     var level = risk.level || 'unknown';
     html += '<div class="ca-app-staff-risk ca-app-staff-risk-' + esc(level) + '">Risk: ' + esc(level) + '</div>';

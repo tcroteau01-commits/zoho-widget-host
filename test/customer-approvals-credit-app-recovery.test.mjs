@@ -494,3 +494,49 @@ test('no rendered text in the recovery UI contains "[object Object]"', async () 
     assert.doesNotMatch(rowHtml, /\[object Object\]/);
   });
 });
+
+// ── 4. Final review, Fix 1: WHY the send failed ─────────────────────────────
+//
+// ms_graph returns (False, "Could not obtain a Graph token.") WITHOUT raising,
+// and this branch turns that into status 'bounced' on every party. So an
+// expired app secret marks all four references of every application submitted
+// overnight as bounced, and on screen that reads identically to four typed
+// addresses. The detail was recorded on the party (send_error) and nothing
+// rendered it -- the same recorded-and-nothing-reads-it pattern this project
+// exists to end. Staff-only: it can carry internal error text, and broker
+// payloads carry neutral workflow facts only.
+
+test('the staff block says WHY a send failed, not just that the party bounced', () => {
+  const w = boot();
+  const h = w.caAppReferenceAnswerHtml({
+    slot: 'bank', name: 'Jordan Banks', company: 'First National Bank',
+    status: 'bounced', waiting_days: 4, stalled: false,
+    risk: null, address_risk: null, response: null,
+    send_error: { detail: 'Could not obtain a Graph token.', at: '2026-09-25T14:30:00+00:00' },
+  });
+  assert.match(h, /Send failed/);
+  assert.match(h, /Could not obtain a Graph token\./,
+    'a platform outage must be distinguishable from a typed address');
+  assert.match(h, /2026-09-25 14:30 UTC/);
+});
+
+test('a party that never failed a send renders no send-failure block', () => {
+  const w = boot();
+  const h = w.caAppReferenceAnswerHtml({
+    slot: 'bank', name: 'Jordan Banks', company: 'First National Bank',
+    status: 'sent', waiting_days: 2, stalled: false,
+    risk: null, address_risk: null, response: null, send_error: null,
+  });
+  assert.doesNotMatch(h, /Send failed/);
+});
+
+test('the send-failure detail is escaped, never injected', () => {
+  const w = boot();
+  const h = w.caAppReferenceAnswerHtml({
+    slot: 'bank', name: 'J', company: 'B', status: 'bounced',
+    waiting_days: 1, stalled: false, risk: null, address_risk: null, response: null,
+    send_error: { detail: '<img src=x onerror=alert(1)>', at: '2026-09-25T14:30:00+00:00' },
+  });
+  assert.doesNotMatch(h, /<img src=x/);
+  assert.match(h, /&lt;img src=x/);
+});

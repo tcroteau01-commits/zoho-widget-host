@@ -37,6 +37,17 @@ function link(url) {
          esc(label) + '</a>';
 }
 
+// Tom, 2026-09-25: "Can we have the address link out to google maps so they can
+// see that corporate address?" Street View is how an analyst tells a warehouse
+// from a mailbox store, which is a fraud signal no API returns cleanly.
+function mapLink(address) {
+  if (!address) { return emptyDash(); }
+  var a = String(address).trim();
+  return '<a href="https://www.google.com/maps/search/?api=1&query=' +
+         encodeURIComponent(a) + '" target="_blank" rel="noopener noreferrer">' +
+         esc(a) + '</a>';
+}
+
 function money(n) {
   // 🚨 Number(null) is 0, so without this an ABSENT limit renders as "$0" --
   // the one reading Tom called out as wrong: "$0 could just mean we dropped
@@ -76,19 +87,25 @@ function section(title, bodyHtml, extraClass) {
 }
 
 // ---- header: customer, broker, status, engine verdict, decision controls ----
-// Approved is green, Denied is red, anything else is still open. Colour carries
-// the decision because that is what a glance reads, not the words.
+// Colour carries the decision, because that is what a glance reads. Green for
+// approved, red for denied, amber for waiting on the customer -- matching the
+// chip the customer list already shows for the same record.
 function statusTone(status) {
   var s = String(status || '').trim().toLowerCase();
   if (s === 'approved') { return 'cp-status-approved'; }
   if (s === 'denied') { return 'cp-status-denied'; }
+  if (s === 'pending credit application') { return 'cp-status-pending'; }
   return 'cp-status-open';
 }
 
-// A decision a person has made and the system is no longer waiting on.
-function isSettled(status) {
+// 🚨 A decision a PERSON made, which is not the same as a closed one. Pending
+// Credit App was missing here, so after choosing it the engine's "Review
+// Required" stayed in the header beside it and the status chip stayed neutral --
+// the page still read as undecided on a record the analyst had just decided.
+// The test is "has a human answered", not "is this finished".
+function isDecided(status) {
   var s = String(status || '').trim().toLowerCase();
-  return s === 'approved' || s === 'denied';
+  return s === 'approved' || s === 'denied' || s === 'pending credit application';
 }
 
 function renderHeader(p) {
@@ -101,7 +118,7 @@ function renderHeader(p) {
   // belongs in the header only while the decision is still OPEN, because that is
   // the one time it tells the analyst what to do next.
   var verdictHtml = '';
-  if (!isSettled(p.status)) {
+  if (!isDecided(p.status)) {
     if (engine && engine.suggested) {
       var pillClass = engine.suggested === 'auto_approve' ? 'cp-pill-ok' : 'cp-pill-warn';
       verdictHtml = '<span class="cp-pill ' + pillClass + '">' +
@@ -115,23 +132,31 @@ function renderHeader(p) {
   // header so an analyst who has read the whole page never navigates back to act.
   var decisionHtml = '';
   if (p.can_act) {
+    // 🚨 The button does NOT name an amount. It used to read "Approve $5,000"
+    // from the engine's suggestion and kept saying it while Tom typed 15000 into
+    // the box beside it -- the click would have approved $15,000, so the label
+    // was simply wrong. The box is the amount; the button is the verb.
     var approveLabel = 'Approved';
     var prefill = '';
     if (engine && engine.suggested === 'auto_approve' && engine.limit != null) {
       var n = Math.round(Number(engine.limit));
-      if (isFinite(n)) {
-        approveLabel = 'Approve ' + money(n);
-        prefill = String(n);
-      }
+      // The suggestion still PREFILLS, which is the useful half: a starting
+      // number the analyst can accept or overwrite, and whatever ends up in the
+      // box is what gets approved.
+      if (isFinite(n)) { prefill = String(n); }
     }
     // 🚨 Neither button is pre-coloured. Tom: "maybe the Approved or Denied
     // buttons need to be the same color to start and they have to select their
     // decision from there." An orange Approve sitting next to a plain Denied
     // reads as the recommended action on every single customer, including the
     // ones we should refuse.
-    var settledNote = isSettled(p.status)
+    // Three tones, not two: a binary yes/no painted Pending Credit App red, as
+    // though waiting on the customer were a refusal.
+    var DECIDED_TONE = { 'cp-status-approved': 'yes', 'cp-status-denied': 'no',
+                         'cp-status-pending': 'wait' };
+    var settledNote = isDecided(p.status)
       ? '<div class="cp-decided cp-decided-' +
-        (statusTone(p.status) === 'cp-status-approved' ? 'yes' : 'no') + '">' +
+        (DECIDED_TONE[statusTone(p.status)] || 'wait') + '">' +
         esc(p.status) + (p.submitted && p.submitted.credit_limit
           ? ' &middot; ' + esc(money(p.submitted.credit_limit)) : '') +
         ' &middot; <span class="muted">changing it below overwrites this</span></div>'
@@ -158,7 +183,7 @@ function renderHeader(p) {
   var s = p.submitted || {};
   contactsHtml = '' +
     '<div class="field-grid cp-header-contacts">' +
-      field('Address', s.address ? esc(s.address) : emptyDash()) +
+      field('Address', mapLink(s.address)) +
       field('Phone', s.phone ? esc(s.phone) : emptyDash()) +
       field('Website', link(s.website)) +
       field('LinkedIn', link(s.linkedin)) +
@@ -510,6 +535,86 @@ function renderPriors(p) {
   return section('Other Clients’ Limits', body);
 }
 
+// ---- the fraud read, the same one the detail pane shows --------------------
+// 🚨 OperFi-facing only, and it must never differ from the drawer's: Tom saw
+// HIGH RISK with two named reasons there and nothing at all here for the same
+// customer, which is worse than either alone -- an analyst who reads only this
+// page concludes the customer is clean.
+var RISK_WORDS = { high: 'High risk', medium: 'Needs a look', low: 'Nothing flagged',
+                   unknown: 'Could not check' };
+
+function renderFraud(p) {
+  var f = p.fraud;
+  var q = p.quality || {};
+  var junk = q.placeholder || [];
+  if (!f && !junk.length) { return ''; }
+  var body = '';
+
+  var d = f && f.domain;
+  if (d) {
+    var cls = d.risk === 'high' ? 'cp-risk-high'
+            : (d.risk === 'medium' ? 'cp-risk-review'
+            : (d.risk === 'unknown' ? 'cp-risk-unknown' : 'cp-risk-ok'));
+    body += '<div class="cp-subhead">Email and domain</div>' +
+      '<div class="cp-risk ' + cls + '">' + esc(RISK_WORDS[d.risk] || d.risk) + '</div>';
+    if (d.reasons && d.reasons.length) {
+      body += '<ul class="cp-risk-list">' + d.reasons.map(function (r) {
+        return '<li>' + esc(r) + '</li>';
+      }).join('') + '</ul>';
+    }
+    body += '<div class="field-grid">' +
+      field('Email Domain', d.email_domain ? esc(d.email_domain) : emptyDash()) +
+      field('Website Domain', d.website_domain ? esc(d.website_domain) : emptyDash()) +
+      field('Domains Match', d.domain_mismatch ? '<span class="cp-flag">No</span>' : 'Yes') +
+      // 🚨 Aged SEPARATELY. One unlabelled "domain age" beside a mismatch reads
+      // as if we had checked the pair; on YEARS TRADE the email domain was 2y7m
+      // and the website domain six months, and only the second one mattered.
+      field('Email Domain Age',
+            d.email_domain_age_human || d.domain_age_human
+              ? esc(d.email_domain_age_human || d.domain_age_human) : emptyDash()) +
+      field('Website Domain Age', d.website_domain_age_human
+            ? esc(d.website_domain_age_human)
+            : (d.domain_mismatch ? emptyDash()
+                                 : '<span class="muted">same domain</span>')) +
+      field('Disposable', d.disposable ? '<span class="cp-flag">Yes</span>' : 'No') +
+      field('Email Valid', d.email_valid === false ? '<span class="cp-flag">No</span>'
+            : (d.email_valid === true ? 'Yes' : emptyDash())) +
+      '</div>';
+  }
+
+  var ph = f && f.phone;
+  if (ph) {
+    body += '<div class="cp-subhead">Phone</div>' +
+      '<div class="field-grid">' +
+        field('Number', ph.number ? esc(ph.number) : emptyDash()) +
+        // 🚨 A VOIP number on a corporate AP contact is the classic tell: it is
+        // free, instant and disposable, where a landline takes an account.
+        field('VOIP', ph.voip ? '<span class="cp-flag">Yes</span>'
+              : (ph.voip === false ? 'No' : emptyDash())) +
+        field('Line Type', ph.line_type ? esc(ph.line_type) : emptyDash()) +
+        field('Carrier', ph.carrier ? esc(ph.carrier) : emptyDash()) +
+        field('Valid', ph.valid === false ? '<span class="cp-flag">No</span>'
+              : (ph.valid === true ? 'Yes' : emptyDash())) +
+        field('Risk', ph.risk_band ? esc(ph.risk_band) : emptyDash()) +
+      '</div>';
+  }
+
+  if (junk.length) {
+    body += '<div class="cp-subhead">Looks like placeholder data</div>' +
+      '<ul class="cp-risk-list">' + junk.map(function (j) {
+        return '<li>' + esc(j.field) + ' is "' + esc(j.value) + '"</li>';
+      }).join('') + '</ul>' +
+      '<div class="field-val muted cp-note">Typed to get past the form rather ' +
+      'than answered. Worth confirming before funding, but not on its own a ' +
+      'fraud signal.</div>';
+  }
+  if (q.missing && q.missing.length) {
+    body += '<div class="field-val muted cp-note">Not provided: ' +
+            esc(q.missing.join(', ')) + '</div>';
+  }
+  return body ? section('Fraud and Data Checks', body) : '';
+}
+
 // ---- everything the broker submitted, with a field for every box -----------
 // Tom, 2026-09-25: "it should show all the data that the client submitted or at
 // least have fields for everything submitted." An empty field is information:
@@ -521,7 +626,7 @@ function renderSubmitted(p) {
   var a = s.address_parts || {};
   var body = '<div class="field-grid">' +
       field('Company Name', s.company_name ? esc(s.company_name) : emptyDash()) +
-      field('Address', s.address ? esc(s.address) : emptyDash()) +
+      field('Address', mapLink(s.address)) +
       field('City', a.city ? esc(a.city) : emptyDash()) +
       field('State', a.state ? esc(a.state) : emptyDash()) +
       field('Postal Code', a.postal ? esc(a.postal) : emptyDash()) +
@@ -706,6 +811,9 @@ function render(payload) {
   return '' +
     '<div class="cp-root">' +
       renderHeader(p) +
+      // The fraud read comes FIRST. If the domain is two days old and does not
+      // match the website, nothing further down the page is worth reading yet.
+      renderFraud(p) +
       renderSubmitted(p) +
       renderEngine(p) +
       renderIdentity(p) +
@@ -749,6 +857,9 @@ var CP_CSS = '' +
   // for every status, so DENIED and AWAITING looked identical in the corner.
   '.cp-status-approved{background:#15803d;color:#fff;}' +
   '.cp-status-denied{background:#b91c1c;color:#fff;}' +
+  // Amber, matching the chip the customer LIST already shows for this status --
+  // the same record must not read as two different states on two screens.
+  '.cp-status-pending{background:#b45309;color:#fff;}' +
   '.cp-status-open{background:rgba(255,255,255,0.14);color:#fff;}' +
   // Both choices start identical; colour arrives on hover, when the analyst is
   // committing to one rather than being nudged toward it.
@@ -759,6 +870,7 @@ var CP_CSS = '' +
     'font-weight:700;display:inline-block;}' +
   '.cp-decided-yes{background:rgba(21,128,61,.18);color:#bbf7d0;}' +
   '.cp-decided-no{background:rgba(185,28,28,.22);color:#fecaca;}' +
+  '.cp-decided-wait{background:rgba(180,83,9,.25);color:#fed7aa;}' +
   '.cp-decided .muted{font-weight:500;opacity:.8;}' +
   '.cp-header-contacts{margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.12);}' +
   '.cp-header-contacts .field-label{color:rgba(255,255,255,0.55);}' +

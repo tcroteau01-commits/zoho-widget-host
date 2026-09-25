@@ -146,6 +146,87 @@ test('a re-run verdict says so and drops the warning', () => {
   assert.ok(html.includes('$30,000'));
 });
 
+// --- the fraud read, which must match the detail pane's ---------------------
+
+const FRAUD = {
+  domain: { risk: 'high',
+    reasons: ["Email domain yearstrade.com (2 years 7 months old) doesn't match " +
+              'the website yearsbuildingmaterials.com (6 months old)'],
+    email_domain: 'yearstrade.com', website_domain: 'yearsbuildingmaterials.com',
+    domain_mismatch: true, domain_age_human: '2 years 7 months',
+    email_domain_age_human: '2 years 7 months',
+    website_domain_age_human: '6 months', website_domain_age_days: 202,
+    disposable: false, email_valid: true, unknown: false },
+  phone: { number: '(678) 848 2726', valid: true, voip: true, line_type: 'VOIP',
+           carrier: 'Bandwidth', risk_band: 'medium' }
+};
+
+test('the fraud read appears on the profile at all', () => {
+  // 🚨 Tom saw HIGH RISK with named reasons in the drawer and NOTHING here for
+  // the same customer. An analyst who reads only this page concludes they are
+  // clean, which is worse than either surface alone.
+  const html = P.render(Object.assign({}, BASE, { fraud: FRAUD }));
+  assert.ok(html.includes('Fraud and Data Checks'));
+  assert.ok(/High risk/i.test(html));
+  assert.ok(html.includes('yearstrade.com'));
+});
+
+test('both domains are aged, and named', () => {
+  // Tom: "It's checking 3 years but for which domain?... i still want to know
+  // the age of both of them." The website domain was the young one.
+  const html = P.render(Object.assign({}, BASE, { fraud: FRAUD }));
+  assert.ok(html.includes('Email Domain Age'));
+  assert.ok(html.includes('Website Domain Age'));
+  assert.ok(html.includes('2 years 7 months'));
+  assert.ok(html.includes('6 months'));
+});
+
+test('matching domains say so rather than showing a dash', () => {
+  const html = P.render(Object.assign({}, BASE, { fraud: { domain: Object.assign(
+    {}, FRAUD.domain, { domain_mismatch: false, website_domain_age_human: '' }) } }));
+  assert.ok(html.includes('same domain'));
+});
+
+test('a VOIP number is flagged', () => {
+  // Free, instant and disposable, where a landline takes an account. On a
+  // corporate AP contact that is the classic tell.
+  const html = P.render(Object.assign({}, BASE, { fraud: FRAUD }));
+  assert.ok(/VOIP<\/div><div class="field-val"><span class="cp-flag">Yes/.test(html));
+  assert.ok(html.includes('Bandwidth'));
+});
+
+test('placeholder data is flagged as quality, not as fraud', () => {
+  // "00" in a contact box is far more likely a broker hurrying through a form
+  // than a fraudster, and presenting it as fraud trains the team to ignore the
+  // flags that matter.
+  const html = P.render(Object.assign({}, BASE, {
+    quality: { placeholder: [{ field: 'Point of contact', value: '00' }],
+               missing: ['Billing contact'] } }));
+  assert.ok(html.includes('Point of contact is "00"'));
+  assert.ok(/not on its own a fraud signal/i.test(html));
+  assert.ok(html.includes('Not provided: Billing contact'));
+});
+
+test('the fraud read sits above everything it should override', () => {
+  const html = P.render(Object.assign({}, BASE, {
+    fraud: FRAUD, submitted: SUBMITTED }));
+  assert.ok(html.indexOf('Fraud and Data Checks') < html.indexOf('As Submitted'));
+});
+
+test('a clean customer gets no fraud section at all', () => {
+  const html = P.render(Object.assign({}, BASE, { fraud: null, quality: null }));
+  assert.ok(!html.includes('Fraud and Data Checks'));
+});
+
+test('the address links out to Google Maps', () => {
+  // Tom: "Can we have the address link out to google maps so they can see that
+  // corporate address?" Street View tells a warehouse from a mailbox store.
+  const html = P.render(Object.assign({}, BASE, { submitted: SUBMITTED }));
+  assert.ok(html.includes('google.com/maps/search'));
+  assert.ok(html.includes(encodeURIComponent(SUBMITTED.address)));
+  assert.ok(/rel="noopener noreferrer"/.test(html));
+});
+
 // --- what the broker submitted ---------------------------------------------
 //
 // Tom, 2026-09-25: "it needs to show somewhere prominent so you know who you're
@@ -291,6 +372,21 @@ test('while the decision is open the engine read IS the headline', () => {
               reasons: [], note: null } }));
   const header = html.slice(0, html.indexOf('Credit Engine'));
   assert.ok(/Review Required/i.test(header));
+});
+
+test('Pending Credit App is a decision too', () => {
+  // 🚨 It was missing from the "has a human decided" test, so after choosing it
+  // the engine's Review Required stayed in the header beside it and the chip
+  // stayed neutral -- the page read as undecided on a record just decided.
+  const html = P.render(Object.assign({}, BASE, {
+    status: 'Pending Credit Application',
+    engine: { suggested: 'review_required', limit: null, reasons: [],
+              engine_version: 'v1' } }));
+  const header = html.slice(0, html.indexOf('Credit Engine'));
+  assert.ok(!/Review Required/i.test(header), 'engine pill still competing');
+  assert.ok(html.includes('cp-status-pending'), 'chip still neutral');
+  // and amber, not the red a binary approved/denied split would have given it
+  assert.ok(html.includes('cp-decided-wait'));
 });
 
 test('Denied is visually a refusal, not another grey chip', () => {
@@ -528,11 +624,17 @@ test('a viewer gets no decision controls at all', () => {
   assert.ok(!html.includes('id="cp-limit"'));
 });
 
-test('a suggested limit becomes a one-click approve', () => {
+test('a suggested limit prefills the box but never names the button', () => {
+  // 🚨 The button used to read "Approve $20,000" and kept saying it while the
+  // analyst typed a different number into the box beside it. The click approved
+  // what was TYPED, so the label was simply wrong. Tom: "Can we remove that
+  // $5000 and just make it an approve button and let my user input limit
+  // dictate that". The box is the amount; the button is the verb.
   const html = P.render(Object.assign({}, BASE, {
     engine: { suggested: 'auto_approve', limit: 20000, reasons: [], engine_version: 'v1' } }));
-  assert.ok(html.includes('Approve $20,000'));
-  assert.ok(/id="cp-limit"[^>]*value="20000"/.test(html));
+  assert.ok(/id="cp-limit"[^>]*value="20000"/.test(html), 'lost the prefill');
+  assert.ok(!/Approve \$/.test(html), 'button still names an amount');
+  assert.ok(/data-decide="Approved"[^>]*>Approved</.test(html));
 });
 
 test('the creditsafe candidates render as a picker', () => {

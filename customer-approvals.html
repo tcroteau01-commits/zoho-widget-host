@@ -637,12 +637,14 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 
 <div class="scrim" id="scrim"></div>
 <aside class="panel" id="panel"></aside>
+<div id="ca-profile" class="widget" style="display:none"></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-docviewer.js?v=3"></script>
+<script src="customer-profile.js"></script>
 <script>
 (function() {
 'use strict';
@@ -1358,6 +1360,12 @@ function renderPanel() {
 
       fraudSectionHtml +
 
+      // CUSTPROF1 — opens the full-screen customer profile: Creditsafe identity,
+      // FactorView history, other clients' limits, credit report. Unconditional
+      // (every viewer can read it); the profile itself gates action controls on
+      // payload.can_act, same as the decision controls below are gated here.
+      '<button type="button" class="btn primary" id="ca-open-profile" style="width:100%;margin-bottom:14px;">Open full profile</button>' +
+
       // Make a Decision (see-all / role context only; empty string otherwise)
       decisionSectionHtml +
 
@@ -1410,58 +1418,10 @@ function renderPanel() {
       // non-staff viewer -- see caAppStaffSectionHtml above).
       caAppStaffSectionHtml +
 
-      // Customer Company
-      '<div class="panel-section">' +
-        '<div class="panel-section-title">Customer Company</div>' +
-        '<div class="field-grid">' +
-          field('Company Name', r.Customer_Company_Name) +
-          field('Phone', formatPhone(r.Phone_Number)) +
-          fieldLink('Website', r.Company_Website) +
-          fieldLink('LinkedIn', r.LinkedIn_Profile) +
-        '</div>' +
-        (formatAddress(r) ? '<div style="margin-top: 14px;">' + addressFieldHtml(formatAddress(r)) + '</div>' : '') +
-        (r.Other_Social_Media_Links ? '<div style="margin-top: 14px;">' + fieldLink('Other Social Media', r.Other_Social_Media_Links) + '</div>' : '') +
-      '</div>' +
-
-      // Customer Contacts (+ editable billing info before funding)
-      '<div class="panel-section">' +
-        '<div class="panel-section-title ca-contacts-head">' +
-          '<span>Customer Contacts</span>' +
-          '<button class="ca-edit-billing-btn" id="ca-edit-billing">Edit Billing Info</button>' +
-        '</div>' +
-        // BPOC1: renders only for an approved customer with billing still missing.
-        // Its Add Billing Info button opens the CA1 editor below.
-        billingAlertHtml(r) +
-        '<div class="field-grid">' +
-          // Pair customer (left) and billing (right) so they line up row-by-row:
-          // POC | Billing POC, Phone | Billing Phone, Email | Billing Email.
-          field('Point of Contact', r.Customer_Point_of_Contact) +
-          field('Billing POC', r.Billing_Point_of_Contact || '—') +
-          field('Phone', formatPhone(r.Phone_Number1)) +
-          field('Billing Phone', r.Billing_AP_Contact_Number ? formatPhone(r.Billing_AP_Contact_Number) : '—') +
-          field('Email', r.Email) +
-          field('Billing Email', r.Billing_Email || '—') +
-        '</div>' +
-        '<div id="ca-billing-edit" style="display:none;margin-top:14px;">' +
-          '<div class="dec-field"><label class="dec-label" for="ca-bill-poc">Billing Point of Contact</label>' +
-            '<input class="dec-input" id="ca-bill-poc" type="text"></div>' +
-          '<div class="dec-field"><label class="dec-label" for="ca-bill-phone">Billing Phone</label>' +
-            '<input class="dec-input" id="ca-bill-phone" type="text"></div>' +
-          '<div class="dec-field"><label class="dec-label" for="ca-bill-email">Billing Email</label>' +
-            '<input class="dec-input" id="ca-bill-email" type="email"></div>' +
-          '<div class="dec-row"><div class="dec-msg" id="ca-bill-msg"></div>' +
-            '<button class="btn" id="ca-bill-cancel">Cancel</button>' +
-            '<button class="btn primary" id="ca-bill-save">Save Billing Info</button></div>' +
-        '</div>' +
-      '</div>' +
-
-      // Broker Comments
-      (r.Comments
-        ? '<div class="panel-section">' +
-            '<div class="panel-section-title">Broker Comments</div>' +
-            '<div class="note-block">' + esc(r.Comments) + '</div>' +
-          '</div>'
-        : '') +
+      // CUSTPROF1 — Customer Company, Customer Contacts (+ its billing editor)
+      // and Broker Comments moved OUT of this drawer and into the full-screen
+      // profile (Open full profile, above). The drawer stays a decision tool;
+      // the profile is where the analyst reads and resolves everything else.
 
       // Supporting Documents
       '<div class="panel-section">' +
@@ -1488,6 +1448,8 @@ function renderPanel() {
   if (b) b.addEventListener('click', function() { openCreditBoost(r.ID || ''); });
   var rs = document.getElementById('p-resubmit');
   if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check'); });
+  var openProfileBtn = document.getElementById('ca-open-profile');
+  if (openProfileBtn) openProfileBtn.addEventListener('click', function() { openProfile(r); });
 
   wireDecisionSection(r);
   fetchFraudCheck(r);
@@ -1497,6 +1459,108 @@ function renderPanel() {
   renderCustomerEventsSection(r);
   wireBillingEdit(r);
   wireDocOpen(panel);   // delegated: open Supporting Documents in the shared viewer
+}
+
+// ── CUSTPROF1: full-screen customer profile ─────────────────────────────────
+// Consumes OperFiCustomerProfile.render (customer-profile.js, pure -- no DOM,
+// no network). This module owns the fetch, the DOM swap, and the click wiring;
+// the decision write itself is delegated to the page's own submitDecision so
+// there is exactly one place that ever POSTs /credit-decision.
+function openProfile(rec) {
+  closePanel();
+  document.querySelector('.widget').style.display = 'none';
+  var root = document.getElementById('ca-profile');
+  root.style.display = '';
+  root.innerHTML = '<div class="state"><div class="spinner"></div>' +
+    '<div class="state-title">Loading customer profile…</div></div>';
+  fetchProfile(rec);
+}
+
+function closeProfile() {
+  document.getElementById('ca-profile').style.display = 'none';
+  document.querySelector('.widget').style.display = '';
+}
+
+function fetchProfile(rec) {
+  fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID, { credentials: 'include' })
+    .then(function(res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
+    .then(function(payload) { renderProfile(rec, payload); })
+    .catch(function(err) {
+      console.error('[CustomerApprovals] customer-profile fetch failed', err);
+      document.getElementById('ca-profile').innerHTML =
+        '<div class="state"><div class="state-title">Could not load customer profile</div>' +
+        '<div class="state-msg">Check your connection and try again.</div></div>' +
+        '<button type="button" class="btn" id="ca-profile-back">‹ Back to customers</button>';
+      var backBtn = document.getElementById('ca-profile-back');
+      if (backBtn) backBtn.addEventListener('click', closeProfile);
+    });
+}
+
+function renderProfile(rec, payload) {
+  var root = document.getElementById('ca-profile');
+  root.innerHTML =
+    '<button type="button" class="btn" id="ca-profile-back" style="margin-bottom:14px;">‹ Back to customers</button>' +
+    OperFiCustomerProfile.render(payload);
+
+  document.getElementById('ca-profile-back').addEventListener('click', closeProfile);
+
+  root.querySelectorAll('[data-cs-pick]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      pinCustomer(rec, { connect_id: btn.getAttribute('data-cs-pick') });
+    });
+  });
+  root.querySelectorAll('[data-fv-pick]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      pinCustomer(rec, { fv_debtor_id: btn.getAttribute('data-fv-pick') });
+    });
+  });
+  root.querySelectorAll('[data-cs-absent]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      pinCustomer(rec, { not_in_creditsafe: true });
+    });
+  });
+  // Reuse submitDecision -- there is one decision write path (POST /credit-decision)
+  // and it stays that way. applyDecisionResult keeps allRecords/KPIs/the list in
+  // sync the same way a decision made in the drawer already does.
+  root.querySelectorAll('[data-decide]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var limitEl = document.getElementById('cp-limit');
+      var vals = { decision: btn.getAttribute('data-decide'), credit_limit: limitEl ? limitEl.value : '' };
+      btn.disabled = true;
+      submitDecision(rec, vals).then(function(resp) {
+        btn.disabled = false;
+        if (resp && resp.ok) {
+          applyDecisionResult(rec, vals);
+          showToast('Decision saved');
+          fetchProfile(rec);   // re-fetch: the engine/report may read differently post-decision
+        } else {
+          showToast((resp && resp.error) || 'Could not save decision');
+        }
+      }).catch(function(err) {
+        btn.disabled = false;
+        console.error('[CustomerApprovals] submitDecision failed', err);
+        showToast('Could not save decision');
+      });
+    });
+  });
+}
+
+function pinCustomer(rec, body) {
+  fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/pin', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
+    .then(function() {
+      // The reward for resolving the ambiguity: re-fetch so the analyst immediately
+      // sees the report and history the pin just unlocked, not a stale picker.
+      fetchProfile(rec);
+    })
+    .catch(function(err) {
+      console.error('[CustomerApprovals] customer-profile pin failed', err);
+      showToast('Could not save. Try again.');
+    });
 }
 
 // CA1 — let the client add/edit a customer's billing contact info before funding.

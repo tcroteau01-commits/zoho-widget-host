@@ -146,6 +146,75 @@ test('a re-run verdict says so and drops the warning', () => {
   assert.ok(html.includes('$30,000'));
 });
 
+// --- internal notes and the audit trail -------------------------------------
+//
+// Tom, 2026-09-25: "so the team can see who made an approval or request on
+// something and if they made an approval or an exception to add a note...
+// Internal audit control would be great!"
+
+const AUDIT = {
+  notes: [
+    { author: 'pat@operfi.com', kind: 'exception', at: '2026-09-25T22:10:00Z',
+      body: 'Approved at 30k despite only 2 refs back. Owner confirmed by phone.' },
+    { author: 'sam@operfi.com', kind: 'note', at: '2026-09-25T21:02:00Z',
+      body: 'Called AP, they confirmed the billing address.' }
+  ],
+  activity: [
+    { at: '2026-09-25T22:11:00Z', actor: 'pat@operfi.com',
+      action: 'Decision: Approved', detail: '$30,000', note: '' },
+    { at: '2026-09-25T20:30:00Z', actor: 'sam@operfi.com',
+      action: 'Identity confirmed the Creditsafe company',
+      detail: 'US10373976', note: '' }
+  ]
+};
+
+test('the trail names who did what, and when', () => {
+  const html = P.render(Object.assign({}, BASE, AUDIT));
+  assert.ok(html.includes('Internal Notes and Audit'));
+  assert.ok(html.includes('pat@operfi.com'));
+  assert.ok(html.includes('sam@operfi.com'));
+  assert.ok(html.includes('Decision: Approved'));
+  assert.ok(html.includes('$30,000'));
+  assert.ok(html.includes('2026-09-25 22:11 UTC'));
+});
+
+test('an exception does not read like an ordinary note', () => {
+  // It is the row somebody comes looking for six months later.
+  const html = P.render(Object.assign({}, BASE, AUDIT));
+  assert.ok(html.includes('cp-entry-exception'));
+  assert.ok(html.includes('EXCEPTION'));
+});
+
+test('the page says notes are permanent before anyone writes one', () => {
+  // 🚨 Someone who expects to tidy a note later writes a different note than
+  // someone who knows it is permanent.
+  const html = P.render(Object.assign({}, BASE, AUDIT));
+  assert.ok(/permanent/i.test(html));
+  assert.ok(/add another/i.test(html));
+});
+
+test('a viewer reads the trail but cannot write to it', () => {
+  const html = P.render(Object.assign({}, BASE, AUDIT, { can_act: false }));
+  assert.ok(html.includes('Internal Notes and Audit'));
+  assert.ok(html.includes('pat@operfi.com'));
+  assert.ok(!html.includes('data-note='));
+});
+
+test('an untouched submission says so rather than showing an empty box', () => {
+  const html = P.render(Object.assign({}, BASE, { notes: [], activity: [] }));
+  assert.ok(/Nothing has been done to this submission yet/i.test(html));
+});
+
+test('a hostile note cannot inject markup', () => {
+  // The body is free text typed by a person and replayed to every other person.
+  const html = P.render(Object.assign({}, BASE, {
+    notes: [{ author: '<script>a</script>', kind: 'note',
+              body: '<script>b</script>', at: '2026-09-25T22:10:00Z' }],
+    activity: [{ at: '2026-09-25T22:11:00Z', actor: '<script>c</script>',
+                 action: '<script>d</script>', detail: '', note: '' }] }));
+  ['a', 'b', 'c', 'd'].forEach((x) => assert.ok(!html.includes('<script>' + x)));
+});
+
 // --- the injected stylesheet must not touch the host page -------------------
 
 test('every injected rule is scoped to the profile', () => {

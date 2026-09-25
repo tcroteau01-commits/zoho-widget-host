@@ -1659,6 +1659,30 @@ function renderProfile(rec, payload) {
       pinCustomer(rec, { connect_id: null }, btn, 'Searching…');
     });
   });
+  root.querySelectorAll('[data-note]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var box = document.getElementById('cp-note-body');
+      var text = box ? String(box.value || '').trim() : '';
+      if (!text) { showToast('Write the note first'); if (box) box.focus(); return; }
+      var undo = setProfileBusy(btn, 'Saving…');
+      fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/note', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: text, kind: btn.getAttribute('data-note') })
+      }).then(function(res) {
+        return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status));
+      }).then(function() { fetchProfile(rec); })
+        .catch(function(err) {
+          console.error('[CustomerApprovals] note save failed', err);
+          undo();
+          // 🚨 Do NOT clear the box on failure. Somebody explaining why they
+          // granted an exception has just typed the most considered sentence on
+          // the page, and losing it teaches them not to bother next time.
+          showToast('Could not save the note. Your text is still here.');
+        });
+    });
+  });
   root.querySelectorAll('[data-pull-report]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       // Lock the whole profile, not just this button. A paid lookup that takes
@@ -1713,7 +1737,7 @@ function renderProfile(rec, payload) {
 // click again -- and a second click on a DIFFERENT candidate races two pins,
 // with the loser silently overwriting the winner's binding.
 var PROFILE_ACTIONS = '[data-cs-pick],[data-fv-pick],[data-cs-absent],' +
-  '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide]';
+  '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide],[data-note]';
 
 // Locks the whole profile and marks the pressed button. Returns the undo, which
 // only the FAILURE path calls: on success the profile re-renders from scratch

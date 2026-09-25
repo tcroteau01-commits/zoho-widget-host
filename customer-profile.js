@@ -667,6 +667,75 @@ function renderSubmitted(p) {
   return '<div class="cp-submitted">' + section('As Submitted', body) + '</div>';
 }
 
+// ---- internal audit: who did what, and why ---------------------------------
+// Tom, 2026-09-25: "so the team can see who made an approval or request on
+// something and if they made an approval or an exception to add a note...
+// Internal audit control would be great!"
+//
+// Last on the page and OperFi-only, like everything else here. It answers the
+// question nobody asks until six months later: who granted this, and why.
+function renderAudit(p) {
+  var acts = p.activity || [];
+  var notes = p.notes || [];
+  var body = '';
+
+  if (p.can_act) {
+    body += '<div class="cp-note-add">' +
+      '<textarea id="cp-note-body" class="cp-note-input" rows="2" ' +
+        'placeholder="What did you do, and why? An exception is worth a sentence."' +
+        '></textarea>' +
+      '<div class="cp-cs-search-row">' +
+        '<button type="button" class="btn cp-decide" data-note="note">Add note</button>' +
+        '<button type="button" class="btn cp-decide" data-note="exception">' +
+          'Log an exception</button>' +
+      '</div>' +
+      // 🚨 Say it on the page. Someone who expects to be able to tidy a note
+      // later writes a different note than someone who knows it is permanent.
+      '<div class="field-val muted cp-note">Notes are permanent and attributed ' +
+      'to you. To correct one, add another.</div>' +
+    '</div>';
+  }
+
+  if (notes.length) {
+    body += '<div class="cp-subhead">Notes</div>' + notes.map(function (n) {
+      return '<div class="cp-entry' + (n.kind === 'exception' ? ' cp-entry-exception' : '') + '">' +
+        '<div class="cp-entry-head">' +
+          (n.kind === 'exception' ? '<span class="cp-flag">EXCEPTION</span> ' : '') +
+          esc(n.author || 'unknown') +
+          '<span class="muted"> &middot; ' + esc(when(n.at)) + '</span>' +
+        '</div>' +
+        '<div class="cp-entry-body">' + esc(n.body || '') + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  if (acts.length) {
+    body += '<div class="cp-subhead">Actions taken</div>' + acts.map(function (a) {
+      return '<div class="cp-entry">' +
+        '<div class="cp-entry-head">' + esc(a.action || '') +
+          (a.detail ? ' <span class="muted">' + esc(a.detail) + '</span>' : '') +
+        '</div>' +
+        '<div class="cp-entry-body muted">' +
+          esc(a.actor || 'system') + ' &middot; ' + esc(when(a.at)) +
+          (a.note ? ' &middot; ' + esc(a.note) : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  if (!acts.length && !notes.length && !p.can_act) { return ''; }
+  if (!acts.length && !notes.length) {
+    body += '<div class="field-val muted">Nothing has been done to this ' +
+            'submission yet.</div>';
+  }
+  return section('Internal Notes and Audit', body);
+}
+
+function when(iso) {
+  if (!iso) { return ''; }
+  return String(iso).replace('T', ' ').slice(0, 16) + ' UTC';
+}
+
 // ---- CREDITAPP1: the customer's own application and its references ---------
 // The only first-hand evidence on the page. Everything above it is somebody
 // else's opinion of the customer; this is what the customer and their trade
@@ -836,6 +905,7 @@ function render(payload) {
       renderPriors(p) +
       renderSummary(p) +
       renderCreditApp(p) +
+      renderAudit(p) +
     '</div>';
 }
 
@@ -892,6 +962,20 @@ var CP_CSS = '' +
   '.cp-decided-no{background:rgba(185,28,28,.22);color:#fecaca;}' +
   '.cp-decided-wait{background:rgba(180,83,9,.25);color:#fed7aa;}' +
   '.cp-decided-sent{background:rgba(29,78,216,.28);color:#bfdbfe;}' +
+  // Internal audit. One row per thing that happened, so a reader scans down a
+  // column of actors rather than through a paragraph.
+  '.cp-note-input{width:100%;padding:9px 11px;border:1px solid #cbd5e1;' +
+    'border-radius:6px;font-family:inherit;font-size:13px;resize:vertical;}' +
+  '.cp-note-input:focus{outline:none;border-color:#94a3b8;}' +
+  '.cp-note-add{margin-bottom:6px;}' +
+  '.cp-entry{padding:9px 0;border-bottom:1px solid #f1f5f9;}' +
+  '.cp-entry:last-child{border-bottom:none;}' +
+  '.cp-entry-head{font-size:13px;font-weight:600;color:#0f172a;}' +
+  '.cp-entry-body{font-size:13px;color:#334155;margin-top:2px;white-space:pre-wrap;}' +
+  // An exception is the row somebody comes looking for; it should not read like
+  // the note above it.
+  '.cp-entry-exception{border-left:3px solid #b91c1c;padding-left:10px;' +
+    'background:#fef2f2;border-radius:0 6px 6px 0;}' +
   '.cp-decided .muted{font-weight:500;opacity:.8;}' +
   '.cp-header-contacts{margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.12);}' +
   '.cp-header-contacts .field-label{color:rgba(255,255,255,0.55);}' +
@@ -1021,6 +1105,10 @@ function mount(root, payload, handlers) {
         }
         if (t.hasAttribute('data-pull-report')) {
           if (handlers.onPullReport) { handlers.onPullReport(); }
+          return;
+        }
+        if (t.hasAttribute('data-note')) {
+          if (handlers.onNote) { handlers.onNote(t.getAttribute('data-note')); }
           return;
         }
       }

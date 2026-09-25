@@ -476,6 +476,34 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
   .ca-app-row-action { text-align: left; }
 }
 
+/* CREDITAPP2 Task 7 -- a stalled reference overlays the waiting state, never a
+   new pill colour: the party's status is still 'sent', so it stays amber, just
+   heavier, next to copy anchored to the one clock the payload actually sends
+   (waiting_days from sent_at -- see caAppRowHtml). */
+.ca-app-state-stalled { font-weight: 700; }
+
+/* The broker's "report a problem" control -- available on every reference row,
+   same as Nudge, never on the customer's own application row (the server has
+   no correction path for that slot). Reuses .row-action for the button and
+   .ca-app-msg for the outcome line, so it never invents a new component. */
+.ca-app-row-action .row-action + .row-action { margin-left: 6px; }
+.ca-app-report-form { margin-top: 8px; text-align: left; }
+.ca-app-report-note {
+  width: 100%; min-height: 46px; font-size: 12px; font-family: inherit;
+  border: 1px solid #d8d8d8; border-radius: 6px; padding: 6px 8px; resize: vertical; box-sizing: border-box;
+}
+.ca-app-report-btns { margin-top: 6px; text-align: right; }
+
+/* Staff-only recovery, OperFi staff only -- lives inside the Full Submission
+   block (allClients-gated at the DOM level, same as the rest of that section),
+   so this never needs its own gate. */
+.ca-app-recovery { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e3e0d5; display: flex; flex-direction: column; gap: 8px; }
+.ca-app-recovery-row { display: flex; gap: 6px; align-items: center; }
+.ca-app-recovery-input {
+  flex: 1; font-size: 12px; font-family: inherit; border: 1px solid #d8d8d8;
+  border-radius: 6px; padding: 6px 8px; box-sizing: border-box;
+}
+
 /* CREDITAPP1 Task 17 — the same tracker's progress, compressed onto the LIST row
    so a broker sees an application moving without opening the panel. One bulk call
    (/credit-app/status-bulk) feeds every row; a row with no application renders
@@ -1464,6 +1492,13 @@ function renderPanel() {
 
   var panel = document.getElementById('panel');
   panel.innerHTML = html;
+  // CREDITAPP2 Task 7 -- read fresh at click time by the delegated staff
+  // recovery handler below (wireCreditAppRecovery), the same way
+  // wireDocOpen's buttons carry their own data-recid rather than closing
+  // over `r`: the panel node is reused across j/k navigation, so a value
+  // captured in a closure at wire time would go stale the moment the broker
+  // moves to a different record.
+  panel.dataset.submissionId = r.ID != null ? String(r.ID) : '';
 
   var prev = document.getElementById('p-prev');
   var next = document.getElementById('p-next');
@@ -1485,6 +1520,7 @@ function renderPanel() {
   renderCustomerEventsSection(r);
   wireBillingEdit(r);
   wireDocOpen(panel);   // delegated: open Supporting Documents in the shared viewer
+  wireCreditAppRecovery(panel);   // delegated: staff Correct address / Waive
 }
 
 // ── CUSTPROF1: full-screen customer profile ─────────────────────────────────
@@ -1771,12 +1807,26 @@ var CA_APP_SLOT_LABELS = {
 };
 var CA_APP_SLOT_ORDER = ['customer', 'trade1', 'trade2', 'trade3', 'bank'];
 
-// Mirrors credit_app_store.RESOLVED (completed, waived, bounced) -- a party in
-// one of these needs no Nudge button. Duplicated here rather than fetched from
-// the server, the same tradeoff credit_app_routes.py itself makes for TMS_BASE /
-// CREDIT_DECISION_RECEIVED: importing across the widget/backend boundary isn't
-// possible, so the constant is copied with a comment pointing at its source.
-var CA_APP_RESOLVED = ['completed', 'waived', 'bounced'];
+// Mirrors credit_app_store.NEEDS_NO_NUDGE (completed, waived, bounced) -- a
+// party in one of these needs no Nudge button, because sending again is
+// pointless: a bounced address is exactly as dead on the second try.
+// Duplicated here rather than fetched from the server, the same tradeoff
+// credit_app_routes.py itself makes for TMS_BASE / CREDIT_DECISION_RECEIVED:
+// importing across the widget/backend boundary isn't possible, so the
+// constant is copied with a comment pointing at its source.
+var CA_APP_NEEDS_NO_NUDGE = ['completed', 'waived', 'bounced'];
+
+// Mirrors credit_app_store.COUNTS_AS_ANSWERED (completed, waived) -- a party
+// in one of these has actually answered. Deliberately NOT the same set as
+// CA_APP_NEEDS_NO_NUDGE above: a bounced party needs no Nudge (the address is
+// dead), but nobody answered either, and derive_status agrees on the server --
+// a bounce alone never gets an application to ready_for_review. CREDITAPP2
+// fix: this widget used to reuse one constant for both meanings, which read a
+// bounced party as "answered" the moment a send failed. This also stands in
+// for credit_app_store.CANNOT_BE_ANSWERED, which carries the same two values
+// today: it gates whether the staff Correct address / Waive controls render
+// for a party whose answer is already final.
+var CA_APP_ANSWERED = ['completed', 'waived'];
 
 // Mirrors credit_app_store.NUDGE_COOLDOWN_HOURS. Used only to turn the server's
 // own "nudged Xh ago" text into a client-side re-enable timer -- if that wording
@@ -1844,10 +1894,14 @@ function caAppRowHtml(p) {
   var st = caAppPartyState(p.status);
   var nameCompany = [p.company, p.name].filter(Boolean).join(', ');
   var detail;
+  var stalled = false;
   if (st.cls === 'bounced') {
-    // The one thing the broker can actually fix -- ask their own customer for
-    // a working address for this party. No mention of why it bounced.
-    detail = 'Address bounced, ask your customer for a new one';
+    // CREDITAPP2: correction is credit-only (see credit_app_correct_address's
+    // docstring -- a complicit broker redirecting their own customer's bank
+    // reference to an accomplice is exactly the attack that boundary guards
+    // against), so this must never ask the broker to fix an address the
+    // product will not let them touch. It routes to credit instead.
+    detail = 'Address bounced, ask credit to fix it';
   } else if (st.cls === 'opened') {
     // waiting_days is measured from sent_at, not opened_at (the API sends
     // only one clock -- see caAppPartyState above) -- so the number here
@@ -1858,22 +1912,46 @@ function caAppRowHtml(p) {
   } else if (st.cls === 'waiting' || st.cls === 'expired') {
     var waiting = caAppWaitingText(p.waiting_days);
     detail = st.label + (waiting ? ' ' + waiting : '');
+    // CREDITAPP2 (Task 3): stalled overlays the waiting state -- the party's
+    // status is still 'sent', never a status of its own (see caAppPartyState).
+    // The payload carries only waiting_days from sent_at, no opened-to-now
+    // clock, so the copy names the fact the server actually derived (never
+    // opened) rather than inventing a second number.
+    if (st.cls === 'waiting' && p.stalled) { detail += ', never opened'; stalled = true; }
   } else {
     detail = st.label;
   }
-  var canNudge = CA_APP_RESOLVED.indexOf(p.status) === -1;
-  var actionHtml = canNudge
-    ? '<button type="button" class="row-action ca-app-nudge" data-slot="' + esc(p.slot) + '">Nudge</button>' +
-      '<div class="ca-app-msg" data-slot-msg="' + esc(p.slot) + '"></div>'
+  var canNudge = CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
+  var nudgeHtml = canNudge
+    ? '<button type="button" class="row-action ca-app-nudge" data-slot="' + esc(p.slot) + '">Nudge</button>'
     : '';
+  // CREDITAPP2 Task 7 -- report a problem. Available to any viewer who sees
+  // the tracker, same as Nudge, on every reference slot: the server refuses
+  // slot="customer" (no correction/waive path answers a report against the
+  // applicant's own party), so this never offers a control that would 400.
+  // Takes a note, never an address -- see credit_app_report_problem's own
+  // docstring for the attack that boundary guards against.
+  var reportBtnHtml = (p.slot === 'customer') ? '' :
+    '<button type="button" class="row-action ca-app-report-problem" data-slot="' + esc(p.slot) + '">Report a problem</button>';
+  var reportFormHtml = (p.slot === 'customer') ? '' :
+    '<div class="ca-app-report-form" data-slot="' + esc(p.slot) + '" style="display:none;">' +
+      '<textarea class="ca-app-report-note" placeholder="What looks wrong with this reference?"></textarea>' +
+      '<div class="ca-app-report-btns">' +
+        '<button type="button" class="row-action primary ca-app-report-send" data-slot="' + esc(p.slot) + '">Send</button>' +
+        '<button type="button" class="row-action ca-app-report-cancel" data-slot="' + esc(p.slot) + '">Cancel</button>' +
+      '</div>' +
+    '</div>';
+  var msgHtml = (nudgeHtml || reportBtnHtml)
+    ? '<div class="ca-app-msg" data-slot-msg="' + esc(p.slot) + '"></div>' : '';
+  var stateCls = 'ca-app-row-state ca-app-state-' + st.cls + (stalled ? ' ca-app-state-stalled' : '');
   return '' +
     '<div class="ca-app-row" data-slot="' + esc(p.slot) + '">' +
       '<div>' +
         '<div class="ca-app-row-label">' + esc(caAppSlotLabel(p.slot)) + '</div>' +
         (nameCompany ? '<div class="ca-app-row-who">' + esc(nameCompany) + '</div>' : '') +
       '</div>' +
-      '<div class="ca-app-row-state ca-app-state-' + st.cls + '">' + esc(detail) + '</div>' +
-      '<div class="ca-app-row-action">' + actionHtml + '</div>' +
+      '<div class="' + stateCls + '">' + esc(detail) + '</div>' +
+      '<div class="ca-app-row-action">' + nudgeHtml + reportBtnHtml + msgHtml + reportFormHtml + '</div>' +
     '</div>';
 }
 if (typeof window !== 'undefined') { window.caAppRowHtml = caAppRowHtml; }
@@ -1923,13 +2001,25 @@ function renderCreditAppSection(r, payload) {
   var rowsEl = document.getElementById('ca-app-rows');
   if (rowsEl) rowsEl.innerHTML = ordered.map(caAppRowHtml).join('');
 
-  var waiting = ordered.filter(function(p) { return CA_APP_RESOLVED.indexOf(p.status) === -1; });
+  // CREDITAPP2 fix round 1: two different questions, two different sets.
+  // "Has this party answered" is CA_APP_ANSWERED (completed/waived only) --
+  // that is what each row's own state text already reflects, and it is what
+  // rendering-side code should reach for whenever the question is whether a
+  // reference has come back. It is deliberately NOT what gates the button
+  // below: the nudge-all label and its show/hide threshold have to count the
+  // set the button actually acts on, or "(2)" promises a second nudge the
+  // click handler will not deliver. That set is CA_APP_NEEDS_NO_NUDGE's
+  // complement -- the exact same filter that decides whether a row gets a
+  // Nudge button in the first place (caAppRowHtml's own canNudge) -- so a
+  // bounced party, which needs no nudge, is excluded from both the count and
+  // the threshold, never just from the count.
+  var nudgeable = ordered.filter(function(p) { return CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1; });
   var allRow = document.getElementById('ca-app-nudgeall-row');
   var allBtn = document.getElementById('ca-app-nudge-all');
   if (allRow && allBtn) {
-    if (waiting.length > 1) {
+    if (nudgeable.length > 1) {
       allRow.style.display = '';
-      allBtn.textContent = 'Nudge all waiting (' + waiting.length + ')';
+      allBtn.textContent = 'Nudge all waiting (' + nudgeable.length + ')';
       allBtn.disabled = false;
       allBtn.onclick = function() {
         allBtn.disabled = true;
@@ -1946,9 +2036,93 @@ function renderCreditAppSection(r, payload) {
     btn.addEventListener('click', function() { caAppDoNudge(r, btn.dataset.slot, btn); });
   });
 
+  // CREDITAPP2 Task 7 -- report a problem. Toggle to the inline note form,
+  // cancel back, or send -- wired the same per-render way Nudge already is
+  // just above, since these rows are rebuilt on every render.
+  section.querySelectorAll('.ca-app-report-problem').forEach(function(btn) {
+    btn.addEventListener('click', function() { caAppShowReportForm(section, btn.dataset.slot); });
+  });
+  section.querySelectorAll('.ca-app-report-cancel').forEach(function(btn) {
+    btn.addEventListener('click', function() { caAppHideReportForm(section, btn.dataset.slot); });
+  });
+  section.querySelectorAll('.ca-app-report-send').forEach(function(btn) {
+    btn.addEventListener('click', function() { caAppSubmitReportProblem(r, btn.dataset.slot, section); });
+  });
+
   section.style.display = '';
 }
 if (typeof window !== 'undefined') { window.renderCreditAppSection = renderCreditAppSection; }
+
+function caAppShowReportForm(section, slot) {
+  var row = section.querySelector('.ca-app-row[data-slot="' + slot + '"]');
+  if (!row) return;
+  var btn = row.querySelector('.ca-app-report-problem');
+  var form = row.querySelector('.ca-app-report-form');
+  if (btn) btn.style.display = 'none';
+  if (form) {
+    form.style.display = '';
+    var note = form.querySelector('.ca-app-report-note');
+    if (note) note.focus();
+  }
+}
+if (typeof window !== 'undefined') { window.caAppShowReportForm = caAppShowReportForm; }
+
+function caAppHideReportForm(section, slot) {
+  var row = section.querySelector('.ca-app-row[data-slot="' + slot + '"]');
+  if (!row) return;
+  var btn = row.querySelector('.ca-app-report-problem');
+  var form = row.querySelector('.ca-app-report-form');
+  if (form) form.style.display = 'none';
+  if (btn) btn.style.display = '';
+}
+if (typeof window !== 'undefined') { window.caAppHideReportForm = caAppHideReportForm; }
+
+// The broker's one recovery action: a note, never an address (the server
+// silently drops anything else in the body -- see
+// credit_app_report_problem's own docstring). Every outcome, including the
+// server's "already reported" 409, is shown verbatim in the row's own
+// .ca-app-msg, the same discipline caAppHandleNudgeResult already follows for
+// Nudge -- this never guesses at wording the server already sent.
+function caAppSubmitReportProblem(r, slot, section) {
+  var row = section.querySelector('.ca-app-row[data-slot="' + slot + '"]');
+  if (!row) return;
+  var form = row.querySelector('.ca-app-report-form');
+  var noteEl = form ? form.querySelector('.ca-app-report-note') : null;
+  var note = noteEl ? noteEl.value.trim() : '';
+  var sendBtn = form ? form.querySelector('.ca-app-report-send') : null;
+  var msgEl = caAppMsgEl(section, slot);
+  if (!note) {
+    if (msgEl) { msgEl.textContent = 'Say what looks wrong first.'; msgEl.className = 'ca-app-msg error'; }
+    return;
+  }
+  if (sendBtn) sendBtn.disabled = true;
+  if (msgEl) { msgEl.textContent = ''; msgEl.className = 'ca-app-msg'; }
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  fetch(BROKER_API_BASE + '/credit-app/report-problem', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, submission_id: r.ID, slot: slot, note: note })
+  }).then(function(res) {
+    return res.text().then(function(t) {
+      var data = {}; try { data = t ? JSON.parse(t) : {}; } catch (e) {}
+      return { status: res.status, data: data };
+    });
+  }).then(function(rr) {
+    if (sendBtn) sendBtn.disabled = false;
+    if (rr.status === 200) {
+      if (form) form.style.display = 'none';
+      var btn = row.querySelector('.ca-app-report-problem');
+      if (btn) { btn.disabled = true; btn.textContent = 'Reported'; }
+      if (msgEl) { msgEl.textContent = 'Sent to credit'; msgEl.className = 'ca-app-msg ok'; }
+    } else {
+      var reason = (rr.data && rr.data.error) || 'Could not send the report';
+      if (msgEl) { msgEl.textContent = reason; msgEl.className = 'ca-app-msg error'; }
+    }
+  }).catch(function() {
+    if (sendBtn) sendBtn.disabled = false;
+    if (msgEl) { msgEl.textContent = 'Could not send the report. Check your connection.'; msgEl.className = 'ca-app-msg error'; }
+  });
+}
+if (typeof window !== 'undefined') { window.caAppSubmitReportProblem = caAppSubmitReportProblem; }
 
 function caAppMsgEl(section, slot) {
   return section.querySelector('.ca-app-msg[data-slot-msg="' + slot + '"]');
@@ -2501,17 +2675,54 @@ if (typeof window !== 'undefined') { window.fetchCreditAppRisk = fetchCreditAppR
 function caAppReferenceAnswerHtml(p) {
   var resp = p.response;
   var risk = p.risk;
+  var addressRisk = p.address_risk;
   var st = caAppPartyState(p.status);
   var html = '<div class="ca-app-staff-ref">' +
     '<div class="ca-app-staff-ref-head">' + esc(caAppSlotLabel(p.slot)) +
       (p.company ? ' — ' + esc(p.company) : '') +
       ' <span class="ca-app-state-' + st.cls + '">(' + esc(st.label) + ')</span>' +
     '</div>';
+  // CREDITAPP2 final review, Fix 1 -- WHY the send failed, not just that it
+  // did. ms_graph returns (False, "Could not obtain a Graph token.") without
+  // raising, and the API turns that into 'bounced' on every party, so an
+  // expired app secret reads identically to four typed addresses. Credit
+  // cannot tell a typo from an outage without the recorded detail, and the
+  // only exits from 'bounced' are correct-address (which re-sends into the
+  // same broken mail path) and waive. Staff-only by construction: this whole
+  // block is absent from the DOM for a broker (caAppStaffSectionHtml's
+  // allClients gate) and send_error is on the risk payload only, never
+  // /credit-app/status. Timestamp shown as stored, labelled UTC rather than
+  // run through parseDate -- that helper is for Creator's Central wall-clock
+  // strings and would relabel this one wrongly.
+  if (p.send_error && (p.send_error.detail || p.send_error.at)) {
+    var seAt = p.send_error.at
+      ? String(p.send_error.at).replace('T', ' ').slice(0, 16) + ' UTC' : '';
+    html += '<div class="ca-app-staff-risk ca-app-staff-risk-high">Send failed' +
+      (seAt ? ' ' + esc(seAt) : '') + ': ' + esc(p.send_error.detail || 'no detail recorded') +
+      '</div>';
+  }
   if (risk) {
     var level = risk.level || 'unknown';
     html += '<div class="ca-app-staff-risk ca-app-staff-risk-' + esc(level) + '">Risk: ' + esc(level) + '</div>';
     if (risk.signals && risk.signals.length) {
       html += '<ul class="ca-fraud-reasons">' + risk.signals.map(function(s) {
+        return '<li>' + esc(s.code || '') + (s.detail ? ': ' + esc(s.detail) : '') + '</li>';
+      }).join('') + '</ul>';
+    }
+  }
+  // CREDITAPP2 Task 4/7: the corrected address's own score -- domain match,
+  // free mail, IPQS -- present only where credit already ran a correction.
+  // A SEPARATE key from `risk` above (which describes a party's ANSWER):
+  // collapsing them would make a corrected-but-unanswered party look like it
+  // had replied. This is the redirect-to-accomplice signal the recovery flow
+  // exists to surface, so it gets its own labelled block, same idiom as the
+  // risk block just above rather than a new component.
+  if (addressRisk) {
+    var aLevel = addressRisk.level || 'unknown';
+    html += '<div class="ca-app-staff-risk ca-app-staff-risk-' + esc(aLevel) +
+      '">Corrected address risk: ' + esc(aLevel) + '</div>';
+    if (addressRisk.signals && addressRisk.signals.length) {
+      html += '<ul class="ca-fraud-reasons">' + addressRisk.signals.map(function(s) {
         return '<li>' + esc(s.code || '') + (s.detail ? ': ' + esc(s.detail) : '') + '</li>';
       }).join('') + '</ul>';
     }
@@ -2552,6 +2763,29 @@ function caAppReferenceAnswerHtml(p) {
     }
   } else {
     html += '<div class="doc-empty">No response yet.</div>';
+  }
+  // CREDITAPP2 Task 7 -- the two staff-only recovery actions. Rendered here,
+  // inside the OperFi-only Full Submission block, rather than gated
+  // separately: that block is already absent from the DOM entirely for a
+  // broker (caAppStaffSectionHtml's allClients gate), so this never needs a
+  // gate of its own -- the real boundary stays server-side
+  // (is_operfi_admin on both routes). CA_APP_ANSWERED mirrors
+  // CANNOT_BE_ANSWERED: a party that already has a final answer gets
+  // neither control, matching the 409 the server would return anyway.
+  if (CA_APP_ANSWERED.indexOf(p.status) === -1) {
+    html += '<div class="ca-app-recovery" data-slot="' + esc(p.slot) + '">' +
+      '<div class="ca-app-recovery-row">' +
+        '<input type="email" class="ca-app-recovery-input ca-app-address-input" ' +
+          'placeholder="Corrected email address">' +
+        '<button type="button" class="row-action ca-app-correct-address" data-slot="' + esc(p.slot) + '">Correct address</button>' +
+      '</div>' +
+      '<div class="ca-app-recovery-row">' +
+        '<input type="text" class="ca-app-recovery-input ca-app-waive-reason" ' +
+          'placeholder="Reason for waiving">' +
+        '<button type="button" class="row-action ca-app-waive" data-slot="' + esc(p.slot) + '">Waive</button>' +
+      '</div>' +
+      '<div class="ca-app-msg" data-recovery-msg="' + esc(p.slot) + '"></div>' +
+    '</div>';
   }
   html += '</div>';
   return html;
@@ -2687,6 +2921,115 @@ function renderCreditAppStaffSection(payload) {
   section.style.display = '';
 }
 if (typeof window !== 'undefined') { window.renderCreditAppStaffSection = renderCreditAppStaffSection; }
+
+// CREDITAPP2 Task 7 -- staff Correct address / Waive, delegated on the panel
+// the same way wireDocOpen delegates Supporting Documents: the staff body is
+// replaced wholesale by renderCreditAppStaffSection on every risk fetch, so a
+// listener bound to a specific button would be gone the next time it
+// re-renders. Reads the submission id from panel.dataset.submissionId (set
+// fresh on every openPanel) rather than closing over `r`, for the same
+// staleness reason documented at that assignment.
+function wireCreditAppRecovery(panel) {
+  if (!panel || panel.__creditAppRecoveryWired) return;
+  panel.__creditAppRecoveryWired = true;
+  panel.addEventListener('click', function(e) {
+    var t = e.target;
+    var correctBtn = t && t.closest ? t.closest('.ca-app-correct-address') : null;
+    var waiveBtn = t && t.closest ? t.closest('.ca-app-waive') : null;
+    if (correctBtn && panel.contains(correctBtn)) {
+      caAppSubmitCorrectAddress(panel, correctBtn);
+    } else if (waiveBtn && panel.contains(waiveBtn)) {
+      caAppSubmitWaive(panel, waiveBtn);
+    }
+  });
+}
+if (typeof window !== 'undefined') { window.wireCreditAppRecovery = wireCreditAppRecovery; }
+
+// One shared POST helper for the two staff recovery actions -- same
+// fetch/parse shape caAppDoNudge already uses for Nudge.
+function caAppPostRecovery(path, payload, cb) {
+  fetch(BROKER_API_BASE + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  }).then(function(res) {
+    return res.text().then(function(t) {
+      var data = {}; try { data = t ? JSON.parse(t) : {}; } catch (e) {}
+      return { status: res.status, data: data };
+    });
+  }).then(cb).catch(function() { cb({ status: 0, data: {} }); });
+}
+
+// After either recovery action lands, re-fetch every read the panel shows so
+// the tracker, the details block, and the staff block all agree with the new
+// state -- the same three calls openPanel itself makes on first open.
+function caAppRefreshPane(panel) {
+  var id = panel.dataset.submissionId;
+  if (!id) return;
+  var r = { ID: id };
+  fetchCreditAppStatus(r);
+  fetchCreditAppApplication(r);
+  fetchCreditAppRisk(r);
+}
+if (typeof window !== 'undefined') { window.caAppRefreshPane = caAppRefreshPane; }
+
+function caAppSubmitCorrectAddress(panel, btn) {
+  var slot = btn.dataset.slot;
+  var wrap = btn.closest('.ca-app-recovery');
+  if (!wrap) return;
+  var input = wrap.querySelector('.ca-app-address-input');
+  var msgEl = wrap.querySelector('.ca-app-msg[data-recovery-msg="' + slot + '"]');
+  var newEmail = input ? input.value.trim() : '';
+  if (!newEmail || newEmail.indexOf('@') === -1) {
+    if (msgEl) { msgEl.textContent = 'Enter a valid email address.'; msgEl.className = 'ca-app-msg error'; }
+    return;
+  }
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  btn.disabled = true;
+  if (msgEl) { msgEl.textContent = 'Saving…'; msgEl.className = 'ca-app-msg'; }
+  caAppPostRecovery('/credit-app/correct-address',
+    { email: email, submission_id: panel.dataset.submissionId, slot: slot, new_email: newEmail },
+    function(rr) {
+      btn.disabled = false;
+      if (rr.status === 200) {
+        if (msgEl) { msgEl.textContent = 'Address corrected, survey resent'; msgEl.className = 'ca-app-msg ok'; }
+        if (input) input.value = '';
+        caAppRefreshPane(panel);
+      } else {
+        var reason = (rr.data && rr.data.error) || 'Could not correct the address';
+        if (msgEl) { msgEl.textContent = reason; msgEl.className = 'ca-app-msg error'; }
+      }
+    });
+}
+if (typeof window !== 'undefined') { window.caAppSubmitCorrectAddress = caAppSubmitCorrectAddress; }
+
+function caAppSubmitWaive(panel, btn) {
+  var slot = btn.dataset.slot;
+  var wrap = btn.closest('.ca-app-recovery');
+  if (!wrap) return;
+  var input = wrap.querySelector('.ca-app-waive-reason');
+  var msgEl = wrap.querySelector('.ca-app-msg[data-recovery-msg="' + slot + '"]');
+  var reason = input ? input.value.trim() : '';
+  if (!reason) {
+    if (msgEl) { msgEl.textContent = 'A reason is required.'; msgEl.className = 'ca-app-msg error'; }
+    return;
+  }
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  btn.disabled = true;
+  if (msgEl) { msgEl.textContent = 'Saving…'; msgEl.className = 'ca-app-msg'; }
+  caAppPostRecovery('/credit-app/waive',
+    { email: email, submission_id: panel.dataset.submissionId, slot: slot, reason: reason },
+    function(rr) {
+      btn.disabled = false;
+      if (rr.status === 200) {
+        if (msgEl) { msgEl.textContent = 'Waived'; msgEl.className = 'ca-app-msg ok'; }
+        if (input) input.value = '';
+        caAppRefreshPane(panel);
+      } else {
+        var reasonMsg = (rr.data && rr.data.error) || 'Could not waive this reference';
+        if (msgEl) { msgEl.textContent = reasonMsg; msgEl.className = 'ca-app-msg error'; }
+      }
+    });
+}
+if (typeof window !== 'undefined') { window.caAppSubmitWaive = caAppSubmitWaive; }
 
 // Wire the see-all Decision section: live "required" affordance + Save handler.
 function wireDecisionSection(rec) {

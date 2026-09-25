@@ -118,11 +118,17 @@ test('a waived party reads "Not required", not blank or a code', () => {
   assert.doesNotMatch(h, /ca-app-nudge/);
 });
 
-test('a bounced party gets the exact fix-it copy and no Nudge button', () => {
+// CREDITAPP2: correction is credit-only (a broker cannot fix a bounced
+// address -- see customer-approvals-credit-app-recovery.test.mjs), so the
+// copy must route to credit rather than send the broker after their own
+// customer. Still no Nudge button: sending again to the same dead address is
+// pointless.
+test('a bounced party routes to credit, not the broker, and offers no Nudge button', () => {
   const w = boot();
   const h = w.caAppRowHtml(party({ status: 'bounced' }));
-  assert.match(h, /Address bounced, ask your customer for a new one/);
-  assert.doesNotMatch(h, /ca-app-nudge/);
+  assert.doesNotMatch(h, /ask your customer/i);
+  assert.match(h, /Address bounced/);
+  assert.doesNotMatch(h, /class="row-action ca-app-nudge"/);
 });
 
 test('an expired party still offers a Nudge (the server allows re-sending it)', () => {

@@ -146,6 +146,41 @@ test('a re-run verdict says so and drops the warning', () => {
   assert.ok(html.includes('$30,000'));
 });
 
+// --- the injected stylesheet must not touch the host page -------------------
+
+test('every injected rule is scoped to the profile', () => {
+  // 🚨 THE BUG THIS EXISTS FOR. injectStyles() appends to the HOST page's head,
+  // and the profile's CSS declared a bare `.btn.primary { background:#F97316 }`.
+  // The drawer uses that same class and defines it #272727, so opening a profile
+  // once silently turned every primary button on the page orange until reload --
+  // Tom: "why do some detail panes show black and others are orange?... i feel
+  // like im going crazy." Same specificity, later in the document, so it won.
+  //
+  // Captured by RUNNING injectStyles, not by regexing the source: the first
+  // check did regex it, matched the wrong slice, and reported zero leaks.
+  let captured = '';
+  const realDoc = global.document;
+  global.document = {
+    getElementById: () => null,
+    createElement: () => ({ set textContent(v) { captured = v; }, id: '' }),
+    head: { appendChild: () => {} }
+  };
+  try { P.injectStyles(); } finally { global.document = realDoc; }
+
+  const selectors = [];
+  captured.replace(/([^{}]+)\{[^}]*\}/g, (_, sel) => {
+    sel.split(',').forEach((s) => {
+      s = s.trim();
+      if (s && s[0] !== '@' && !s.startsWith('to')) { selectors.push(s); }
+    });
+    return '';
+  });
+  assert.ok(selectors.length > 50, 'stylesheet did not parse');
+  const leaks = selectors.filter((s) => !s.includes('.cp-'));
+  assert.deepStrictEqual(leaks, [],
+    'these rules escape the profile and restyle the host page');
+});
+
 // --- the fraud read, which must match the detail pane's ---------------------
 
 const FRAUD = {

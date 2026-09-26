@@ -965,10 +965,10 @@ var CP_CSS = '' +
   '.cp-root .panel-section{background:#fff;border:1px solid #e6e3da;border-radius:8px;padding:12px 14px;margin-bottom:8px;}' +
   '.cp-root .panel-section-title{font-size:11px;text-transform:uppercase;letter-spacing:0.7px;color:#888;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;}' +
   '.cp-root .panel-section-title::after{content:"";flex:1;height:1px;background:#f0efe9;}' +
-  '.cp-root .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px 22px;}' +
+  '.cp-root .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:9px 22px;}' +
   '.cp-root .field{display:flex;flex-direction:column;gap:3px;}' +
-  '.cp-root .field-label{font-size:9.5px;color:#9a958a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;}' +
-  '.cp-root .field-val{font-size:12.5px;line-height:1.3;color:#1d1d1f;font-weight:600;word-break:break-word;}' +
+  '.cp-root .field-label{font-size:10.5px;color:#9a958a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;}' +
+  '.cp-root .field-val{font-size:13.5px;line-height:1.35;color:#1d1d1f;font-weight:600;word-break:break-word;}' +
   '.cp-root .field-val.muted{color:#888;font-weight:500;}' +
   '.cp-root .empty{color:#bbb;font-weight:500;font-style:italic;}' +
   '.cp-root .btn{background:#fff;border:1px solid #d8d8d8;border-radius:6px;padding:8px 14px;font-size:13px;font-weight:600;color:#444;cursor:pointer;font-family:inherit;transition:all 0.15s;}' +
@@ -1085,10 +1085,10 @@ var CP_CSS = '' +
   // block of height on six numbers, and an analyst reads references by
   // COMPARING them -- which a table does and a stack of cards fights.
   '.cp-reftable{width:100%;border-collapse:collapse;margin-top:4px;}' +
-  '.cp-reftable th{font-size:9.5px;font-weight:700;letter-spacing:.05em;' +
+  '.cp-reftable th{font-size:10.5px;font-weight:700;letter-spacing:.05em;' +
     'text-transform:uppercase;color:#9a958a;text-align:left;' +
     'padding:0 10px 6px 0;white-space:nowrap;}' +
-  '.cp-reftable td{font-size:12.5px;color:#1d1d1f;font-weight:600;' +
+  '.cp-reftable td{font-size:13.5px;color:#1d1d1f;font-weight:600;' +
     'padding:7px 10px 7px 0;border-top:1px solid #f1efe9;vertical-align:top;}' +
   '.cp-reftable td.waiting{color:#9a958a;font-weight:500;}' +
   '.cp-reftable tr.has-risk td{background:#fffbf5;}' +

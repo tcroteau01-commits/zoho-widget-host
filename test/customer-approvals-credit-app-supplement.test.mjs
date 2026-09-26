@@ -198,27 +198,38 @@ test('with no open request, the tracker shows the control and no banner', () => 
 
 // ── Step 3: request state -- count visible to everyone, identity staff-only ──
 
-test('an open request shows its count on the broker tracker, with no identity', () => {
+test('an open request shows its count and WHEN it was asked, on the broker tracker, with no identity', () => {
   // /credit-app/status (the broker-visible payload) never carries
   // requested_by/requested_by_role -- _supplement_request_entry's own
   // include_identity=False split -- so this entry has neither key, matching
   // the real wire shape rather than a broker-friendly stand-in.
+  //
+  // Fix round 1 -- the spec says both audiences see "that it was made, when,
+  // and how many were asked for"; the date (req.at) was missing entirely
+  // from the first pass. Changed from the original version of this test,
+  // which asserted count and reason only -- the date assertion below fails
+  // against the pre-fix-round-1 file (verified by hand).
   const w = boot();
   trackerFixture(w);
   w.renderCreditAppSection({ ID: '9' }, {
     status: 'references_pending', parties: SIX,
     supplement_requests: [{ id: 'r1', count: 2, reason: 'trade1 and trade3 went quiet',
-                            status: 'sent', at: '2026-09-25T00:00:00', completed_at: null,
+                            status: 'sent', at: '2026-09-25T14:30:00', completed_at: null,
                             slots_created: [] }],
   });
   const supplementEl = w.document.getElementById('ca-app-supplement');
   assert.match(supplementEl.innerHTML, /Asked for 2 more references/);
+  assert.match(supplementEl.innerHTML, /2026-09-25 14:30 UTC/, 'the request date must render, per the spec');
   assert.match(supplementEl.innerHTML, /trade1 and trade3 went quiet/);
   assert.doesNotMatch(supplementEl.innerHTML, /Asked by/,
     'the broker tracker payload has no requested_by -- nothing to show, and nothing invented');
 });
 
 test('a singular count reads "reference", not "references"', () => {
+  // Fix round 1 -- the old assertions anchored a period directly after
+  // "reference", which the new date text now sits between ("... reference
+  // on 2026-... UTC."). Switched to a word boundary so this still proves
+  // singular-vs-plural without depending on what comes right after the noun.
   const w = boot();
   trackerFixture(w);
   w.renderCreditAppSection({ ID: '9' }, {
@@ -227,8 +238,8 @@ test('a singular count reads "reference", not "references"', () => {
                             at: '2026-09-25T00:00:00', completed_at: null, slots_created: [] }],
   });
   const supplementEl = w.document.getElementById('ca-app-supplement');
-  assert.match(supplementEl.innerHTML, /Asked for 1 more reference\./);
-  assert.doesNotMatch(supplementEl.innerHTML, /1 more references/);
+  assert.match(supplementEl.innerHTML, /Asked for 1 more reference\b/);
+  assert.doesNotMatch(supplementEl.innerHTML, /1 more references\b/);
 });
 
 test('a superseded request shows no open banner -- only "sent" is open', () => {
@@ -243,9 +254,12 @@ test('a superseded request shows no open banner -- only "sent" is open', () => {
   assert.doesNotMatch(supplementEl.innerHTML, /Asked for/);
 });
 
-test('the staff Full Submission block shows who asked and their role', async () => {
+test('the staff Full Submission block shows who asked, their role, and when', async () => {
   // /credit-app/risk (staff-only) carries requested_by/requested_by_role --
   // this is the ONE place identity may render, per the spec's legal line.
+  // Fix round 1 -- added the date assertion (see the broker-side test above
+  // for why); changed from the original version, which checked count and
+  // identity only.
   const w = boot();
   staffFixture(w);
   w.brokerEmail = 'staff@operfi.com';
@@ -255,7 +269,7 @@ test('the staff Full Submission block shows who asked and their role', async () 
     application: { company: { name: 'ACME Produce LLC' } },
     pdf: { exists: false, retrieval_path: '' },
     supplement_requests: [{ id: 'r1', count: 2, reason: 'trade1 and trade3 went quiet',
-                            status: 'sent', at: '2026-09-25T00:00:00', completed_at: null,
+                            status: 'sent', at: '2026-09-25T14:30:00', completed_at: null,
                             slots_created: [], requested_by: 'ops@operfi.com',
                             requested_by_role: 'operfi' }],
   };
@@ -265,6 +279,7 @@ test('the staff Full Submission block shows who asked and their role', async () 
   const body = w.document.getElementById('ca-app-staff-body').innerHTML;
   assert.match(body, /Supplemental Reference Requests/);
   assert.match(body, /Asked for 2 more references/);
+  assert.match(body, /2026-09-25 14:30 UTC/, 'the request date must render for staff too');
   assert.match(body, /Asked by ops@operfi\.com \(operfi\)/);
 });
 
@@ -284,8 +299,120 @@ test('the same renderer shows no identity line when the payload has none (driven
   w.fetchCreditAppRisk({ ID: '9' });
   await new Promise((r) => setTimeout(r, 30));
   const body = w.document.getElementById('ca-app-staff-body').innerHTML;
-  assert.match(body, /Asked for 1 more reference\./);
+  assert.match(body, /Asked for 1 more reference\b/);
   assert.doesNotMatch(body, /Asked by/);
+});
+
+// ── fix round 1: a structural guard, not payload presence ───────────────────
+
+test('caAppSupplementRequestHtml cannot render identity with showIdentity=false, even when the entry carries requested_by', () => {
+  // The defense-in-depth ask: today the broker payload never has
+  // requested_by, so payload presence alone happened to be safe. This test
+  // calls the renderer directly with an entry that DOES carry requested_by
+  // (standing in for a hypothetical future /credit-app/status change) and
+  // showIdentity=false (what caAppSupplementSectionHtml -- the broker path --
+  // always passes), and proves identity still does not render. Fails against
+  // the pre-fix-round-1 file, whose caAppSupplementRequestHtml took only one
+  // argument and rendered identity whenever req.requested_by was present,
+  // full stop (verified by hand).
+  const w = boot();
+  const h = w.caAppSupplementRequestHtml({
+    id: 'r1', count: 2, reason: '', status: 'sent', at: '2026-09-25T14:30:00',
+    completed_at: null, slots_created: [],
+    requested_by: 'ops@operfi.com', requested_by_role: 'operfi',
+  }, false);
+  assert.doesNotMatch(h, /Asked by/,
+    'showIdentity=false must suppress identity structurally, not by hoping the payload omits it');
+  assert.match(h, /Asked for 2 more references/, 'the neutral fact must still render');
+});
+
+// Note: this passes against the pre-fix-round-1 file too (its single-argument
+// renderer ignored the extra `true` and showed identity whenever
+// req.requested_by was present, which it is here) -- a regression guard for
+// the positive case, not a failing-first test by itself. The negative test
+// above is what proves showIdentity is now load-bearing.
+test('caAppSupplementRequestHtml renders identity with showIdentity=true and the field present', () => {
+  const w = boot();
+  const h = w.caAppSupplementRequestHtml({
+    id: 'r1', count: 1, reason: '', status: 'sent', at: '2026-09-25T14:30:00',
+    completed_at: null, slots_created: [],
+    requested_by: 'ops@operfi.com', requested_by_role: 'operfi',
+  }, true);
+  assert.match(h, /Asked by ops@operfi\.com \(operfi\)/);
+});
+
+// ── fix round 1: send_error -- recorded, and now actually read ──────────────
+
+test('the staff block shows WHY a supplement request failed to send, not just that one is open', async () => {
+  // Task 5 (credit_app_store.record_supplement_send_failure) puts send_error
+  // on a supplement_requests entry; nothing rendered it until this fix --
+  // the exact recorded-and-nothing-reads-it shape CREDITAPP2 exists to close.
+  // Fails against the pre-fix-round-1 file, whose caAppSupplementRequestHtml
+  // never looked at req.send_error at all (verified by hand).
+  const w = boot();
+  staffFixture(w);
+  w.brokerEmail = 'staff@operfi.com';
+  w.allClients = true;
+  const payload = {
+    status: 'references_pending', parties: [], customer_verification: null,
+    application: { company: { name: 'ACME Produce LLC' } },
+    pdf: { exists: false, retrieval_path: '' },
+    supplement_requests: [{ id: 'r1', count: 2, reason: '', status: 'sent',
+                            at: '2026-09-25T00:00:00', completed_at: null, slots_created: [],
+                            requested_by: 'ops@operfi.com', requested_by_role: 'operfi',
+                            send_error: { detail: 'Could not obtain a Graph token.',
+                                          at: '2026-09-25T14:30:00+00:00' } }],
+  };
+  w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve(payload) });
+  w.fetchCreditAppRisk({ ID: '9' });
+  await new Promise((r) => setTimeout(r, 30));
+  const body = w.document.getElementById('ca-app-staff-body').innerHTML;
+  assert.match(body, /Send failed/);
+  assert.match(body, /Could not obtain a Graph token\./,
+    'a platform outage must be distinguishable from a typed address, same as a party\'s own send_error');
+  assert.match(body, /2026-09-25 14:30 UTC/);
+});
+
+// Note: this also passes against the pre-fix-round-1 file (it never read
+// send_error at all, so a request with none was never going to render a
+// line for it either) -- a regression guard for the negative half of the
+// claim, not failing-first. The positive test above is the one that matters.
+test('a supplement request that never failed a send renders no Send-failed line', async () => {
+  const w = boot();
+  staffFixture(w);
+  w.brokerEmail = 'staff@operfi.com';
+  w.allClients = true;
+  const payload = {
+    status: 'references_pending', parties: [], customer_verification: null,
+    application: { company: { name: 'ACME Produce LLC' } },
+    pdf: { exists: false, retrieval_path: '' },
+    supplement_requests: [{ id: 'r1', count: 1, reason: '', status: 'sent',
+                            at: '2026-09-25T00:00:00', completed_at: null, slots_created: [],
+                            requested_by: 'ops@operfi.com', requested_by_role: 'operfi',
+                            send_error: null }],
+  };
+  w.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve(payload) });
+  w.fetchCreditAppRisk({ ID: '9' });
+  await new Promise((r) => setTimeout(r, 30));
+  const body = w.document.getElementById('ca-app-staff-body').innerHTML;
+  assert.doesNotMatch(body, /Send failed/);
+});
+
+test('the broker tracker never renders a Send-failed line for a supplement request, structurally', () => {
+  // Same structural point as the identity test above: called directly with
+  // showIdentity=false and an entry that DOES carry send_error, proving the
+  // suppression is the showIdentity argument, not the broker payload merely
+  // lacking the field. This negative also holds against the pre-fix-round-1
+  // file (which never read send_error at all), so it is a regression guard
+  // for the "never" half of the claim, not a failing-first test by itself --
+  // the positive case above is what proves the feature exists.
+  const w = boot();
+  const h = w.caAppSupplementRequestHtml({
+    id: 'r1', count: 1, reason: '', status: 'sent', at: '2026-09-25T00:00:00',
+    completed_at: null, slots_created: [],
+    send_error: { detail: 'Could not obtain a Graph token.', at: '2026-09-25T14:30:00+00:00' },
+  }, false);
+  assert.doesNotMatch(h, /Send failed/);
 });
 
 // ── wiring: show/hide/submit, delegated the way wireCreditAppRecovery is ────

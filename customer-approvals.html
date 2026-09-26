@@ -2002,6 +2002,17 @@ function caAppPartyState(status) {
   return { label: status || 'Unknown', cls: 'waiting' };
 }
 
+// A UTC ISO timestamp from the API (never a Creator wall-clock string --
+// those go through parseDate/fmtDateTime instead), rendered as e.g.
+// "2026-09-25 14:30 UTC". Shared by the staff send-failure timestamp
+// (caAppReferenceAnswerHtml) and the supplement-request date
+// (caAppSupplementRequestHtml) -- both are API-supplied UTC values, never
+// Creator's Central wall-clock strings.
+function caAppFmtUtcTimestamp(iso) {
+  return iso ? String(iso).replace('T', ' ').slice(0, 16) + ' UTC' : '';
+}
+if (typeof window !== 'undefined') { window.caAppFmtUtcTimestamp = caAppFmtUtcTimestamp; }
+
 function caAppWaitingText(days) {
   if (days === null || days === undefined) return '';
   if (days <= 0) return 'less than a day';
@@ -2226,23 +2237,42 @@ function renderCreditAppSection(r, payload) {
 }
 if (typeof window !== 'undefined') { window.renderCreditAppSection = renderCreditAppSection; }
 
-// One supplement_requests row, in plain words. `req.requested_by` is present
-// only on the staff (/credit-app/risk) payload -- _supplement_request_entry's
-// own include_identity split on the API side -- so whether "who asked" shows
-// is driven by what the payload actually carries, never a role flag invented
-// here. A broker fed this same function from /credit-app/status simply never
-// has that key, and sees the neutral workflow fact only.
-function caAppSupplementRequestHtml(req) {
+// One supplement_requests row, in plain words: that a request was made, WHEN
+// (req.at, both audiences -- the spec's own wording), and how many were
+// asked for. `showIdentity` gates who-asked and send_error -- both are
+// staff-only facts, and this is a STRUCTURAL guard, not a payload-presence
+// check: the broker's own call site (caAppSupplementSectionHtml) always
+// passes false, on purpose, so a future change to /credit-app/status that
+// accidentally started sending requested_by could not make this render it
+// for a broker. Only renderCreditAppStaffSection (fed from /credit-app/risk,
+// which alone carries requested_by/requested_by_role/send_error per
+// _supplement_request_entry's own include_identity split) passes true.
+function caAppSupplementRequestHtml(req, showIdentity) {
   if (!req) return '';
   var count = req.count;
   var noun = (count === 1) ? 'reference' : 'references';
-  var who = req.requested_by
+  var when = caAppFmtUtcTimestamp(req.at);
+  var who = (showIdentity && req.requested_by)
     ? ' Asked by ' + esc(req.requested_by) +
       (req.requested_by_role ? ' (' + esc(req.requested_by_role) + ')' : '') + '.'
     : '';
+  // CREDITAPP2 existed to stop a recorded-and-nothing-reads-it failure (the
+  // send_error/'bounced' collapse on a party's own row); Task 5 put the same
+  // shape of fact on a supplement request (record_supplement_send_failure)
+  // and nothing rendered it. Same idiom as caAppReferenceAnswerHtml's own
+  // send-failure block, staff-only by the showIdentity guard above.
+  var sendErrorHtml = '';
+  if (showIdentity && req.send_error && (req.send_error.detail || req.send_error.at)) {
+    var seAt = caAppFmtUtcTimestamp(req.send_error.at);
+    sendErrorHtml = '<div class="ca-app-staff-risk ca-app-staff-risk-high">Send failed' +
+      (seAt ? ' ' + esc(seAt) : '') + ': ' + esc(req.send_error.detail || 'no detail recorded') +
+      '</div>';
+  }
   return '' +
     '<div class="ca-app-supplement-open">' +
-      '<div>Asked for ' + esc(String(count)) + ' more ' + esc(noun) + '.' + who + '</div>' +
+      sendErrorHtml +
+      '<div>Asked for ' + esc(String(count)) + ' more ' + esc(noun) +
+        (when ? ' on ' + esc(when) : '') + '.' + who + '</div>' +
       (req.reason ? '<div class="ca-app-supplement-reason">' + esc(req.reason) + '</div>' : '') +
     '</div>';
 }
@@ -2260,7 +2290,10 @@ function caAppSupplementSectionHtml(payload) {
     if (reqs[i] && reqs[i].status === 'sent') { open = reqs[i]; break; }
   }
   return '' +
-    (open ? caAppSupplementRequestHtml(open) : '') +
+    // showIdentity=false, always -- this renderer is reached from the broker
+    // path (/credit-app/status never carries identity, but this is a
+    // structural guard, not a bet on the server staying that way).
+    (open ? caAppSupplementRequestHtml(open, false) : '') +
     '<button type="button" class="row-action ca-app-supplement-ask" id="ca-app-supplement-ask">' +
       'Ask customer for more references</button>' +
     '<div class="ca-app-supplement-form" id="ca-app-supplement-form" style="display:none;">' +
@@ -2919,8 +2952,7 @@ function caAppReferenceAnswerHtml(p) {
   // run through parseDate -- that helper is for Creator's Central wall-clock
   // strings and would relabel this one wrongly.
   if (p.send_error && (p.send_error.detail || p.send_error.at)) {
-    var seAt = p.send_error.at
-      ? String(p.send_error.at).replace('T', ' ').slice(0, 16) + ' UTC' : '';
+    var seAt = caAppFmtUtcTimestamp(p.send_error.at);
     html += '<div class="ca-app-staff-risk ca-app-staff-risk-high">Send failed' +
       (seAt ? ' ' + esc(seAt) : '') + ': ' + esc(p.send_error.detail || 'no detail recorded') +
       '</div>';
@@ -3127,17 +3159,17 @@ function renderCreditAppStaffSection(payload) {
       field('Signed', app.submitted_at ? fmtDateTime(parseDate(app.submitted_at)) : '') +
     '</div>';
 
-  // CREDITAPP3 Task 7 -- who asked, and their role. /credit-app/risk carries
-  // requested_by/requested_by_role on every supplement_requests entry
-  // (_supplement_request_entry's include_identity=True); the broker's own
-  // tracker (#ca-app-supplement, from /credit-app/status) never gets those
-  // two keys, so caAppSupplementRequestHtml renders the identity line only
-  // here, driven by the payload actually having it -- never a role check
-  // duplicated client-side.
+  // CREDITAPP3 Task 7 -- who asked, their role, and send_error, all
+  // staff-only. /credit-app/risk carries requested_by/requested_by_role/
+  // send_error on every supplement_requests entry (_supplement_request_entry's
+  // include_identity=True); the broker's own tracker (#ca-app-supplement,
+  // from /credit-app/status) never gets those keys. showIdentity=true is
+  // passed explicitly here -- the one call site allowed to -- rather than
+  // relying on the broker payload simply lacking the fields.
   var supplementRequests = payload.supplement_requests || [];
   if (supplementRequests.length) {
     html += '<div class="ca-app-doc-head">Supplemental Reference Requests</div>' +
-      supplementRequests.map(caAppSupplementRequestHtml).join('');
+      supplementRequests.map(function(r) { return caAppSupplementRequestHtml(r, true); }).join('');
   }
 
   var parties = payload.parties || [];

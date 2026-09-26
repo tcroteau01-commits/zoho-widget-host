@@ -543,7 +543,14 @@ test('a send the server could not deliver says so, instead of "Sent to the custo
   assert.doesNotMatch(msg.textContent, /Sent to the customer/,
     'the one thing it must never say when nothing was sent');
   assert.match(msg.textContent, /did not go out/);
-  assert.match(msg.textContent, /OperFi has been notified/);
+  // The copy has to name an action the broker can take. It previously read
+  // "OperFi has been notified," which nothing keeps -- no alert fires on
+  // send_error -- so it stopped the broker chasing on a promise that was not
+  // true. Asserted here so the sentence cannot quietly regress to a
+  // reassurance.
+  assert.match(msg.textContent, /Ask credit to resend it\./);
+  assert.doesNotMatch(msg.textContent, /notified/,
+    'no claim that anyone has been told, because nothing tells them');
   assert.equal(msg.className, 'ca-app-msg error', 'not styled as a success');
 });
 

@@ -3328,7 +3328,17 @@ function caAppSubmitSupplementRequest(panel) {
         if (msgEl) {
           msgEl.textContent = delivered
             ? 'Sent to the customer.'
-            : 'Recorded, but the email did not go out. OperFi has been notified.';
+            // 🚨 States only what is true and names the next action. It used to
+            // read "OperFi has been notified," which nothing keeps: no alert
+            // fires on send_error -- it waits on _risk_payload for a staff
+            // member to happen to open that submission. That sentence told the
+            // broker the problem was already in hand and stopped them chasing,
+            // which is worse than the "Sent to the customer." it replaced: at
+            // least that one left them expecting a reply. Same defect class
+            // this whole branch exists to remove, so it does not get to ship
+            // inside the fix for it. Asking credit to resend is an action the
+            // broker can actually take and that actually moves the request.
+            : 'Recorded, but the email did not go out. Ask credit to resend it.';
           msgEl.className = delivered ? 'ca-app-msg ok' : 'ca-app-msg error';
         }
         if (reasonEl) reasonEl.value = '';

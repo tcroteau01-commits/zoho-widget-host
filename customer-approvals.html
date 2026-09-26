@@ -92,6 +92,7 @@ html, body {
 .row.s-boost::before     { background: #1976d2; }
 .row.s-denied::before    { background: #c62828; }
 .row.s-expired::before   { background: #888; }
+.row.s-draft::before     { background: #2a4f7c; }
 
 .cell-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; font-weight: 600; margin-bottom: 2px; }
 .cell-val { font-size: 13px; color: #272727; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -112,6 +113,9 @@ html, body {
 .status-pill.boost { background: #e3f0fb; color: #0d4a8a; }
 .status-pill.denied { background: #fde4e4; color: #a31818; }
 .status-pill.expired { background: #ececec; color: #555; }
+/* COCHK1: started but never finished. Deliberately not a red failure state --
+   nothing is wrong, the broker just has not come back to it yet. */
+.status-pill.draft { background: #e7effa; color: #2a4f7c; }
 
 .row-action {
   background: #fff; border: 1px solid #d8d8d8; border-radius: 6px;
@@ -754,7 +758,11 @@ var STATUS_MAP = {
   "Credit App Rec'd - Pending Review": { key: 'app-rcvd',    label: "App Rec'd",          pill: 'app-rcvd' },
   'Credit Boost Requested':            { key: 'boost',       label: 'Boost Requested',   pill: 'boost' },
   'Denied':                            { key: 'denied',      label: 'Denied',            pill: 'denied' },
-  'Expired':                           { key: 'expired',     label: 'Expired',           pill: 'expired' }
+  'Expired':                           { key: 'expired',     label: 'Expired',           pill: 'expired' },
+  // 🚨 COCHK1. Without this the draft fell through to {key:'unknown'}: an
+  // unstyled pill and NO action, so a broker who stopped before attaching the
+  // co-broker agreement saw a customer they could not open, edit or finish.
+  'Draft - Incomplete':                { key: 'draft',       label: 'Not Finished',      pill: 'draft' }
 };
 // ── BPOC1 — billing contact gate ────────────────────────────────────────────
 // A credit-approved customer still cannot be invoiced without a billing contact, and
@@ -935,6 +943,21 @@ function bindGlobalUI() {
     else if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navPanel(1); }
     else if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); navPanel(-1); }
   });
+}
+
+// 🚨 Hand the record id to the credit check page through sessionStorage, not
+// the URL: navigateParent rewrites window.top.location to a Creator page hash,
+// and the widget iframe gets its own URL from Creator, so a query param does
+// not survive the hop. Both widgets are served from /portal/w/ on the SAME
+// origin, so storage is shared.
+//
+// This is a CONVENIENCE, never the only way in: the credit check page also
+// lists the broker's unfinished checks on load, so a storage write that is
+// blocked, cleared or unavailable costs one extra click rather than stranding
+// the record. That is why a throw here is swallowed.
+function resumeOnCreditCheck(recId) {
+  try { sessionStorage.setItem('operfi.resumeSubmission', recId); } catch (e) {}
+  navigateParent('#Page:Credit_Check');
 }
 
 // Cross-origin portal navigation. ZOHO.CREATOR.UTIL.navigateParentURL throws
@@ -1176,6 +1199,7 @@ function renderList() {
       var recId = btn.dataset.recid;
       if (action === 'boost') openCreditBoost(recId);
       else if (action === 'resubmit') navigateParent('#Page:Credit_Check');
+      else if (action === 'resume') resumeOnCreditCheck(recId);
       else if (action === 'send-credit-app') openSendCreditApp(btn.dataset.recid, btn.dataset.email || '', btn.dataset.site || '');
     });
   });
@@ -1202,7 +1226,10 @@ function rowHtml(r, idx) {
 
   var recId = r.ID || '';
   var actionCell = '';
-  if (s.key === 'approved') {
+  if (s.key === 'draft') {
+    actionCell = '<button class="row-action primary" data-action="resume" data-recid="' +
+                 esc(recId) + '">Finish credit check</button>';
+  } else if (s.key === 'approved') {
     actionCell = '<button class="row-action" data-action="boost" data-recid="' + esc(recId) + '">Request Credit Boost</button>';
   } else if (s.key === 'denied') {
     actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
@@ -1216,6 +1243,16 @@ function rowHtml(r, idx) {
     actionCell = '<span class="row-action-placeholder">Awaiting OperFi review</span>';
   } else if (s.key === 'expired') {
     actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
+  }
+
+  // 🚨 A credit check often runs BEFORE the PO or the MSA exists. Tom,
+  // 2026-09-26: a client must be able to come back and add those afterwards.
+  // Same destination as a draft resume -- the form refuses to change anything
+  // already submitted and only fills what is blank.
+  if (['pending-app','awaiting','approved','app-sent','app-rcvd','denied',
+       'boost','expired'].indexOf(s.key) !== -1) {
+    actionCell += '<button class="row-action" data-action="resume" data-recid="' +
+                  esc(recId) + '">Add Documents</button>';
   }
 
   if (['pending-app','awaiting','approved','app-sent','denied'].indexOf(s.key) !== -1) {

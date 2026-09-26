@@ -86,6 +86,28 @@ html, body {
 .field-err.show { display: block; }
 
 /* COCHK1 — the customer-type question and the MC lookup behind it. */
+/* COCHK1 resume. */
+.draft-banner {
+  margin-bottom: 14px; padding: 12px 15px; border-radius: 8px;
+  border: 1px solid #cfe0f5; background: #f4f8fd;
+}
+.draft-banner-title { font-weight: 700; font-size: 13px; color: #1e3a5f;
+                      margin-bottom: 6px; }
+.draft-row { display: flex; align-items: center; justify-content: space-between;
+             gap: 12px; font-size: 13px; color: #33465c; padding: 3px 0; }
+.btn.small { padding: 5px 12px; font-size: 12px; }
+.resume-note {
+  margin-bottom: 16px; padding: 10px 13px; border-radius: 7px;
+  background: #f4f8fd; border: 1px solid #cfe0f5;
+  font-size: 12.5px; color: #33465c;
+}
+/* 🚨 A field the server will refuse to change is shown as read-only. An
+   editable box over an immutable value is a lie the user only finds out about
+   after typing into it. */
+.field-input.locked, .field-textarea.locked {
+  background: #f4f4f4; color: #777; cursor: not-allowed;
+}
+
 /* 🚨 DELIBERATELY UNDERSTATED. Tom, 2026-09-26: "I don't want to normalize
    co-brokering and make it seem like it happens often but when it does, I want
    the rules to take effect." So this is a quiet field-level question -- two
@@ -290,7 +312,13 @@ html, body {
         </div>
       </div>
 
+      <!-- COCHK1 resume. Populated only when this broker has unfinished
+           credit checks, so the common case sees nothing at all. -->
+      <div id="draft-banner" class="draft-banner" style="display:none;"></div>
+
       <div class="form-card">
+
+        <div id="resume-note" class="resume-note" style="display:none;"></div>
 
         <!-- COCHK1 Section 0: who is this customer?
              🚨 FIRST, and the rest of the form is gated behind it. Tom,
@@ -718,6 +746,146 @@ var needsCoBroker = false;
 var draftFilesLanded = false; // files already attached to THIS draft
 // 'mc' | 'dot' -- DECLARED, never inferred. The two spaces overlap.
 var numberKind = 'mc';
+// Resume state. `resumeLocked` names the fields the server will refuse to
+// change, so the form DISABLES them rather than letting someone retype a value
+// that gets silently dropped.
+var resumeIsDraft = true;
+var resumeLocked = [];
+
+// ── COCHK1 resume: a draft is not a dead end ──────────────────────────────
+//
+// 🚨 Tom, 2026-09-26: a broker who stopped before attaching the co-broker
+// agreement had NO WAY BACK IN -- the record existed, they could not see it,
+// edit it or finish it. And a credit check often runs before the PO or the MSA
+// arrives, so adding documents later has to work on a SUBMITTED record too.
+function loadMyDrafts() {
+  fetch(BROKER_API_BASE + '/credit-check/drafts?email=' +
+        encodeURIComponent(brokerEmail), { credentials: 'include' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      var rows = (j && j.drafts) || [];
+      if (!rows.length) { return; }
+      var host = document.getElementById('draft-banner');
+      if (!host) { return; }
+      var html = '<div class="draft-banner-title">You have ' + rows.length +
+                 ' unfinished credit check' + (rows.length > 1 ? 's' : '') +
+                 '</div>';
+      rows.forEach(function (d) {
+        var num = d.Customer_MC ? 'MC ' + d.Customer_MC
+                                : (d.Customer_DOT ? 'DOT ' + d.Customer_DOT : '');
+        html += '<div class="draft-row"><span>' +
+                esc(d.Customer_Company_Name || 'Unnamed customer') +
+                (num ? ' &middot; ' + esc(num) : '') +
+                '</span><button type="button" class="btn small" data-resume="' +
+                esc(d.ID) + '">Finish it</button></div>';
+      });
+      host.innerHTML = html;
+      host.style.display = '';
+      host.querySelectorAll('[data-resume]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          resumeSubmission(b.getAttribute('data-resume'));
+        });
+      });
+    })
+    .catch(function (e) { console.error('[credit-check] drafts', e); });
+}
+
+function resumeSubmission(id) {
+  showStatus('Loading…', 'loading');
+  fetch(BROKER_API_BASE + '/credit-check/submission/' + encodeURIComponent(id) +
+        '?email=' + encodeURIComponent(brokerEmail), { credentials: 'include' })
+    .then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) {
+          showStatus(j.error || 'Could not open that submission.', 'error');
+          return;
+        }
+        applyResume(id, j);
+      });
+    })
+    .catch(function (e) {
+      console.error('[credit-check] resume', e);
+      showStatus('Could not open that submission.', 'error');
+    });
+}
+
+function applyResume(id, j) {
+  draftId = id;
+  resumeIsDraft = !!j.is_draft;
+  resumeLocked = j.locked || [];
+  needsCoBroker = !!j.requires_co_broker_agreement && !j.has_agreement;
+  authorityClass = j.authority_class || null;
+  // 🚨 FALSE, not `has_agreement`. This flag exists to stop the SAME files
+  // being uploaded twice within one session; it is not a statement about the
+  // record. Setting it from has_agreement would silently drop the PO or MSA a
+  // broker came back specifically to attach -- the exact thing this feature
+  // is for. Whether an agreement is already on file is `needsCoBroker`.
+  draftFilesLanded = false;
+  selectedFiles = [];
+  renderFileChips();
+
+  var f = j.fields || {};
+  function put(id2, val) {
+    var el = document.getElementById(id2);
+    if (!el) { return; }
+    if (val && typeof val === 'object') { val = val.value || ''; }
+    if (val) { el.value = val; }
+  }
+  ['Customer_Company_Name', 'Phone_Number', 'Company_Website',
+   'LinkedIn_Profile', 'Other_Social_Media_Links', 'Comments',
+   'Customer_Point_of_Contact', 'Phone_Number1', 'Email',
+   'Billing_Point_of_Contact', 'Billing_AP_Contact_Number', 'Billing_Email'
+  ].forEach(function (k) { put(k, f[k]); });
+  var a = f.Address || {};
+  put('address_line_1', a.address_line_1);
+  put('district_city', a.district_city);
+  // 🚨 A READ hands back postal_code lower-case; a WRITE needs postal_Code.
+  put('state_province', a.state_province);
+  put('postal_Code', a.postal_code || a.postal_Code);
+
+  if (f.Customer_Type) { setCustomerType(f.Customer_Type); }
+  if (f.Customer_MC || f.Customer_DOT) {
+    var box = document.getElementById('mc-result');
+    box.className = 'mc-result';
+    box.innerHTML = '<b>' + esc(f.Customer_Company_Name || '') + '</b>' +
+      (f.Customer_MC ? 'MC ' + esc(f.Customer_MC) + ' &middot; ' : '') +
+      'DOT ' + esc(f.Customer_DOT || '—') +
+      '<div class="mc-authority">Already verified against FMCSA.</div>';
+    box.style.display = '';
+  }
+  if (needsCoBroker) { renderCoBrokerRequirement(); }
+
+  // 🚨 Lock what the server will refuse. Tom: "they shouldn't be able to change
+  // what's been submitted but only add more if the previous fields were empty."
+  // Showing an editable box over a value that cannot change is a lie the user
+  // only discovers after typing.
+  resumeLocked.forEach(function (k) {
+    var el = document.getElementById(k);
+    if (el) { el.readOnly = true; el.classList.add('locked'); }
+  });
+  if (!resumeIsDraft) {
+    ['address_line_1', 'district_city', 'state_province', 'postal_Code']
+      .forEach(function (k) {
+        var el = document.getElementById(k);
+        if (el && el.value) { el.readOnly = true; el.classList.add('locked'); }
+      });
+  }
+
+  var banner = document.getElementById('draft-banner');
+  if (banner) { banner.style.display = 'none'; }
+  var btn = document.getElementById('submitBtn');
+  btn.textContent = resumeIsDraft ? 'Finish credit check' : 'Save additions';
+  var note = document.getElementById('resume-note');
+  if (note) {
+    note.textContent = resumeIsDraft
+      ? 'Picking up where you left off. Add anything missing and submit.'
+      : 'This credit check is already with our team. You can add documents ' +
+        'and fill in anything left blank — submitted details stay as they are.';
+    note.style.display = '';
+  }
+  clearStatus();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
 // 🚨 "Submit another" MUST clear all of it. Without this, draftId survives the
 // reset and the next submission POSTs to /credit-check/draft/<the PREVIOUS
@@ -729,6 +897,15 @@ function resetCustomerType() {
   authorityClass = null;
   needsCoBroker = false;
   draftFilesLanded = false;
+  resumeIsDraft = true;
+  resumeLocked = [];
+  // A field locked by a resumed submission must not stay locked for the NEXT
+  // customer.
+  document.querySelectorAll('.locked').forEach(function (el) {
+    el.readOnly = false; el.classList.remove('locked');
+  });
+  var rn = document.getElementById('resume-note');
+  if (rn) { rn.style.display = 'none'; }
   ['ctype-shipper', 'ctype-broker'].forEach(function (id) {
     var b = document.getElementById(id);
     if (b) { b.classList.remove('on'); }
@@ -911,6 +1088,20 @@ function finalizeDraft() {
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
         if (r.ok) {
+          // Adding to an already-submitted record is not a resubmission, and
+          // saying "submitted" over it would imply credit is looking again.
+          if (!resumeIsDraft) {
+            var added = (j.updated || []).length;
+            var kept = (j.kept || []).length;
+            showStatus('✓ Saved.' +
+              (added ? ' Added ' + added + ' detail' + (added > 1 ? 's' : '') + '.' : '') +
+              (kept ? ' ' + kept + ' already-submitted field' + (kept > 1 ? 's were' : ' was') +
+                      ' left as it is.' : '') +
+              (uploadErrors ? ' ' + uploadErrors + ' upload(s) failed.' : ''),
+              uploadErrors ? 'error' : 'success');
+            resetButtons();
+            return;
+          }
           if (uploadErrors) {
             showStatus('✓ Credit check submitted, but ' + uploadErrors +
                        ' file upload(s) failed — please email any missing docs ' +
@@ -1058,6 +1249,9 @@ function uploadFiles(recordId, afterUpload) {
     fd.append('record_id', recordId);
     fd.append('field_name', UPLOAD_FIELD);
     fd.append('report_name', UPLOAD_REPORT);
+    // 🚨 Required now: /upload-doc ownership-checks this report, because the
+    // co-broker gate READS the field these files land in.
+    fd.append('email', brokerEmail);
     fd.append('file', file, file.name);
 
     fetch(UPLOAD_ENDPOINT, { method: 'POST', body: fd })
@@ -1147,7 +1341,22 @@ window.addEventListener('load', function() {
         typeof ZOHO.CREATOR.UTIL.getInitParams === 'function') {
       var r = ZOHO.CREATOR.UTIL.getInitParams();
       if (r && typeof r.then === 'function') {
-        r.then(function(p) { brokerEmail = (p && (p.loginUser || p.login_user || p.email)) || ''; });
+        r.then(function(p) {
+          brokerEmail = (p && (p.loginUser || p.login_user || p.email)) || '';
+          // 🚨 Only once the email is known -- the drafts query is scoped by
+          // it, and firing early asks for "" and gets a 401.
+          if (!brokerEmail) { return; }
+          // A record handed over from Customer Approvals opens directly.
+          // Storage can be blocked or cleared, so the drafts banner is the
+          // fallback rather than this being the only route in.
+          var handoff = null;
+          try {
+            handoff = sessionStorage.getItem('operfi.resumeSubmission');
+            sessionStorage.removeItem('operfi.resumeSubmission');
+          } catch (e) {}
+          if (handoff) { resumeSubmission(handoff); }
+          loadMyDrafts();
+        });
       }
     }
   } catch (e) { /* autocomplete will fall back to window.brokerEmail */ }

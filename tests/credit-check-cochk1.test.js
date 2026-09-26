@@ -208,6 +208,69 @@ test('a failed upload never reports success over an unfinalized draft', () => {
   assert.ok(/Credit check submitted, but/.test(fin));
 });
 
+// ── Resume: a draft is not a dead end ────────────────────────────────────
+//
+// 🚨 Tom, 2026-09-26: a broker who stopped before attaching the co-broker
+// agreement had NO WAY BACK IN. And a credit check often runs before the PO or
+// the MSA exists, so adding documents to a SUBMITTED record has to work too.
+
+test('the page lists the broker unfinished checks on load', () => {
+  assert.ok(html.includes("'/credit-check/drafts?email='"));
+  assert.ok(html.includes('function loadMyDrafts'));
+  // only once the email is known -- scoped by it, and "" is a 401
+  assert.ok(html.includes('if (!brokerEmail) { return; }'));
+});
+
+test('a handoff from Customer Approvals is a convenience, not the only way in', () => {
+  // Storage can be blocked or cleared; the banner is the fallback, so both
+  // run and the throw is swallowed.
+  const fn = html.split("r.then(function(p) {")[1].split('\n  }')[0];
+  assert.ok(fn.includes("sessionStorage.getItem('operfi.resumeSubmission')"));
+  assert.ok(fn.includes('removeItem'));
+  assert.ok(fn.includes('catch (e) {}'));
+  assert.ok(fn.includes('loadMyDrafts()'));
+});
+
+test('resuming does NOT carry the previous session file flag', () => {
+  // 🚨 draftFilesLanded exists to stop the SAME files uploading twice in one
+  // session. Setting it from has_agreement would silently drop the PO or MSA
+  // the broker came back specifically to attach.
+  const fn = html.split('function applyResume')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('draftFilesLanded = false'));
+  assert.ok(!/draftFilesLanded = !!j\.has_agreement/.test(html));
+});
+
+test('fields the server will refuse are shown read-only', () => {
+  // An editable box over an immutable value is a lie the user only discovers
+  // after typing into it.
+  const fn = html.split('function applyResume')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('resumeLocked.forEach'));
+  assert.ok(fn.includes('readOnly = true'));
+  assert.ok(html.includes('.field-input.locked'));
+});
+
+test('a resumed lock does not leak onto the next customer', () => {
+  const fn = html.split('function resetCustomerType')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes("querySelectorAll('.locked')"));
+  assert.ok(fn.includes('readOnly = false'));
+  assert.ok(fn.includes('resumeIsDraft = true'));
+});
+
+test('adding to a submitted record is not reported as a resubmission', () => {
+  // Saying "submitted" over it would imply credit is looking at it again.
+  const fin = html.split('function finalizeDraft')[1].split('\nfunction ')[0];
+  assert.ok(fin.includes('if (!resumeIsDraft)'));
+  assert.ok(/left as it is/.test(fin));
+  assert.ok(fin.includes('j.kept'));
+});
+
+test('uploads carry the broker identity', () => {
+  // /upload-doc ownership-checks All_Customer_Submissions, because the
+  // co-broker gate reads the field these files land in.
+  const fn = html.split('function uploadFiles')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes("fd.append('email', brokerEmail)"));
+});
+
 test('files attach once per draft, not once per retry', () => {
   // A 409 sends them back to fix a blocker; re-uploading would leave credit
   // three copies of the agreement to read.

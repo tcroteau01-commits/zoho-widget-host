@@ -622,13 +622,24 @@ test('the application the customer submitted is shown in full', () => {
 });
 
 test('a completed reference shows the numbers it gave us', () => {
+  // The four reference CARDS are one table now -- an analyst reads references by
+  // comparing them, which a table does and a stack of cards fights. What matters
+  // is that every number survived the change.
   const html = P.render(Object.assign({}, BASE, { credit_app: APP }));
-  ['ABC LLC 2', '2 years', '$40,000', 'Net Terms', '2026-09-14',
-   'Good to go'].forEach((v) => {
+  ['ABC LLC 2', '2 years', '$40,000', 'Good to go'].forEach((v) => {
     assert.ok(html.includes(v), 'missing from the reference: ' + v);
   });
+  assert.ok(html.includes('cp-reftable'), 'not rendered as a table');
   // the aging buckets, which is how a limit gets sized rather than guessed
   assert.ok(html.includes('31-60') && html.includes('61+'));
+  assert.ok(html.includes('Terms'), 'net terms column missing');
+});
+
+test('one reference per row, not one per card', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: APP }));
+  const rows = (html.match(/<tr[ >]/g) || []).length;
+  assert.strictEqual(rows, 5, 'want a header row plus one per reference');
+  assert.ok(!html.includes('cp-ref-head'), 'still rendering reference cards');
 });
 
 test('a reference we are still waiting on is visibly outstanding', () => {
@@ -642,9 +653,13 @@ test('a reference risk signal is shown to the credit team', () => {
   // 🚨 The rule is that a fraud signal never reaches the SUBMITTER, who may be
   // the fraudster. It was never that the credit team should be blind to it.
   const html = P.render(Object.assign({}, BASE, { credit_app: APP }));
-  assert.ok(html.includes('Risk: review'));
+  // Below the table now: risk is prose and would wreck the column widths, but
+  // it is still the thing worth reading once the numbers line up.
+  assert.ok(/risk: review/i.test(html));
   assert.ok(html.includes('domain does not match company'));
   assert.ok(html.includes('gmail.com vs ABC 2'));
+  // and the row it belongs to is marked, so the prose has something to point at
+  assert.ok(html.includes('has-risk'));
 });
 
 test('"currently factoring" is not buried', () => {

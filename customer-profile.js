@@ -782,37 +782,74 @@ function agingGrid(a) {
   }).join('') + '</div>';
 }
 
-function renderReference(r) {
-  var body = '<div class="cp-ref-head">' +
-    esc(SLOT_LABELS[r.slot] || r.slot) + ' &middot; ' + esc(r.company || r.name || '—') +
-    ' ' + statusPill(r.status) + '</div>';
-  body += '<div class="field-grid">' +
-    field('Contact', r.name ? esc(r.name) : emptyDash()) +
-    field('Email', r.email ? esc(r.email) : emptyDash()) +
-    field('Phone', r.phone ? esc(r.phone) : emptyDash()) +
-    field('Completed', r.completed_at ? esc(String(r.completed_at).slice(0, 10))
-          : (r.opened_at ? '<span class="muted">opened, not returned</span>' : emptyDash())) +
-  '</div>';
-  body += riskBadge(r.risk_level, r.risk_signals);
-  var resp = r.response;
-  if (resp) {
-    body += '<div class="field-grid cp-ref-answers">' +
-      field('They know them as', resp.legal_name ? esc(resp.legal_name) : emptyDash()) +
-      field('Customer Since', resp.customer_since ? esc(resp.customer_since) : emptyDash()) +
-      field('Credit Limit', resp.credit_limit != null ? esc(money(resp.credit_limit)) : emptyDash()) +
-      field('High Credit', resp.high_credit != null ? esc(money(resp.high_credit)) : emptyDash()) +
-      field('Net Terms', resp.net_terms != null ? esc(String(resp.net_terms)) : emptyDash()) +
-      field('Rating', resp.rating != null ? esc(String(resp.rating)) : emptyDash()) +
-      field('Current Balance', resp.balance != null ? esc(money(resp.balance)) : emptyDash()) +
-      field('Last Sale', resp.last_sale ? esc(String(resp.last_sale).slice(0, 10)) : emptyDash()) +
-    '</div>';
-    body += agingGrid(resp.aging);
-    if (resp.comments) {
-      body += '<div class="cp-quote">' + esc(resp.comments) + '</div>';
+// 🚨 One table, not four cards. Tom's credit team: "The credit app and trade
+// references information takes up a lot of space." Each card spent a full block
+// of height on six numbers, and references are read by COMPARING them -- limit
+// against limit, aging against aging -- which a table does and a stack of cards
+// actively fights.
+//
+// A reference still out gets ONE row saying so rather than a card of dashes: the
+// question there is "who are we waiting on", and eight empty fields do not
+// answer it any better than the word does.
+function renderReferenceTable(refs) {
+  if (!refs || !refs.length) { return ''; }
+  var head = '<thead><tr>' +
+    ['Reference', 'Status', 'Known as', 'Since', 'Limit', 'High', 'Terms',
+     'Rating', 'Balance', 'Current', '31-60', '61+'
+    ].map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') +
+    '</tr></thead>';
+
+  var rows = refs.map(function (r) {
+    var who = esc(SLOT_LABELS[r.slot] || r.slot) + '<br>' +
+              '<span class="muted">' + esc(r.company || r.name || '—') + '</span>';
+    var resp = r.response;
+    if (!resp) {
+      return '<tr><td>' + who + '</td><td>' + statusPill(r.status) + '</td>' +
+             '<td class="waiting" colspan="10">' +
+             (r.opened_at ? 'opened, not returned' : 'awaiting reply') +
+             '</td></tr>';
     }
-  }
-  return '<div class="cp-ref">' + body + '</div>';
+    var aging = resp.aging || {};
+    var cells = [
+      resp.legal_name ? esc(resp.legal_name) : emptyDash(),
+      resp.customer_since ? esc(resp.customer_since) : emptyDash(),
+      resp.credit_limit != null ? esc(money(resp.credit_limit)) : emptyDash(),
+      resp.high_credit != null ? esc(money(resp.high_credit)) : emptyDash(),
+      resp.net_terms != null ? esc(String(resp.net_terms)) : emptyDash(),
+      resp.rating != null ? esc(String(resp.rating)) : emptyDash(),
+      resp.balance != null ? esc(money(resp.balance)) : emptyDash(),
+      aging.d0_30 != null ? esc(money(aging.d0_30)) : emptyDash(),
+      aging.d31_60 != null ? esc(money(aging.d31_60)) : emptyDash(),
+      aging.d61_plus != null ? esc(money(aging.d61_plus)) : emptyDash()
+    ].map(function (c) { return '<td>' + c + '</td>'; }).join('');
+    return '<tr' + (r.risk_level ? ' class="has-risk"' : '') + '>' +
+           '<td>' + who + '</td><td>' + statusPill(r.status) + '</td>' +
+           cells + '</tr>';
+  }).join('');
+
+  // Risk and free-text stay BELOW the table, one line each. They are prose and
+  // would wreck the column widths, but they are also the two things worth
+  // reading once the numbers line up.
+  var extra = refs.map(function (r) {
+    var out = '';
+    if (r.risk_level && r.risk_signals && r.risk_signals.length) {
+      out += '<div class="cp-refnote"><span class="cp-flag">' +
+        esc(SLOT_LABELS[r.slot] || r.slot) + ' risk: ' + esc(r.risk_level) +
+        '</span> ' + r.risk_signals.map(function (s) {
+          return esc(String(s.code || '').replace(/_/g, ' ')) +
+                 (s.detail ? ' (' + esc(s.detail) + ')' : '');
+        }).join(' &middot; ') + '</div>';
+    }
+    if (r.response && r.response.comments) {
+      out += '<div class="cp-quote">' + esc(r.response.comments) + '</div>';
+    }
+    return out;
+  }).join('');
+
+  return '<table class="cp-reftable">' + head + '<tbody>' + rows +
+         '</tbody></table>' + extra;
 }
+
 
 function renderApplicationBody(customer) {
   var resp = customer && customer.response;
@@ -879,7 +916,7 @@ function renderCreditApp(p) {
   head += renderApplicationBody(a.customer);
   if (a.references && a.references.length) {
     head += '<div class="cp-subhead">References</div>' +
-            a.references.map(renderReference).join('');
+            renderReferenceTable(a.references);
   }
   return section('Credit Application', head);
 }
@@ -892,33 +929,46 @@ function render(payload) {
   // limits -> the credit bureau report -> the customer's own application and
   // its references, which is the first-hand evidence and so reads last, after
   // the analyst knows who they are looking at.
+  // 🚨 Sections read TOGETHER sit together. Tom's credit team: "we're not wild
+  // about the UI and how spaced apart everything is... the less scrolling they
+  // have to do the better." Pairing halves the height of four sections without
+  // hiding anything, and .cp-pair falls back to stacked on a narrow window.
+  //
+  // Fraud stays FULL WIDTH and never pairs or collapses. Tom: "I wouldn't
+  // collapse Fraud and data checks by default. It's the section that should stop
+  // you reading the rest, and a collapsed fraud row is one an analyst learns to
+  // skip." Condensed, yes -- demoted, no.
+  var pair = function (a, b) {
+    if (!a && !b) { return ''; }
+    if (!a || !b) { return a || b; }
+    return '<div class="cp-pair">' + a + b + '</div>';
+  };
   return '' +
     '<div class="cp-root">' +
       renderHeader(p) +
-      // The fraud read comes FIRST. If the domain is two days old and does not
-      // match the website, nothing further down the page is worth reading yet.
       renderFraud(p) +
-      renderSubmitted(p) +
-      renderEngine(p) +
-      renderIdentity(p) +
-      renderFactorView(p) +
-      renderPriors(p) +
+      // What the engine concluded, beside what it concluded it about.
+      pair(renderEngine(p), renderIdentity(p)) +
+      // Our own book, beside what other clients already hold.
+      pair(renderFactorView(p), renderPriors(p)) +
       renderSummary(p) +
       renderCreditApp(p) +
-      renderAudit(p) +
+      // The broker's raw form and the audit trail are reference material, not
+      // decision material: last, and read only when a question comes up.
+      pair(renderSubmitted(p), renderAudit(p)) +
     '</div>';
 }
 
 var CP_STYLE_ID = 'opf-cp-styles';
 var CP_CSS = '' +
   '.cp-root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;color:#1d1d1f;}' +
-  '.cp-root .panel-section{background:#fff;border:1px solid #e6e3da;border-radius:10px;padding:16px 18px;margin-bottom:12px;}' +
+  '.cp-root .panel-section{background:#fff;border:1px solid #e6e3da;border-radius:8px;padding:12px 14px;margin-bottom:8px;}' +
   '.cp-root .panel-section-title{font-size:11px;text-transform:uppercase;letter-spacing:0.7px;color:#888;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;}' +
   '.cp-root .panel-section-title::after{content:"";flex:1;height:1px;background:#f0efe9;}' +
-  '.cp-root .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;}' +
+  '.cp-root .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px 22px;}' +
   '.cp-root .field{display:flex;flex-direction:column;gap:3px;}' +
-  '.cp-root .field-label{font-size:11px;color:#999;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;}' +
-  '.cp-root .field-val{font-size:14px;color:#1d1d1f;font-weight:600;word-break:break-word;}' +
+  '.cp-root .field-label{font-size:9.5px;color:#9a958a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;}' +
+  '.cp-root .field-val{font-size:12.5px;line-height:1.3;color:#1d1d1f;font-weight:600;word-break:break-word;}' +
   '.cp-root .field-val.muted{color:#888;font-weight:500;}' +
   '.cp-root .empty{color:#bbb;font-weight:500;font-style:italic;}' +
   '.cp-root .btn{background:#fff;border:1px solid #d8d8d8;border-radius:6px;padding:8px 14px;font-size:13px;font-weight:600;color:#444;cursor:pointer;font-family:inherit;transition:all 0.15s;}' +
@@ -991,7 +1041,7 @@ var CP_CSS = '' +
   '.cp-cs-search-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}' +
   // The report is long enough that an analyst scans it rather than reads it,
   // so the groups need to be findable at a glance.
-  '.cp-subhead{margin:18px 0 8px;font-size:11px;font-weight:700;letter-spacing:.06em;' +
+  '.cp-subhead{margin:12px 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;' +
     'text-transform:uppercase;color:#64748b;border-top:1px solid #e2e8f0;padding-top:12px;}' +
   '.cp-flag{color:#b91c1c;font-weight:700;}' +
   '.cp-trend{font-size:12px;font-weight:600;}' +
@@ -1030,7 +1080,24 @@ var CP_CSS = '' +
   // What a person wrote, shown as their words rather than reflowed into a field.
   '.cp-quote{margin-top:10px;padding:8px 12px;border-left:3px solid #cbd5e1;' +
     'background:#fff;font-size:13px;color:#334155;white-space:pre-wrap;}' +
-  '.cp-engine-basis{margin-bottom:12px;}' +
+  '.cp-engine-basis{margin-bottom:10px;}' +
+  // 🚨 Four reference CARDS become four table ROWS. Each card spent a full
+  // block of height on six numbers, and an analyst reads references by
+  // COMPARING them -- which a table does and a stack of cards fights.
+  '.cp-reftable{width:100%;border-collapse:collapse;margin-top:4px;}' +
+  '.cp-reftable th{font-size:9.5px;font-weight:700;letter-spacing:.05em;' +
+    'text-transform:uppercase;color:#9a958a;text-align:left;' +
+    'padding:0 10px 6px 0;white-space:nowrap;}' +
+  '.cp-reftable td{font-size:12.5px;color:#1d1d1f;font-weight:600;' +
+    'padding:7px 10px 7px 0;border-top:1px solid #f1efe9;vertical-align:top;}' +
+  '.cp-reftable td.waiting{color:#9a958a;font-weight:500;}' +
+  '.cp-reftable tr.has-risk td{background:#fffbf5;}' +
+  // Two sections read together sit together, and fall back to stacked on a
+  // narrow window without a breakpoint to maintain.
+  '.cp-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));' +
+    'gap:8px;margin-bottom:8px;}' +
+  '.cp-pair > .panel-section{margin-bottom:0;}' +
+  '.cp-refnote{margin-top:8px;font-size:11.5px;color:#b25e00;}' +
   // Confirming a company searches, buys a report and re-runs the gate, so it is
   // SECONDS of server work behind one click. Without this the button looks dead.
   '.cp-spin{display:inline-block;width:11px;height:11px;margin-right:7px;' +

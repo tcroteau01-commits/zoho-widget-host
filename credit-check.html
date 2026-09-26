@@ -1100,6 +1100,16 @@ function finalizeDraft() {
               (uploadErrors ? ' ' + uploadErrors + ' upload(s) failed.' : ''),
               uploadErrors ? 'error' : 'success');
             resetButtons();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Same as a finished draft: the record lives on Customer
+            // Approvals, so that is where adding to it ends. Held back when an
+            // upload failed -- navigating away from an error the broker has
+            // not read yet just loses it.
+            if (!uploadErrors) {
+              setTimeout(function () {
+                navigateParent('#Page:Customer_Approvals');
+              }, 1600);
+            }
             return;
           }
           if (uploadErrors) {
@@ -1272,12 +1282,47 @@ function uploadFiles(recordId, afterUpload) {
   next();
 }
 
+// Cross-page portal navigation. Mirrors customer-approvals.html: the widget
+// SDK's navigateParentURL throws "Improper Configuration" in v2.0, so the top
+// location is set directly.
+function navigateParent(hash) {
+  var sp = new URLSearchParams(window.location.search);
+  var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+  var url = origin.replace(/\/$/, '') + '/' + hash;
+  try { window.top.location.href = url; return; } catch (e) {}
+  try { window.parent.location.href = url; return; } catch (e) {}
+  try { window.open(url, '_top'); } catch (e) {}
+}
+
 function onSuccess() {
   showStatus('✓ Credit check submitted. Our team will review and post a decision to Customer Approvals (usually within 24 hours).', 'success');
   var btn = document.getElementById('submitBtn');
   btn.textContent = '✓ Submitted';
   document.getElementById('resetBtn').disabled = false;
+
+  // 🚨 A FINISHED SUBMISSION MUST NOT KEEP LOOKING LIKE A DRAFT. The resume
+  // note and the co-broker requirement stayed on screen after a successful
+  // finalize, so the page still read "attach the agreement, come back and
+  // finish later" over a record that was already in. Clear them before
+  // anything else -- the redirect below can be blocked, and the stale state
+  // is what the broker is left staring at when it is.
+  var note = document.getElementById('resume-note');
+  if (note) { note.style.display = 'none'; }
+  var req = document.getElementById('cobroker-req');
+  if (req && req.parentNode) { req.parentNode.removeChild(req); }
+  var banner = document.getElementById('draft-banner');
+  if (banner) { banner.style.display = 'none'; }
+
   window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  // Finishing a resumed draft ends on Customer Approvals, where the record
+  // now lives and where the decision will post. A new submission stays put,
+  // because "Submit another" is the common next action there.
+  if (draftId) {
+    setTimeout(function () {
+      navigateParent('#Page:Customer_Approvals');
+    }, 1600);   // long enough to read the confirmation, short enough to feel
+  }
 }
 
 function resetButtons() {

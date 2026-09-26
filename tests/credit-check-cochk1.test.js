@@ -214,6 +214,63 @@ test('a failed upload never reports success over an unfinalized draft', () => {
 // agreement had NO WAY BACK IN. And a credit check often runs before the PO or
 // the MSA exists, so adding documents to a SUBMITTED record has to work too.
 
+test('finishing a resumed submission lands back on Customer Approvals', () => {
+  // That is where the record lives and where the decision posts. A NEW
+  // submission stays put, because "Submit another" is the common next action.
+  const fn = html.split('function onSuccess')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes("navigateParent('#Page:Customer_Approvals')"));
+  assert.ok(fn.includes('if (draftId)'));
+  assert.ok(html.includes('function navigateParent'));
+});
+
+test('a finished submission stops looking like a draft', () => {
+  // 🚨 The resume note and the co-broker requirement stayed on screen after a
+  // successful finalize, so the page still read "attach the agreement, come
+  // back and finish later" over a record that was already in. Cleared BEFORE
+  // the redirect, which can be blocked.
+  const fn = html.split('function onSuccess')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes("getElementById('cobroker-req')"));
+  assert.ok(fn.includes("getElementById('resume-note')"));
+  assert.ok(fn.indexOf("getElementById('cobroker-req')")
+            < fn.indexOf("navigateParent('#Page:Customer_Approvals')"));
+});
+
+test('a failed upload is not navigated away from', () => {
+  // Leaving the page on an error the broker has not read just loses it.
+  const fin = html.split('function finalizeDraft')[1].split('\nfunction ')[0];
+  assert.ok(fin.includes('if (!uploadErrors)'));
+});
+
+test('the drawer offers the action, not just the row behind it', () => {
+  // 🚨 The drawer is where a broker LANDS when they click a customer. Tom
+  // opened a Not Finished record there 2026-09-26, saw an empty footer and
+  // concluded the feature had not shipped.
+  const ca = fs.readFileSync(__dirname + '/../customer-approvals.html', 'utf8')
+               .replace(/\r\n/g, '\n');
+  assert.ok(ca.includes("id=\"p-resume\""));
+  assert.ok(ca.includes("id=\"p-add-docs\""));
+  assert.ok(ca.includes("getElementById('p-resume')"));
+  assert.ok(ca.includes("getElementById('p-add-docs')"));
+  // ...and NOT in the see-all context, where the resume route can only 403
+  const blk = ca.split('var footerActionsHtml')[1].split('// CUSTPROF1')[0];
+  assert.ok(blk.includes('if (!allClients)'));
+  // the id is read at click time, not captured at wire time (panel is reused)
+  assert.ok(ca.includes("resumeOnCreditCheck(r.ID || '')"));
+});
+
+test('a draft is a known status with a way in, not an unknown', () => {
+  const ca = fs.readFileSync(__dirname + '/../customer-approvals.html', 'utf8')
+               .replace(/\r\n/g, '\n');
+  assert.ok(ca.includes("'Draft - Incomplete':"));
+  assert.ok(/key: 'draft'/.test(ca));
+  assert.ok(ca.includes('.status-pill.draft'));
+  assert.ok(ca.includes('data-action="resume"'));
+  // the handoff never becomes the only way in
+  assert.ok(ca.includes('function resumeOnCreditCheck'));
+  assert.ok(/catch \(e\) \{\}/.test(
+    ca.split('function resumeOnCreditCheck')[1].split('\n}')[0]));
+});
+
 test('the page lists the broker unfinished checks on load', () => {
   assert.ok(html.includes("'/credit-check/drafts?email='"));
   assert.ok(html.includes('function loadMyDrafts'));

@@ -1358,6 +1358,24 @@ function renderPanel() {
     footerActionsHtml = '<button class="btn primary" id="p-resubmit">Resubmit</button>';
   }
 
+  // 🚨 COCHK1. The drawer is where a broker LANDS when they click a customer,
+  // so an action that exists only on the row behind it may as well not exist
+  // -- Tom opened a Not Finished record here 2026-09-26, saw an empty footer,
+  // and concluded the feature had not shipped.
+  //
+  // Not offered in the see-all context: the resume route checks ownership, so
+  // a staff member clicking this on another client's record would be handed a
+  // control that can only answer 403.
+  if (!allClients) {
+    if (s.key === 'draft') {
+      footerActionsHtml =
+        '<button class="btn primary" id="p-resume">Finish credit check</button>' +
+        footerActionsHtml;
+    } else if (s.key !== 'unknown') {
+      footerActionsHtml += '<button class="btn" id="p-add-docs">Add Documents</button>';
+    }
+  }
+
   // CUSTPROF1 — the full profile is an OperFi-staff-only read (the backend's own
   // is_staff gate answers 403 for a broker), same population as allClients below.
   // Offering the button to a broker would just hand them a control that cannot
@@ -1609,6 +1627,13 @@ function renderPanel() {
   if (b) b.addEventListener('click', function() { openCreditBoost(r.ID || ''); });
   var rs = document.getElementById('p-resubmit');
   if (rs) rs.addEventListener('click', function() { navigateParent('#Page:Credit_Check'); });
+  // 🚨 r.ID is read at CLICK time, not captured at wire time: the panel node
+  // is reused across j/k navigation, so a closed-over id goes stale the moment
+  // the broker moves to a different record.
+  var rsm = document.getElementById('p-resume');
+  if (rsm) rsm.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
+  var adoc = document.getElementById('p-add-docs');
+  if (adoc) adoc.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
   var openProfileBtn = document.getElementById('ca-open-profile');
   if (openProfileBtn) openProfileBtn.addEventListener('click', function() { openProfile(r); });
 

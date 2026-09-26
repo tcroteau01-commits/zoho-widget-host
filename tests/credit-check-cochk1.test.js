@@ -214,6 +214,43 @@ test('a failed upload never reports success over an unfinalized draft', () => {
 // agreement had NO WAY BACK IN. And a credit check often runs before the PO or
 // the MSA exists, so adding documents to a SUBMITTED record has to work too.
 
+test('a submitted record cannot have its identity changed', () => {
+  // 🚨 Tom, 2026-09-26: "if I'm going in and editing an existing credit check
+  // it shouldn't let me change those fields at all." The customer type decides
+  // whether an agreement was ever required and the MC is what FMCSA was
+  // checked against -- moving either after credit has read the record
+  // rewrites the premise of a decision that may already exist.
+  const fn = html.split('function applyResume')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('if (!resumeIsDraft)'));
+  assert.ok(fn.includes('b.disabled = true'));
+  assert.ok(/getElementById\('mc-block'\)[\s\S]*?display = 'none'/.test(fn));
+  // setCustomerType ran ABOVE and may already have injected the requirement
+  assert.ok(fn.includes("req0"));
+  assert.ok(fn.includes('needsCoBroker = false'));
+  // the FMCSA result box is a draft-flow affordance too
+  assert.ok(fn.includes('if (resumeIsDraft && (f.Customer_MC'));
+  assert.ok(html.includes('.ctype-btn:disabled'));
+});
+
+test('a disabled pill does not stay disabled for the next customer', () => {
+  const fn = html.split('function resetCustomerType')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('el.disabled = false'));
+});
+
+test('the drafts banner never appears over a resumed form', () => {
+  // 🚨 Both requests are in flight from load. This one finishing second used
+  // to re-show the banner over an already-populated form: Tom saw MCM
+  // TRANSPORTATION offered above a form filled with NORTHSTAR APPLIANCE
+  // GROUP -- two customers on one screen, one click from the wrong record.
+  const fn = html.split('function loadMyDrafts')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('if (draftId || resumePending) { return; }'));
+  // set SYNCHRONOUSLY, so which fetch wins cannot decide the outcome
+  const rs = html.split('function resumeSubmission')[1].split('\nfunction ')[0];
+  assert.ok(rs.indexOf('resumePending = true') < rs.indexOf('fetch('));
+  // ...and released when the resume fails, so the banner can offer the way in
+  assert.ok(rs.includes('resumePending = false'));
+});
+
 test('finishing a resumed submission lands back on Customer Approvals', () => {
   // That is where the record lives and where the decision posts. A NEW
   // submission stays put, because "Submit another" is the common next action.

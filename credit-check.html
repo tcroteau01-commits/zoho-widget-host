@@ -107,6 +107,11 @@ html, body {
 .field-input.locked, .field-textarea.locked {
   background: #f4f4f4; color: #777; cursor: not-allowed;
 }
+/* A submitted record's customer type is settled. Shown, not offered. */
+.ctype-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.ctype-btn:disabled:hover { border-color: #d8d8d8; background: #fff; }
+.ctype-btn.on:disabled { opacity: 1; background: #6b6b6b; border-color: #6b6b6b; }
+.ctype-btn.on:disabled:hover { background: #6b6b6b; border-color: #6b6b6b; }
 
 /* 🚨 DELIBERATELY UNDERSTATED. Tom, 2026-09-26: "I don't want to normalize
    co-brokering and make it seem like it happens often but when it does, I want
@@ -751,6 +756,7 @@ var numberKind = 'mc';
 // that gets silently dropped.
 var resumeIsDraft = true;
 var resumeLocked = [];
+var resumePending = false;   // a resume is in flight; the banner must stand down
 
 // ── COCHK1 resume: a draft is not a dead end ──────────────────────────────
 //
@@ -765,6 +771,13 @@ function loadMyDrafts() {
     .then(function (j) {
       var rows = (j && j.drafts) || [];
       if (!rows.length) { return; }
+      // 🚨 A RESUME ALREADY IN PROGRESS WINS. This fetch and resumeSubmission
+      // are both in flight from load, and this one finishing second used to
+      // re-show the banner over an already-populated form -- Tom saw "MCM
+      // TRANSPORTATION LLC / Finish it" sitting above a form filled with
+      // NORTHSTAR APPLIANCE GROUP, which is two customers on one screen and
+      // one click away from working on the wrong record.
+      if (draftId || resumePending) { return; }
       var host = document.getElementById('draft-banner');
       if (!host) { return; }
       var html = '<div class="draft-banner-title">You have ' + rows.length +
@@ -791,19 +804,27 @@ function loadMyDrafts() {
 }
 
 function resumeSubmission(id) {
+  // Set SYNCHRONOUSLY, before the fetch: the drafts banner and this request
+  // are both in flight from page load, and whichever returns first must not
+  // decide whether two customers end up on screen together.
+  resumePending = true;
   showStatus('Loading…', 'loading');
   fetch(BROKER_API_BASE + '/credit-check/submission/' + encodeURIComponent(id) +
         '?email=' + encodeURIComponent(brokerEmail), { credentials: 'include' })
     .then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
         if (!r.ok) {
+          // Released so the banner can offer the way in that just failed.
+          resumePending = false;
           showStatus(j.error || 'Could not open that submission.', 'error');
+          loadMyDrafts();
           return;
         }
         applyResume(id, j);
       });
     })
     .catch(function (e) {
+      resumePending = false;
       console.error('[credit-check] resume', e);
       showStatus('Could not open that submission.', 'error');
     });
@@ -844,7 +865,34 @@ function applyResume(id, j) {
   put('postal_Code', a.postal_code || a.postal_Code);
 
   if (f.Customer_Type) { setCustomerType(f.Customer_Type); }
-  if (f.Customer_MC || f.Customer_DOT) {
+
+  // 🚨 A SUBMITTED RECORD'S IDENTITY IS NOT EDITABLE. Tom, 2026-09-26: "if I'm
+  // going in and editing an existing credit check it shouldn't let me change
+  // those fields at all." The customer type decides whether a co-broker
+  // agreement was ever required, and the MC is what FMCSA was checked against
+  // -- letting either move after credit has read the record would rewrite the
+  // premise of a decision that may already exist. The server refuses it
+  // anyway; offering the control is the lie.
+  if (!resumeIsDraft) {
+    ['ctype-shipper', 'ctype-broker'].forEach(function (id) {
+      var b = document.getElementById(id);
+      if (b) { b.disabled = true; b.classList.add('locked'); }
+    });
+    // The lookup, the search button and the co-broker prompt all belong to the
+    // DRAFT flow. On a submitted record "come back and finish later" is
+    // simply false, and Look them up offers a re-search that would silently
+    // do nothing.
+    var mcb = document.getElementById('mc-block');
+    if (mcb) { mcb.style.display = 'none'; }
+    // 🚨 setCustomerType ran ABOVE and, for a Freight Broker with a draftId
+    // set, already injected the requirement block. Hiding mc-block does not
+    // remove it, so take it out explicitly rather than trusting the order.
+    var req0 = document.getElementById('cobroker-req');
+    if (req0 && req0.parentNode) { req0.parentNode.removeChild(req0); }
+    needsCoBroker = false;
+  }
+
+  if (resumeIsDraft && (f.Customer_MC || f.Customer_DOT)) {
     var box = document.getElementById('mc-result');
     box.className = 'mc-result';
     box.innerHTML = '<b>' + esc(f.Customer_Company_Name || '') + '</b>' +
@@ -899,10 +947,12 @@ function resetCustomerType() {
   draftFilesLanded = false;
   resumeIsDraft = true;
   resumeLocked = [];
+  resumePending = false;
   // A field locked by a resumed submission must not stay locked for the NEXT
-  // customer.
+  // customer -- and neither must a DISABLED customer-type pill, or the next
+  // credit check opens with the question unanswerable.
   document.querySelectorAll('.locked').forEach(function (el) {
-    el.readOnly = false; el.classList.remove('locked');
+    el.readOnly = false; el.disabled = false; el.classList.remove('locked');
   });
   var rn = document.getElementById('resume-note');
   if (rn) { rn.style.display = 'none'; }

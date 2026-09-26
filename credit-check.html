@@ -86,11 +86,14 @@ html, body {
 .field-err.show { display: block; }
 
 /* COCHK1 — the customer-type question and the MC lookup behind it. */
-.ctype-choices { display: flex; gap: 10px; flex-wrap: wrap; }
+.ctype-choices { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Sized to the words, not to the form. Two full-width blocks made a one-line
+   question look like the main event of the page. */
 .ctype-btn {
-  flex: 1 1 200px; text-align: left; padding: 13px 15px; cursor: pointer;
-  background: #fff; border: 1px solid #d8d8d8; border-radius: 8px;
-  font-family: inherit; display: flex; flex-direction: column; gap: 2px;
+  flex: 0 1 auto; text-align: left; padding: 8px 14px; cursor: pointer;
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 7px;
+  font-family: inherit; display: flex; flex-direction: row;
+  align-items: baseline; gap: 7px;
 }
 .ctype-btn:hover { border-color: #b8b8b8; background: #fafafa; }
 /* Chosen, not recommended: neither option is pre-selected, because the answer
@@ -98,9 +101,9 @@ html, body {
    worth nothing. */
 .ctype-btn.on { border-color: #272727; background: #272727; }
 .ctype-btn.on .ctype-name, .ctype-btn.on .ctype-note { color: #fff; }
-.ctype-name { font-size: 14px; font-weight: 700; color: #272727; }
-.ctype-note { font-size: 12px; color: #777; }
-.mc-row { display: flex; gap: 8px; align-items: flex-start; }
+.ctype-name { font-size: 13px; font-weight: 700; color: #272727; }
+.ctype-note { font-size: 11.5px; color: #777; }
+.mc-row { display: flex; gap: 8px; align-items: flex-start; max-width: 520px; }
 .mc-row .field-input { flex: 1 1 auto; }
 .mc-row .btn { white-space: nowrap; }
 .mc-result {

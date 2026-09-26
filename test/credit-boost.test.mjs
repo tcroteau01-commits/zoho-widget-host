@@ -32,6 +32,14 @@ test('creditBoostReady: Up to $50,000 needs no amount; Over $50,000 needs amount
   assert.equal(w.creditBoostReady({ band: 'Up to $50,000', agreement: {}, coi: {}, ack: false }), false);
 });
 
+test('the desired-amount label never uses an em or en dash', () => {
+  const w = boot();
+  w.openCreditBoost('s1');
+  const wrap = w.document.getElementById('cb-amount-wrap');
+  assert.match(wrap.innerHTML, /must be over \$50,000/);
+  assert.doesNotMatch(wrap.innerHTML, /—|–/);
+});
+
 test('openCreditBoost hides the desired-amount box until Over $50,000 is chosen', () => {
   const w = boot();
   w.openCreditBoost('s1');

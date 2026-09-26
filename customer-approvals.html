@@ -516,7 +516,14 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
    new component beyond the layout it needed. */
 .ca-app-supplement { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e3e0d5; text-align: left; }
 .ca-app-supplement-open { font-size: 12px; color: #555; margin-bottom: 8px; }
-.ca-app-supplement-reason { font-size: 11px; color: #888; margin-top: 2px; }
+/* The banner's reason LINE only -- read-only muted text, deliberately quiet.
+   Fix round 2: this used to be called .ca-app-supplement-reason and was put on
+   the form's reason TEXTAREA as well, where 11px #888 won over
+   .ca-app-report-note's own 12px (same specificity, later in the sheet) and a
+   credit officer typed an internal note into gray 11px. The textarea now
+   carries .ca-app-report-note alone, the same input styling its sibling
+   controls use; this class is the banner's and nothing else's. */
+.ca-app-supplement-reason-line { font-size: 11px; color: #888; margin-top: 2px; }
 .ca-app-supplement-form { margin-top: 8px; }
 .ca-app-supplement-label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; }
 .ca-app-supplement-count { font-size: 12px; font-family: inherit; border: 1px solid #d8d8d8; border-radius: 6px; padding: 5px 8px; margin-bottom: 8px; }
@@ -2273,7 +2280,7 @@ function caAppSupplementRequestHtml(req, showIdentity) {
       sendErrorHtml +
       '<div>Asked for ' + esc(String(count)) + ' more ' + esc(noun) +
         (when ? ' on ' + esc(when) : '') + '.' + who + '</div>' +
-      (req.reason ? '<div class="ca-app-supplement-reason">' + esc(req.reason) + '</div>' : '') +
+      (req.reason ? '<div class="ca-app-supplement-reason-line">' + esc(req.reason) + '</div>' : '') +
     '</div>';
 }
 if (typeof window !== 'undefined') { window.caAppSupplementRequestHtml = caAppSupplementRequestHtml; }
@@ -2301,8 +2308,23 @@ function caAppSupplementSectionHtml(payload) {
       '<select class="ca-app-supplement-count" id="ca-app-supplement-count">' +
         '<option value="1">1</option><option value="2">2</option><option value="3">3</option>' +
       '</select>' +
-      '<textarea class="ca-app-report-note ca-app-supplement-reason" id="ca-app-supplement-reason" ' +
-        'placeholder="Reason (optional)"></textarea>' +
+      // Fix round 2, two things on these two lines.
+      //
+      // The placeholder NAMES THE AUDIENCE. `reason` sits outside
+      // _supplement_request_entry's include_identity gate, so it ships on
+      // both broker payloads and renders on the broker's own banner as well
+      // as going to the customer verbatim -- a third audience the spec's
+      // "What each audience sees" never listed. Labeling the box is the fix
+      // rather than hiding the field: the reason genuinely helps a broker
+      // chasing their own client, and a credit officer who can see who reads
+      // it will not type "looks like a related party" into it.
+      //
+      // And .ca-app-supplement-reason is GONE from this element (it is now
+      // .ca-app-supplement-reason-line, the banner's alone) -- it was
+      // overriding .ca-app-report-note's input styling with the banner's
+      // 11px #888.
+      '<textarea class="ca-app-report-note" id="ca-app-supplement-reason" ' +
+        'placeholder="Reason (optional). The customer and the broker both see this."></textarea>' +
       '<div class="ca-app-report-btns">' +
         '<button type="button" class="row-action primary ca-app-supplement-send" id="ca-app-supplement-send">Send</button>' +
         '<button type="button" class="row-action ca-app-supplement-cancel" id="ca-app-supplement-cancel">Cancel</button>' +
@@ -3285,7 +3307,30 @@ function caAppSubmitSupplementRequest(panel) {
     function(rr) {
       if (sendBtn) sendBtn.disabled = false;
       if (rr.status === 200) {
-        if (msgEl) { msgEl.textContent = 'Sent to the customer.'; msgEl.className = 'ca-app-msg ok'; }
+        // Fix round 2. A 200 means the REQUEST is recorded; it does not mean
+        // the customer was mailed. The route swallows a mint or Graph failure
+        // into record_supplement_send_failure and still answers 200, and the
+        // `send_error` it leaves is gated behind include_identity -- staff
+        // only. So this line used to tell a broker "Sent to the customer."
+        // when nothing had been sent, and they watched a request that would
+        // never move with nothing anywhere explaining the silence.
+        //
+        // `delivered` is the whole of what crosses: a bare boolean, no error
+        // text, no send_error detail, nothing internal on a broker surface.
+        // Keyed on === false, not on !== true, deliberately -- the two repos
+        // deploy independently off main, so a new widget can briefly meet an
+        // API that does not send the flag yet, and answering "the email did
+        // not go out" for a send that did is the same false statement in the
+        // other direction (worse: it blames an OperFi failure that never
+        // happened and sends the broker chasing a customer who was mailed).
+        // Only the server saying so produces the failure copy.
+        var delivered = !(rr.data && rr.data.delivered === false);
+        if (msgEl) {
+          msgEl.textContent = delivered
+            ? 'Sent to the customer.'
+            : 'Recorded, but the email did not go out. OperFi has been notified.';
+          msgEl.className = delivered ? 'ca-app-msg ok' : 'ca-app-msg error';
+        }
         if (reasonEl) reasonEl.value = '';
         caAppHideSupplementForm(panel);
         caAppRefreshPane(panel);

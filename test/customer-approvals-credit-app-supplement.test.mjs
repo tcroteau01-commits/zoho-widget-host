@@ -508,3 +508,134 @@ test('an empty reason is allowed -- the field is optional', async () => {
   assert.equal(sentBody.count, 1, 'the select defaults to 1');
   assert.equal(sentBody.reason, '');
 });
+
+// ── fix round 2: "Sent to the customer" must be true when it is said ────────
+
+function wiredPanel(w) {
+  const panel = panelFixture(w);
+  w.renderCreditAppSection({ ID: '9' }, { status: 'ready_for_review', parties: SIX, supplement_requests: [] });
+  w.wireCreditAppSupplement(panel);
+  return panel;
+}
+
+function respondWith(w, body) {
+  w.fetch = (u) => {
+    if (/\/credit-app\/request-references/.test(u)) {
+      return Promise.resolve({ status: 200, text: () => Promise.resolve(body) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+}
+
+test('a send the server could not deliver says so, instead of "Sent to the customer"', async () => {
+  // The route swallows a mint or Graph failure, records send_error and still
+  // answers 200 -- and send_error is gated behind include_identity, so it
+  // reaches staff ONLY. The broker was told, affirmatively and falsely, that
+  // their customer had been mailed. Fails against the pre-fix file, which
+  // printed "Sent to the customer." for any 200 (verified by hand).
+  const w = boot();
+  const panel = wiredPanel(w);
+  respondWith(w, '{"ok":true,"delivered":false,"request_id":"r1"}');
+  panel.querySelector('#ca-app-supplement-ask').click();
+  panel.querySelector('#ca-app-supplement-send').click();
+  await new Promise((r) => setTimeout(r, 10));
+  const msg = panel.querySelector('#ca-app-supplement-msg');
+  assert.doesNotMatch(msg.textContent, /Sent to the customer/,
+    'the one thing it must never say when nothing was sent');
+  assert.match(msg.textContent, /did not go out/);
+  assert.match(msg.textContent, /OperFi has been notified/);
+  assert.equal(msg.className, 'ca-app-msg error', 'not styled as a success');
+});
+
+// Note: passes against the pre-fix file too (it never read send_error on this
+// response either, so there was nothing there to print) -- a regression guard
+// for the "never" half of the claim, not failing-first. The test above is the
+// one that proves the feature exists.
+test('the not-delivered message carries no internal diagnostics', async () => {
+  // A broker surface gets the boolean and nothing else. Even if the server
+  // ever leaked send_error onto this response, the widget must not print it.
+  const w = boot();
+  const panel = wiredPanel(w);
+  respondWith(w,
+    '{"ok":true,"delivered":false,"send_error":{"detail":"Could not obtain a Graph token."}}');
+  panel.querySelector('#ca-app-supplement-ask').click();
+  panel.querySelector('#ca-app-supplement-send').click();
+  await new Promise((r) => setTimeout(r, 10));
+  const text = panel.querySelector('#ca-app-supplement-msg').textContent;
+  assert.doesNotMatch(text, /Graph/);
+  assert.doesNotMatch(text, /token/);
+});
+
+// Note: passes pre-fix as well (the old code said this for every 200,
+// including this one) -- it is here so the FAILURE test above cannot be
+// satisfied by a widget that simply stopped claiming success, which is the
+// cheapest wrong fix available.
+test('delivered:true still says "Sent to the customer" -- the flag discriminates', async () => {
+  const w = boot();
+  const panel = wiredPanel(w);
+  respondWith(w, '{"ok":true,"delivered":true,"request_id":"r1"}');
+  panel.querySelector('#ca-app-supplement-ask').click();
+  panel.querySelector('#ca-app-supplement-send').click();
+  await new Promise((r) => setTimeout(r, 10));
+  const msg = panel.querySelector('#ca-app-supplement-msg');
+  assert.match(msg.textContent, /Sent to the customer/);
+  assert.equal(msg.className, 'ca-app-msg ok');
+});
+
+// Note: passes pre-fix (the old code said "Sent" for any 200) -- it pins this
+// behavior as a DECISION rather than leaving it as whatever the boolean check
+// happened to do.
+test('a 200 with no delivered flag at all reads as sent, not as failed', async () => {
+  // Deliberate, not accidental: the two repos deploy independently off main,
+  // so a new widget can briefly meet an API that does not send the flag.
+  // Claiming "the email did not go out" for a send that did is the same false
+  // statement in the other direction. Only the server saying `false`
+  // produces the failure copy.
+  const w = boot();
+  const panel = wiredPanel(w);
+  respondWith(w, '{"ok":true}');
+  panel.querySelector('#ca-app-supplement-ask').click();
+  panel.querySelector('#ca-app-supplement-send').click();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.match(panel.querySelector('#ca-app-supplement-msg').textContent, /Sent to the customer/);
+});
+
+// ── fix round 2: reason reaches a third audience, so the box says so ────────
+
+test('the reason box names who reads it -- customer AND broker', () => {
+  // `reason` sits outside _supplement_request_entry's include_identity gate,
+  // so it ships on both broker payloads and renders on the broker banner as
+  // well as going to the customer verbatim. The spec's "What each audience
+  // sees" never listed it. Labeling the box is the fix; the payload is
+  // unchanged. Fails against the pre-fix file, whose placeholder was the bare
+  // "Reason (optional)" (verified by hand).
+  const w = boot();
+  const html = w.caAppSupplementSectionHtml({ supplement_requests: [] });
+  assert.match(html, /placeholder="Reason \(optional\)\. The customer and the broker both see this\."/);
+});
+
+test('the reason textarea is not styled with the banner line\'s muted 11px', () => {
+  // .ca-app-supplement-reason (11px #888) was on the textarea as well as the
+  // banner, and won over .ca-app-report-note's 12px by being later in the
+  // sheet at the same specificity -- a credit officer typed into gray 11px.
+  // Fails against the pre-fix file, where the class was present on the
+  // textarea (verified by hand).
+  const w = boot();
+  const html = w.caAppSupplementSectionHtml({ supplement_requests: [] });
+  const tag = html.match(/<textarea[^>]*id="ca-app-supplement-reason"[^>]*>/)[0];
+  assert.doesNotMatch(tag, /ca-app-supplement-reason-line/);
+  assert.doesNotMatch(tag, /class="[^"]*\bca-app-supplement-reason\b/,
+    'the banner line\'s class must not style an input');
+  assert.match(tag, /class="[^"]*ca-app-report-note/,
+    'it keeps the input styling its sibling controls use');
+});
+
+test('the banner still renders its reason, on its own class', () => {
+  const w = boot();
+  const h = w.caAppSupplementRequestHtml({
+    id: 'r1', count: 1, reason: 'trade1 went quiet', status: 'sent',
+    at: '2026-09-25T14:30:00', completed_at: null, slots_created: [],
+  }, false);
+  assert.match(h, /ca-app-supplement-reason-line/);
+  assert.match(h, /trade1 went quiet/);
+});

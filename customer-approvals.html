@@ -504,6 +504,24 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
   border-radius: 6px; padding: 6px 8px; box-sizing: border-box;
 }
 
+/* CREDITAPP3 Task 7 -- a trade4+ row exists only on the tracker, never on the
+   signed PDF (that document lists what was executed at signing). Reuses the
+   same muted style as .ca-app-row-who, no new component. */
+.ca-app-row-supplemental { font-size: 11px; color: #999; margin-top: 2px; }
+
+/* CREDITAPP3 Task 7 -- ask customer for more references. Broker and staff
+   both see this (it lives inside the shared tracker, #ca-app-section, never
+   gated on allClients). Reuses .row-action for the buttons, .ca-app-msg for
+   the outcome, and .ca-app-report-note's textarea styling, so this adds no
+   new component beyond the layout it needed. */
+.ca-app-supplement { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e3e0d5; text-align: left; }
+.ca-app-supplement-open { font-size: 12px; color: #555; margin-bottom: 8px; }
+.ca-app-supplement-reason { font-size: 11px; color: #888; margin-top: 2px; }
+.ca-app-supplement-form { margin-top: 8px; }
+.ca-app-supplement-label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; }
+.ca-app-supplement-count { font-size: 12px; font-family: inherit; border: 1px solid #d8d8d8; border-radius: 6px; padding: 5px 8px; margin-bottom: 8px; }
+.ca-app-supplement-form textarea.ca-app-report-note { margin-top: 6px; }
+
 /* CREDITAPP1 Task 17 — the same tracker's progress, compressed onto the LIST row
    so a broker sees an application moving without opening the panel. One bulk call
    (/credit-app/status-bulk) feeds every row; a row with no application renders
@@ -1472,6 +1490,11 @@ function renderPanel() {
         '<div class="ca-app-nudgeall-row" id="ca-app-nudgeall-row" style="display:none;">' +
           '<button type="button" class="btn" id="ca-app-nudge-all"></button>' +
         '</div>' +
+        // CREDITAPP3 Task 7 -- ask the customer for more references. Broker
+        // AND staff both see this (the whole point: a supplemental reference
+        // is invisible to the broker otherwise), so it lives in the shared
+        // tracker section, never behind the allClients gate.
+        '<div class="ca-app-supplement" id="ca-app-supplement"></div>' +
       '</div>' +
 
       // CREDITAPP1 — Application Details, every broker. GET /credit-app/application
@@ -1554,6 +1577,7 @@ function renderPanel() {
   wireBillingEdit(r);
   wireDocOpen(panel);   // delegated: open Supporting Documents in the shared viewer
   wireCreditAppRecovery(panel);   // delegated: staff Correct address / Waive
+  wireCreditAppSupplement(panel); // delegated: ask customer for more references
 }
 
 // ── CUSTPROF1: full-screen customer profile ─────────────────────────────────
@@ -1892,14 +1916,21 @@ function renderFraudCheck(d) {
 // signal or a reason: /credit-app/status does not send them (that split lives on
 // the server, see credit_app_routes.py's module docstring), and nothing here may
 // invent a way to display what the endpoint withholds.
-var CA_APP_SLOT_LABELS = {
-  customer: 'Customer application',
-  trade1: 'Trade reference 1',
-  trade2: 'Trade reference 2',
-  trade3: 'Trade reference 3',
-  bank: 'Bank reference'
-};
-var CA_APP_SLOT_ORDER = ['customer', 'trade1', 'trade2', 'trade3', 'bank'];
+//
+// CREDITAPP3: labels and display order used to come from a five-entry table and
+// a five-element list, both closed sets. The API now appends trade4..trade6
+// (credit_app_store.SLOTS, credit_app_slots.label) so a table keyed on literal
+// slot names stops working -- a trade4 party would filter out with no error,
+// exactly the defect this build exists to close. Both are rules now, mirroring
+// credit_app_slots.py on the API side rather than a duplicated table.
+var CA_APP_TRADE_RE = /^trade(\d+)$/;
+
+// The number off a trade slot, or null for anything else -- mirrors
+// credit_app_slots.trade_index.
+function caAppTradeIndex(slot) {
+  var m = CA_APP_TRADE_RE.exec(String(slot || ''));
+  return m ? parseInt(m[1], 10) : null;
+}
 
 // Mirrors credit_app_store.NEEDS_NO_NUDGE (completed, waived, bounced) -- a
 // party in one of these needs no Nudge button, because sending again is
@@ -1930,7 +1961,17 @@ var CA_APP_ANSWERED = ['completed', 'waived'];
 var CA_APP_NUDGE_COOLDOWN_HOURS = 48;
 var CA_APP_NUDGE_LIMIT_MSG = 'nudge limit reached';
 
-function caAppSlotLabel(slot) { return CA_APP_SLOT_LABELS[slot] || slot; }
+// Mirrors credit_app_slots.label(slot): customer/bank are fixed names, a
+// tradeN slot labels by rule ("Trade reference 4" with no table entry), and
+// an unrecognised slot labels as itself rather than vanishing -- a label is
+// never worth dropping a row over.
+function caAppSlotLabel(slot) {
+  slot = String(slot || '');
+  if (slot === 'customer') return 'Customer application';
+  if (slot === 'bank') return 'Bank reference';
+  var n = caAppTradeIndex(slot);
+  return n ? 'Trade reference ' + n : slot;
+}
 
 // status -> { label, cls } in plain words. No numeric/coded state ever reaches
 // the broker -- an unrecognised value still renders (falls back to the raw
@@ -2038,11 +2079,21 @@ function caAppRowHtml(p) {
   var msgHtml = (nudgeHtml || reportBtnHtml)
     ? '<div class="ca-app-msg" data-slot-msg="' + esc(p.slot) + '"></div>' : '';
   var stateCls = 'ca-app-row-state ca-app-state-' + st.cls + (stalled ? ' ca-app-state-stalled' : '');
+  // CREDITAPP3 Task 7, Step 4 -- the signed PDF lists only the references
+  // executed at signing (credit_app_pdf's own render, unchanged by this
+  // build); a supplemental reference exists only here, on the tracker. Said
+  // plainly on the row itself, not just once somewhere else in the pane, so
+  // whichever supplemental row someone is looking at carries its own answer
+  // to "why isn't this on the signed application."
+  var tradeN = caAppTradeIndex(p.slot);
+  var supplementalHtml = (tradeN && tradeN > 3)
+    ? '<div class="ca-app-row-supplemental">Added after signing (not on the signed PDF)</div>' : '';
   return '' +
     '<div class="ca-app-row" data-slot="' + esc(p.slot) + '">' +
       '<div>' +
         '<div class="ca-app-row-label">' + esc(caAppSlotLabel(p.slot)) + '</div>' +
         (nameCompany ? '<div class="ca-app-row-who">' + esc(nameCompany) + '</div>' : '') +
+        supplementalHtml +
       '</div>' +
       '<div class="' + stateCls + '">' + esc(detail) + '</div>' +
       '<div class="ca-app-row-action">' + nudgeHtml + reportBtnHtml + msgHtml + reportFormHtml + '</div>' +
@@ -2050,12 +2101,31 @@ function caAppRowHtml(p) {
 }
 if (typeof window !== 'undefined') { window.caAppRowHtml = caAppRowHtml; }
 
-// Reorders into the fixed customer/trade1/trade2/trade3/bank sequence
-// regardless of the order the server happens to return the parties array in.
+// CREDITAPP3: display order is a RULE now, not a fixed five-slot list -- a
+// trade4 party used to filter straight out with no error. Storage order
+// (credit_app_store.SLOTS) is customer, trade1-3, bank, trade4-6, because
+// eight functions build Mongo paths from SLOTS.index(slot) and appending
+// after bank is what keeps a stored document's indexes stable (see that
+// module's own comment). Display order is deliberately different: a human
+// reads customer, trade1-3, bank, THEN the supplemental references, so bank
+// sorts ahead of trade4+ here even though it sits behind them on disk.
+// Never drops a slot the front end has never heard of -- an unrecognised
+// slot (or a trade slot numbered beyond the supplemental range) sorts to the
+// end rather than vanishing.
+function caAppSlotSortKey(slot) {
+  if (slot === 'customer') return -1;
+  if (slot === 'bank') return 4;
+  var n = caAppTradeIndex(slot);
+  if (n) return (n >= 1 && n <= 3) ? n : (1000 + n);
+  return 9999;
+}
+
 function caAppOrderedParties(parties) {
-  var bySlot = {};
-  (parties || []).forEach(function(p) { if (p && p.slot) bySlot[p.slot] = p; });
-  return CA_APP_SLOT_ORDER.map(function(slot) { return bySlot[slot]; }).filter(Boolean);
+  return (parties || [])
+    .filter(Boolean)
+    .map(function(p, i) { return { p: p, i: i, k: caAppSlotSortKey(p.slot) }; })
+    .sort(function(a, b) { return (a.k - b.k) || (a.i - b.i); })
+    .map(function(x) { return x.p; });
 }
 if (typeof window !== 'undefined') { window.caAppOrderedParties = caAppOrderedParties; }
 
@@ -2143,9 +2213,71 @@ function renderCreditAppSection(r, payload) {
     btn.addEventListener('click', function() { caAppSubmitReportProblem(r, btn.dataset.slot, section); });
   });
 
+  // CREDITAPP3 Task 7 -- ask for more references, and any open request.
+  // Filled here (every render), clicks handled by the panel-level delegated
+  // listener (wireCreditAppSupplement), same split renderCreditAppStaffSection
+  // / wireCreditAppRecovery already uses for the staff recovery controls: a
+  // per-row listener bound here would be gone the moment this innerHTML is
+  // replaced by the next render.
+  var supplementEl = document.getElementById('ca-app-supplement');
+  if (supplementEl) supplementEl.innerHTML = caAppSupplementSectionHtml(payload);
+
   section.style.display = '';
 }
 if (typeof window !== 'undefined') { window.renderCreditAppSection = renderCreditAppSection; }
+
+// One supplement_requests row, in plain words. `req.requested_by` is present
+// only on the staff (/credit-app/risk) payload -- _supplement_request_entry's
+// own include_identity split on the API side -- so whether "who asked" shows
+// is driven by what the payload actually carries, never a role flag invented
+// here. A broker fed this same function from /credit-app/status simply never
+// has that key, and sees the neutral workflow fact only.
+function caAppSupplementRequestHtml(req) {
+  if (!req) return '';
+  var count = req.count;
+  var noun = (count === 1) ? 'reference' : 'references';
+  var who = req.requested_by
+    ? ' Asked by ' + esc(req.requested_by) +
+      (req.requested_by_role ? ' (' + esc(req.requested_by_role) + ')' : '') + '.'
+    : '';
+  return '' +
+    '<div class="ca-app-supplement-open">' +
+      '<div>Asked for ' + esc(String(count)) + ' more ' + esc(noun) + '.' + who + '</div>' +
+      (req.reason ? '<div class="ca-app-supplement-reason">' + esc(req.reason) + '</div>' : '') +
+    '</div>';
+}
+if (typeof window !== 'undefined') { window.caAppSupplementRequestHtml = caAppSupplementRequestHtml; }
+
+// The ask-control plus any open request, shared by broker and staff alike
+// (see the section comment above the #ca-app-supplement div). At most one
+// request is ever "sent" at a time -- credit_app_store.open_supplement_request
+// supersedes any earlier one still open -- so the first "sent" entry found is
+// the only one that matters here.
+function caAppSupplementSectionHtml(payload) {
+  var reqs = (payload && payload.supplement_requests) || [];
+  var open = null;
+  for (var i = 0; i < reqs.length; i++) {
+    if (reqs[i] && reqs[i].status === 'sent') { open = reqs[i]; break; }
+  }
+  return '' +
+    (open ? caAppSupplementRequestHtml(open) : '') +
+    '<button type="button" class="row-action ca-app-supplement-ask" id="ca-app-supplement-ask">' +
+      'Ask customer for more references</button>' +
+    '<div class="ca-app-supplement-form" id="ca-app-supplement-form" style="display:none;">' +
+      '<label class="ca-app-supplement-label" for="ca-app-supplement-count">How many additional references?</label>' +
+      '<select class="ca-app-supplement-count" id="ca-app-supplement-count">' +
+        '<option value="1">1</option><option value="2">2</option><option value="3">3</option>' +
+      '</select>' +
+      '<textarea class="ca-app-report-note ca-app-supplement-reason" id="ca-app-supplement-reason" ' +
+        'placeholder="Reason (optional)"></textarea>' +
+      '<div class="ca-app-report-btns">' +
+        '<button type="button" class="row-action primary ca-app-supplement-send" id="ca-app-supplement-send">Send</button>' +
+        '<button type="button" class="row-action ca-app-supplement-cancel" id="ca-app-supplement-cancel">Cancel</button>' +
+      '</div>' +
+      '<div class="ca-app-msg" id="ca-app-supplement-msg"></div>' +
+    '</div>';
+}
+if (typeof window !== 'undefined') { window.caAppSupplementSectionHtml = caAppSupplementSectionHtml; }
 
 function caAppShowReportForm(section, slot) {
   var row = section.querySelector('.ca-app-row[data-slot="' + slot + '"]');
@@ -2995,6 +3127,19 @@ function renderCreditAppStaffSection(payload) {
       field('Signed', app.submitted_at ? fmtDateTime(parseDate(app.submitted_at)) : '') +
     '</div>';
 
+  // CREDITAPP3 Task 7 -- who asked, and their role. /credit-app/risk carries
+  // requested_by/requested_by_role on every supplement_requests entry
+  // (_supplement_request_entry's include_identity=True); the broker's own
+  // tracker (#ca-app-supplement, from /credit-app/status) never gets those
+  // two keys, so caAppSupplementRequestHtml renders the identity line only
+  // here, driven by the payload actually having it -- never a role check
+  // duplicated client-side.
+  var supplementRequests = payload.supplement_requests || [];
+  if (supplementRequests.length) {
+    html += '<div class="ca-app-doc-head">Supplemental Reference Requests</div>' +
+      supplementRequests.map(caAppSupplementRequestHtml).join('');
+  }
+
   var parties = payload.parties || [];
   if (parties.length) {
     html += '<div class="ca-app-doc-head">Reference Answers</div>' +
@@ -3036,6 +3181,89 @@ function wireCreditAppRecovery(panel) {
   });
 }
 if (typeof window !== 'undefined') { window.wireCreditAppRecovery = wireCreditAppRecovery; }
+
+// CREDITAPP3 Task 7 -- ask customer for more references, delegated on the
+// panel the same way wireCreditAppRecovery just above delegates staff
+// recovery: #ca-app-supplement is replaced wholesale on every status render
+// (renderCreditAppSection), so a listener bound to a specific button would be
+// gone the next time it re-renders. Available to broker AND staff -- this is
+// not staff-only, so it is wired unconditionally, never behind allClients.
+function wireCreditAppSupplement(panel) {
+  if (!panel || panel.__creditAppSupplementWired) return;
+  panel.__creditAppSupplementWired = true;
+  panel.addEventListener('click', function(e) {
+    var t = e.target;
+    var askBtn = t && t.closest ? t.closest('#ca-app-supplement-ask') : null;
+    var cancelBtn = t && t.closest ? t.closest('#ca-app-supplement-cancel') : null;
+    var sendBtn = t && t.closest ? t.closest('#ca-app-supplement-send') : null;
+    if (askBtn && panel.contains(askBtn)) {
+      caAppShowSupplementForm(panel);
+    } else if (cancelBtn && panel.contains(cancelBtn)) {
+      caAppHideSupplementForm(panel);
+    } else if (sendBtn && panel.contains(sendBtn)) {
+      caAppSubmitSupplementRequest(panel);
+    }
+  });
+}
+if (typeof window !== 'undefined') { window.wireCreditAppSupplement = wireCreditAppSupplement; }
+
+function caAppShowSupplementForm(panel) {
+  var askBtn = panel.querySelector('#ca-app-supplement-ask');
+  var form = panel.querySelector('#ca-app-supplement-form');
+  if (askBtn) askBtn.style.display = 'none';
+  if (form) {
+    form.style.display = '';
+    var reasonEl = form.querySelector('#ca-app-supplement-reason');
+    if (reasonEl) reasonEl.focus();
+  }
+}
+if (typeof window !== 'undefined') { window.caAppShowSupplementForm = caAppShowSupplementForm; }
+
+function caAppHideSupplementForm(panel) {
+  var askBtn = panel.querySelector('#ca-app-supplement-ask');
+  var form = panel.querySelector('#ca-app-supplement-form');
+  if (form) form.style.display = 'none';
+  if (askBtn) askBtn.style.display = '';
+}
+if (typeof window !== 'undefined') { window.caAppHideSupplementForm = caAppHideSupplementForm; }
+
+// POST /credit-app/request-references -- broker-accessible by decision (the
+// backend gate is the account-scope check, not is_operfi_admin: see that
+// route's own docstring), so this never checks allClients before sending.
+// count is a whole number from 1 to 3, enforced client-side by the <select>
+// itself; the server is the real boundary and its own refusal text (400 for
+// a bad count, 409 for the cap or an application not yet submitted) is shown
+// verbatim, same discipline as every other outcome in this pane.
+function caAppSubmitSupplementRequest(panel) {
+  var countEl = panel.querySelector('#ca-app-supplement-count');
+  var reasonEl = panel.querySelector('#ca-app-supplement-reason');
+  var msgEl = panel.querySelector('#ca-app-supplement-msg');
+  var sendBtn = panel.querySelector('#ca-app-supplement-send');
+  var count = countEl ? parseInt(countEl.value, 10) : 0;
+  var reason = reasonEl ? reasonEl.value.trim() : '';
+  if (!(count >= 1 && count <= 3)) {
+    if (msgEl) { msgEl.textContent = 'Choose 1 to 3 references.'; msgEl.className = 'ca-app-msg error'; }
+    return;
+  }
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  if (sendBtn) sendBtn.disabled = true;
+  if (msgEl) { msgEl.textContent = 'Sending…'; msgEl.className = 'ca-app-msg'; }
+  caAppPostRecovery('/credit-app/request-references',
+    { email: email, submission_id: panel.dataset.submissionId, count: count, reason: reason },
+    function(rr) {
+      if (sendBtn) sendBtn.disabled = false;
+      if (rr.status === 200) {
+        if (msgEl) { msgEl.textContent = 'Sent to the customer.'; msgEl.className = 'ca-app-msg ok'; }
+        if (reasonEl) reasonEl.value = '';
+        caAppHideSupplementForm(panel);
+        caAppRefreshPane(panel);
+      } else {
+        var reasonMsg = (rr.data && rr.data.error) || 'Could not send the request';
+        if (msgEl) { msgEl.textContent = reasonMsg; msgEl.className = 'ca-app-msg error'; }
+      }
+    });
+}
+if (typeof window !== 'undefined') { window.caAppSubmitSupplementRequest = caAppSubmitSupplementRequest; }
 
 // One shared POST helper for the two staff recovery actions -- same
 // fetch/parse shape caAppDoNudge already uses for Nudge.

@@ -129,6 +129,34 @@ OPENED_VS_SENT = {
     "parties": parties("completed", ("sent", 2), ("opened", 5), ("sent", 1), ("sent", 6)),
 }
 
+# CREDITAPP3 Task 7 -- six references, two of them supplemental (trade4,
+# trade5, appended after credit asked for more). The completed request
+# (status "completed", slots_created naming both) is what put the extra rows
+# on the tracker in the first place -- an OPEN request would show only the
+# banner and the ask control, never the rows themselves, since those parties
+# don't exist until the customer's own supplement submission lands.
+SUPPLEMENTAL_REFS = {
+    "trade4": ("Priya Shah", "Meridian Wholesale"),
+    "trade5": ("Owen Clark", "Coastal Fresh Distributors"),
+}
+SIX_REFERENCES = {
+    "status": "references_pending",
+    "parties": [
+        party("customer", "Alicia Byrne", "Redstone Beverage Co", "completed"),
+        party("trade1", *REFS["trade1"], "completed"),
+        party("trade2", *REFS["trade2"], "completed"),
+        party("trade3", *REFS["trade3"], "sent", 4),
+        party("bank", *REFS["bank"], "completed"),
+        party("trade4", *SUPPLEMENTAL_REFS["trade4"], "sent", 2),
+        party("trade5", *SUPPLEMENTAL_REFS["trade5"], "sent", 1),
+    ],
+    "supplement_requests": [
+        {"id": "req1", "count": 2, "reason": "Trade 1 and 3 were thin on volume history",
+         "status": "completed", "at": "2026-09-24T12:00:00Z",
+         "completed_at": "2026-09-25T09:00:00Z", "slots_created": ["trade4", "trade5"]},
+    ],
+}
+
 # ── Scenarios: (out_name, status_payload_or_None, record_overrides, nudge) ──
 # nudge is None, or (slot, response_status, response_body) to click that row's
 # Nudge button and drive the 409-refusal path the test file exercises.
@@ -729,10 +757,15 @@ def main():
         #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
         #        all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)
 
-        # CREDITAPP1 -- opened vs. sent, side by side in the broker's own
-        # tracker (Task 16 panel), the label/aging split this pass adds.
-        capture(pw, DESKTOP, "desktop", "45-credit-app-opened-vs-sent", OPENED_VS_SENT,
-               {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None)
+        # 45 already exists on disk (not re-run this pass):
+        # capture(pw, DESKTOP, "desktop", "45-credit-app-opened-vs-sent", OPENED_VS_SENT,
+        #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None)
+
+        # ── New this pass: CREDITAPP3 Task 7 -- six references, two marked
+        # supplemental ("Added after signing (not on the signed PDF)"), plus
+        # the "Ask customer for more references" control on the same tracker.
+        capture(pw, DESKTOP, "desktop", "46-credit-app-supplemental-references", SIX_REFERENCES,
+               {"Credit_Decision": "Credit App Rec'd - Pending Review"}, None)
         # capture(pw, PHONE, "phone", "34-credit-app-full-submission-staff", MIDFLIGHT,
         #        {"Credit_Decision": "Credit App Sent - Awaiting Customer"}, None,
         #        all_clients=True, application_payload=APPLICATION_PAYLOAD, risk_payload=RISK_PAYLOAD)

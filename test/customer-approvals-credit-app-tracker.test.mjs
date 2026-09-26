@@ -191,6 +191,35 @@ test('"Nudge all waiting" never counts or targets the customer row', () => {
   assert.equal(d.getElementById('ca-app-nudgeall-row').style.display, 'none');
 });
 
+test('"Nudge all waiting (N)" counts only the references, not the customer row', () => {
+  // Asserting display==='none' alone (test above) would pass equally if
+  // `nudgeable` went to zero for some unrelated reason -- it does not
+  // distinguish "excludes the customer" from "broken count". This gives
+  // the customer party (also 'sent', also otherwise nudgeable) TWO real
+  // waiting references alongside it, so the control shows, and pins the
+  // exact label: (2), never (3) -- the count a bug that re-admitted the
+  // customer slot into `nudgeable` would produce.
+  const w = boot();
+  const d = w.document;
+  d.body.innerHTML =
+    '<div class="panel-section" id="ca-app-section" style="display:none;">' +
+      '<div id="ca-app-summary-text"></div>' +
+      '<div id="ca-app-rows"></div>' +
+      '<div id="ca-app-nudgeall-row" style="display:none;"><button id="ca-app-nudge-all"></button></div>' +
+    '</div>';
+  w.renderCreditAppSection({ ID: '9' }, {
+    status: 'references_pending',
+    parties: [
+      party({ slot: 'customer', status: 'sent', waiting_days: 1 }),
+      party({ slot: 'trade1', status: 'sent' }),
+      party({ slot: 'trade2', status: 'sent' }),
+      party({ slot: 'trade3', status: 'completed' })
+    ]
+  });
+  assert.notEqual(d.getElementById('ca-app-nudgeall-row').style.display, 'none');
+  assert.match(d.getElementById('ca-app-nudge-all').textContent, /Nudge all waiting \(2\)/);
+});
+
 test('row markup never carries a risk/fraud/score field', () => {
   const w = boot();
   for (const status of ['sent', 'opened', 'completed', 'bounced', 'expired', 'waived']) {

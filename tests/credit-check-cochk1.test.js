@@ -104,7 +104,9 @@ test('switching away from Freight Broker does not undo the draft', () => {
 });
 
 test('submitting without an answer is refused before the network', () => {
-  assert.ok(html.includes('if (!customerType)'));
+  // Guarded by !addingToSubmitted: the gate is on INTAKE, not on attaching a
+  // document to a record credit has already read.
+  assert.ok(html.includes('if (!addingToSubmitted && !customerType)'));
   assert.ok(html.includes("customerType === 'Freight Broker' && !draftId"));
 });
 
@@ -213,6 +215,34 @@ test('a failed upload never reports success over an unfinalized draft', () => {
 // 🚨 Tom, 2026-09-26: a broker who stopped before attaching the co-broker
 // agreement had NO WAY BACK IN. And a credit check often runs before the PO or
 // the MSA exists, so adding documents to a SUBMITTED record has to work too.
+
+test('adding a document to a legacy customer is not an intake', () => {
+  // 🚨 Tom, 2026-09-26: Add Documents on a customer that predates COCHK1
+  // demanded "choose Shipper or Freight Broker" on pills that are correctly
+  // disabled. An unanswerable question in front of a PDF upload.
+  //
+  // 🚨 And NOT fixed by back-filling every legacy customer as "Shipper":
+  // that guesses, and guesses wrong for exactly the population the co-broker
+  // control exists to catch.
+  const fn = html.split('function validate')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('var addingToSubmitted = (draftId && !resumeIsDraft)'));
+  assert.ok(fn.includes('if (!addingToSubmitted && !customerType)'));
+  assert.ok(fn.includes("!addingToSubmitted && customerType === 'Freight Broker'"));
+  assert.ok(fn.includes('!addingToSubmitted && needsCoBroker'));
+  // a legacy row may lack a field that only became required later
+  assert.ok(fn.includes('(addingToSubmitted ? [] : REQUIRED_IDS)'));
+  // ...but what they TYPED just now is still validated
+  assert.ok(fn.includes('isValidEmail'));
+});
+
+test('a legacy record is not shown an unanswerable required question', () => {
+  const fn = html.split('function applyResume')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('if (!f.Customer_Type)'));
+  assert.ok(/getElementById\('ctype-block'\)/.test(fn));
+  // ...and the NEXT credit check gets asked it again
+  const rc = html.split('function resetCustomerType')[1].split('\nfunction ')[0];
+  assert.ok(rc.includes("getElementById('ctype-block')"));
+});
 
 test('a submitted record cannot have its identity changed', () => {
   // 🚨 Tom, 2026-09-26: "if I'm going in and editing an existing credit check

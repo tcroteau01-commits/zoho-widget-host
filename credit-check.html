@@ -620,16 +620,35 @@ function validate() {
   var ok = true;
   var firstInvalid = null;
 
+  // 🚨 ADDING TO AN ALREADY-SUBMITTED RECORD IS NOT A SUBMISSION, and none of
+  // the intake gates below apply to it. Tom, 2026-09-26: he opened Add
+  // Documents on a customer that predates COCHK1, hit submit, and was told to
+  // choose Shipper or Freight Broker -- on pills that are correctly disabled,
+  // because the type of a submitted record is settled. An unanswerable
+  // question in front of a PDF upload.
+  //
+  // 🚨 NOT fixed by back-filling every legacy customer as "Shipper". That
+  // guesses, and it guesses WRONG for precisely the population the co-broker
+  // control exists to catch: a legacy freight broker would be relabelled a
+  // shipper by us, on the record, permanently. These gates govern how a NEW
+  // credit check enters; they have nothing to say about attaching a document
+  // to one credit has already read.
+  //
+  // The completeness pass is skipped for the same reason: a legacy record may
+  // be missing a field that only became required later, and the server's
+  // append-only path writes blanks without demanding the rest.
+  var addingToSubmitted = (draftId && !resumeIsDraft);
+
   // COCHK1. Checked FIRST so the answer is the first thing they are sent back
   // to, and the server enforces all of this again -- this only saves a round
   // trip, it is not the control.
-  if (!customerType) {
+  if (!addingToSubmitted && !customerType) {
     showErr('Customer_Type');
     document.getElementById('ctype-block').scrollIntoView({ behavior: 'smooth',
                                                             block: 'center' });
     return false;
   }
-  if (customerType === 'Freight Broker' && !draftId) {
+  if (!addingToSubmitted && customerType === 'Freight Broker' && !draftId) {
     var e = document.getElementById('mc-err');
     e.textContent = 'Look up their MC or DOT number before submitting.';
     e.classList.add('show');
@@ -637,7 +656,7 @@ function validate() {
                                                          block: 'center' });
     return false;
   }
-  if (needsCoBroker && selectedFiles.length === 0) {
+  if (!addingToSubmitted && needsCoBroker && selectedFiles.length === 0) {
     showErr('files');
     var f = document.getElementById('cobroker-req');
     if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
@@ -655,7 +674,12 @@ function validate() {
     return false;
   }
 
-  REQUIRED_IDS.forEach(function(id) {
+  // Skipped when adding to a submitted record: a legacy row may be missing a
+  // field that only became required later, and refusing the upload over it
+  // strands the document with no way to fix the cause. The email-format
+  // checks below still run -- those judge what the broker TYPED just now, not
+  // what the record has always lacked.
+  (addingToSubmitted ? [] : REQUIRED_IDS).forEach(function(id) {
     var el = document.getElementById(id);
     if (!el.value.trim()) {
       el.classList.add('invalid');
@@ -878,6 +902,14 @@ function applyResume(id, j) {
       var b = document.getElementById(id);
       if (b) { b.disabled = true; b.classList.add('locked'); }
     });
+    // 🚨 A record that predates COCHK1 has NO customer type. Showing a
+    // required question with both answers greyed out is a dead end on screen
+    // even now that validate skips it -- so the question is not asked at all
+    // where we have no answer to display.
+    if (!f.Customer_Type) {
+      var cb = document.getElementById('ctype-block');
+      if (cb) { cb.style.display = 'none'; }
+    }
     // The lookup, the search button and the co-broker prompt all belong to the
     // DRAFT flow. On a submitted record "come back and finish later" is
     // simply false, and Look them up offers a re-search that would silently
@@ -956,6 +988,10 @@ function resetCustomerType() {
   });
   var rn = document.getElementById('resume-note');
   if (rn) { rn.style.display = 'none'; }
+  // The type question is hidden for a legacy record with no type; the NEXT
+  // credit check must be asked it.
+  var cb0 = document.getElementById('ctype-block');
+  if (cb0) { cb0.style.display = ''; }
   ['ctype-shipper', 'ctype-broker'].forEach(function (id) {
     var b = document.getElementById(id);
     if (b) { b.classList.remove('on'); }

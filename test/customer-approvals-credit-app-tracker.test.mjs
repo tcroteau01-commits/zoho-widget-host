@@ -150,6 +150,24 @@ test('the customer row never offers a Nudge button, even while still sent', () =
   assert.doesNotMatch(h, /ca-app-nudge/);
 });
 
+test('the app_received summary reads with a comma, never an em dash', () => {
+  const w = boot();
+  const d = w.document;
+  d.body.innerHTML =
+    '<div class="panel-section" id="ca-app-section" style="display:none;">' +
+      '<div id="ca-app-summary-text"></div>' +
+      '<div id="ca-app-rows"></div>' +
+      '<div id="ca-app-nudgeall-row" style="display:none;"><button id="ca-app-nudge-all"></button></div>' +
+    '</div>';
+  w.renderCreditAppSection({ ID: '9' }, {
+    status: 'app_received',
+    parties: [party({ slot: 'customer', status: 'completed', waiting_days: 0 })]
+  });
+  const summary = d.getElementById('ca-app-summary-text').textContent;
+  assert.equal(summary, 'Application received, references not sent yet');
+  assert.doesNotMatch(summary, /—|–/);
+});
+
 test('"Nudge all waiting" never counts or targets the customer row', () => {
   const w = boot();
   const d = w.document;

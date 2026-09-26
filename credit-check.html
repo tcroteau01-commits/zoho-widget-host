@@ -85,6 +85,39 @@ html, body {
 .field-err { font-size: 11px; color: #c62828; margin-top: -2px; display: none; }
 .field-err.show { display: block; }
 
+/* COCHK1 — the customer-type question and the MC lookup behind it. */
+.ctype-choices { display: flex; gap: 10px; flex-wrap: wrap; }
+.ctype-btn {
+  flex: 1 1 200px; text-align: left; padding: 13px 15px; cursor: pointer;
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 8px;
+  font-family: inherit; display: flex; flex-direction: column; gap: 2px;
+}
+.ctype-btn:hover { border-color: #b8b8b8; background: #fafafa; }
+/* Chosen, not recommended: neither option is pre-selected, because the answer
+   decides whether a co-broker agreement is required and a nudged answer is
+   worth nothing. */
+.ctype-btn.on { border-color: #272727; background: #272727; }
+.ctype-btn.on .ctype-name, .ctype-btn.on .ctype-note { color: #fff; }
+.ctype-name { font-size: 14px; font-weight: 700; color: #272727; }
+.ctype-note { font-size: 12px; color: #777; }
+.mc-row { display: flex; gap: 8px; align-items: flex-start; }
+.mc-row .field-input { flex: 1 1 auto; }
+.mc-row .btn { white-space: nowrap; }
+.mc-result {
+  margin-top: 10px; padding: 11px 13px; border-radius: 8px;
+  border: 1px solid #cfe8d4; background: #f3faf4; font-size: 13px;
+}
+.mc-result.warn { border-color: #f0d7a8; background: #fffaf0; }
+.mc-result b { display: block; font-size: 14px; margin-bottom: 3px; }
+.mc-authority { font-size: 12px; color: #555; margin-top: 4px; }
+/* The co-broker requirement. Revealed only AFTER the draft is saved. */
+.cobroker-req {
+  margin-top: 12px; padding: 12px 14px; border-radius: 8px;
+  border: 2px solid #b45309; background: #fffaf0;
+}
+.cobroker-req .req-title { font-weight: 700; color: #92400e; font-size: 13px; }
+.cobroker-req .req-body { font-size: 12.5px; color: #7c4a06; margin-top: 3px; }
+
 .field-input, .field-textarea {
   border: 1px solid #d8d8d8;
   border-radius: 8px;
@@ -254,8 +287,45 @@ html, body {
 
       <div class="form-card">
 
+        <!-- COCHK1 Section 0: who is this customer?
+             🚨 FIRST, and the rest of the form is gated behind it. Tom,
+             2026-09-25: "give them the question and walk them into doing the MC
+             search where it then saves that record". A broker who meets this
+             question after filling the form in has already decided what answer
+             costs least. -->
+        <div class="section-block" id="ctype-block">
+          <div class="section-title">Customer Type</div>
+          <div class="section-sub">This decides what we need from you, so it comes first</div>
+          <div class="ctype-choices">
+            <button type="button" class="ctype-btn" id="ctype-shipper" data-ctype="Shipper">
+              <span class="ctype-name">Shipper</span>
+              <span class="ctype-note">They own the freight</span>
+            </button>
+            <button type="button" class="ctype-btn" id="ctype-broker" data-ctype="Freight Broker">
+              <span class="ctype-name">Freight Broker</span>
+              <span class="ctype-note">They broker freight to you</span>
+            </button>
+          </div>
+          <div class="field-err" data-err-for="Customer_Type">Choose one to continue.</div>
+
+          <!-- Shown only for a broker. The lookup is the gate, not a convenience. -->
+          <div id="mc-block" style="display:none; margin-top:18px;">
+            <label class="field-label" for="mc-input">Their MC or DOT number <span class="req">*</span></label>
+            <div class="section-sub" style="margin:2px 0 8px;">
+              We verify brokers against FMCSA before we can review them.
+            </div>
+            <div class="mc-row">
+              <input class="field-input" id="mc-input" type="text"
+                     placeholder="MC 123456 or DOT 4324322" autocomplete="off">
+              <button type="button" class="btn primary" id="mc-search">Look them up</button>
+            </div>
+            <div class="field-err" data-err-for="mc" id="mc-err"></div>
+            <div id="mc-result" class="mc-result" style="display:none;"></div>
+          </div>
+        </div>
+
         <!-- Section 1: Company info -->
-        <div class="section-block">
+        <div class="section-block" id="company-block">
           <div class="section-title">Customer Company</div>
           <div class="section-sub">Tell us about the customer you'd like to extend credit to</div>
 
@@ -502,6 +572,41 @@ function validate() {
   var ok = true;
   var firstInvalid = null;
 
+  // COCHK1. Checked FIRST so the answer is the first thing they are sent back
+  // to, and the server enforces all of this again -- this only saves a round
+  // trip, it is not the control.
+  if (!customerType) {
+    showErr('Customer_Type');
+    document.getElementById('ctype-block').scrollIntoView({ behavior: 'smooth',
+                                                            block: 'center' });
+    return false;
+  }
+  if (customerType === 'Freight Broker' && !draftId) {
+    var e = document.getElementById('mc-err');
+    e.textContent = 'Look up their MC or DOT number before submitting.';
+    e.classList.add('show');
+    document.getElementById('mc-block').scrollIntoView({ behavior: 'smooth',
+                                                         block: 'center' });
+    return false;
+  }
+  if (needsCoBroker && selectedFiles.length === 0) {
+    showErr('files');
+    var f = document.getElementById('cobroker-req');
+    if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    return false;
+  }
+
+  // 🚨 Billing must have its OWN mailbox. Refused server-side on /credit-submit
+  // too; this is only so a broker learns it before filling the rest in.
+  var pocE = (document.getElementById('Email').value || '').trim().toLowerCase();
+  var billE = (document.getElementById('Billing_Email').value || '').trim().toLowerCase();
+  if (pocE && billE && pocE === billE) {
+    var be = document.getElementById('Billing_Email');
+    be.classList.add('invalid');
+    showErr('Billing_Email');
+    return false;
+  }
+
   REQUIRED_IDS.forEach(function(id) {
     var el = document.getElementById(id);
     if (!el.value.trim()) {
@@ -584,6 +689,212 @@ function addFiles(files) {
   renderFileChips();
 }
 
+// ── COCHK1: customer type, the forced lookup, and the draft ───────────────
+//
+// 🚨 THE ORDER IS THE CONTROL. Ask → force the lookup → the server saves a
+// draft → only THEN does the page mention a co-broker agreement. Tom,
+// 2026-09-25: "If they see that the co-broker form is required, they might back
+// out and then classify them as a shipper to get around it." Every ordering
+// decision below exists to keep that sequence intact.
+var customerType = null;     // 'Shipper' | 'Freight Broker'
+var draftId = null;          // set by the lookup; the record already exists
+var authorityClass = null;   // what FMCSA says, regardless of what they picked
+var needsCoBroker = false;
+var draftFilesLanded = false; // files already attached to THIS draft
+
+// 🚨 "Submit another" MUST clear all of it. Without this, draftId survives the
+// reset and the next submission POSTs to /credit-check/draft/<the PREVIOUS
+// customer's id> -- overwriting customer A's credit check with customer B's
+// details, silently, on a form that says it succeeded both times.
+function resetCustomerType() {
+  customerType = null;
+  draftId = null;
+  authorityClass = null;
+  needsCoBroker = false;
+  draftFilesLanded = false;
+  ['ctype-shipper', 'ctype-broker'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) { b.classList.remove('on'); }
+  });
+  var mcIn = document.getElementById('mc-input');
+  if (mcIn) { mcIn.value = ''; }
+  var box = document.getElementById('mc-result');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+  var req = document.getElementById('cobroker-req');
+  if (req && req.parentNode) { req.parentNode.removeChild(req); }
+  document.getElementById('mc-block').style.display = 'none';
+}
+
+function setCustomerType(type) {
+  customerType = type;
+  ['ctype-shipper', 'ctype-broker'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) { b.classList.toggle('on', b.getAttribute('data-ctype') === type); }
+  });
+  clearErr('Customer_Type');
+  document.getElementById('mc-block').style.display =
+    (type === 'Freight Broker') ? '' : 'none';
+  // 🚨 Switching AWAY from broker does not undo the draft. The record is
+  // already on their account and changing the answer now is exactly the move
+  // this feature exists to make pointless -- so the requirement stays put.
+  if (type === 'Freight Broker' && draftId) { renderCoBrokerRequirement(); }
+}
+
+function lookupBroker() {
+  var raw = document.getElementById('mc-input').value.trim();
+  var digits = raw.replace(/\D/g, '');
+  var errEl = document.getElementById('mc-err');
+  if (!digits) {
+    errEl.textContent = 'Enter their MC or DOT number.';
+    errEl.classList.add('show');
+    return;
+  }
+  errEl.classList.remove('show');
+  var btn = document.getElementById('mc-search');
+  btn.disabled = true;
+  btn.textContent = 'Checking FMCSA…';
+
+  // DOT numbers are 7-8 digits and MC numbers are 6-7; we cannot tell them
+  // apart reliably, so BOTH go and the server resolves whichever hits. Guessing
+  // wrong here would tell a broker their real number does not exist.
+  fetch(BROKER_API_BASE + '/credit-check/lookup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: brokerEmail, customer_type: customerType,
+      mc: digits, dot: digits
+    })
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      btn.disabled = false;
+      btn.textContent = 'Look them up';
+      if (!r.ok) {
+        errEl.textContent = (j.error === 'lookup_unavailable')
+          ? 'We could not reach FMCSA just now. Try again in a minute.'
+          : 'No FMCSA record for that number. Check it and try again.';
+        errEl.classList.add('show');
+        return;
+      }
+      applyLookup(j);
+    });
+  }).catch(function (e) {
+    btn.disabled = false;
+    btn.textContent = 'Look them up';
+    errEl.textContent = 'Could not reach us just now. Try again in a minute.';
+    errEl.classList.add('show');
+    console.error('[credit-check] lookup failed', e);
+  });
+}
+
+function applyLookup(j) {
+  draftId = j.submission_id;
+  authorityClass = j.authority_class;
+  needsCoBroker = !!j.requires_co_broker_agreement;
+  var p = j.prefill || {};
+  var a = p.Address || {};
+
+  // 🚨 Only the company and the address. The POC and the emails are the
+  // RELATIONSHIP -- a name FMCSA happens to hold is not who this broker deals
+  // with, and prefilling it would hand them our guess to accept blindly.
+  function put(id, val) {
+    var el = document.getElementById(id);
+    if (el && val) { el.value = val; }
+  }
+  put('Customer_Company_Name', p.Customer_Company_Name);
+  put('address_line_1', a.address_line_1);
+  put('district_city', a.district_city);
+  put('state_province', a.state_province);
+  put('postal_Code', a.postal_Code);
+
+  var box = document.getElementById('mc-result');
+  var cls = j.classification_conflict ? 'mc-result warn' : 'mc-result';
+  box.className = cls;
+  box.innerHTML =
+    '<b>' + esc(p.Customer_Company_Name || 'Found') + '</b>' +
+    (p.Customer_MC ? 'MC ' + esc(p.Customer_MC) + ' &middot; ' : '') +
+    'DOT ' + esc(p.Customer_DOT || '—') +
+    '<div class="mc-authority">FMCSA authority: ' + esc(authorityClass || 'none') + '</div>' +
+    (j.classification_conflict
+      ? '<div class="mc-authority" style="color:#92400e;font-weight:600;">' +
+        esc(j.classification_conflict) + '</div>'
+      : '');
+  box.style.display = '';
+  if (needsCoBroker) { renderCoBrokerRequirement(); }
+}
+
+function renderCoBrokerRequirement() {
+  if (document.getElementById('cobroker-req')) { return; }
+  var host = document.getElementById('mc-block');
+  if (!host) { return; }
+  var d = document.createElement('div');
+  d.id = 'cobroker-req';
+  d.className = 'cobroker-req';
+  d.innerHTML =
+    '<div class="req-title">A signed co-broker agreement is required</div>' +
+    '<div class="req-body">Attach it in Supporting Documents below. We have saved ' +
+    'this customer to your account, so you can come back and finish later.</div>';
+  host.appendChild(d);
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Finish a draft the lookup already created. Files first, then the finalize --
+// see uploadFiles for why that order is not optional.
+function finalizeDraft() {
+  function go(uploadErrors) {
+    var p = buildPayload();
+    delete p.email;
+    fetch(BROKER_API_BASE + '/credit-check/draft/' + encodeURIComponent(draftId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: brokerEmail, fields: p })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (r.ok) {
+          if (uploadErrors) {
+            showStatus('✓ Credit check submitted, but ' + uploadErrors +
+                       ' file upload(s) failed — please email any missing docs ' +
+                       'to credit@operfi.com.', 'error');
+            document.getElementById('resetBtn').disabled = false;
+          } else {
+            onSuccess();
+          }
+          return;
+        }
+        // 409 carries the list of what is still missing, which is the one
+        // message worth showing verbatim -- the server knows what the record
+        // lacks and the page is guessing.
+        var msg = (j.blockers && j.blockers.length)
+          ? j.blockers.join(' ')
+          : (j.error || 'Submission failed (HTTP ' + r.status + ')');
+        showStatus(msg, 'error');
+        resetButtons();
+      });
+    }).catch(function (e) {
+      console.error('[credit-check] finalize failed', e);
+      showStatus('Could not submit just now. Your customer is saved — try again.',
+                 'error');
+      resetButtons();
+    });
+  }
+  // 🚨 Upload ONCE per draft. A 409 sends the broker back to fix a blocker and
+  // resubmit; without this the same files attach to the record again on every
+  // retry, so a broker who took three passes leaves credit three copies of the
+  // co-broker agreement to read.
+  if (selectedFiles.length > 0 && !draftFilesLanded) {
+    uploadFiles(draftId, function (errs) {
+      if (!errs) { draftFilesLanded = true; }
+      go(errs);
+    });
+  } else {
+    go(0);
+  }
+}
+
 // ── Build payload for /credit-submit ─────────────────────────────────────
 function buildPayload() {
   function v(id) { return document.getElementById(id).value.trim(); }
@@ -606,7 +917,11 @@ function buildPayload() {
     Email:                     v('Email'),
     Billing_Point_of_Contact:  v('Billing_Point_of_Contact'),
     Billing_AP_Contact_Number: v('Billing_AP_Contact_Number'),
-    Billing_Email:             v('Billing_Email')
+    Billing_Email:             v('Billing_Email'),
+    // COCHK1. On the shipper path these travel with the create; on the broker
+    // path the lookup already wrote them and this just carries the same values
+    // back, which keeps one payload builder rather than two that drift.
+    Customer_Type:             customerType || ''
   };
 }
 
@@ -628,6 +943,10 @@ function submitForm() {
   resetBtn.disabled = true;
   btn.textContent = 'Submitting…';
   showStatus('Submitting your credit check request…', 'loading');
+
+  // COCHK1: a broker already HAS a record -- the lookup saved it. Submitting
+  // finishes that draft instead of creating a second one.
+  if (draftId) { return finalizeDraft(); }
 
   fetch(BROKER_API_BASE + '/credit-submit', {
     method: 'POST',
@@ -651,18 +970,31 @@ function submitForm() {
   });
 }
 
-function uploadFiles(recordId) {
+function uploadFiles(recordId, afterUpload) {
   showStatus('Uploading ' + selectedFiles.length + ' file(s)…', 'loading');
   var errors = 0;
   var idx = 0;
 
   function next() {
     if (idx >= selectedFiles.length) {
-      if (errors > 0) {
+      // 🚨 On the DRAFT path the finalize must run AFTER the files land: the
+      // server checks the RECORD for the co-broker agreement, not the request,
+      // so finalizing first would be refused for a file that was about to
+      // arrive. `afterUpload` is how the broker path gets that ordering; the
+      // plain path has no callback and finishes here as it always did.
+      //
+      // 🚨 AND A FAILED UPLOAD MUST NOT SHORT-CIRCUIT THE DRAFT. Returning here
+      // on the broker path would announce "✓ submitted" over a record still
+      // sitting at Draft - Incomplete that credit never sees -- and the
+      // co-broker agreement is the biggest file, so it is the likeliest one to
+      // have failed. Finalize anyway and let the server rule: it either accepts
+      // (the agreement did land, some other doc did not) or refuses with the
+      // blockers, which is the honest answer either way.
+      if (errors > 0 && !afterUpload) {
         showStatus('✓ Credit check submitted. ' + errors + ' file upload(s) failed — please email any missing docs to credit@operfi.com.', 'error');
-      } else {
-        onSuccess();
+        return;
       }
+      if (afterUpload) { afterUpload(errors); } else { onSuccess(); }
       return;
     }
     var file = selectedFiles[idx++];
@@ -715,6 +1047,7 @@ function resetForm() {
   clearAllErrors();
   clearStatus();
   resetButtons();
+  resetCustomerType();
   document.getElementById('Customer_Company_Name').focus();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -722,6 +1055,25 @@ function resetForm() {
 // ── Wire up ───────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
   document.getElementById('submitBtn').addEventListener('click', submitForm);
+  // COCHK1 wiring.
+  ['ctype-shipper', 'ctype-broker'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) {
+      b.addEventListener('click', function () {
+        setCustomerType(b.getAttribute('data-ctype'));
+      });
+    }
+  });
+  var mcBtn = document.getElementById('mc-search');
+  if (mcBtn) { mcBtn.addEventListener('click', lookupBroker); }
+  var mcIn = document.getElementById('mc-input');
+  if (mcIn) {
+    mcIn.addEventListener('keydown', function (ev) {
+      // Enter in the MC box searches; without this it submits the whole form
+      // and skips the lookup that is the entire point of the field.
+      if (ev.key === 'Enter') { ev.preventDefault(); lookupBroker(); }
+    });
+  }
   document.getElementById('resetBtn').addEventListener('click', resetForm);
 
   // Resolve the login user (for the address-autocomplete backend auth), then wire

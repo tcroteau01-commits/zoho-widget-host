@@ -326,8 +326,12 @@ html, body {
                       data-numkind="dot">DOT</button>
             </div>
             <div class="mc-row">
+              <!-- 🚨 NO PLACEHOLDER NUMBER. Tom, 2026-09-26: any real MC or
+                   DOT used as example text names an actual company, and the
+                   first one here was a live OperFi client. A greyed-out
+                   number is still published. -->
               <input class="field-input" id="mc-input" type="text"
-                     placeholder="1484200" autocomplete="off" inputmode="numeric">
+                     autocomplete="off" inputmode="numeric">
               <button type="button" class="btn primary" id="mc-search">Look them up</button>
             </div>
             <div class="field-err" data-err-for="mc" id="mc-err"></div>
@@ -792,16 +796,27 @@ function lookupBroker() {
       btn.textContent = 'Look them up';
       if (!r.ok) {
         var other = (numberKind === 'mc') ? 'DOT' : 'MC';
+        // 🚨 ONLY A 404 MEANS "NOT REGISTERED". Everything else is our problem,
+        // not their number. Lumping them together told Tom "No broker found
+        // with MC 1484200" when the lookup had actually SUCCEEDED and the
+        // Creator write behind it failed -- so the message sent him back to
+        // re-check a number that was right all along.
         errEl.textContent =
           (j.error === 'lookup_unavailable')
             ? 'We could not reach FMCSA just now. Try again in a minute.'
-            : (j.message
-               // 🚨 Never silently retry as the other kind -- that is the guess
-               // this whole control exists to prevent. Offer it, let them say.
-               || 'No broker found with ' + numberKind.toUpperCase() + ' ' +
-                  digits + '. If that is a ' + other + ' number, switch to ' +
-                  other + ' and search again.');
+            : (r.status === 404)
+              // Never silently retry as the other kind -- that is the guess
+              // this whole control exists to prevent. Offer it, let them say.
+              ? 'No broker found with ' + numberKind.toUpperCase() + ' ' +
+                digits + '. If that is a ' + other + ' number, switch to ' +
+                other + ' and search again.'
+              : (j.message
+                 || 'We found them, but could not start the submission. '
+                    + 'Please tell us at credit@operfi.com.');
         errEl.classList.add('show');
+        if (r.status !== 404) {
+          console.error('[credit-check] lookup failed', r.status, j);
+        }
         return;
       }
       applyLookup(j);

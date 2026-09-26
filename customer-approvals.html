@@ -2074,7 +2074,13 @@ function caAppRowHtml(p) {
   } else {
     detail = st.label;
   }
-  var canNudge = CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
+  // Never on the customer's own application row: the customer party is
+  // nudgeable (status 'sent') until the customer submits, and a Nudge here
+  // would mail the applicant a reference-survey link about their own
+  // application. Same exclusion as reportBtnHtml below, same reasoning --
+  // the server now refuses slot="customer" (400) too, but the button must
+  // not be offered in the first place.
+  var canNudge = p.slot !== 'customer' && CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
   var nudgeHtml = canNudge
     ? '<button type="button" class="row-action ca-app-nudge" data-slot="' + esc(p.slot) + '">Nudge</button>'
     : '';
@@ -2195,7 +2201,9 @@ function renderCreditAppSection(r, payload) {
   // Nudge button in the first place (caAppRowHtml's own canNudge) -- so a
   // bounced party, which needs no nudge, is excluded from both the count and
   // the threshold, never just from the count.
-  var nudgeable = ordered.filter(function(p) { return CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1; });
+  var nudgeable = ordered.filter(function(p) {
+    return p.slot !== 'customer' && CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
+  });
   var allRow = document.getElementById('ca-app-nudgeall-row');
   var allBtn = document.getElementById('ca-app-nudge-all');
   if (allRow && allBtn) {

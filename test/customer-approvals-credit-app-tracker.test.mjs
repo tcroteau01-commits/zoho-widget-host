@@ -138,6 +138,41 @@ test('an expired party still offers a Nudge (the server allows re-sending it)', 
   assert.match(h, /ca-app-nudge/);
 });
 
+// A broker can nudge a REFERENCE's party (mails a third party who has agreed
+// to speak on the customer's behalf). The customer party is the applicant's
+// own -- 'sent' is nudgeable server-side too until the customer submits, so
+// the widget must never offer the button on this row: the only guard left
+// would be the server's 400, and there should be no crafted request needed
+// to hit it in the first place.
+test('the customer row never offers a Nudge button, even while still sent', () => {
+  const w = boot();
+  const h = w.caAppRowHtml(party({ slot: 'customer', status: 'sent', waiting_days: 1 }));
+  assert.doesNotMatch(h, /ca-app-nudge/);
+});
+
+test('"Nudge all waiting" never counts or targets the customer row', () => {
+  const w = boot();
+  const d = w.document;
+  d.body.innerHTML =
+    '<div class="panel-section" id="ca-app-section" style="display:none;">' +
+      '<div id="ca-app-summary-text"></div>' +
+      '<div id="ca-app-rows"></div>' +
+      '<div id="ca-app-nudgeall-row" style="display:none;"><button id="ca-app-nudge-all"></button></div>' +
+    '</div>';
+  w.renderCreditAppSection({ ID: '9' }, {
+    status: 'references_pending',
+    parties: [
+      party({ slot: 'customer', status: 'sent', waiting_days: 1 }),
+      party({ slot: 'trade1', status: 'sent' }),
+      party({ slot: 'trade2', status: 'completed' })
+    ]
+  });
+  // Only trade1 is actually nudgeable -- one waiting reference, so the
+  // nudge-all control (which requires more than one) stays hidden, and its
+  // label, if shown, must never count the customer party.
+  assert.equal(d.getElementById('ca-app-nudgeall-row').style.display, 'none');
+});
+
 test('row markup never carries a risk/fraud/score field', () => {
   const w = boot();
   for (const status of ['sent', 'opened', 'completed', 'bounced', 'expired', 'waived']) {

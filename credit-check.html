@@ -86,23 +86,25 @@ html, body {
 .field-err.show { display: block; }
 
 /* COCHK1 — the customer-type question and the MC lookup behind it. */
-.ctype-choices { display: flex; gap: 8px; flex-wrap: wrap; }
-/* Sized to the words, not to the form. Two full-width blocks made a one-line
-   question look like the main event of the page. */
+/* 🚨 DELIBERATELY UNDERSTATED. Tom, 2026-09-26: "I don't want to normalize
+   co-brokering and make it seem like it happens often but when it does, I want
+   the rules to take effect." So this is a quiet field-level question -- two
+   pills, no section heading, no explanatory blurb -- and NOT a titled section
+   that frames co-brokering as a routine branch of the form. It keeps its place
+   FIRST, because the order is the control; only its volume came down. */
+#ctype-block { margin-bottom: 22px; }
+.ctype-choices { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 7px; }
 .ctype-btn {
-  flex: 0 1 auto; text-align: left; padding: 8px 14px; cursor: pointer;
-  background: #fff; border: 1px solid #d8d8d8; border-radius: 7px;
-  font-family: inherit; display: flex; flex-direction: row;
-  align-items: baseline; gap: 7px;
+  padding: 7px 16px; cursor: pointer; font-family: inherit;
+  font-size: 13px; font-weight: 600; color: #444;
+  background: #fff; border: 1px solid #d8d8d8; border-radius: 999px;
 }
 .ctype-btn:hover { border-color: #b8b8b8; background: #fafafa; }
-/* Chosen, not recommended: neither option is pre-selected, because the answer
-   decides whether a co-broker agreement is required and a nudged answer is
-   worth nothing. */
-.ctype-btn.on { border-color: #272727; background: #272727; }
-.ctype-btn.on .ctype-name, .ctype-btn.on .ctype-note { color: #fff; }
-.ctype-name { font-size: 13px; font-weight: 700; color: #272727; }
-.ctype-note { font-size: 11.5px; color: #777; }
+/* Chosen, never recommended: neither option is pre-selected. A false "Shipper"
+   is NOT caught later -- that answer means we never ask for an MC, so the FMCSA
+   authority check never runs on them. Defaulting to Shipper would make the
+   bypass the path of least resistance. */
+.ctype-btn.on { border-color: #272727; background: #272727; color: #fff; }
 .mc-row { display: flex; gap: 8px; align-items: flex-start; max-width: 520px; }
 .mc-row .field-input { flex: 1 1 auto; }
 .mc-row .btn { white-space: nowrap; }
@@ -296,18 +298,13 @@ html, body {
              search where it then saves that record". A broker who meets this
              question after filling the form in has already decided what answer
              costs least. -->
-        <div class="section-block" id="ctype-block">
-          <div class="section-title">Customer Type</div>
-          <div class="section-sub">This decides what we need from you, so it comes first</div>
+        <div id="ctype-block">
+          <label class="field-label">Who is this customer? <span class="req">*</span></label>
           <div class="ctype-choices">
-            <button type="button" class="ctype-btn" id="ctype-shipper" data-ctype="Shipper">
-              <span class="ctype-name">Shipper</span>
-              <span class="ctype-note">They own the freight</span>
-            </button>
-            <button type="button" class="ctype-btn" id="ctype-broker" data-ctype="Freight Broker">
-              <span class="ctype-name">Freight Broker</span>
-              <span class="ctype-note">They broker freight to you</span>
-            </button>
+            <button type="button" class="ctype-btn" id="ctype-shipper"
+                    data-ctype="Shipper">Shipper</button>
+            <button type="button" class="ctype-btn" id="ctype-broker"
+                    data-ctype="Freight Broker">Freight Broker</button>
           </div>
           <div class="field-err" data-err-for="Customer_Type">Choose one to continue.</div>
 
@@ -317,9 +314,20 @@ html, body {
             <div class="section-sub" style="margin:2px 0 8px;">
               We verify brokers against FMCSA before we can review them.
             </div>
+            <!-- 🚨 THEY DECLARE WHICH KIND IT IS. MC and DOT numbers share one
+                 numeric space: 1484200 is MCM Transportation's MC and Metro
+                 Diesel Inc's USDOT. Guessing resolves the wrong company for
+                 somebody, confidently and silently. Defaults to MC because
+                 that is what a broker usually has for another broker. -->
+            <div class="ctype-choices" style="margin:0 0 8px;">
+              <button type="button" class="ctype-btn on" id="numkind-mc"
+                      data-numkind="mc">MC</button>
+              <button type="button" class="ctype-btn" id="numkind-dot"
+                      data-numkind="dot">DOT</button>
+            </div>
             <div class="mc-row">
               <input class="field-input" id="mc-input" type="text"
-                     placeholder="MC 123456 or DOT 4324322" autocomplete="off">
+                     placeholder="1484200" autocomplete="off" inputmode="numeric">
               <button type="button" class="btn primary" id="mc-search">Look them up</button>
             </div>
             <div class="field-err" data-err-for="mc" id="mc-err"></div>
@@ -704,6 +712,8 @@ var draftId = null;          // set by the lookup; the record already exists
 var authorityClass = null;   // what FMCSA says, regardless of what they picked
 var needsCoBroker = false;
 var draftFilesLanded = false; // files already attached to THIS draft
+// 'mc' | 'dot' -- DECLARED, never inferred. The two spaces overlap.
+var numberKind = 'mc';
 
 // 🚨 "Submit another" MUST clear all of it. Without this, draftId survives the
 // reset and the next submission POSTs to /credit-check/draft/<the PREVIOUS
@@ -721,6 +731,7 @@ function resetCustomerType() {
   });
   var mcIn = document.getElementById('mc-input');
   if (mcIn) { mcIn.value = ''; }
+  setNumberKind('mc');
   var box = document.getElementById('mc-result');
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
   var req = document.getElementById('cobroker-req');
@@ -743,12 +754,20 @@ function setCustomerType(type) {
   if (type === 'Freight Broker' && draftId) { renderCoBrokerRequirement(); }
 }
 
+function setNumberKind(kind) {
+  numberKind = kind;
+  ['numkind-mc', 'numkind-dot'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) { b.classList.toggle('on', b.getAttribute('data-numkind') === kind); }
+  });
+}
+
 function lookupBroker() {
   var raw = document.getElementById('mc-input').value.trim();
   var digits = raw.replace(/\D/g, '');
   var errEl = document.getElementById('mc-err');
   if (!digits) {
-    errEl.textContent = 'Enter their MC or DOT number.';
+    errEl.textContent = 'Enter their ' + numberKind.toUpperCase() + ' number.';
     errEl.classList.add('show');
     return;
   }
@@ -757,24 +776,31 @@ function lookupBroker() {
   btn.disabled = true;
   btn.textContent = 'Checking FMCSA…';
 
-  // DOT numbers are 7-8 digits and MC numbers are 6-7; we cannot tell them
-  // apart reliably, so BOTH go and the server resolves whichever hits. Guessing
-  // wrong here would tell a broker their real number does not exist.
+  // 🚨 ONLY the number they declared. Sending the same digits as both asks the
+  // server to pick, and the spaces overlap -- 1484200 is a live MC and a live
+  // USDOT for two unrelated companies -- so a guess resolves the wrong company
+  // for somebody, confidently and silently.
+  var payload = { email: brokerEmail, customer_type: customerType };
+  payload[numberKind] = digits;
   fetch(BROKER_API_BASE + '/credit-check/lookup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: brokerEmail, customer_type: customerType,
-      mc: digits, dot: digits
-    })
+    body: JSON.stringify(payload)
   }).then(function (r) {
     return r.json().catch(function () { return {}; }).then(function (j) {
       btn.disabled = false;
       btn.textContent = 'Look them up';
       if (!r.ok) {
-        errEl.textContent = (j.error === 'lookup_unavailable')
-          ? 'We could not reach FMCSA just now. Try again in a minute.'
-          : 'No FMCSA record for that number. Check it and try again.';
+        var other = (numberKind === 'mc') ? 'DOT' : 'MC';
+        errEl.textContent =
+          (j.error === 'lookup_unavailable')
+            ? 'We could not reach FMCSA just now. Try again in a minute.'
+            : (j.message
+               // 🚨 Never silently retry as the other kind -- that is the guess
+               // this whole control exists to prevent. Offer it, let them say.
+               || 'No broker found with ' + numberKind.toUpperCase() + ' ' +
+                  digits + '. If that is a ' + other + ' number, switch to ' +
+                  other + ' and search again.');
         errEl.classList.add('show');
         return;
       }
@@ -810,17 +836,29 @@ function applyLookup(j) {
   put('postal_Code', a.postal_Code);
 
   var box = document.getElementById('mc-result');
-  var cls = j.classification_conflict ? 'mc-result warn' : 'mc-result';
-  box.className = cls;
+  var warn = j.classification_conflict || p.out_of_service;
+  box.className = warn ? 'mc-result warn' : 'mc-result';
+  // 🚨 Say WHAT WE MATCHED ON. The two number spaces overlap, so the broker is
+  // the only one who can tell whether this is the company they meant -- and
+  // they can only do that if we show them the number we resolved.
+  var on = (j.matched_by || '').toUpperCase();
   box.innerHTML =
     '<b>' + esc(p.Customer_Company_Name || 'Found') + '</b>' +
+    (on ? 'Matched on ' + esc(on) + ' ' + esc(j.matched_value || '') + ' &middot; ' : '') +
     (p.Customer_MC ? 'MC ' + esc(p.Customer_MC) + ' &middot; ' : '') +
     'DOT ' + esc(p.Customer_DOT || '—') +
+    (p.dba_name ? '<div class="mc-authority">DBA ' + esc(p.dba_name) + '</div>' : '') +
     '<div class="mc-authority">FMCSA authority: ' + esc(authorityClass || 'none') + '</div>' +
+    (p.out_of_service
+      ? '<div class="mc-authority" style="color:#92400e;font-weight:600;">' +
+        'FMCSA lists this carrier as OUT OF SERVICE.</div>'
+      : '') +
     (j.classification_conflict
       ? '<div class="mc-authority" style="color:#92400e;font-weight:600;">' +
         esc(j.classification_conflict) + '</div>'
-      : '');
+      : '') +
+    '<div class="mc-authority">Not the right company? Change the number above ' +
+    'and search again.</div>';
   box.style.display = '';
   if (needsCoBroker) { renderCoBrokerRequirement(); }
 }
@@ -1064,6 +1102,14 @@ window.addEventListener('load', function() {
     if (b) {
       b.addEventListener('click', function () {
         setCustomerType(b.getAttribute('data-ctype'));
+      });
+    }
+  });
+  ['numkind-mc', 'numkind-dot'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) {
+      b.addEventListener('click', function () {
+        setNumberKind(b.getAttribute('data-numkind'));
       });
     }
   });

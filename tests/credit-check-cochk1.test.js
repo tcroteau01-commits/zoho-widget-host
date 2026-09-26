@@ -26,9 +26,57 @@ test('the question is asked before anything else on the form', () => {
 });
 
 test('neither answer is pre-selected', () => {
-  // The answer decides whether a co-broker agreement is required. A nudged
-  // answer is worth nothing.
-  assert.ok(!/class="ctype-btn on"/.test(html));
+  // 🚨 A false "Shipper" is NOT caught later: that answer means we never ask
+  // for an MC, so the FMCSA authority check never runs on them. Defaulting to
+  // Shipper would make the bypass the path of least resistance.
+  // Scoped to the customer-type pills: the MC/DOT pills reuse the same class
+  // and DO default (to MC), which is a different decision -- a wrong number
+  // kind is visible and correctable, a wrong customer type is the bypass.
+  assert.ok(!/id="ctype-shipper"[^>]*class="ctype-btn on"/.test(html));
+  assert.ok(!/class="ctype-btn on"[^>]*id="ctype-shipper"/.test(html));
+  assert.ok(!/id="ctype-broker"[^>]*class="ctype-btn on"/.test(html));
+  assert.ok(!/class="ctype-btn on"[^>]*id="ctype-broker"/.test(html));
+});
+
+test('the MC/DOT kind is declared, never guessed', () => {
+  // 🚨 1484200 is MCM Transportation's MC *and* Metro Diesel Inc's USDOT
+  // (Toa Baja PR, out of service) -- verified live 2026-09-26. Sending the
+  // same digits as both made the DOT attempt win and silently prefilled the
+  // wrong company into a real broker's credit check.
+  assert.ok(html.includes('data-numkind="mc"'));
+  assert.ok(html.includes('data-numkind="dot"'));
+  assert.ok(html.includes("var numberKind = 'mc'"));
+  const fn = html.split('function lookupBroker')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('payload[numberKind] = digits'));
+  assert.ok(!/mc: digits, dot: digits/.test(html), 'must not send both');
+  // a miss OFFERS the other kind rather than retrying as it
+  assert.ok(/If that is a/.test(fn));
+});
+
+test('the result says which number it matched on', () => {
+  // The broker is the only one who can tell we resolved the wrong company,
+  // and only if we show them the number we used.
+  const fn = html.split('function applyLookup')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('Matched on'));
+  assert.ok(fn.includes('j.matched_by'));
+  assert.ok(/Not the right company/.test(fn));
+  // an out-of-service carrier is a credit signal, not a detail
+  assert.ok(fn.includes('p.out_of_service'));
+  assert.ok(/OUT OF SERVICE/.test(fn));
+});
+
+test('the question is understated, not a titled section', () => {
+  // 🚨 Tom, 2026-09-26: "I don't want to normalize co-brokering and make it
+  // seem like it happens often but when it does, I want the rules to take
+  // effect." Volume down, position unchanged -- the order is still the control.
+  const block = html.split('id="ctype-block"')[1].split('id="mc-block"')[0];
+  assert.ok(!block.includes('section-title'), 'no section heading');
+  assert.ok(!block.includes('section-sub'), 'no explanatory blurb');
+  assert.ok(!/id="ctype-block"[^>]*class="[^"]*section-block/.test(html),
+            'not a form section');
+  // ...and no copy that frames brokering as the routine case
+  assert.ok(!/They broker freight to you/.test(html));
+  assert.ok(block.includes('Who is this customer?'));
 });
 
 test('the MC lookup is hidden until they say Freight Broker', () => {
@@ -87,7 +135,9 @@ test("the server's list of what is missing is shown verbatim", () => {
 test('an outage and an unregistered number read differently', () => {
   assert.ok(html.includes("j.error === 'lookup_unavailable'"));
   assert.ok(/could not reach FMCSA/i.test(html));
-  assert.ok(/No FMCSA record for that number/i.test(html));
+  // A miss now names the kind it searched, because "no record" on a number
+  // that IS a valid DOT is a different problem from a wrong number.
+  assert.ok(/No broker found with/i.test(html));
 });
 
 test('only the company and address are prefilled', () => {

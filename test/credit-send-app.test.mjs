@@ -17,6 +17,14 @@ test('creditAppEmailWarning flags free-mail and domain mismatch, clears on match
   assert.equal(w.creditAppEmailWarning('ap@acme.com', ''), '');
 });
 
+test('creditAppEmailWarning never uses an em or en dash -- these are sentence-embedded prose a broker reads', () => {
+  const w = boot();
+  const freeMail = w.creditAppEmailWarning('ap@gmail.com', 'https://acme.com');
+  const mismatch = w.creditAppEmailWarning('ap@notacme.com', 'https://acme.com');
+  assert.doesNotMatch(freeMail, /—|–/);
+  assert.doesNotMatch(mismatch, /—|–/);
+});
+
 test('sendCreditApp POSTs submission_id + email + customer_email and reports ok', async () => {
   const w = boot();
   w.brokerEmail = 'broker@op.com';
@@ -28,6 +36,17 @@ test('sendCreditApp POSTs submission_id + email + customer_email and reports ok'
   assert.equal(calls[0].body.email, 'broker@op.com');
   assert.equal(calls[0].body.customer_email, 'ap@acme.com');
   assert.equal(res.ok, true);
+});
+
+test('the no-login-email boot error never uses an em or en dash', () => {
+  // gotParams is a closure inside bootApp, not exported to window -- reads
+  // the shipped source directly rather than driving the ZOHO.CREATOR init
+  // callback, the same way this suite already checks other sentence-
+  // embedded copy that isn't reachable through an exported function.
+  const html = fs.readFileSync(new URL('../customer-approvals.html', import.meta.url), 'utf8');
+  const m = html.match(/No login email returned from Creator\.[^']*/);
+  assert.ok(m, 'expected the no-login-email message to still exist');
+  assert.doesNotMatch(m[0], /—|–/);
 });
 
 test('actionCell renders a Send Credit Application button for eligible statuses only', () => {

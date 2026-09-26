@@ -886,7 +886,7 @@ function bootApp() {
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) {
       showError('Could not identify broker',
-        'No login email returned from Creator. Open DevTools console (F12) — the init params object is logged there.');
+        'No login email returned from Creator. Open DevTools console (F12): the init params object is logged there.');
       return;
     }
     console.log('[CustomerApprovals] Booted as', brokerEmail);
@@ -2032,7 +2032,7 @@ function caAppWaitingText(days) {
 // disagree with what the rows below it show.
 var CA_APP_SUMMARY = {
   sent: 'Waiting on the customer to complete the application',
-  app_received: 'Application received — references not sent yet',
+  app_received: 'Application received, references not sent yet',
   references_pending: 'Waiting on references',
   ready_for_review: 'All parties have responded'
 };
@@ -2074,7 +2074,13 @@ function caAppRowHtml(p) {
   } else {
     detail = st.label;
   }
-  var canNudge = CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
+  // Never on the customer's own application row: the customer party is
+  // nudgeable (status 'sent') until the customer submits, and a Nudge here
+  // would mail the applicant a reference-survey link about their own
+  // application. Same exclusion as reportBtnHtml below, same reasoning --
+  // the server now refuses slot="customer" (400) too, but the button must
+  // not be offered in the first place.
+  var canNudge = p.slot !== 'customer' && CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
   var nudgeHtml = canNudge
     ? '<button type="button" class="row-action ca-app-nudge" data-slot="' + esc(p.slot) + '">Nudge</button>'
     : '';
@@ -2195,7 +2201,9 @@ function renderCreditAppSection(r, payload) {
   // Nudge button in the first place (caAppRowHtml's own canNudge) -- so a
   // bounced party, which needs no nudge, is excluded from both the count and
   // the threshold, never just from the count.
-  var nudgeable = ordered.filter(function(p) { return CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1; });
+  var nudgeable = ordered.filter(function(p) {
+    return p.slot !== 'customer' && CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
+  });
   var allRow = document.getElementById('ca-app-nudgeall-row');
   var allBtn = document.getElementById('ca-app-nudge-all');
   if (allRow && allBtn) {
@@ -3799,10 +3807,10 @@ function _baseDomain(d) { var p = d.split('.'); return p.length >= 2 ? p.slice(-
 function creditAppEmailWarning(email, companyWebsite) {
   var d = _emailDomain(email);
   if (!d) return '';
-  if (FREE_MAIL.indexOf(d) !== -1) return 'This is a personal/free email address — only proceed if you are sure it is the right contact.';
+  if (FREE_MAIL.indexOf(d) !== -1) return 'This is a personal/free email address: only proceed if you are sure it is the right contact.';
   var site = _siteDomain(companyWebsite);
   if (site && _baseDomain(d) !== _baseDomain(site))
-    return 'This email domain does not match the company website — double-check before sending.';
+    return 'This email domain does not match the company website: double-check before sending.';
   return '';
 }
 if (typeof window !== 'undefined') { window.creditAppEmailWarning = creditAppEmailWarning; }
@@ -3920,7 +3928,7 @@ function openCreditBoost(recId) {
         '<label style="font-size:13px;display:inline-block;margin:4px 12px 6px 0;"><input type="radio" name="cb-band" value="Up to $50,000"> Up to $50,000</label>' +
         '<label style="font-size:13px;display:inline-block;margin:4px 0 6px 0;"><input type="radio" name="cb-band" value="Over $50,000"> Over $50,000</label>' +
       '</div>' +
-      '<div id="cb-amount-wrap" style="margin-top:8px;display:none;"><label style="font-size:12px;color:#475467;">Desired credit limit ($) — must be over $50,000</label>' +
+      '<div id="cb-amount-wrap" style="margin-top:8px;display:none;"><label style="font-size:12px;color:#475467;">Desired credit limit ($): must be over $50,000</label>' +
         '<input id="cb-amount" type="number" min="50001" placeholder="e.g. 75000" style="width:100%;padding:9px 10px;border:1px solid #d0d5dd;border-radius:7px;margin:4px 0;">' +
         '<div style="font-size:11px;color:#98a2b3;">Enter only what you can run with this customer monthly in the near term.</div></div>' +
       '<div style="margin-top:8px;"><label style="font-size:12px;color:#475467;">Customer Agreement</label>' +

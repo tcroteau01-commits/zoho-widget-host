@@ -138,6 +138,88 @@ test('an expired party still offers a Nudge (the server allows re-sending it)', 
   assert.match(h, /ca-app-nudge/);
 });
 
+// A broker can nudge a REFERENCE's party (mails a third party who has agreed
+// to speak on the customer's behalf). The customer party is the applicant's
+// own -- 'sent' is nudgeable server-side too until the customer submits, so
+// the widget must never offer the button on this row: the only guard left
+// would be the server's 400, and there should be no crafted request needed
+// to hit it in the first place.
+test('the customer row never offers a Nudge button, even while still sent', () => {
+  const w = boot();
+  const h = w.caAppRowHtml(party({ slot: 'customer', status: 'sent', waiting_days: 1 }));
+  assert.doesNotMatch(h, /ca-app-nudge/);
+});
+
+test('the app_received summary reads with a comma, never an em dash', () => {
+  const w = boot();
+  const d = w.document;
+  d.body.innerHTML =
+    '<div class="panel-section" id="ca-app-section" style="display:none;">' +
+      '<div id="ca-app-summary-text"></div>' +
+      '<div id="ca-app-rows"></div>' +
+      '<div id="ca-app-nudgeall-row" style="display:none;"><button id="ca-app-nudge-all"></button></div>' +
+    '</div>';
+  w.renderCreditAppSection({ ID: '9' }, {
+    status: 'app_received',
+    parties: [party({ slot: 'customer', status: 'completed', waiting_days: 0 })]
+  });
+  const summary = d.getElementById('ca-app-summary-text').textContent;
+  assert.equal(summary, 'Application received, references not sent yet');
+  assert.doesNotMatch(summary, /—|–/);
+});
+
+test('"Nudge all waiting" never counts or targets the customer row', () => {
+  const w = boot();
+  const d = w.document;
+  d.body.innerHTML =
+    '<div class="panel-section" id="ca-app-section" style="display:none;">' +
+      '<div id="ca-app-summary-text"></div>' +
+      '<div id="ca-app-rows"></div>' +
+      '<div id="ca-app-nudgeall-row" style="display:none;"><button id="ca-app-nudge-all"></button></div>' +
+    '</div>';
+  w.renderCreditAppSection({ ID: '9' }, {
+    status: 'references_pending',
+    parties: [
+      party({ slot: 'customer', status: 'sent', waiting_days: 1 }),
+      party({ slot: 'trade1', status: 'sent' }),
+      party({ slot: 'trade2', status: 'completed' })
+    ]
+  });
+  // Only trade1 is actually nudgeable -- one waiting reference, so the
+  // nudge-all control (which requires more than one) stays hidden, and its
+  // label, if shown, must never count the customer party.
+  assert.equal(d.getElementById('ca-app-nudgeall-row').style.display, 'none');
+});
+
+test('"Nudge all waiting (N)" counts only the references, not the customer row', () => {
+  // Asserting display==='none' alone (test above) would pass equally if
+  // `nudgeable` went to zero for some unrelated reason -- it does not
+  // distinguish "excludes the customer" from "broken count". This gives
+  // the customer party (also 'sent', also otherwise nudgeable) TWO real
+  // waiting references alongside it, so the control shows, and pins the
+  // exact label: (2), never (3) -- the count a bug that re-admitted the
+  // customer slot into `nudgeable` would produce.
+  const w = boot();
+  const d = w.document;
+  d.body.innerHTML =
+    '<div class="panel-section" id="ca-app-section" style="display:none;">' +
+      '<div id="ca-app-summary-text"></div>' +
+      '<div id="ca-app-rows"></div>' +
+      '<div id="ca-app-nudgeall-row" style="display:none;"><button id="ca-app-nudge-all"></button></div>' +
+    '</div>';
+  w.renderCreditAppSection({ ID: '9' }, {
+    status: 'references_pending',
+    parties: [
+      party({ slot: 'customer', status: 'sent', waiting_days: 1 }),
+      party({ slot: 'trade1', status: 'sent' }),
+      party({ slot: 'trade2', status: 'sent' }),
+      party({ slot: 'trade3', status: 'completed' })
+    ]
+  });
+  assert.notEqual(d.getElementById('ca-app-nudgeall-row').style.display, 'none');
+  assert.match(d.getElementById('ca-app-nudge-all').textContent, /Nudge all waiting \(2\)/);
+});
+
 test('row markup never carries a risk/fraud/score field', () => {
   const w = boot();
   for (const status of ['sent', 'opened', 'completed', 'bounced', 'expired', 'waived']) {

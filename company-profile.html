@@ -838,6 +838,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
       <label class="field" id="invite-template-field">
         <span>Permission template</span>
         <select id="invite-template" required></select>
+        <div class="field-err" id="tpl-picker-note"></div>
       </label>
     </div>
 
@@ -915,6 +916,8 @@ var filteredUsers = [];
 var currentSearch = '';
 var selectedRoles = [];
 var editingContactId = null;     // null = add mode; a contact ID = edit mode
+var editingUser = null;          // the full record passed to openEditModal, for accessFor() lookups
+var editingOriginal = null;      // {first_name, last_name, email, phone} as pre-filled, for change detection on save
 var selfContactId = '';          // the acting contact (can't delete yourself)
 var canManage = false;           // server-authoritative: Full Access client or impersonating admin
 var lastLogoUri = '';            // last logo_uri from /broker-account; re-used when canManage changes
@@ -1448,10 +1451,22 @@ function resetModal() {
   document.getElementById('full-warn').classList.remove('show');
   selectedRoles = [];
   var tplPicker = document.getElementById('invite-template');
-  if (tplPicker) tplPicker.value = '';
+  if (tplPicker) { tplPicker.value = ''; tplPicker.disabled = false; }
+  var tplNote = document.getElementById('tpl-picker-note');
+  if (tplNote) tplNote.textContent = '';
+  // Cleared BEFORE syncModalSubmit() runs below, not after: this used to be
+  // the other way around, and syncModalSubmit's lock check at the time read
+  // editingContactId/editingUser directly, so calling it while they still
+  // held the PREVIOUS contact's values let Add Contact open with Submit
+  // already enabled off the last edit's state. The check no longer reads
+  // these directly, but nulling the editing-target state before anything
+  // that might act on it stays the correct order regardless of what that
+  // logic currently happens to consult.
+  editingContactId = null;
+  editingUser = null;
+  editingOriginal = null;
   syncModalSubmit();
   hideModalMsg();
-  editingContactId = null;
   document.getElementById('modal-submit').textContent = 'Submit';
   var mt = document.querySelector('#modal-scrim .m-title');
   var ms = document.querySelector('#modal-scrim .m-sub');
@@ -1463,6 +1478,7 @@ function resetModal() {
 function openEditModal(u) {
   resetModal();
   editingContactId = String(u.ID);
+  editingUser = u;
   var name = displayContactName(u);
   var c = u.Contact_Name;
   var first = (c && c.first_name) || (typeof name === 'string' ? name.split(' ')[0] : '') || '';
@@ -1475,12 +1491,64 @@ function openEditModal(u) {
   var perms = u.User_Permissions;
   if (typeof perms === 'string') perms = perms.split(',').map(function(s){ return s.trim(); });
   perms = perms || [];
+  // Captured exactly as pre-filled (not re-derived from u at save time) so
+  // submitContact's change detection compares against what the admin
+  // actually saw. Permissions are included: on an unflipped account the
+  // perm-card roles are the ONLY mechanism /broker-edit-contact carries, so a
+  // roles-only edit has to count as a change too, the same as a name or
+  // phone edit does.
+  editingOriginal = { first_name: first, last_name: last, email: u.Email || '', phone: u.Phone_Number || '',
+                       permissions: perms.slice().sort() };
   perms.forEach(function(role) {
     var card = document.querySelector('.perm-card[data-role="' + role + '"]');
     if (card) { card.classList.add('selected'); selectedRoles.push(role); }
   });
   if (selectedRoles.indexOf('Full Access') !== -1) {
     var fw = document.getElementById('full-warn'); if (fw) fw.classList.add('show');
+  }
+  // On a PERM3 account preselect the picker to the user's CURRENT template
+  // (from accessFor(), the same index saveAccess() relies on) rather than
+  // leaving it on the blank placeholder. Re-saving without touching it must
+  // read as "unchanged", and a blank default here would make every save look
+  // like a template change since '' never equals a real template id.
+  //
+  // Three cases block the swap outright, with the picker disabled and the
+  // reason shown rather than left as a silent dead end:
+  //  - no accessFor() row: this contact is not yet provisioned in the
+  //    permission engine (upsert_user is best-effort server-side), so there
+  //    is no portal_user_id to write a template change against. Contact
+  //    fields below are unaffected.
+  //  - the owner: matches the Access tab, which withholds "Edit access" for
+  //    the owner because a template write for them has no effect
+  //    (resolve_effective short-circuits) but would still create an audit
+  //    row and inflate a template's user count for nothing.
+  //  - custom overrides (delta.added/removed): a swap here would carry those
+  //    overrides onto the NEW template as-is (the server keeps them, and
+  //    resolve_effective applies removal-wins), silently stripping access
+  //    the admin never touched. The access drawer avoids this by
+  //    recomputing both arrays against the newly selected template;
+  //    duplicating that recompute here would put the same real logic in a
+  //    second place, so instead: block the swap and point at the drawer.
+  var tplPicker = document.getElementById('invite-template');
+  var tplNote = document.getElementById('tpl-picker-note');
+  if (tplPicker && templatesGovern()) {
+    var acc = accessFor(u);
+    tplPicker.value = acc && acc.template_id ? acc.template_id : '';
+    var lockReason = null;
+    if (!acc) {
+      lockReason = 'This user is not yet set up in the permission engine, so their access template can’t be changed here.';
+    } else if (acc.is_owner) {
+      lockReason = 'The account owner already has full access. Their template cannot be changed here.';
+    } else {
+      var d = acc.delta || { added: [], removed: [] };
+      if ((d.added && d.added.length) || (d.removed && d.removed.length)) {
+        lockReason = 'This user has custom access overrides. Use “Edit access” from the row menu to change their template.';
+      }
+    }
+    if (lockReason) {
+      tplPicker.disabled = true;
+      if (tplNote) { tplNote.textContent = lockReason; tplNote.classList.add('show'); }
+    }
   }
   syncModalSubmit();
   document.getElementById('modal-submit').textContent = 'Save';
@@ -1643,9 +1711,19 @@ function templatesGovern() {
 function syncModalSubmit() {
   var byTemplate = templatesGovern();
   var picker = document.getElementById('invite-template');
-  document.getElementById('modal-submit').disabled = byTemplate
+  // A LOCKED picker (unprovisioned, owner, or custom-overrides -- every case
+  // openEditModal disables it for) has no template pick to require: gating
+  // on picker.disabled rather than only on a missing accessFor() row also
+  // covers a provisioned user whose template_id is legitimately null (an
+  // owner short-circuits to every capability and WOSPROV1 writes no
+  // template_id for one), which otherwise made Save unsatisfiable -- the
+  // picker held no value to require, but was not "unprovisioned" either.
+  // submitContact() never attempts a template write for any locked case, and
+  // contact-field edits for these users must still reach the admin.
+  var lockedEdit = byTemplate && !!(picker && picker.disabled);
+  document.getElementById('modal-submit').disabled = (byTemplate && !lockedEdit)
     ? !(picker && picker.value)
-    : selectedRoles.length === 0;
+    : (byTemplate ? false : selectedRoles.length === 0);
   var block = document.getElementById('perm-section');
   if (block) { block.hidden = byTemplate; }
 }
@@ -1720,6 +1798,67 @@ function submitContact() {
     }
   }
 
+  // PERMEDIT1 -- On edit, the template picker and the contact fields (name,
+  // email, phone) are two different systems and must go through two
+  // different endpoints, in a fixed order.
+  //
+  // The template is an ACCESS change and can only go through
+  // /permissions/user. That is the one place account isolation, template
+  // existence/ownership, the ceiling rule (an admin cannot grant, by ANY
+  // route including a template swap, a capability they do not themselves
+  // hold) and last-admin protection are enforced. /broker-edit-contact has
+  // none of that -- it only ever wrote Creator's User_Permissions, a field
+  // nothing on a flipped account reads for access -- so sending template_id
+  // there would be a silent way around every one of those guardrails.
+  //
+  // The permission write goes FIRST and is awaited before the contact write
+  // is attempted at all. A changed template saved with a stale name is
+  // harmless and self-corrects next edit; a changed name saved while the
+  // permission write was REFUSED would recreate this exact bug in a subtler
+  // form -- a 200 the admin reads as "saved" while the access change they
+  // actually wanted never happened. Do not simplify this into one call.
+  var accessRow = null;
+  var templateChanged = false;
+  if (isEdit && templatesAvailable) {
+    var selectedTemplateId = templatePicker.value;
+    accessRow = accessFor(editingUser);
+    // No accessRow: not provisioned in the permission engine. The picker is
+    // disabled and blank for exactly this case in openEditModal, so there is
+    // nothing here to diff against and nothing safe to write -- the template
+    // portion is simply never attempted, and contact fields below are
+    // unaffected. The owner is excluded the same way the Access tab excludes
+    // them from "Edit access": a template write for them changes nothing
+    // (resolve_effective short-circuits) but would still create an audit row
+    // and inflate a template's user count.
+    templateChanged = !!accessRow && !accessRow.is_owner
+      && !!selectedTemplateId && selectedTemplateId !== accessRow.template_id;
+    if (templateChanged) {
+      // Defense in depth: the picker is disabled for a user with custom
+      // overrides at open time (see openEditModal), but client-side disabled
+      // state is never trusted alone for something the ceiling and audit
+      // guardrails care about. A swap here would carry those overrides onto
+      // the NEW template as-is, silently stripping access the admin never
+      // touched -- see the long comment in openEditModal for why this is
+      // blocked rather than recomputed a second time.
+      var d = accessRow.delta || { added: [], removed: [] };
+      if ((d.added && d.added.length) || (d.removed && d.removed.length)) {
+        showModalMsg('This user has custom access overrides. Use “Edit access” from the row menu to change their template.', 'error');
+        return;
+      }
+    }
+  }
+
+  // Contact fields are only ever written when one of them actually changed.
+  // Compared against editingOriginal -- the values exactly as pre-filled by
+  // openEditModal -- not re-derived from editingUser, so this reads the same
+  // change the admin made on screen.
+  var contactChanged = !isEdit || !editingOriginal
+    || document.getElementById('m-first').value.trim() !== editingOriginal.first_name
+    || document.getElementById('m-last').value.trim()  !== editingOriginal.last_name
+    || document.getElementById('m-email').value.trim() !== editingOriginal.email
+    || document.getElementById('m-phone').value.trim() !== editingOriginal.phone
+    || JSON.stringify(selectedRoles.slice().sort()) !== JSON.stringify(editingOriginal.permissions);
+
   var btn = document.getElementById('modal-submit');
   var cancel = document.getElementById('modal-cancel');
   btn.disabled = true;
@@ -1727,45 +1866,114 @@ function submitContact() {
   btn.textContent = isEdit ? 'Saving…' : 'Submitting…';
   showModalMsg(isEdit ? 'Saving changes…' : 'Adding contact…', 'loading');
 
-  var payload = {
-    email: brokerEmail,
-    first_name: document.getElementById('m-first').value.trim(),
-    last_name:  document.getElementById('m-last').value.trim(),
-    contact_email: document.getElementById('m-email').value.trim(),
-    phone: document.getElementById('m-phone').value.trim(),
-    permissions: selectedRoles
-  };
-  var endpoint = '/broker-add-contact';
-  if (isEdit) { endpoint = '/broker-edit-contact'; payload.contact_id = editingContactId; }
-  else if (templatesAvailable) { payload.template_id = templateId; }
+  function fail(msg) {
+    showModalMsg(msg, 'error');
+    btn.disabled = false; cancel.disabled = false; btn.textContent = isEdit ? 'Save' : 'Submit';
+  }
 
-  fetch(BROKER_API_BASE + endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).then(function(res) {
+  function parseJsonResponse(res) {
     return res.text().then(function(t) {
       var data = {};
       try { data = t ? JSON.parse(t) : {}; } catch (e) { data = {}; }
       return { status: res.status, data: data };
     });
-  }).then(function(r) {
-    if (r.status === 200 && r.data.ok) {
-      showModalMsg(isEdit ? '✓ Changes saved.'
-                          : '✓ Contact added. An invitation email will be sent to ' + payload.contact_email + '.', 'success');
-      btn.textContent = isEdit ? '✓ Saved' : '✓ Added';
-      setTimeout(function() { loadUsers(); closeModal(); }, 1400);
-    } else {
-      var detail = r.data.message ? ' (' + r.data.message + ')'
-                 : r.data.error ? ' (' + r.data.error + ')' : '';
-      showModalMsg('Could not ' + (isEdit ? 'save changes' : 'add contact') + detail + '. Please try again.', 'error');
-      btn.disabled = false; cancel.disabled = false; btn.textContent = isEdit ? 'Save' : 'Submit';
+  }
+
+  function saveContactFields(templateAlreadySaved) {
+    if (isEdit && !contactChanged) {
+      // Nothing on the contact side to write -- a template-only change (or
+      // no change at all) must not generate a no-op /broker-edit-contact
+      // call or audit row.
+      showModalMsg('✓ Changes saved.', 'success');
+      btn.textContent = '✓ Saved';
+      setTimeout(function() { loadUsers(); loadAccess(); closeModal(); }, 1400);
+      return;
     }
-  }).catch(function(err) {
-    console.error('[CompanyProfile] ' + endpoint + ' failed', err);
-    showModalMsg('Could not ' + (isEdit ? 'save changes' : 'add contact') + '. Please check your connection and try again.', 'error');
-    btn.disabled = false; cancel.disabled = false; btn.textContent = isEdit ? 'Save' : 'Submit';
-  });
+
+    var payload = {
+      email: brokerEmail,
+      first_name: document.getElementById('m-first').value.trim(),
+      last_name:  document.getElementById('m-last').value.trim(),
+      contact_email: document.getElementById('m-email').value.trim(),
+      phone: document.getElementById('m-phone').value.trim(),
+      permissions: selectedRoles
+    };
+    var endpoint = '/broker-add-contact';
+    if (isEdit) { endpoint = '/broker-edit-contact'; payload.contact_id = editingContactId; }
+    else if (templatesAvailable) { payload.template_id = templateId; }
+
+    fetch(BROKER_API_BASE + endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(parseJsonResponse).then(function(r) {
+      if (r.status === 200 && r.data.ok) {
+        showModalMsg(isEdit ? '✓ Changes saved.'
+                            : '✓ Contact added. An invitation email will be sent to ' + payload.contact_email + '.', 'success');
+        btn.textContent = isEdit ? '✓ Saved' : '✓ Added';
+        // Re-fetches /permissions/users (and the rest of the Access tab) so a
+        // just-added or just-edited user's pill reflects reality immediately
+        // instead of falling back to the hardcoded "Vendor Access" label
+        // until a manual reload.
+        setTimeout(function() { loadUsers(); loadAccess(); closeModal(); }, 1400);
+      } else {
+        var detail = r.data.message ? ' (' + r.data.message + ')'
+                   : r.data.error ? ' (' + r.data.error + ')' : '';
+        if (templateAlreadySaved) {
+          // FIX 2: the permission write already succeeded (and is audited)
+          // before this call ever ran. A generic "could not save changes"
+          // here would read as nothing having happened, when the access
+          // change the admin actually wanted DID take effect. Say so, and
+          // refresh the Access tab row so it shows the new template even
+          // though this second write failed. refreshAccessRow(), not
+          // loadAccess(): loadAccess() also rebuilds this modal's own
+          // template picker and re-runs syncModalSubmit while the modal is
+          // still open, which would grey Save back out and blank the picker
+          // -- disarming the "Please try again" this just showed.
+          fail('This user’s access was updated, but the contact details could not be saved' + detail + '. Please try again.');
+          refreshAccessRow();
+        } else {
+          fail('Could not ' + (isEdit ? 'save changes' : 'add contact') + detail + '. Please try again.');
+        }
+      }
+    }).catch(function(err) {
+      console.error('[CompanyProfile] ' + endpoint + ' failed', err);
+      if (templateAlreadySaved) {
+        fail('This user’s access was updated, but the contact details could not be saved. Please check your connection and try again.');
+        refreshAccessRow();
+      } else {
+        fail('Could not ' + (isEdit ? 'save changes' : 'add contact') + '. Please check your connection and try again.');
+      }
+    });
+  }
+
+  if (templateChanged) {
+    fetch(BROKER_API_BASE + '/permissions/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: brokerEmail,
+        portal_user_id: accessRow.portal_user_id,
+        template_id: templatePicker.value
+      })
+    }).then(parseJsonResponse).then(function(r) {
+      if (r.status === 200) {
+        saveContactFields(true);
+      } else {
+        // Surfaced as-is: /permissions/user's error text is what the admin
+        // needs (403 "Beyond your own access" + ungrantable, 409 last-admin,
+        // 404 "Template not found", 403 "User not in your account"). Stop
+        // here -- the contact fields are NEVER written when this is refused.
+        fail(r.data.error || 'Could not update this user’s access.');
+      }
+    }).catch(function(err) {
+      console.error('[CompanyProfile] /permissions/user failed', err);
+      fail('Could not update this user’s access. Please check your connection and try again.');
+    });
+    return;
+  }
+
+  saveContactFields();
 }
 
 // ── Company Logo section ──────────────────────────────────────────────────
@@ -2212,6 +2420,21 @@ function loadAccess() {
   });
 }
 
+// loadAccess() also rebuilds the invite-template picker (renderInviteTemplatePicker
+// blanks its value and re-runs syncModalSubmit), which is fine when it closes
+// the modal but would clobber this modal's own controls while it is still
+// open -- exactly the case right after a partial save failure, where the
+// admin needs Save to stay usable for "Please try again." Refetches just
+// /permissions/users and re-renders through the same renderAccessTab() every
+// other path uses, without touching the picker.
+function refreshAccessRow() {
+  var q = '?email=' + encodeURIComponent(brokerEmail);
+  return fetch(BROKER_API_BASE + '/permissions/users' + q)
+    .then(function (r) { return r.json(); })
+    .then(function (res) { renderAccessTab((res || {}).users || [], accessTemplates); })
+    .catch(function (err) { console.error('[CompanyProfile] /permissions/users refresh failed', err); });
+}
+
 // --- PERM3 Templates, invite picker, status, activity ---------------------
 function renderTemplatesTab(templates) {
   var list = document.getElementById('templates-list');
@@ -2508,6 +2731,9 @@ window.submitContact = function() {
 window.openEditModal = function() {
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
   return openEditModal.apply(this, arguments);
+};
+window.togglePermCard = function() {
+  return togglePermCard.apply(this, arguments);
 };
 window.openViewModal = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;

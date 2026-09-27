@@ -412,3 +412,54 @@ test('the Application Details / staff submission styles exist', () => {
   assert.match(html, /\.ca-app-doc-head\s*\{/);
   assert.match(html, /\.ca-app-staff-ref\s*\{/);
 });
+
+// ── CREDITAPP4: the signed PDF link in the BROKER's own block ──────────────
+// GET /credit-app/pdf was OperFi-only until Tom's 2026-09-26 call. It now
+// serves the owning broker and re-checks account ownership itself, so this
+// link is worthless to anyone who could not already fetch it. The broker's
+// block therefore gets the same "View signed PDF" affordance the staff block
+// has had -- but only when the server says a document actually rendered.
+
+test('CREDITAPP4: the broker block links the signed PDF when one exists', () => {
+  const w = boot();
+  detailFixture(w);
+  w.brokerEmail = 'broker@customer.com';
+  w.renderCreditAppDetailSection(clientPayload({
+    pdf: { exists: true, retrieval_path: '/credit-app/pdf?submission_id=sub_9' },
+  }));
+  const body = w.document.getElementById('ca-app-detail-body');
+  assert.match(body.textContent, /Signed Application/);
+  const a = body.querySelector('a[href*="/credit-app/pdf"]');
+  assert.ok(a, 'expected a link to the signed PDF');
+  assert.match(a.getAttribute('href'), /submission_id=sub_9/);
+  // The route authenticates on the caller's email; it has to be on the URL.
+  assert.match(a.getAttribute('href'), /email=broker%40customer\.com/);
+  assert.equal(a.getAttribute('target'), '_blank');
+  assert.equal(a.getAttribute('rel'), 'noopener');
+});
+
+test('CREDITAPP4: no link when the render never produced a document', () => {
+  // 🚨 A link that 404s is worse than no link. pdf.rendered=False is a real,
+  // already-recorded state -- every application whose render failed has it.
+  const w = boot();
+  detailFixture(w);
+  w.brokerEmail = 'broker@customer.com';
+  w.renderCreditAppDetailSection(clientPayload({
+    pdf: { exists: false, retrieval_path: '/credit-app/pdf?submission_id=sub_9' },
+  }));
+  const body = w.document.getElementById('ca-app-detail-body');
+  assert.doesNotMatch(body.textContent, /Signed Application/);
+  assert.equal(body.querySelector('a[href*="/credit-app/pdf"]'), null);
+});
+
+test('CREDITAPP4: a payload with no pdf key at all still renders', () => {
+  // An application served by an API deployed before CREDITAPP4 carries no
+  // pdf key. The pane must render everything else, not throw.
+  const w = boot();
+  detailFixture(w);
+  w.brokerEmail = 'broker@customer.com';
+  w.renderCreditAppDetailSection(clientPayload());
+  const body = w.document.getElementById('ca-app-detail-body');
+  assert.match(body.textContent, /Signed/);
+  assert.equal(body.querySelector('a[href*="/credit-app/pdf"]'), null);
+});

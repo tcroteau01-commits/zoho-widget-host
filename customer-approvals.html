@@ -2984,6 +2984,27 @@ function renderCreditAppDetailSection(payload) {
       field('Signed', payload.submitted_at ? fmtDateTime(parseDate(payload.submitted_at)) : '') +
     '</div>';
 
+  // CREDITAPP4 — the signed application itself, for the BROKER. /credit-app/pdf
+  // was OperFi-only until Tom's 2026-09-26 call; it now serves the owning
+  // broker too and re-checks account ownership itself, so this link is
+  // worthless to anyone who could not already fetch it.
+  //
+  // Rendered ONLY when payload.pdf.exists — an application whose render failed
+  // reports false, and offering a link that 404s is worse than offering none.
+  // Same shape as the staff block in renderCreditAppStaffSection, deliberately
+  // duplicated rather than shared: the two sections take different payloads and
+  // a shared helper would invite passing the staff one here.
+  var pdf = payload.pdf || {};
+  if (pdf.exists && pdf.retrieval_path) {
+    var pdfEmail = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+    var pdfSep = pdf.retrieval_path.indexOf('?') === -1 ? '?' : '&';
+    var signedUrl = BROKER_API_BASE + pdf.retrieval_path + pdfSep +
+      'email=' + encodeURIComponent(pdfEmail);
+    html += '<div class="ca-app-doc-head">Signed Application</div>' +
+      '<div class="field"><a href="' + esc(signedUrl) + '" target="_blank" rel="noopener">' +
+      'View signed PDF</a></div>';
+  }
+
   body.innerHTML = html;
   section.style.display = '';
 }

@@ -46,6 +46,11 @@ test('edit mode: openEditModal pre-fills + submitContact POSTs to /broker-edit-c
   assert.strictEqual(w.document.getElementById('m-email').value, 'jane@acme.com');
   assert.ok(w.document.querySelector('.perm-card.selected'), 'a permission was pre-selected');
 
+  // PERMEDIT1: /broker-edit-contact is only called when a contact field
+  // actually changed, so this exercises that with a real edit rather than a
+  // no-op re-save.
+  w.document.getElementById('m-phone').value = '(555) 999-8888';
+
   let captured = null;
   w.fetch = (url, opts) => { captured = { url, opts }; return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '900' })) }); };
   w.submitContact();

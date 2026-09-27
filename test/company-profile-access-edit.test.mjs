@@ -105,8 +105,16 @@ test('editing with an unchanged template does NOT post to /permissions/user', ()
   };
 
   w.submitContact();
+  // The negative assertion alone would also pass if submitContact threw
+  // before reaching either fetch, so pin down the positive side too: nothing
+  // at all changed, so /broker-edit-contact must not fire either, and the
+  // admin still sees a real success message.
   assert.ok(!posted.some((p) => p.url.indexOf('/permissions/user') !== -1),
     'an unchanged template must not generate a write or an audit row');
+  assert.ok(!posted.some((p) => p.url.indexOf('/broker-edit-contact') !== -1),
+    'nothing else changed either, so no contact write');
+  const msg = w.document.getElementById('modal-msg').textContent;
+  assert.ok(/Changes saved/.test(msg), 'a real success message rendered, got: ' + msg);
 });
 
 test('a refused /permissions/user (403 ceiling) surfaces its message and does NOT then post to /broker-edit-contact', async () => {
@@ -220,4 +228,145 @@ test('on an unflipped account (templatesAvailable false) the legacy permission c
   const contactCall = posted.find((p) => p.url.indexOf('/broker-edit-contact') !== -1);
   assert.ok(contactCall, 'the legacy path still saves through /broker-edit-contact');
   assert.deepStrictEqual(JSON.parse(contactCall.opts.body).permissions, ['Full Access']);
+});
+
+// Review fix 6: unflipped accounts are the large majority and had no test
+// exercising a roles-only edit (every existing unflipped test changed a
+// contact field instead). Line ~1849's permissions comparison is what keeps
+// this saving at all.
+test('on an unflipped account, toggling a permission card alone still saves through /broker-edit-contact', () => {
+  const w = boot();
+  w.openEditModal(Object.assign({}, CONTACT)); // CONTACT starts on Full Access
+
+  var vendorCard = w.document.querySelector('.perm-card[data-role="Vendor Access"]');
+  w.togglePermCard(vendorCard);
+
+  const posted = [];
+  w.fetch = (url, opts) => { posted.push({ url, opts }); return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '900' })) }); };
+  w.submitContact();
+
+  const contactCall = posted.find((p) => p.url.indexOf('/broker-edit-contact') !== -1);
+  assert.ok(contactCall, 'a roles-only change still saves, with no other field touched');
+  assert.deepStrictEqual(JSON.parse(contactCall.opts.body).permissions, ['Vendor Access']);
+});
+
+// Review fix 1: a template swap must never carry the subject's OLD overrides
+// onto the NEW template. The server keeps grants_added/grants_removed as-is
+// when they are omitted from the request and applies them to whatever
+// template_id was just written (removal wins in resolve_effective), so a
+// user on Operations with "page.credit_check" removed would land on Credit
+// still missing it -- the admin told "Changes saved" while the thing they
+// meant to grant never appeared. Blocked here rather than recomputed, which
+// would duplicate saveAccess()'s existing delta logic in a second place.
+test('a user with custom access overrides cannot have their template swapped from this modal', () => {
+  const w = boot();
+  editOn(w,
+    [{ template_id: 't_ops', name: 'Operations' }, { template_id: 't_credit', name: 'Credit' }],
+    [{ portal_user_id: 'pu_1', email: 'jane@acme.com', template_id: 't_ops', status: 'active',
+       is_owner: false, delta: { added: [], removed: ['page.credit_check'] } }]);
+
+  const picker = w.document.getElementById('invite-template');
+  assert.strictEqual(picker.disabled, true, 'the picker is disabled for a user with overrides');
+  const note = w.document.getElementById('tpl-picker-note').textContent;
+  assert.ok(/overrides/i.test(note) && /Edit access/i.test(note),
+    'the reason names the real cause and points at the drawer, got: ' + note);
+
+  // Defense in depth: even if something forces a different value through,
+  // submitContact must still refuse rather than trust a disabled control.
+  picker.value = 't_credit';
+  const posted = [];
+  w.fetch = (url, opts) => { posted.push({ url, opts }); return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true })) }); };
+  w.submitContact();
+
+  assert.ok(!posted.length, 'the save is refused outright, nothing is posted');
+  const msg = w.document.getElementById('modal-msg').textContent;
+  assert.ok(/overrides/i.test(msg), 'the refusal message names the real cause, got: ' + msg);
+});
+
+// Review fix 4: the Access tab withholds "Edit access" for the owner because
+// a template write for them is a no-op (resolve_effective short-circuits),
+// so this modal must not send one either -- it would only create an audit
+// row and inflate a template's user count for nothing.
+test('the account owner’s template is never written, even if a different one is selected', () => {
+  const w = boot();
+  editOn(w,
+    [{ template_id: 't_ops', name: 'Operations' }, { template_id: 't_credit', name: 'Credit' }],
+    [{ portal_user_id: 'pu_owner', email: 'jane@acme.com', template_id: 't_ops', status: 'active', is_owner: true }]);
+
+  const picker = w.document.getElementById('invite-template');
+  assert.strictEqual(picker.disabled, true, 'the picker is disabled for the owner, matching the Access tab');
+
+  picker.value = 't_credit';
+  const posted = [];
+  w.fetch = (url, opts) => { posted.push({ url, opts }); return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '900' })) }); };
+  w.submitContact();
+
+  assert.ok(!posted.some((p) => p.url.indexOf('/permissions/user') !== -1),
+    'no permission write for the owner, regardless of what the picker holds');
+});
+
+// Review fix 3: a Creator contact with no portal_users row is an expected,
+// best-effort-provisioning state, not an error state. Before this build such
+// a user's name/phone could still be edited; the null-accessRow guard must
+// not turn that into a dead end now that a template picker exists.
+test('a contact not yet provisioned in the permission engine can still have contact fields edited', () => {
+  const w = boot();
+  setTemplates(w, [{ template_id: 't_ops', name: 'Operations' }, { template_id: 't_credit', name: 'Credit' }]);
+  setAccessIndex(w, []); // accessByEmail stays empty -- no row for this contact
+  w.openEditModal(Object.assign({}, CONTACT));
+
+  const picker = w.document.getElementById('invite-template');
+  assert.strictEqual(picker.disabled, true, 'nothing to pick a template against');
+  assert.strictEqual(picker.value, '', 'left blank rather than guessing');
+  const note = w.document.getElementById('tpl-picker-note').textContent;
+  assert.ok(/not yet set up/i.test(note), 'names the real cause, got: ' + note);
+  assert.strictEqual(w.document.getElementById('modal-submit').disabled, false,
+    'Save is not blocked on a template pick that can never be satisfied');
+
+  w.document.getElementById('m-phone').value = '(555) 999-0000';
+  const posted = [];
+  w.fetch = (url, opts) => { posted.push({ url, opts }); return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '900' })) }); };
+  w.submitContact();
+
+  assert.ok(!posted.some((p) => p.url.indexOf('/permissions/user') !== -1), 'no accessRow, no permission call');
+  const contactCall = posted.find((p) => p.url.indexOf('/broker-edit-contact') !== -1);
+  assert.ok(contactCall, 'the phone edit still saves through /broker-edit-contact');
+});
+
+// Review fix 2: when the permission write already succeeded, a subsequent
+// contact-write failure must not be reported as if nothing happened -- the
+// access change is real and audited -- and the row behind the modal has to
+// be refreshed even though this second call failed.
+test('when the permission write succeeds but the contact write fails, the message says so and the Access tab still refreshes', async () => {
+  const w = boot();
+  editOn(w,
+    [{ template_id: 't_ops', name: 'Operations' }, { template_id: 't_credit', name: 'Credit' }],
+    [{ portal_user_id: 'pu_1', email: 'jane@acme.com', template_id: 't_ops', status: 'active', is_owner: false }]);
+
+  w.document.getElementById('invite-template').value = 't_credit';
+  w.document.getElementById('m-phone').value = '(555) 999-0000';
+
+  const posted = [];
+  w.fetch = (url, opts) => {
+    posted.push(url);
+    if (url.indexOf('/permissions/user') !== -1) {
+      return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true })) });
+    }
+    if (url.indexOf('/broker-edit-contact') !== -1) {
+      return Promise.resolve({ status: 500, text: () => Promise.resolve(JSON.stringify({ error: 'Server error' })) });
+    }
+    // loadAccess()'s plain GETs, fired because the permission write did
+    // succeed even though the contact write is about to fail.
+    return Promise.resolve({ status: 200, json: () => Promise.resolve(
+      { ok: true, groups: [], templates: [], users: [], events: [], capabilities: [] }) });
+  };
+
+  w.submitContact();
+  await new Promise((r) => setTimeout(r, 0));
+
+  const msg = w.document.getElementById('modal-msg').textContent;
+  assert.ok(/access was updated/i.test(msg) && /contact details/i.test(msg),
+    'says the access DID save and the contact details did not, got: ' + msg);
+  assert.ok(posted.some((u) => u.indexOf('/permissions/users') !== -1),
+    'loadAccess() still runs so the row shows the new template');
 });

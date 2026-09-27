@@ -301,8 +301,44 @@ test('the account owner’s template is never written, even if a different one i
   w.fetch = (url, opts) => { posted.push({ url, opts }); return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '900' })) }); };
   w.submitContact();
 
+  // The negative assertion alone would also pass if submitContact threw
+  // before reaching either fetch (finding 5's exact weakness) -- pin down
+  // the positive side too: nothing else changed, so no contact write either,
+  // and the admin still sees a real success message.
   assert.ok(!posted.some((p) => p.url.indexOf('/permissions/user') !== -1),
     'no permission write for the owner, regardless of what the picker holds');
+  assert.ok(!posted.some((p) => p.url.indexOf('/broker-edit-contact') !== -1),
+    'nothing else changed either, so no contact write');
+  const msg = w.document.getElementById('modal-msg').textContent;
+  assert.ok(/Changes saved/.test(msg), 'a real success message rendered, got: ' + msg);
+});
+
+// Review round 3, fix A: WOSPROV1 (live in production) writes template_id:
+// None for every owner it provisions, since an owner short-circuits to every
+// capability and does not need one. The picker is correctly disabled and
+// blank for this user (owner lock), but Save must not be gated on a value
+// that a locked, blank picker can never hold -- otherwise this user's name
+// and phone can never be edited again from this modal.
+test('Save is not permanently disabled for a locked user whose template_id is null (WOSPROV1 owners)', () => {
+  const w = boot();
+  editOn(w,
+    [{ template_id: 't_ops', name: 'Operations' }, { template_id: 't_credit', name: 'Credit' }],
+    [{ portal_user_id: 'pu_owner', email: 'jane@acme.com', template_id: null, status: 'active', is_owner: true }]);
+
+  const picker = w.document.getElementById('invite-template');
+  assert.strictEqual(picker.disabled, true, 'locked for the owner');
+  assert.strictEqual(picker.value, '', 'nothing to preselect when template_id is null');
+  assert.strictEqual(w.document.getElementById('modal-submit').disabled, false,
+    'Save must not require a value a locked, blank picker can never hold');
+
+  w.document.getElementById('m-phone').value = '(555) 999-0000';
+  const posted = [];
+  w.fetch = (url, opts) => { posted.push({ url, opts }); return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '900' })) }); };
+  w.submitContact();
+
+  assert.ok(!posted.some((p) => p.url.indexOf('/permissions/user') !== -1), 'still no permission write for the owner');
+  const contactCall = posted.find((p) => p.url.indexOf('/broker-edit-contact') !== -1);
+  assert.ok(contactCall, 'the phone edit still saves');
 });
 
 // Review fix 3: a Creator contact with no portal_users row is an expected,
@@ -355,10 +391,9 @@ test('when the permission write succeeds but the contact write fails, the messag
     if (url.indexOf('/broker-edit-contact') !== -1) {
       return Promise.resolve({ status: 500, text: () => Promise.resolve(JSON.stringify({ error: 'Server error' })) });
     }
-    // loadAccess()'s plain GETs, fired because the permission write did
-    // succeed even though the contact write is about to fail.
-    return Promise.resolve({ status: 200, json: () => Promise.resolve(
-      { ok: true, groups: [], templates: [], users: [], events: [], capabilities: [] }) });
+    // refreshAccessRow()'s single GET, fired because the permission write
+    // did succeed even though the contact write is about to fail.
+    return Promise.resolve({ status: 200, json: () => Promise.resolve({ users: [] }) });
   };
 
   w.submitContact();
@@ -368,5 +403,18 @@ test('when the permission write succeeds but the contact write fails, the messag
   assert.ok(/access was updated/i.test(msg) && /contact details/i.test(msg),
     'says the access DID save and the contact details did not, got: ' + msg);
   assert.ok(posted.some((u) => u.indexOf('/permissions/users') !== -1),
-    'loadAccess() still runs so the row shows the new template');
+    'the Access tab row still refreshes so it shows the new template');
+
+  // Review round 3, fix B: the row refresh above must not go through
+  // loadAccess(), which also rebuilds THIS modal's own template picker and
+  // re-runs syncModalSubmit while the modal is still open -- disarming the
+  // "Please try again" this just showed by greying Save back out and
+  // blanking the picker.
+  assert.ok(!posted.some((u) => u.indexOf('/permissions/catalog') !== -1
+    || u.indexOf('/permissions/templates') !== -1 || u.indexOf('/me/permissions') !== -1),
+    'only the row is refetched, not the modal-clobbering full loadAccess()');
+  assert.strictEqual(w.document.getElementById('modal-submit').disabled, false,
+    'Save must still be usable so "Please try again" is actionable');
+  assert.strictEqual(w.document.getElementById('invite-template').value, 't_credit',
+    'the admin’s picked template must not be wiped out from under them');
 });

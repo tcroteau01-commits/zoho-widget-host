@@ -1454,11 +1454,19 @@ function resetModal() {
   if (tplPicker) { tplPicker.value = ''; tplPicker.disabled = false; }
   var tplNote = document.getElementById('tpl-picker-note');
   if (tplNote) tplNote.textContent = '';
-  syncModalSubmit();
-  hideModalMsg();
+  // Cleared BEFORE syncModalSubmit() runs below, not after: this used to be
+  // the other way around, and syncModalSubmit's lock check at the time read
+  // editingContactId/editingUser directly, so calling it while they still
+  // held the PREVIOUS contact's values let Add Contact open with Submit
+  // already enabled off the last edit's state. The check no longer reads
+  // these directly, but nulling the editing-target state before anything
+  // that might act on it stays the correct order regardless of what that
+  // logic currently happens to consult.
   editingContactId = null;
   editingUser = null;
   editingOriginal = null;
+  syncModalSubmit();
+  hideModalMsg();
   document.getElementById('modal-submit').textContent = 'Submit';
   var mt = document.querySelector('#modal-scrim .m-title');
   var ms = document.querySelector('#modal-scrim .m-sub');
@@ -1703,14 +1711,17 @@ function templatesGovern() {
 function syncModalSubmit() {
   var byTemplate = templatesGovern();
   var picker = document.getElementById('invite-template');
-  // Editing a contact with no accessFor() row (not yet provisioned in the
-  // permission engine) has no template to require: the picker is disabled
-  // and left blank for exactly this case in openEditModal, and submitContact
-  // never attempts a template write for it. Requiring a pick here would
-  // block Save on something that can never be satisfied, and contact-field
-  // edits for this user must still reach the admin.
-  var unprovisionedEdit = !!editingContactId && byTemplate && !accessFor(editingUser);
-  document.getElementById('modal-submit').disabled = (byTemplate && !unprovisionedEdit)
+  // A LOCKED picker (unprovisioned, owner, or custom-overrides -- every case
+  // openEditModal disables it for) has no template pick to require: gating
+  // on picker.disabled rather than only on a missing accessFor() row also
+  // covers a provisioned user whose template_id is legitimately null (an
+  // owner short-circuits to every capability and WOSPROV1 writes no
+  // template_id for one), which otherwise made Save unsatisfiable -- the
+  // picker held no value to require, but was not "unprovisioned" either.
+  // submitContact() never attempts a template write for any locked case, and
+  // contact-field edits for these users must still reach the admin.
+  var lockedEdit = byTemplate && !!(picker && picker.disabled);
+  document.getElementById('modal-submit').disabled = (byTemplate && !lockedEdit)
     ? !(picker && picker.value)
     : (byTemplate ? false : selectedRoles.length === 0);
   var block = document.getElementById('perm-section');
@@ -1913,10 +1924,14 @@ function submitContact() {
           // before this call ever ran. A generic "could not save changes"
           // here would read as nothing having happened, when the access
           // change the admin actually wanted DID take effect. Say so, and
-          // refresh the Access tab so the row behind the modal shows the new
-          // template even though this second write failed.
+          // refresh the Access tab row so it shows the new template even
+          // though this second write failed. refreshAccessRow(), not
+          // loadAccess(): loadAccess() also rebuilds this modal's own
+          // template picker and re-runs syncModalSubmit while the modal is
+          // still open, which would grey Save back out and blank the picker
+          // -- disarming the "Please try again" this just showed.
           fail('This user’s access was updated, but the contact details could not be saved' + detail + '. Please try again.');
-          loadAccess();
+          refreshAccessRow();
         } else {
           fail('Could not ' + (isEdit ? 'save changes' : 'add contact') + detail + '. Please try again.');
         }
@@ -1925,7 +1940,7 @@ function submitContact() {
       console.error('[CompanyProfile] ' + endpoint + ' failed', err);
       if (templateAlreadySaved) {
         fail('This user’s access was updated, but the contact details could not be saved. Please check your connection and try again.');
-        loadAccess();
+        refreshAccessRow();
       } else {
         fail('Could not ' + (isEdit ? 'save changes' : 'add contact') + '. Please check your connection and try again.');
       }
@@ -2403,6 +2418,21 @@ function loadAccess() {
   }).catch(function (err) {
     console.error('[CompanyProfile] access load failed', err);
   });
+}
+
+// loadAccess() also rebuilds the invite-template picker (renderInviteTemplatePicker
+// blanks its value and re-runs syncModalSubmit), which is fine when it closes
+// the modal but would clobber this modal's own controls while it is still
+// open -- exactly the case right after a partial save failure, where the
+// admin needs Save to stay usable for "Please try again." Refetches just
+// /permissions/users and re-renders through the same renderAccessTab() every
+// other path uses, without touching the picker.
+function refreshAccessRow() {
+  var q = '?email=' + encodeURIComponent(brokerEmail);
+  return fetch(BROKER_API_BASE + '/permissions/users' + q)
+    .then(function (r) { return r.json(); })
+    .then(function (res) { renderAccessTab((res || {}).users || [], accessTemplates); })
+    .catch(function (err) { console.error('[CompanyProfile] /permissions/users refresh failed', err); });
 }
 
 // --- PERM3 Templates, invite picker, status, activity ---------------------

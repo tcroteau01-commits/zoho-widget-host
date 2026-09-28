@@ -125,6 +125,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 /* Gated (Add New Carrier) card */
 .type-card.gated-card { border-style: dashed; opacity: 0.92; }
+.type-card.gated-card.disabled { opacity: 0.45; filter: grayscale(1); cursor: not-allowed; }
+.type-card.gated-card.disabled:hover { border-color: #e6e3da; background: #fff; }
 .gate-badge {
   position: absolute; top: 10px; right: 10px;
   font-size: 9px; font-weight: 700; color: #8a6d3b; background: #fbf0d8;
@@ -381,14 +383,15 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <div class="type-card-name">Factoring Company Change</div>
           <div class="type-card-desc">Carrier switching to a different factoring company</div>
         </div>
-        <div class="type-card gated-card" data-type="Add New Carrier">
+        <!-- Disabled (grayed) by default; applyGating() enables it only when Allow_Add_Carrier is on. -->
+        <div class="type-card gated-card disabled" data-type="Add New Carrier" aria-disabled="true">
           <span class="gate-badge">&#128274; Ascend / TMS</span>
           <div class="type-card-name">Add New Carrier</div>
           <div class="type-card-desc">New carrier with an approved factoring company + NOA</div>
         </div>
       </div>
-      <div class="gate-note">
-        <b>Add New Carrier</b> is hidden by default. It appears only for Ascend and TMS-integrated accounts (<code>Allow_Add_Carrier</code> on). Normal brokers act only on carriers already vetted through onboarding, so OperFi always captures banking and the fraud footprint directly from the carrier.
+      <div class="gate-note" id="gate-note">
+        <b>Add New Carrier</b> is not enabled for your account. Send new carriers your Carrier Onboarding Link so they complete setup directly with OperFi. Contact OperFi if you need this enabled.
       </div>
     </div>
 
@@ -633,7 +636,7 @@ function resetSelectedFiles() {
   selectedFundingType = null;
   Array.prototype.forEach.call(document.querySelectorAll('[name="lor-funding-type"]'), function (r) { r.checked = false; });
 }
-function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); if (typeof selectType === 'function' && !selectedType) selectType('NOA Update'); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
+function showForm()  { resetSelectedFiles(); lorBankChoice = 'yes'; if (typeof setLorBankChoice === 'function') setLorBankChoice('yes'); if (typeof selectType === 'function' && !selectedType) selectType('NOA Update'); if (typeof applyGating === 'function') applyGating(statusPayload); document.getElementById('view-list').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-form').classList.remove('hidden'); window.scrollTo(0,0); }
 function showList()  { document.getElementById('view-form').classList.add('hidden'); document.getElementById('view-track').classList.add('hidden'); document.getElementById('view-list').classList.remove('hidden'); window.scrollTo(0,0); if (typeof loadStatus === 'function') loadStatus(); }
 function showTrack() {
   var c = document.getElementById('track-carrier'); if (c && selectedCarrierName) c.textContent = selectedCarrierName;
@@ -1059,8 +1062,12 @@ var selectedCarrierName = '';  // selected carrier's name, for the confirmation 
 function applyGating(p) {
   var gated = document.querySelector('.type-card.gated-card');
   if (!gated) return;
-  if (p && p.allow_add_carrier) { gated.classList.remove('hidden'); }
-  else { gated.classList.add('hidden'); }
+  var allowed = !!(p && p.allow_add_carrier);
+  gated.classList.toggle('disabled', !allowed);
+  gated.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+  var note = document.getElementById('gate-note');
+  if (note) note.classList.toggle('hidden', allowed);
+  if (!allowed && selectedType === 'Add New Carrier') selectType('NOA Update');
 }
 
 function showOnFile(carrier) {
@@ -1264,6 +1271,8 @@ function lookupNewCarrier() {
 }
 
 function selectType(t) {
+  var gatedCard = document.querySelector('.type-card.gated-card');
+  if (t === 'Add New Carrier' && gatedCard && gatedCard.classList.contains('disabled')) return;
   selectedType = t;
   var MATRIX = {
     'NOA Update': ['sec-carrier','sec-factoring','sec-upload'],

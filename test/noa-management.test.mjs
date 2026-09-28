@@ -101,13 +101,45 @@ test('_acquireNoaTarget recovers vendorId from sessionStorage on reload', () => 
   assert.equal(t.vendorId, 'v_77');
 });
 
-test('gated Add New Carrier card is hidden unless allow_add_carrier', () => {
+test('gated Add New Carrier card is grayed out unless allow_add_carrier', () => {
   const { window } = makeWidget();
-  window.applyGating(STATUS);                       // allow_add_carrier:false
   const gated = window.document.querySelector('.type-card.gated-card');
-  assert.equal(gated.classList.contains('hidden'), true);
+  const note = window.document.getElementById('gate-note');
+  assert.equal(gated.classList.contains('disabled'), true);   // disabled before any payload
+  window.applyGating(STATUS);                       // allow_add_carrier:false
+  assert.equal(gated.classList.contains('disabled'), true);
+  assert.equal(gated.classList.contains('hidden'), false);    // visible, just grayed
+  assert.equal(note.classList.contains('hidden'), false);
   window.applyGating(Object.assign({}, STATUS, { allow_add_carrier: true }));
-  assert.equal(gated.classList.contains('hidden'), false);
+  assert.equal(gated.classList.contains('disabled'), false);
+  assert.equal(note.classList.contains('hidden'), true);
+});
+
+test('a disabled Add New Carrier card cannot be selected', () => {
+  const { window } = makeWidget();
+  window.applyGating(STATUS);
+  window.selectType('NOA Update');
+  window.document.querySelector('.type-card.gated-card').click();
+  assert.equal(window.selectedType, 'NOA Update');
+  assert.equal(window.document.getElementById('noa-usdot-search').classList.contains('hidden'), true);
+});
+
+// Regression 09-28 (Laney Logistics): "+ New Update" opened the form without
+// running the gate, so Add New Carrier was selectable on a non-entitled account.
+test('+ New Update path applies the gate from the loaded status payload', () => {
+  const { window } = makeWidget();
+  window.applyGating(Object.assign({}, STATUS, { allow_add_carrier: true }));
+  window.statusPayload = STATUS;                    // allow_add_carrier:false
+  window.showForm();
+  assert.equal(window.document.querySelector('.type-card.gated-card').classList.contains('disabled'), true);
+});
+
+test('losing the entitlement moves an Add New Carrier selection back to NOA Update', () => {
+  const { window } = makeWidget();
+  window.applyGating(Object.assign({}, STATUS, { allow_add_carrier: true }));
+  window.selectType('Add New Carrier');
+  window.applyGating(STATUS);
+  assert.equal(window.selectedType, 'NOA Update');
 });
 
 test('showOnFile renders the currently-on-file guard from the carrier', () => {
@@ -463,6 +495,7 @@ test('type-note (NOA-Update-specific guidance) only shows for NOA Update', () =>
   assert.equal(hidden(), true);
   window.selectType('Factoring Company Change');
   assert.equal(hidden(), true);
+  window.applyGating({ allow_add_carrier: true });
   window.selectType('Add New Carrier');
   assert.equal(hidden(), true);
 });
@@ -479,6 +512,7 @@ test('selectType Factoring Company Change shows new-factor only (no duplicate fa
 
 test('selectType Add New Carrier hides the existing-carrier search, shows USDOT lookup', () => {
   const { window } = makeWidget();
+  window.applyGating({ allow_add_carrier: true });
   window.selectType('Add New Carrier');
   assert.equal(window.document.getElementById('sec-carrier').classList.contains('hidden'), true);
   assert.equal(window.document.getElementById('noa-usdot-search').classList.contains('hidden'), false);

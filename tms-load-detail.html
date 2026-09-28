@@ -664,7 +664,7 @@ function saveLoad(statusOverride) {
   showError('');
   var body = collectForm();
   if (statusOverride) body.status = statusOverride;
-  if (!body.customer_id) { showError('Select an approved customer before saving.'); return Promise.resolve(); }
+  if (!body.customer_id) { showError('Select an approved customer before saving.'); return Promise.resolve(false); }
   var btns = ['save-draft-btn', 'save-btn'].map(function(id){ return document.getElementById(id); });
   btns.forEach(function(b){ if (b) b.disabled = true; });
   return fetch(BROKER_API_BASE + '/tms-load', {
@@ -672,15 +672,44 @@ function saveLoad(statusOverride) {
     .then(function(r){ return r.json(); })
     .then(function(p){
       btns.forEach(function(b){ if (b) b.disabled = false; });
+      // A partial failure (stops did not save) still created the load: adopt its id
+      // so the retry updates it instead of creating a duplicate.
+      loadId = (p && p.id) || loadId;
       if (p && p.ok) {
-        loadId = (p && p.id) || loadId;
+        _savedSnapshot = _formSnapshot();
         showOk('Saved.'); refreshDocCard();
         loadExisting().then(function(load){ if (load) { hydrate(load); } });
+        return true;
       }
-      else showError((p && p.error) || 'Save failed.');
+      showError((p && p.error) || 'Save failed.'); refreshDocCard();
+      return false;
     })
-    .catch(function(){ btns.forEach(function(b){ if (b) b.disabled = false; }); showError('Network error saving load.'); });
+    .catch(function(){ btns.forEach(function(b){ if (b) b.disabled = false; }); showError('Network error saving load.'); return false; });
 }
+
+// RCSTOPS1: documents render from the SAVED load, so anything on screen that is not
+// saved yet (stops especially) is silently missing from the RC/BOL. Generate compares
+// the form with what was last saved and saves first when they differ. vetting carries
+// a fresh timestamp on every read, so it is left out of the comparison.
+var _savedSnapshot = null;
+var _carriersReady = false;
+function _formSnapshot() {
+  var f = collectForm();
+  delete f.vetting;
+  return JSON.stringify(f);
+}
+function _hasUnsavedChanges() { return _savedSnapshot !== null && _formSnapshot() !== _savedSnapshot; }
+function markCarriersReady() {
+  _carriersReady = true;
+  // The saved carrier lands after hydrate; fold it into the saved state so it does not
+  // read as an edit, without absorbing anything the broker changed meanwhile.
+  if (_savedSnapshot !== null) {
+    var s = JSON.parse(_savedSnapshot);
+    s.carrier_id = val('f-carrier_id'); s.carrier_mc = val('f-carrier_mc');
+    _savedSnapshot = JSON.stringify(s);
+  }
+}
+window.markCarriersReady = markCarriersReady;
 
 
 function draftEligible(status) { return (status || 'Draft') === 'Draft' || status === 'Available'; }
@@ -823,6 +852,10 @@ function hydrate(load) {
   setVal('f-carrier_pay', load.carrier_pay || '');
   ['origin','destination','equipment','commodity','weight','piece_count','temperature',
    'bol_number','pro_number','special_instructions','accessorials'].forEach(function(k){ setVal('f-'+k, load[k]); });
+  // hydrate re-runs after every save; appending here doubled the stops on screen
+  // and the next save wrote the duplicates to Creator.
+  var stopBox = document.getElementById('stops');
+  if (stopBox) stopBox.innerHTML = '';
   (load.stops || []).forEach(function(s){
     addStop(s.stop_type || 'Pickup');
     var rows = document.querySelectorAll('.stop-row');
@@ -841,6 +874,7 @@ function hydrate(load) {
   renderStepper(val('f-status'));
   fetchCredit();
   refreshSaveButtons();
+  _savedSnapshot = _formSnapshot();
 }
 
 function showLoading(on) {
@@ -873,7 +907,7 @@ function loadRefData() {
   fetch(BROKER_API_BASE + '/tms-templates?email=' + encodeURIComponent(brokerEmail))
     .then(function(r){ return r.json(); }).then(function(p){ populateTemplates((p && p.templates) || []); });
   Promise.all([pLoad, pCust]).then(function(res){ if (res[0]) hydrate(res[0]); showLoading(false); });
-  Promise.all([pLoad, pCarr]).then(function(res){ if (res[0]) { setVal('f-carrier_id', res[0].carrier_id || ''); onCarrierChange(); } });
+  Promise.all([pLoad, pCarr]).then(function(res){ if (res[0]) { setVal('f-carrier_id', res[0].carrier_id || ''); onCarrierChange(); } markCarriersReady(); });
 }
 
 function portalPageUrl(page) {
@@ -1068,6 +1102,20 @@ function _docStatus(msg, busy) {
 
 function generateDoc(docType, send) {
   if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
+  if (_hasUnsavedChanges()) {
+    // Saving before the carrier list lands would post a blank carrier, which the
+    // server reads as a dropped carrier: RC voided, load back to Draft.
+    if (!_carriersReady) { _docStatus('Still loading carriers. Try again in a moment.'); return Promise.resolve(); }
+    _docStatus('Saving changes…', true);
+    return saveLoad().then(function(ok){
+      if (!ok) { _docStatus('Not generated. Fix the save error above, then try again.'); return; }
+      return _generateDoc(docType, send);
+    });
+  }
+  return _generateDoc(docType, send);
+}
+
+function _generateDoc(docType, send) {
   var toEl = document.getElementById('doc-to-' + docType);
   var recipient = toEl ? toEl.value : '';
   _docStatus(send ? 'Sending…' : 'Generating…', true);

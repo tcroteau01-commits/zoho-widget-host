@@ -212,7 +212,7 @@ test('the gate points at the portal and at support', () => {
   const w = boot();
   w.resolveEmail();
   const text = gate(w).innerHTML;
-  assert.ok(text.includes('brokerhub.operfi.com'));
+  assert.ok(text.includes('brokers.operfi.com/portal/'));
   assert.ok(text.includes('brokersupport@operfi.com'));
 });
 

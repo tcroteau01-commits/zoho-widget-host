@@ -786,7 +786,11 @@ function loadStatus() {
   var qs = new URLSearchParams({ email: brokerEmail });
   return fetch(BROKER_API_BASE + '/noa-status?' + qs.toString())
     .then(function(r){ return r.json(); })
-    .then(function(p){ statusPayload = _withDemoRows(p); renderStatusList(statusPayload); });
+    .then(function(p){
+      statusPayload = _withDemoRows(p); renderStatusList(statusPayload);
+      // The form can be opened before this lands; re-gate so the card reflects it.
+      if (typeof applyGating === 'function') applyGating(statusPayload);
+    });
 }
 
 // Part B: fetch factoring companies from the API and populate the selects

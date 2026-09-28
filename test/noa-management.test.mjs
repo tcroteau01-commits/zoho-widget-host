@@ -134,6 +134,24 @@ test('+ New Update path applies the gate from the loaded status payload', () => 
   assert.equal(window.document.querySelector('.type-card.gated-card').classList.contains('disabled'), true);
 });
 
+// Regression 09-28 (TESTING OPERFI ACCOUNT): /noa-status takes ~2-3s. A broker who
+// clicks "+ New Update" before it lands gets the card grayed from a null payload,
+// and nothing re-gated when the real payload arrived -- so an entitled account
+// stayed grayed out.
+test('status arriving after the form opened re-applies the gate', async () => {
+  const { window } = makeWidget();
+  window.statusPayload = null;
+  window.showForm();                                // clicked before /noa-status resolved
+  const gated = window.document.querySelector('.type-card.gated-card');
+  assert.equal(gated.classList.contains('disabled'), true);
+  window.brokerEmail = 'broker@op.com';
+  window.fetch = () => Promise.resolve({ json: () => Promise.resolve(
+    Object.assign({}, STATUS, { allow_add_carrier: true })) });
+  await window.loadStatus();
+  assert.equal(gated.classList.contains('disabled'), false);
+  assert.equal(window.document.getElementById('gate-note').classList.contains('hidden'), true);
+});
+
 test('losing the entitlement moves an Add New Carrier selection back to NOA Update', () => {
   const { window } = makeWidget();
   window.applyGating(Object.assign({}, STATUS, { allow_add_carrier: true }));

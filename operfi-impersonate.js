@@ -6,6 +6,7 @@
 (function () {
   var API_HOST = 'operfi-broker-api.onrender.com';
   var KEY = 'operfiImpersonate';
+  var staff = false;          // set once /whoami confirms an OperFi admin
 
   function target(){ try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } }
 
@@ -97,13 +98,20 @@
         if (!email) return;
         window.fetch('https://' + API_HOST + '/whoami?email=' + encodeURIComponent(email))
           .then(function (res) { return res.json(); })
-          .then(function (info) { renderAdminBar(info); })
+          .then(function (info) { staff = !!(info && info.is_admin); renderAdminBar(info); })
           .catch(function () {});
       });
     } catch (e) {}
   }
 
-  window.OPERFI_IMP = { renderAdminBar: renderAdminBar, target: target, esc: esc, decorate: decorate };
+  // Troubleshooting pointers ("open DevTools, F12") are for OperFi staff only; a
+  // client gets a support line instead. Unknown (whoami not back yet, or failed)
+  // counts as a client, so the failure mode is a staff member seeing the client text.
+  var CLIENT_HINT = 'If this keeps happening, contact OperFi support.';
+  function hint(staffText) { return staff ? staffText : CLIENT_HINT; }
+
+  window.OPERFI_IMP = { renderAdminBar: renderAdminBar, target: target, esc: esc, decorate: decorate,
+                        isStaff: function () { return staff; }, hint: hint, CLIENT_HINT: CLIENT_HINT };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();

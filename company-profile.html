@@ -937,7 +937,7 @@ function bootApp() {
     console.log('[CompanyProfile] init params:', params);
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) {
-      showCardError('Could not identify broker. Open DevTools console (F12) for details.');
+      showCardError('Could not identify broker. ' + debugHint('Open DevTools console (F12) for details.'));
       return;
     }
     console.log('[CompanyProfile] Booted as', brokerEmail);
@@ -955,14 +955,14 @@ function bootApp() {
     if (result && typeof result.then === 'function') {
       result.then(gotParams).catch(function(err) {
         console.error('[CompanyProfile] getInitParams rejected', err);
-        showCardError('Initialization failed. Open DevTools console (F12) for details.');
+        showCardError('Initialization failed. ' + debugHint('Open DevTools console (F12) for details.'));
       });
     } else {
       gotParams(result);
     }
   } catch (err) {
     console.error('[CompanyProfile] getInitParams threw', err);
-    showCardError('Initialization failed. Open DevTools console (F12) for details.');
+    showCardError('Initialization failed. ' + debugHint('Open DevTools console (F12) for details.'));
   }
 }
 
@@ -1024,6 +1024,13 @@ function bindGlobalUI() {
   });
 }
 
+// Troubleshooting pointers (DevTools/F12) are for OperFi staff; clients get a
+// support line. operfi-impersonate.js decides who is staff; if it did not load,
+// assume a client.
+function debugHint(staffText) {
+  return (window.OPERFI_IMP && OPERFI_IMP.hint) ? OPERFI_IMP.hint(staffText)
+    : 'If this keeps happening, contact OperFi support.';
+}
 function showCardError(msg) {
   document.getElementById('company-body').innerHTML =
     '<div class="state"><div class="state-title">Error</div><div class="state-msg">' + esc(msg) + '</div></div>';
@@ -1047,7 +1054,7 @@ function loadAccount() {
     console.error('[CompanyProfile] /broker-account failed', err);
     document.getElementById('company-body').innerHTML =
       '<div class="state"><div class="state-title">Could not load account</div>' +
-      '<div class="state-msg">Open DevTools console (F12) for details.</div></div>';
+      '<div class="state-msg">' + esc(debugHint('Open DevTools console (F12) for details.')) + '</div></div>';
   });
 }
 
@@ -1152,7 +1159,7 @@ function loadUsers() {
       console.error('[CompanyProfile] /broker-users failed', err);
       document.getElementById('users-body').innerHTML =
         '<div class="state"><div class="state-title">Could not load users</div>' +
-        '<div class="state-msg">Open DevTools console (F12) for details.</div></div>';
+        '<div class="state-msg">' + esc(debugHint('Open DevTools console (F12) for details.')) + '</div></div>';
     });
 }
 

@@ -33,3 +33,17 @@ test('submitDecision blocks Approved without a limit and posts otherwise', async
   assert.equal(calls[0].body.decision, 'Approved');
   assert.equal(calls[0].body.credit_limit, '30000');
 });
+
+
+// 🚨 Pat's Deny, 2026-09-28: Creator refused the save and the page said DENIED.
+// The API now answers 422 with Creator's reason, and that reason is what shows.
+test('a refused decision carries the Creator reason and is not ok', async () => {
+  const w = boot();
+  w.brokerEmail = 'rev@op.com';
+  w.fetch = () => Promise.resolve({ status: 422, json: () => Promise.resolve({
+    error: 'The decision was not saved',
+    detail: 'Enter a value for Billing POC; Enter a value for Billing Email' }) });
+  const resp = await w.submitDecision({ ID: '555' }, { decision: 'Denied', credit_limit: '', credit_notes: '' });
+  assert.ok(!resp.ok);
+  assert.equal(resp.error, 'The decision was not saved: Enter a value for Billing POC; Enter a value for Billing Email');
+});

@@ -874,7 +874,17 @@ function submitDecision(rec, vals){
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: email, submission_id: rec.ID,
       decision: vals.decision, credit_limit: vals.credit_limit, credit_notes: vals.credit_notes })
-  }).then(function(r){ return r.json(); });
+  }).then(function(r){
+    return r.json().then(function(j) {
+      // 422 = Creator answered and refused the save (e.g. "Enter a value for
+      // Billing POC"). The reason IS the message: without it the analyst sees a
+      // generic failure and cannot tell what the record is missing.
+      if (r.status === 422 && j && j.detail) {
+        j.error = (j.error || 'The decision was not saved') + ': ' + j.detail;
+      }
+      return j;
+    });
+  });
 }
 window.submitDecision = submitDecision;
 

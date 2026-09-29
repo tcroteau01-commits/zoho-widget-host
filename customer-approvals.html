@@ -1741,6 +1741,7 @@ function fetchProfile(rec) {
     });
 }
 
+if (typeof window !== 'undefined') { window.renderProfile = function(rec, payload) { return renderProfile(rec, payload); }; }
 function renderProfile(rec, payload) {
   var root = document.getElementById('ca-profile');
   OperFiCustomerProfile.injectStyles();   // render() is pure HTML; the profile's own CSS
@@ -1805,6 +1806,28 @@ function renderProfile(rec, payload) {
           // the page, and losing it teaches them not to bother next time.
           showToast('Could not save the note. Your text is still here.');
         });
+    });
+  });
+  root.querySelectorAll('[data-nudge]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var undo = setProfileBusy(btn, 'Sending…');
+      fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/nudge', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot: btn.getAttribute('data-nudge') })
+      }).then(function(res) {
+        return res.json().then(function(j) { return { ok: res.ok, j: j || {} }; });
+      }).then(function(r) {
+        if (!r.ok) { undo(); showToast(r.j.error || 'Could not send the reminder'); return; }
+        showToast(r.j.sent ? 'Reminder sent to ' + (r.j.to || 'the reference')
+                           : 'The reminder did not send. The address may be bad.');
+        fetchProfile(rec);
+      }).catch(function(err) {
+        console.error('[CustomerApprovals] nudge failed', err);
+        undo();
+        showToast('Could not send the reminder. Check your connection and try again.');
+      });
     });
   });
   root.querySelectorAll('[data-pull-report]').forEach(function(btn) {

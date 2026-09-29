@@ -832,6 +832,21 @@ function agingGrid(a) {
 // A reference still out gets ONE row saying so rather than a card of dashes: the
 // question there is "who are we waiting on", and eight empty fields do not
 // answer it any better than the word does.
+// Tom, 2026-09-29: "if there's a possibility to create a nudge for a trade
+// reference, that might be helpful on the older ones." The server decides
+// whether a reminder is allowed right now (can_nudge) by the store's own rules,
+// so the button is never offered on a click that would be refused; when it is
+// not allowed, the reason is shown in its place.
+function nudgeControl(r) {
+  var sent = r.reminders ? ' <span class="muted">&middot; ' + esc(String(r.reminders)) +
+    (r.reminders === 1 ? ' reminder sent' : ' reminders sent') + '</span>' : '';
+  if (r.can_nudge) {
+    return sent + ' <button type="button" class="btn cp-nudge" data-nudge="' + esc(r.slot) +
+           '">Send reminder</button>';
+  }
+  return sent + (r.nudge_blocked ? ' <span class="muted">&middot; ' + esc(r.nudge_blocked) + '</span>' : '');
+}
+
 function renderReferenceTable(refs) {
   if (!refs || !refs.length) { return ''; }
   var head = '<thead><tr>' +
@@ -848,6 +863,7 @@ function renderReferenceTable(refs) {
       return '<tr><td>' + who + '</td><td>' + statusPill(r.status) + '</td>' +
              '<td class="waiting" colspan="10">' +
              (r.opened_at ? 'opened, not returned' : 'awaiting reply') +
+             nudgeControl(r) +
              '</td></tr>';
     }
     var aging = resp.aging || {};
@@ -954,6 +970,13 @@ function renderCreditApp(p) {
             a.app_received_at ? esc(String(a.app_received_at).slice(0, 10))
                               : '<span class="muted">not yet</span>') +
     '</div>';
+  if (a.legacy) {
+    // An imported Zoho Forms app. "Awaiting reply" there means the reference was
+    // asked by Zoho when the app came in, which can be months ago.
+    head += '<div class="field-val muted cp-note">Imported from the old Zoho Forms credit ' +
+      'application. References still awaiting a reply were asked when the application ' +
+      'came in. A reminder sends them a new link.</div>';
+  }
   head += renderApplicationBody(a.customer);
   if (a.references && a.references.length) {
     head += '<div class="cp-subhead">References</div>' +
@@ -1112,6 +1135,7 @@ var CP_CSS = '' +
   '.cp-risk-review{background:#fff4e0;color:#b25e00;}' +
   '.cp-risk-ok{background:#e8f5e9;color:#2e7d32;}' +
   '.cp-risk-list{margin:6px 0 0;padding-left:18px;font-size:12px;color:#b25e00;}' +
+  '.cp-nudge{margin-left:8px;padding:2px 10px;font-size:12px;}' +
   '.cp-doc-list{margin:4px 0 0;padding-left:18px;font-size:13px;line-height:1.7;}' +
   '.cp-aging{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));' +
     'gap:8px;margin-top:10px;}' +

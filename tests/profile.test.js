@@ -910,3 +910,33 @@ test('no documents says so', () => {
   const html = P.render(Object.assign({}, BASE, { submitted: TYPED_SUB }));
   assert.ok(html.includes('No documents attached.'));
 });
+
+// --- reminders to references, and imported apps ------------------------------
+
+function appWith(ref, extra) {
+  return Object.assign({}, BASE, { credit_app: Object.assign({
+    status: 'references_pending', references_completed: 0, references_total: 1,
+    customer: null, references: [ref] }, extra || {}) });
+}
+
+test('a waiting reference that may be reminded gets a Send reminder button', () => {
+  const html = P.render(appWith({ slot: 'trade1', company: 'Preferred Pump', status: 'sent',
+                                  response: null, can_nudge: true, reminders: 0 }));
+  assert.ok(html.includes('data-nudge="trade1"'));
+  assert.ok(html.includes('Send reminder'));
+});
+
+test('a reference that may not be reminded shows why, and no button', () => {
+  const html = P.render(appWith({ slot: 'trade2', company: 'Trojan', status: 'sent', response: null,
+                                  can_nudge: false, nudge_blocked: 'reminded 3h ago', reminders: 1 }));
+  assert.ok(!html.includes('data-nudge='));
+  assert.ok(html.includes('reminded 3h ago'));
+  assert.ok(html.includes('1 reminder sent'));
+});
+
+test('an imported app says it came from the old Zoho Forms application', () => {
+  const html = P.render(appWith({ slot: 'trade1', status: 'sent', response: null }, { legacy: true }));
+  assert.ok(html.includes('Imported from the old Zoho Forms credit application'));
+  const fresh = P.render(appWith({ slot: 'trade1', status: 'sent', response: null }));
+  assert.ok(!fresh.includes('Imported from the old Zoho Forms'));
+});

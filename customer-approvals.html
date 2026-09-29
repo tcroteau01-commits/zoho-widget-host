@@ -1447,6 +1447,13 @@ function renderPanel() {
           '<button class="btn primary" id="dec-save">Save Decision</button>' +
         '</div>' +
       '</div>';
+    // Tom, 2026-09-29: "We want to keep them at $5K but deny the credit boost."
+    // A boost gets its own two actions, ABOVE the normal form. Both return the
+    // customer to Approved; "Denied" below still exists for refusing the
+    // customer outright, which is a different decision.
+    if (curDecision === BOOST_DECISION) {
+      decisionSectionHtml = boostSectionHtml(curLimit) + decisionSectionHtml;
+    }
   }
 
   // CC2 — domain/fraud check for the credit team only (gated like the decision section).
@@ -1649,6 +1656,7 @@ function renderPanel() {
   if (openProfileBtn) openProfileBtn.addEventListener('click', function() { openProfile(r); });
 
   wireDecisionSection(r);
+  wireBoostSection(r);
   fetchFraudCheck(r);
   fetchCreditAppStatus(r);
   fetchCreditAppApplication(r);
@@ -3547,6 +3555,87 @@ function caAppSubmitWaive(panel, btn) {
     });
 }
 if (typeof window !== 'undefined') { window.caAppSubmitWaive = caAppSubmitWaive; }
+
+// ── Credit boost decision ─────────────────────────────────────────────────
+var BOOST_DECISION = 'Credit Boost Requested';
+
+function boostSectionHtml(curLimit) {
+  return '' +
+    '<div class="panel-section decision" id="boost-section">' +
+      '<div class="panel-section-title">Credit Boost Request</div>' +
+      '<div class="dec-field" style="margin-bottom:8px;color:#555;font-size:13px;">Current limit: <strong>' +
+        esc(fmtMoney(curLimit)) + '</strong>. Either choice keeps this customer Approved ' +
+        'and emails the client.</div>' +
+      '<div class="dec-field">' +
+        '<label class="dec-label" for="boost-limit">New limit (to approve)</label>' +
+        '<input type="number" class="dec-input" id="boost-limit" min="0" step="1" placeholder="Higher than the current limit">' +
+      '</div>' +
+      '<div class="dec-field">' +
+        '<label class="dec-label" for="boost-reason">Note to the client (required to decline)</label>' +
+        '<textarea class="dec-textarea" id="boost-reason" placeholder="Why the limit stays where it is, or anything the client should know"></textarea>' +
+      '</div>' +
+      '<div class="dec-row">' +
+        '<div class="dec-msg" id="boost-msg"></div>' +
+        '<button class="btn" id="boost-decline" type="button">Decline boost</button>' +
+        '<button class="btn primary" id="boost-approve" type="button">Approve boost</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function submitBoostDecision(rec, outcome, vals) {
+  return fetch(BROKER_API_BASE + '/credit-boost/decision', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ submission_id: rec.ID, outcome: outcome,
+                           credit_limit: vals.credit_limit, reason: vals.reason })
+  }).then(function(r) {
+    return r.json().then(function(j) {
+      if (!r.ok && j && j.detail) { j.error = (j.error || 'Not saved') + ': ' + j.detail; }
+      return j;
+    });
+  });
+}
+if (typeof window !== 'undefined') { window.submitBoostDecision = submitBoostDecision; }
+
+function wireBoostSection(rec) {
+  var approve = document.getElementById('boost-approve');
+  if (!approve) return;
+  var decline = document.getElementById('boost-decline');
+  var limitEl = document.getElementById('boost-limit');
+  var reasonEl = document.getElementById('boost-reason');
+  var msg = document.getElementById('boost-msg');
+  var current = parseMoney(rec.Credit_Limit);
+
+  function say(text, kind) { msg.textContent = text || ''; msg.className = 'dec-msg' + (kind ? ' ' + kind : ''); }
+
+  function run(outcome) {
+    var vals = { credit_limit: limitEl.value, reason: reasonEl.value.trim() };
+    if (outcome === 'approve' && !(Number(vals.credit_limit) > current)) {
+      limitEl.classList.add('required-empty');
+      return say('Enter a new limit higher than ' + fmtMoney(current), 'error');
+    }
+    if (outcome === 'decline' && !vals.reason) {
+      reasonEl.classList.add('required-empty');
+      return say('Add a note to the client explaining the decline', 'error');
+    }
+    approve.disabled = decline.disabled = true;
+    say('Saving…');
+    submitBoostDecision(rec, outcome, vals).then(function(resp) {
+      approve.disabled = decline.disabled = false;
+      if (!resp || !resp.ok) { return say((resp && resp.error) || 'Could not save', 'error'); }
+      applyDecisionResult(rec, { decision: 'Approved', credit_limit: String(resp.credit_limit) });
+      fetchCustomerEventsBulk();   // the boost alert was cleared server-side
+      showToast((outcome === 'approve' ? 'Boost approved' : 'Boost declined') +
+                (resp.emailed ? '. Client emailed.' : '. The client email did not send, follow up directly.'));
+    }).catch(function() {
+      approve.disabled = decline.disabled = false;
+      say('Could not save. Check your connection and try again.', 'error');
+    });
+  }
+  approve.addEventListener('click', function() { run('approve'); });
+  decline.addEventListener('click', function() { run('decline'); });
+}
+if (typeof window !== 'undefined') { window.wireBoostSection = wireBoostSection; }
 
 // Wire the see-all Decision section: live "required" affordance + Save handler.
 function wireDecisionSection(rec) {

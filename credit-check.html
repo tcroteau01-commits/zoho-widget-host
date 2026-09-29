@@ -656,12 +656,10 @@ function validate() {
                                                          block: 'center' });
     return false;
   }
-  if (!addingToSubmitted && needsCoBroker && selectedFiles.length === 0) {
-    showErr('files');
-    var f = document.getElementById('cobroker-req');
-    if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-    return false;
-  }
+  // COBROKERGATE1 (Tom, 2026-09-29): "Broker's should still be able to submit a
+  // credit check on a broker without the co-broker agreement... they just can't
+  // fund until we have the agreement and it's approved." No longer a submit
+  // blocker; the requirement below says where it bites instead.
 
   // 🚨 Billing must have its OWN mailbox. Refused server-side on /credit-submit
   // too; this is only so a broker learns it before filling the rest in.
@@ -1149,9 +1147,10 @@ function renderCoBrokerRequirement() {
   d.id = 'cobroker-req';
   d.className = 'cobroker-req';
   d.innerHTML =
-    '<div class="req-title">A signed co-broker agreement is required</div>' +
-    '<div class="req-body">Attach it in Supporting Documents below. We have saved ' +
-    'this customer to your account, so you can come back and finish later.</div>';
+    '<div class="req-title">A signed co-broker agreement is required before loads can be funded</div>' +
+    '<div class="req-body">You can submit this credit check now. Attach the agreement in ' +
+    'Supporting Documents below, or add it later with Add Documents under Customer ' +
+    'Approvals. Loads for this customer can be funded once OperFi approves it.</div>';
   host.appendChild(d);
 }
 

@@ -54,8 +54,14 @@ test('fetchCreditAppStatusBulk hits status-bulk once for a list of many rows, no
   };
   w.onRecordsLoaded(manyRecords(75));
   await wait(30);
-  assert.strictEqual(calls.length, 1, 'exactly one bulk call regardless of row count');
-  assert.match(calls[0], /\/credit-app\/status-bulk\?email=b%40x\.com/);
+  // COBROKERGATE1 adds its own single bulk read (/co-broker/status-bulk), so the
+  // count is per endpoint: still one call each, never one per row.
+  var app = calls.filter(function(u) { return /\/credit-app\/status-bulk/.test(u); });
+  var cb = calls.filter(function(u) { return /\/co-broker\/status-bulk/.test(u); });
+  assert.strictEqual(app.length, 1, 'exactly one bulk call regardless of row count');
+  assert.match(app[0], /\/credit-app\/status-bulk\?email=b%40x\.com/);
+  assert.strictEqual(cb.length, 1, 'one co-broker bulk call, not one per row');
+  assert.strictEqual(calls.length, 2, 'no per-row calls from either');
 });
 
 // ── a row with an application ───────────────────────────────────────────────

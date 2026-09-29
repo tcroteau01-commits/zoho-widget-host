@@ -661,6 +661,72 @@ function renderDocs(p) {
   }).join('') + '</ul>';
 }
 
+// ---- co-broker agreement (COBROKERGATE1) -----------------------------------
+// A freight-broker customer cannot be funded until credit approves its signed
+// co-broker agreement. This is where credit does that: approve one of the files
+// already attached, upload one from the client file (approved in the same step),
+// or send it back with a reason the broker sees. Rendered only when there is an
+// agreement to track, or the customer is typed Freight Broker with none recorded.
+var CO_BROKER_STATUS = {
+  required: { label: 'Required, not received', tone: 'cp-cb-warn' },
+  submitted: { label: 'Received, awaiting review', tone: 'cp-cb-review' },
+  approved: { label: 'Approved', tone: 'cp-cb-ok' },
+  rejected: { label: 'Not accepted, waiting on a new one', tone: 'cp-cb-warn' }
+};
+
+function renderCoBroker(p) {
+  var cb = p.co_broker;
+  var isBroker = p.customer_type === 'Freight Broker';
+  if (!cb && !isBroker) { return ''; }
+  var st = cb ? (CO_BROKER_STATUS[cb.status] || { label: cb.status, tone: 'cp-cb-warn' })
+              : { label: 'No agreement on record', tone: 'cp-cb-warn' };
+  var body = '<div class="cp-cb-status ' + st.tone + '">' + esc(st.label) +
+    (cb && cb.blocked ? ' <span class="cp-cb-note">Loads for this customer cannot be funded.</span>' : '') +
+    '</div>';
+  if (cb) {
+    body += '<div class="field-grid">' +
+      field('Why Required', cb.required_reason ? esc(cb.required_reason) : emptyDash()) +
+      field('Required', cb.required_at ? esc(when(cb.required_at)) : emptyDash()) +
+      field('Received', cb.submitted_at ? esc(when(cb.submitted_at)) : emptyDash()) +
+      (cb.decided_by
+        ? field(cb.status === 'approved' ? 'Approved By' : 'Decided By',
+                esc(cb.decided_by) + (cb.decided_at ? ' <span class="muted">&middot; ' +
+                esc(when(cb.decided_at)) + '</span>' : ''))
+        : '') +
+      (cb.status === 'approved' && cb.approved_document
+        ? field('Approved Document', esc(cb.approved_document.label || 'Co-broker agreement'))
+        : '') +
+      (cb.status === 'rejected' && cb.reject_reason
+        ? field('Reason Sent to Broker', esc(cb.reject_reason)) : '') +
+      '</div>';
+  }
+  if (cb && cb.status === 'approved') {
+    return '<div class="cp-cobroker">' + section('Co-broker Agreement', body) + '</div>';
+  }
+  // Approve by SLOT, the same (field, idx) the document links open. A file the
+  // broker attached under Supporting Documents is as good as one in the
+  // agreement field; credit reads it and decides.
+  var docs = (p.submitted && p.submitted.documents) || [];
+  body += '<div class="cp-subhead">Approve an attached file</div>';
+  body += docs.length
+    ? '<ul class="cp-doc-list cp-cb-docs">' + docs.map(function (d) {
+        return '<li><span>' + esc(d.label) + (d.ext ? ' <span class="muted">&middot; ' +
+          esc(d.ext) + '</span>' : '') + '</span> <button type="button" class="btn" ' +
+          'data-cb-approve="' + esc(d.field + ':' + d.idx) + '">Approve as agreement</button></li>';
+      }).join('') + '</ul>'
+    : '<div class="field-val muted">No files attached yet.</div>';
+  body += '<div class="cp-subhead">Upload from the client file</div>' +
+    '<div class="cp-cb-row"><input type="file" id="cp-cb-file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">' +
+    '<button type="button" class="btn primary" data-cb-upload="1">Upload and approve</button></div>';
+  if (cb && (cb.status === 'required' || cb.status === 'submitted')) {
+    body += '<div class="cp-subhead">Not accepted</div>' +
+      '<div class="cp-cb-row"><input type="text" class="dec-input" id="cp-cb-reason" ' +
+      'placeholder="What is wrong with it (the broker sees this)">' +
+      '<button type="button" class="btn" data-cb-reject="1">Send back</button></div>';
+  }
+  return '<div class="cp-cobroker">' + section('Co-broker Agreement', body) + '</div>';
+}
+
 // ---- everything the broker submitted, with a field for every box -----------
 // Tom, 2026-09-25: "it should show all the data that the client submitted or at
 // least have fields for everything submitted." An empty field is information:
@@ -696,6 +762,13 @@ function renderSubmitted(p) {
       field('Sent To', s.credit_app_sent_to ? esc(s.credit_app_sent_to) : emptyDash()) +
       field('Submitted', s.submitted_at ? esc(s.submitted_at) : emptyDash()) +
     '</div>';
+  // COBROKERGATE1: credit can retype a customer the broker called a shipper.
+  // Hidden once it is a Freight Broker or an agreement is already tracked.
+  if (p.customer_type !== 'Freight Broker' && !p.co_broker) {
+    body += '<div class="cp-cb-row cp-cb-switch"><button type="button" class="btn" ' +
+      'data-cb-switch="1">Switch to Freight Broker</button><span class="muted">Requires a ' +
+      'co-broker agreement before loads can be funded.</span></div>';
+  }
   body += '<div class="cp-subhead">Documents</div>' + renderDocs(p);
   if (s.comments) {
     body += '<div class="cp-subhead">Broker Comments</div>' +
@@ -1010,6 +1083,7 @@ function render(payload) {
   return '' +
     '<div class="cp-root">' +
       renderHeader(p) +
+      renderCoBroker(p) +
       renderFraud(p) +
       // What the engine concluded, beside what it concluded it about.
       pair(renderEngine(p), renderIdentity(p)) +
@@ -1025,6 +1099,14 @@ function render(payload) {
 
 var CP_STYLE_ID = 'opf-cp-styles';
 var CP_CSS = '' +
+  '.cp-cb-status{font-weight:700;font-size:13.5px;margin-bottom:10px;}' +
+  '.cp-cb-note{font-weight:500;color:#555;}' +
+  '.cp-cb-warn{color:#b45309;}' +
+  '.cp-cb-review{color:#6d28d9;}' +
+  '.cp-cb-ok{color:#15803d;}' +
+  '.cp-cb-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;}' +
+  '.cp-cb-row .dec-input{flex:1;min-width:220px;}' +
+  '.cp-cb-docs li{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0;}' +
   '.cp-root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;color:#1d1d1f;}' +
   '.cp-root .panel-section{background:#fff;border:1px solid #e6e3da;border-radius:8px;padding:12px 14px;margin-bottom:8px;}' +
   '.cp-root .panel-section-title{font-size:11px;text-transform:uppercase;letter-spacing:0.7px;color:#888;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;}' +
@@ -1250,5 +1332,5 @@ function mount(root, payload, handlers) {
   });
 }
 
-if (typeof module !== 'undefined' && module.exports) { module.exports = { render: render, mount: mount, injectStyles: injectStyles, esc: esc, money: money }; }
+if (typeof module !== 'undefined' && module.exports) { module.exports = { render: render, mount: mount, injectStyles: injectStyles, esc: esc, money: money, renderCoBroker: renderCoBroker }; }
 if (typeof window !== 'undefined') { window.OperFiCustomerProfile = { render: render, mount: mount, injectStyles: injectStyles }; }

@@ -442,6 +442,7 @@ textarea { resize: vertical; min-height: 90px; }
           </select>
           <div class="field-hint">Only approved customers are shown. If you don't see your customer, add them in your <strong>Customer Submission</strong> section first.</div>
           <div class="field-hint" id="customer-billing-hint" style="display:none;">Customers marked <strong>Billing contact required</strong> need a billing point of contact, phone, and email on file before a load can be submitted. Add it under <strong>Customer Credit → Customer Approvals</strong>.</div>
+          <div class="field-hint" id="customer-cobroker-hint" style="display:none;">Customers marked <strong>Co-broker agreement required</strong> are freight brokers. Loads can be funded once OperFi approves the signed co-broker agreement. Upload it with <strong>Add Documents</strong> under <strong>Customer Credit → Customer Approvals</strong>.</div>
           <div class="draft-warning" id="draft-customer-warning" style="display:none;"></div>
         </div>
 
@@ -730,6 +731,23 @@ function customerBillingIncomplete(c) {
 }
 window.customerBillingIncomplete = customerBillingIncomplete;
 
+// COBROKERGATE1: a broker customer cannot be funded until OperFi approves its
+// co-broker agreement, and /funding-submit refuses it. Same posture as billing:
+// only an explicit true blocks, so an older backend without the flag fails open.
+function customerCoBrokerBlocked(c) {
+  return (c || {}).co_broker_required === true;
+}
+window.customerCoBrokerBlocked = customerCoBrokerBlocked;
+
+// The one label a blocked customer carries. Billing first: it is the older rule,
+// and one fixable problem at a time is what the server reports too.
+function customerBlockLabel(c) {
+  if (customerBillingIncomplete(c)) return 'Billing contact required';
+  if (customerCoBrokerBlocked(c)) return 'Co-broker agreement required';
+  return '';
+}
+window.customerBlockLabel = customerBlockLabel;
+
 function loadCustomers() {
   var err = document.getElementById('customer-error');
   if (err) err.textContent = '';
@@ -745,12 +763,16 @@ function loadCustomers() {
       // find it in the list, and calls support.
       sel.innerHTML = '<option value="">Select a customer…</option>' +
         approved.map(function (c) {
-          var blocked = customerBillingIncomplete(c);
-          return '<option value="' + esc(c.customer_id) + '"' + (blocked ? ' disabled' : '') + '>' +
-            esc(c.customer_name || '') + (blocked ? ' — Billing contact required' : '') + '</option>';
+          var label = customerBlockLabel(c);
+          return '<option value="' + esc(c.customer_id) + '"' + (label ? ' disabled' : '') + '>' +
+            esc(c.customer_name || '') + (label ? ' — ' + label : '') + '</option>';
         }).join('');
       var hint = document.getElementById('customer-billing-hint');
       if (hint) hint.style.display = approved.some(customerBillingIncomplete) ? '' : 'none';
+      var cbHint = document.getElementById('customer-cobroker-hint');
+      if (cbHint) cbHint.style.display = approved.some(function (c) {
+        return !customerBillingIncomplete(c) && customerCoBrokerBlocked(c);
+      }) ? '' : 'none';
     })
     .catch(function () {
       var e = document.getElementById('customer-error');

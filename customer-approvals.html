@@ -804,9 +804,11 @@ function billingAlertHtml(r) {
 var BILLING_WARN_TEXT = 'Billing contact required to submit loads';
 
 function pillWarnHtml(r) {
-  if (!needsBillingWarning(r)) return '';
-  return '<span class="pill-warn" role="img" aria-label="' + esc(BILLING_WARN_TEXT) + '">⚠' +
-    '<span class="pill-tip">' + esc(BILLING_WARN_TEXT) + '</span></span>';
+  var text = needsBillingWarning(r) ? BILLING_WARN_TEXT
+           : (typeof coBrokerEntry === 'function' && coBrokerEntry(r) ? coBrokerShortText(coBrokerEntry(r)) : '');
+  if (!text) return '';
+  return '<span class="pill-warn" role="img" aria-label="' + esc(text) + '">⚠' +
+    '<span class="pill-tip">' + esc(text) + '</span></span>';
 }
 
 if (typeof window !== 'undefined') {
@@ -1061,6 +1063,7 @@ function onRecordsLoaded(records) {
   applyFilters();
   fetchCreditAppStatusBulk();   // one call for the whole list, see CREDITAPP1 Task 17 below
   fetchCustomerEventsBulk();    // one call for the whole list, see CUSTEVENT1 below
+  fetchCoBrokerStatusBulk();    // one call for the whole list, see COBROKERGATE1
 }
 window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 
@@ -1306,6 +1309,8 @@ function rowHtml(r, idx) {
         // BPOC1: the approved customer that cannot actually carry a load yet.
         (needsBillingWarning(r)
           ? '<div class="billing-warn">⚠ Billing contact required to submit loads</div>' : '') +
+        (coBrokerEntry(r)
+          ? '<div class="billing-warn">⚠ ' + esc(coBrokerShortText(coBrokerEntry(r))) + '</div>' : '') +
         caAppRowProgressHtml(r) +
       '</div>' +
       '<div>' +
@@ -1542,6 +1547,8 @@ function renderPanel() {
       '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + pillWarnHtml(r) + '</div>' +
     '</div>' +
     '<div class="panel-body">' +
+      // COBROKERGATE1 — why this approved customer still cannot carry a load.
+      coBrokerAlertHtml(r) +
       // CUSTEVENT1 — first thing a reviewer sees: the reason this customer got pulled
       // up, if any. Empty string for a non-staff viewer (attnSectionHtml above).
       attnSectionHtml +
@@ -1671,6 +1678,8 @@ function renderPanel() {
   if (rsm) rsm.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
   var adoc = document.getElementById('p-add-docs');
   if (adoc) adoc.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
+  var cbUp = document.getElementById('ca-cobroker-upload');
+  if (cbUp) cbUp.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
   var openProfileBtn = document.getElementById('ca-open-profile');
   if (openProfileBtn) openProfileBtn.addEventListener('click', function() { openProfile(r); });
 
@@ -1858,6 +1867,63 @@ function renderProfile(rec, payload) {
         });
     });
   });
+  // COBROKERGATE1: credit's four actions on a co-broker agreement. Each one
+  // clears the "agreement to review" alert, refreshes the list's gray-out, and
+  // re-reads the profile so the section shows the new state.
+  function coBrokerPost(btn, action, init, busy, okMsg) {
+    var undo = setProfileBusy(btn, busy);
+    fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/co-broker/' + action,
+          Object.assign({ method: 'POST', credentials: 'include' }, init))
+      .then(function(res) {
+        return res.json().catch(function() { return {}; })
+          .then(function(j) { return { ok: res.ok, j: j || {} }; });
+      }).then(function(r) {
+        if (!r.ok) { undo(); showToast(r.j.error || 'Could not save'); return; }
+        dropCustomerEventKinds(rec.ID, ['co_broker_agreement_submitted']);
+        showToast(okMsg);
+        fetchCoBrokerStatusBulk();
+        fetchProfile(rec);
+      }).catch(function(err) {
+        console.error('[CustomerApprovals] co-broker ' + action + ' failed', err);
+        undo();
+        showToast('Could not save. Check your connection and try again.');
+      });
+  }
+  var jsonInit = function(body) {
+    return { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  };
+  root.querySelectorAll('[data-cb-switch]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (!window.confirm('Switch this customer to Freight Broker? Loads cannot be funded ' +
+                          'until a co-broker agreement is approved.')) return;
+      coBrokerPost(btn, 'switch-to-broker', jsonInit({}), 'Saving…', 'Switched to Freight Broker');
+    });
+  });
+  root.querySelectorAll('[data-cb-approve]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var slot = String(btn.getAttribute('data-cb-approve') || '').split(':');
+      coBrokerPost(btn, 'approve', jsonInit({ field: slot[0], idx: Number(slot[1] || 0) }),
+                   'Approving…', 'Co-broker agreement approved');
+    });
+  });
+  root.querySelectorAll('[data-cb-reject]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var box = document.getElementById('cp-cb-reason');
+      var reason = box ? String(box.value || '').trim() : '';
+      if (!reason) { showToast('Say what is wrong, so the broker knows what to send'); if (box) box.focus(); return; }
+      coBrokerPost(btn, 'reject', jsonInit({ reason: reason }), 'Saving…', 'Sent back to the broker');
+    });
+  });
+  root.querySelectorAll('[data-cb-upload]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var input = document.getElementById('cp-cb-file');
+      var file = input && input.files && input.files[0];
+      if (!file) { showToast('Choose the signed agreement first'); return; }
+      var fd = new FormData();
+      fd.append('file', file, file.name);
+      coBrokerPost(btn, 'upload', { body: fd }, 'Uploading…', 'Uploaded and approved');
+    });
+  });
   // Reuse submitDecision -- there is one decision write path (POST /credit-decision)
   // and it stays that way. applyDecisionResult keeps allRecords/KPIs/the list in
   // sync the same way a decision made in the drawer already does.
@@ -1892,7 +1958,8 @@ function renderProfile(rec, payload) {
 // click again -- and a second click on a DIFFERENT candidate races two pins,
 // with the loser silently overwriting the winner's binding.
 var PROFILE_ACTIONS = '[data-cs-pick],[data-fv-pick],[data-cs-absent],' +
-  '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide],[data-note]';
+  '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide],[data-note],' +
+  '[data-cb-switch],[data-cb-approve],[data-cb-reject],[data-cb-upload]';
 
 // Locks the whole profile and marks the pressed button. Returns the undo, which
 // only the FAILURE path calls: on success the profile re-renders from scratch
@@ -2638,6 +2705,65 @@ function caAppScheduleReenable(btn, msgEl, hoursRemaining) {
 var caAppBulkStatus = {};   // submission ID -> {status, completed, total, waiting_on}
 var caAppBulkSeq = 0;
 
+// COBROKERGATE1 — a broker customer cannot be funded until OperFi approves its
+// co-broker agreement. One call for the whole list (/co-broker/status-bulk), only
+// customers that NEED an agreement appear, and any failure leaves the screen as it
+// is today: the funding paths are the real gate.
+var coBrokerBulk = {};      // submission ID -> {status, blocked, message, reject_reason}
+var coBrokerSeq = 0;
+
+function fetchCoBrokerStatusBulk() {
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  if (!email) return;
+  var seq = ++coBrokerSeq;
+  try {
+    fetch(BROKER_API_BASE + '/co-broker/status-bulk?email=' + encodeURIComponent(email))
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(payload) {
+        if (seq !== coBrokerSeq) return;
+        var a = payload && payload.agreements;
+        if (!a || typeof a !== 'object') return;
+        coBrokerBulk = a;
+        renderList();
+      })
+      .catch(function() {});
+  } catch (e) {}
+}
+if (typeof window !== 'undefined') { window.fetchCoBrokerStatusBulk = fetchCoBrokerStatusBulk; }
+
+function coBrokerEntry(r) {
+  var e = r && r.ID ? coBrokerBulk[r.ID] : null;
+  return (e && e.blocked === true) ? e : null;
+}
+if (typeof window !== 'undefined') { window.coBrokerEntry = coBrokerEntry; }
+
+// The short line on the row and the pill, by status.
+function coBrokerShortText(e) {
+  if (!e) return '';
+  if (e.status === 'submitted') return 'Co-broker agreement under OperFi review';
+  if (e.status === 'rejected') return 'Co-broker agreement not accepted — upload a new one';
+  return 'Co-broker agreement required to submit loads';
+}
+if (typeof window !== 'undefined') { window.coBrokerShortText = coBrokerShortText; }
+
+// The panel callout: what is needed, why, and the one thing to do about it.
+function coBrokerAlertHtml(r) {
+  var e = coBrokerEntry(r);
+  if (!e) return '';
+  var reason = (e.status === 'rejected' && e.reject_reason)
+    ? '<div class="cba-msg"><strong>OperFi:</strong> ' + esc(e.reject_reason) + '</div>' : '';
+  var action = e.status === 'submitted' ? '' :
+    '<button class="cba-fix" id="ca-cobroker-upload" type="button">Add Documents</button>';
+  return '<div class="ca-billing-alert ca-cobroker-alert" id="ca-cobroker-alert">' +
+      '<div class="cba-body">' +
+        '<div class="cba-title">⚠ ' + esc(coBrokerShortText(e)) + '</div>' +
+        '<div class="cba-msg">This customer is a freight broker. Loads can be submitted for ' +
+          'funding once OperFi approves the signed co-broker agreement.</div>' + reason +
+      '</div>' + action +
+    '</div>';
+}
+if (typeof window !== 'undefined') { window.coBrokerAlertHtml = coBrokerAlertHtml; }
+
 function fetchCreditAppStatusBulk() {
   var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
   if (!email) return;
@@ -2711,6 +2837,7 @@ if (typeof window !== 'undefined') { window.hasUnreadEvents = hasUnreadEvents; }
 var CUSTOMER_EVENT_KIND_LABELS = {
   reference_completed:    { one: 'reference',     many: 'references' },
   credit_boost_requested: { one: 'boost request', many: 'boost requests' },
+  co_broker_agreement_submitted: { one: 'co-broker agreement', many: 'co-broker agreements' },
   credit_app_received:    { one: 'application',   many: 'applications' },
   credit_check_submitted: { one: 'new check',     many: 'new checks' }
 };

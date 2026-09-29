@@ -884,12 +884,22 @@ function customerBillingIncomplete(customerId){
 }
 window.customerBillingIncomplete = customerBillingIncomplete;
 
+// COBROKERGATE1: /draft-loads/submit skips a broker customer without an approved
+// co-broker agreement (customer_co_broker_agreement_required). Same lookup and the
+// same fail-open rule as billing above.
+function customerCoBrokerBlocked(customerId){
+  var known = (__state.customers||[]).filter(function(c){ return c.customer_id===customerId; })[0];
+  return !!known && known.co_broker_required === true;
+}
+window.customerCoBrokerBlocked = customerCoBrokerBlocked;
+
 function customerOptions(selectedId, candidates){
   var opts='', seen={};
   function opt(id, label){
-    var blocked = customerBillingIncomplete(id);
-    return '<option value="'+esc(id)+'"'+(id===selectedId?' selected':'')+(blocked?' disabled':'')+'>'+
-      label+(blocked?' — Billing contact required':'')+'</option>';
+    var why = customerBillingIncomplete(id) ? 'Billing contact required'
+            : (customerCoBrokerBlocked(id) ? 'Co-broker agreement required' : '');
+    return '<option value="'+esc(id)+'"'+(id===selectedId?' selected':'')+(why?' disabled':'')+'>'+
+      label+(why?' — '+why:'')+'</option>';
   }
   (candidates||[]).forEach(function(c){
     seen[c.customer_id]=true;
@@ -1014,6 +1024,8 @@ var REASON_TEXT = {
   customer_not_on_account:'customer not on your account',
   customer_not_approved:'customer not credit-approved',
   customer_billing_incomplete:'customer needs a billing contact (name, phone, and email) — add it under Customer Credit → Customer Approvals',
+  customer_co_broker_agreement_required:'customer is a freight broker — loads can be funded once OperFi approves the co-broker agreement (upload it with Add Documents under Customer Credit → Customer Approvals)',
+  co_broker_check_unavailable:'we could not verify the co-broker agreement just now — try again in a minute',
   carrier_not_on_account:'carrier not on your account',
   carrier_not_approved:'carrier not approved for hire',
   carrier_dnu:'carrier is on your Do Not Use list',

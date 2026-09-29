@@ -359,7 +359,7 @@ test('every submitted box has a field, even the ones left blank', () => {
   const html = P.render(Object.assign({}, BASE, { submitted: SUBMITTED }));
   ['Company Name', 'Address', 'City', 'State', 'Postal Code', 'Phone',
    'Website', 'LinkedIn', 'Other Social', 'FactorView ID', 'Credit App Sent',
-   'Submitted', 'Supporting Documents'].forEach((label) => {
+   'Submitted', 'Documents', 'Submitted As', 'MC / DOT', 'FMCSA Authority'].forEach((label) => {
     assert.ok(html.includes(label), 'no field for: ' + label);
   });
 });
@@ -863,4 +863,50 @@ test('a missing prior limit and a missing candidate limit read the same way', fu
     fv_candidates: [{ company_id: '9271', name: 'CH ROBINSON INTERNATIONAL',
                       buy_limit: null, restricted: false, is_active: true, state: '' }] }));
   assert.ok(!/\$0\b/.test(html));
+});
+
+// --- shipper or broker, and the files attached -------------------------------
+
+const TYPED_SUB = { company_name: 'VAB LOGISTICS', address_parts: {}, documents: [] };
+
+test('the customer type and MC/DOT are shown in As Submitted', () => {
+  const html = P.render(Object.assign({}, BASE, { submitted: Object.assign({}, TYPED_SUB, {
+    customer_type: 'Freight Broker', customer_mc: '1484200', customer_dot: '3971532',
+    authority_class: 'dual' }) }));
+  assert.ok(html.includes('Submitted As'));
+  assert.ok(html.includes('Freight Broker'));
+  assert.ok(html.includes('MC 1484200 / DOT 3971532'));
+  assert.ok(html.includes('Broker and carrier'));
+});
+
+test('a shipper with no lookup says so rather than leaving a blank', () => {
+  const html = P.render(Object.assign({}, BASE, { submitted: Object.assign({}, TYPED_SUB, {
+    customer_type: 'Shipper' }) }));
+  assert.ok(html.includes('Shipper'));
+  assert.ok(html.includes('Not looked up'));
+  assert.ok(!html.includes('Classification conflict'));
+});
+
+test('a shipper over broker authority is flagged in Fraud and Data Checks', () => {
+  const html = P.render(Object.assign({}, BASE, { fraud: null, submitted: Object.assign({}, TYPED_SUB, {
+    customer_type: 'Shipper', authority_class: 'broker_only',
+    classification_conflict: 'submitted as a Shipper but MC/DOT carries broker authority' }) }));
+  assert.ok(html.includes('Fraud and Data Checks'));
+  assert.ok(html.includes('Classification conflict'));
+  assert.ok(html.includes('carries broker authority'));
+});
+
+test('documents link to the profile doc route by slot', () => {
+  const html = P.render(Object.assign({}, BASE, { api_base: 'https://api.example',
+    submitted: Object.assign({}, TYPED_SUB, { documents: [
+      { field: 'co_broker', idx: 0, label: 'Co-broker agreement', ext: 'PDF' },
+      { field: 'supporting', idx: 1, label: 'Supporting document 2', ext: 'PNG' }] }) }));
+  assert.ok(html.includes('href="https://api.example/customer-profile/4455/doc?field=co_broker&amp;idx=0"'));
+  assert.ok(html.includes('field=supporting&amp;idx=1'));
+  assert.ok(html.includes('Supporting document 2'));
+});
+
+test('no documents says so', () => {
+  const html = P.render(Object.assign({}, BASE, { submitted: TYPED_SUB }));
+  assert.ok(html.includes('No documents attached.'));
 });

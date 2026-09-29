@@ -195,21 +195,21 @@ test('the bell chip carries the breakdown as a focusable, hoverable tip', async 
 
 // ── the active-filter line ───────────────────────────────────────────────────────
 
-test('the active-filter line is hidden until the attention filter is turned on', async () => {
+test('the active-filter line is hidden while the attention filter is off', async () => {
   const w = await bootSettled();
   const d = w.document;
   await loadMixed(w);
+  d.getElementById('attn-bell').click();   // off the staff default
   const line = d.getElementById('attn-breakdown-line');
   assert.ok(line, 'the breakdown line element must exist in the DOM');
   assert.strictEqual(line.style.display, 'none', 'quiet until the attention filter is active');
   assert.strictEqual(line.textContent, '');
 });
 
-test('activating the attention filter reveals the breakdown line with the same wording as the tip', async () => {
+test('the default attention filter shows the breakdown line with the same wording as the tip', async () => {
   const w = await bootSettled();
   const d = w.document;
   await loadMixed(w);
-  d.getElementById('attn-bell').click();
   const line = d.getElementById('attn-breakdown-line');
   assert.notStrictEqual(line.style.display, 'none', 'the line becomes visible while the filter is active');
   assert.match(line.textContent, /3 references/);
@@ -221,7 +221,6 @@ test('turning the attention filter back off hides the breakdown line again', asy
   const w = await bootSettled();
   const d = w.document;
   await loadMixed(w);
-  d.getElementById('attn-bell').click();
   d.getElementById('attn-bell').click();
   const line = d.getElementById('attn-breakdown-line');
   assert.strictEqual(line.style.display, 'none');

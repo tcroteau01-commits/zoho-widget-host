@@ -562,8 +562,18 @@ function renderFraud(p) {
   var f = p.fraud;
   var q = p.quality || {};
   var junk = q.placeholder || [];
-  if (!f && !junk.length) { return ''; }
+  var conflict = p.submitted && p.submitted.classification_conflict;
+  if (!f && !junk.length && !conflict) { return ''; }
   var body = '';
+
+  // 🚨 First, because it is the one finding a broker produces on purpose:
+  // "Shipper" over broker authority skips the co-broker agreement. OperFi-only,
+  // like the rest of this card -- the submitter never sees it.
+  if (conflict) {
+    body += '<div class="cp-subhead">Shipper or broker</div>' +
+      '<div class="cp-risk cp-risk-high">Classification conflict</div>' +
+      '<ul class="cp-risk-list"><li>' + esc(conflict) + '</li></ul>';
+  }
 
   var d = f && f.domain;
   if (d) {
@@ -630,6 +640,27 @@ function renderFraud(p) {
   return body ? section('Fraud and Data Checks', body) : '';
 }
 
+var AUTHORITY_WORDS = { broker_only: 'Broker only', dual: 'Broker and carrier',
+                        none: 'No broker authority' };
+
+// Each file opens through the API by SLOT (field, idx). The stored Creator path
+// never reaches the page. api_base is set by the host; without it the list still
+// says what is on file, it just cannot open it.
+function renderDocs(p) {
+  var docs = (p.submitted && p.submitted.documents) || [];
+  if (!docs.length) {
+    return '<div class="field-val muted">No documents attached.</div>';
+  }
+  return '<ul class="cp-doc-list">' + docs.map(function (d) {
+    var label = esc(d.label) + (d.ext ? ' <span class="muted">&middot; ' + esc(d.ext) + '</span>' : '');
+    if (!p.api_base) { return '<li>' + label + '</li>'; }
+    var href = p.api_base + '/customer-profile/' + encodeURIComponent(p.submission_id) +
+      '/doc?field=' + encodeURIComponent(d.field) + '&idx=' + encodeURIComponent(d.idx);
+    return '<li><a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' +
+           label + '</a></li>';
+  }).join('') + '</ul>';
+}
+
 // ---- everything the broker submitted, with a field for every box -----------
 // Tom, 2026-09-25: "it should show all the data that the client submitted or at
 // least have fields for everything submitted." An empty field is information:
@@ -640,6 +671,17 @@ function renderSubmitted(p) {
   if (!s) { return ''; }
   var a = s.address_parts || {};
   var body = '<div class="field-grid">' +
+      field('Submitted As', s.customer_type ? esc(s.customer_type)
+            : '<span class="muted">Not recorded</span>') +
+      field('MC / DOT', (s.customer_mc || s.customer_dot)
+            ? esc([s.customer_mc && 'MC ' + s.customer_mc,
+                   s.customer_dot && 'DOT ' + s.customer_dot].filter(Boolean).join(' / '))
+            : '<span class="muted">Not looked up</span>') +
+      field('FMCSA Authority', s.authority_class
+            ? (s.classification_conflict ? '<span class="cp-flag">' : '') +
+              esc(AUTHORITY_WORDS[s.authority_class] || s.authority_class) +
+              (s.classification_conflict ? '</span>' : '')
+            : emptyDash()) +
       field('Company Name', s.company_name ? esc(s.company_name) : emptyDash()) +
       field('Address', mapLink(s.address)) +
       field('City', a.city ? esc(a.city) : emptyDash()) +
@@ -653,9 +695,8 @@ function renderSubmitted(p) {
       field('Credit App Sent', s.credit_app_sent ? 'Yes' : 'No') +
       field('Sent To', s.credit_app_sent_to ? esc(s.credit_app_sent_to) : emptyDash()) +
       field('Submitted', s.submitted_at ? esc(s.submitted_at) : emptyDash()) +
-      field('Supporting Documents',
-            s.supporting_documents ? esc(String(s.supporting_documents)) : '0') +
     '</div>';
+  body += '<div class="cp-subhead">Documents</div>' + renderDocs(p);
   if (s.comments) {
     body += '<div class="cp-subhead">Broker Comments</div>' +
             '<div class="cp-quote">' + esc(s.comments) + '</div>';
@@ -1071,6 +1112,7 @@ var CP_CSS = '' +
   '.cp-risk-review{background:#fff4e0;color:#b25e00;}' +
   '.cp-risk-ok{background:#e8f5e9;color:#2e7d32;}' +
   '.cp-risk-list{margin:6px 0 0;padding-left:18px;font-size:12px;color:#b25e00;}' +
+  '.cp-doc-list{margin:4px 0 0;padding-left:18px;font-size:13px;line-height:1.7;}' +
   '.cp-aging{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));' +
     'gap:8px;margin-top:10px;}' +
   '.cp-aging-cell{background:#fff;border:1px solid #e2e8f0;border-radius:6px;' +

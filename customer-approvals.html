@@ -746,6 +746,7 @@ var customerEventsTotal = 0;          // distinct customers with unread events
 var customerEventsCounts = {};        // subject_id -> event count, straight from the payload
 var customerEventsBySubject = {};     // subject_id -> [events], newest first (server order)
 var attentionFilterActive = false;    // the bell chip's own on/off, independent of currentStatus
+var attentionDefaultApplied = false;  // the Needs Attention default fires once per page load
 var customerEventsSeq = 0;            // guards against a stale bulk response overtaking a newer load
 
 // ── Status mapping ────────────────────────────────────────────────────────
@@ -1716,7 +1717,7 @@ function renderProfile(rec, payload) {
                                            // (cp-* classes) only reaches the browser here.
   root.innerHTML =
     '<button type="button" class="btn" id="ca-profile-back" style="margin-bottom:14px;">‹ Back to customers</button>' +
-    OperFiCustomerProfile.render(payload);
+    OperFiCustomerProfile.render(Object.assign({ api_base: BROKER_API_BASE }, payload));
 
   document.getElementById('ca-profile-back').addEventListener('click', closeProfile);
 
@@ -2731,6 +2732,14 @@ function applyCustomerEventsPayload(payload) {
     bySubject[ev.subject_id].push(ev);   // server sends newest first; order is preserved
   });
   customerEventsBySubject = bySubject;
+  // Tom, 2026-09-28: "when i refresh my screen as an OperFi Admin to go in and do
+  // credit checks, it should refresh to Needs Attention." Staff land on the queue
+  // that asks something of us. ONCE per page load: a reviewer who clicks the bell
+  // off stays off when the list reloads, and a refresh brings the default back.
+  if (!attentionDefaultApplied) {
+    attentionDefaultApplied = true;
+    if (customerEventsTotal > 0) attentionFilterActive = true;
+  }
   if (customerEventsTotal <= 0) attentionFilterActive = false;  // the bell vanished -- stop filtering on it
   buildChips();
   applyFilters();

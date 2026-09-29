@@ -156,7 +156,9 @@ test('no unread events means no bell at all -- quiet, screen looks exactly as to
 
 // ── the bell as a filter ─────────────────────────────────────────────────────
 
-test('activating the bell shows only customers with unread events', async () => {
+// Tom, 2026-09-28: "when i refresh my screen as an OperFi Admin to go in and do
+// credit checks, it should refresh to Needs Attention." The bell starts ON.
+test('a staff viewer lands on Needs Attention: only customers with unread events', async () => {
   const w = await bootSettled();
   const d = w.document;
   w.brokerEmail = 'staff@operfi.com';
@@ -168,9 +170,6 @@ test('activating the bell shows only customers with unread events', async () => 
     rec({ ID: '3', Customer_Company_Name: 'No Events Co' })
   ]);
   await wait(30);
-  assert.match(d.getElementById('results').innerHTML, /No Events Co/, 'unfiltered list shows all three');
-
-  d.getElementById('attn-bell').click();
   const filtered = d.getElementById('results').innerHTML;
   assert.match(filtered, /Delta Foods/);
   assert.match(filtered, /Acme Co/);
@@ -178,7 +177,7 @@ test('activating the bell shows only customers with unread events', async () => 
   assert.match(d.getElementById('attn-bell').className, /\bactive\b/);
 });
 
-test('clicking the bell again turns the filter back off, like the other chips', async () => {
+test('clicking the bell turns the default off, and a list reload does not turn it back on', async () => {
   const w = await bootSettled();
   const d = w.document;
   w.brokerEmail = 'staff@operfi.com';
@@ -189,11 +188,20 @@ test('clicking the bell again turns the filter back off, like the other chips', 
     rec({ ID: '3', Customer_Company_Name: 'No Events Co' })
   ]);
   await wait(30);
+  assert.doesNotMatch(d.getElementById('results').innerHTML, /No Events Co/, 'filtered by default');
   d.getElementById('attn-bell').click();
-  assert.doesNotMatch(d.getElementById('results').innerHTML, /No Events Co/);
-  d.getElementById('attn-bell').click();
-  assert.match(d.getElementById('results').innerHTML, /No Events Co/, 'clicking again restores the full list');
+  assert.match(d.getElementById('results').innerHTML, /No Events Co/, 'clicking restores the full list');
   assert.doesNotMatch(d.getElementById('attn-bell').className, /\bactive\b/);
+  // The default is once per PAGE LOAD. A reviewer who turned it off keeps it off
+  // when the list reloads under them; only a refresh brings it back.
+  w.onRecordsLoaded([
+    rec({ ID: '1', Customer_Company_Name: 'Delta Foods' }),
+    rec({ ID: '3', Customer_Company_Name: 'No Events Co' })
+  ]);
+  await wait(30);
+  assert.match(d.getElementById('results').innerHTML, /No Events Co/, 'still off after a reload');
+  d.getElementById('attn-bell').click();
+  assert.doesNotMatch(d.getElementById('results').innerHTML, /No Events Co/, 'and on again with a click');
 });
 
 // ── the row marker ────────────────────────────────────────────────────────────
@@ -251,6 +259,7 @@ test('a row with no unread events gets no marker', async () => {
     rec({ ID: '9', Customer_Company_Name: 'Quiet Co' })
   ]);
   await wait(30);
+  d.getElementById('attn-bell').click();   // off the default, so Quiet Co is listed at all
   const rows = [...d.querySelectorAll('.row')];
   const quietRow = rows.find(function(el) { return /Quiet Co/.test(el.innerHTML); });
   assert.ok(quietRow);
@@ -382,6 +391,7 @@ test('Mark reviewed calls clear with {email, subject_id}, then updates the row m
   ]);
   await wait(30);
   assert.match(d.getElementById('attn-bell').innerHTML, /count">2</);
+  d.getElementById('attn-bell').click();   // full list, so the cleared row stays on screen to check
 
   openRow(d, 'Delta Foods');
   await wait(10);
@@ -428,7 +438,8 @@ test('when the bell is the active filter and the last unread customer is cleared
   ]);
   await wait(30);
 
-  d.getElementById('attn-bell').click();   // activate the bell filter
+  // No click: Needs Attention is the default for staff.
+  assert.match(d.getElementById('attn-bell').className, /\bactive\b/);
   assert.match(d.getElementById('results').innerHTML, /Delta Foods/);
   assert.doesNotMatch(d.getElementById('results').innerHTML, /No Events Co/);
 

@@ -1840,6 +1840,7 @@ function renderProfile(rec, payload) {
         btn.disabled = false;
         if (resp && resp.ok) {
           applyDecisionResult(rec, vals);
+          dropCustomerEventKinds(rec.ID, DECISION_CLEARED_KINDS);
           showToast('Decision saved');
           fetchProfile(rec);   // re-fetch: the engine/report may read differently post-decision
         } else {
@@ -2762,6 +2763,15 @@ function applyCustomerEventsPayload(payload) {
     bySubject[ev.subject_id].push(ev);   // server sends newest first; order is preserved
   });
   customerEventsBySubject = bySubject;
+  // The panel's attention section was drawn from the OLD state. Hide it when
+  // nothing is left for that customer (hide only: re-rendering would bind a
+  // second click handler to the same Mark reviewed button).
+  var panelEl = document.getElementById('panel');
+  var shown = panelEl && panelEl.classList.contains('show') ? filteredRecords[openIndex] : null;
+  if (shown && shown.ID && !(bySubject[shown.ID] && bySubject[shown.ID].length)) {
+    var attn = document.getElementById('ca-attn-section');
+    if (attn) attn.style.display = 'none';
+  }
   // Tom, 2026-09-28: "when i refresh my screen as an OperFi Admin to go in and do
   // credit checks, it should refresh to Needs Attention." Staff land on the queue
   // that asks something of us. ONCE per page load: a reviewer who clicks the bell
@@ -2866,6 +2876,54 @@ function clearCustomerEvents(r, btn, msg) {
   });
 }
 if (typeof window !== 'undefined') { window.clearCustomerEvents = clearCustomerEvents; }
+
+// Tom, 2026-09-29: after a decision the list dropped the row but the open panel
+// still offered "Mark reviewed" -- the server had cleared the alert, the page had
+// not. These mirror the server exactly: a decision clears ONLY the new-check
+// alert (credit_event_store.DECISION_CLEARS), a boost decision only the boost
+// alert. A returned reference or an application still needs its own review, so
+// it stays on the panel.
+var DECISION_CLEARED_KINDS = ['credit_check_submitted'];
+var BOOST_CLEARED_KINDS = ['credit_boost_requested'];
+
+// Called AFTER applyDecisionResult, so the panel stays open on the customer the
+// analyst just decided -- with Needs Attention the default view, dropping the
+// alert first would filter the row out and close the panel on the save.
+function dropCustomerEventKinds(subjectId, kinds) {
+  var list = customerEventsBySubject[subjectId];
+  if (!list) return;
+  var left = list.filter(function(ev) { return kinds.indexOf(ev && ev.kind) === -1; });
+  if (left.length === list.length) return;
+  if (left.length) {
+    customerEventsBySubject[subjectId] = left;
+    customerEventsCounts[subjectId] = left.length;
+  } else {
+    delete customerEventsBySubject[subjectId];
+    delete customerEventsCounts[subjectId];
+    customerEventsTotal = Math.max(0, customerEventsTotal - 1);
+  }
+  if (customerEventsTotal <= 0) attentionFilterActive = false;
+  buildChips();
+  applyFilters();   // the row leaves Needs Attention; the open panel is left alone
+  if (!left.length) {
+    var attn = document.getElementById('ca-attn-section');
+    if (attn) attn.style.display = 'none';
+  } else {
+    // Something else is still unread (a returned reference, say): list only
+    // what remains, and keep Mark reviewed for it.
+    var body = document.getElementById('ca-attn-events');
+    if (body) {
+      body.innerHTML = left.map(function(ev) {
+        var when = ev.at ? fmtDateTime(parseDate(ev.at)) : '';
+        return '<div class="ca-attn-event">' +
+          '<div class="ca-attn-event-summary">' + esc(ev.summary || '') + '</div>' +
+          (when ? '<div class="ca-attn-event-time">' + esc(when) + '</div>' : '') +
+        '</div>';
+      }).join('');
+    }
+  }
+}
+if (typeof window !== 'undefined') { window.dropCustomerEventKinds = dropCustomerEventKinds; }
 
 // After a successful clear: drop the customer from local state, refresh the bell +
 // list, and reposition the panel exactly like applyDecisionResult does above --
@@ -3636,6 +3694,7 @@ function wireBoostSection(rec) {
       approve.disabled = decline.disabled = false;
       if (!resp || !resp.ok) { return say((resp && resp.error) || 'Could not save', 'error'); }
       applyDecisionResult(rec, { decision: 'Approved', credit_limit: String(resp.credit_limit) });
+      dropCustomerEventKinds(rec.ID, BOOST_CLEARED_KINDS);
       fetchCustomerEventsBulk();   // the boost alert was cleared server-side
       showToast((outcome === 'approve' ? 'Boost approved' : 'Boost declined') +
                 (resp.emailed ? '. Client emailed.' : '. The client email did not send, follow up directly.'));
@@ -3692,6 +3751,7 @@ function wireDecisionSection(rec) {
       saveBtn.textContent = origLabel;
       if (resp && resp.ok) {
         applyDecisionResult(rec, vals);
+        dropCustomerEventKinds(rec.ID, DECISION_CLEARED_KINDS);
         showToast('Decision saved');
       } else {
         setDecMsg((resp && resp.error) || 'Could not save decision', 'error');

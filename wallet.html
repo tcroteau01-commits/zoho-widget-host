@@ -349,7 +349,7 @@
       try { console.log('[Wallet] init params:', initParams); } catch (e) {}
       var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
       state.email = loginUser || '';
-      if (!state.email) throw new Error('No login email returned from Creator. Open DevTools console (F12) for details.');
+      if (!state.email) throw new Error('No login email returned from Creator. ' + debugHint('Open DevTools console (F12) for details.'));
       // DEMOUSER1: settle the OperFi Demo account flag before the first render.
       return window.OPERFI_DEMO && window.OPERFI_DEMO.ready(state.email);
     }).then(function () {
@@ -737,6 +737,13 @@
   }
 
   // -------- Helpers --------
+  // Troubleshooting pointers (DevTools/F12) are for OperFi staff; clients get a
+  // support line. operfi-impersonate.js decides who is staff; if it did not load,
+  // assume a client.
+  function debugHint(staffText) {
+    return (window.OPERFI_IMP && OPERFI_IMP.hint) ? OPERFI_IMP.hint(staffText)
+      : 'If this keeps happening, contact OperFi support.';
+  }
   function showStatus(msg, type) {
     var el = document.getElementById('statusBanner');
     el.textContent = msg;

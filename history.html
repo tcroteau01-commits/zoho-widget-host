@@ -721,7 +721,7 @@ function bootApp() {
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) {
       showError('Could not identify broker',
-        'No login email returned from Creator. Open DevTools console (F12) — the init params object is logged there.');
+        'No login email returned from Creator. ' + debugHint('Open DevTools console (F12) — the init params object is logged there.'));
       return;
     }
     console.log('[SubmissionHistory] Booted as', brokerEmail);
@@ -732,7 +732,7 @@ function bootApp() {
     console.error('[SubmissionHistory] ZOHO.CREATOR.UTIL.getInitParams is not available. ZOHO.CREATOR keys:',
       Object.keys(ZOHO.CREATOR || {}));
     showError('SDK shape unexpected',
-      'getInitParams is not available on this SDK build. Open DevTools console (F12) for details.');
+      'getInitParams is not available on this SDK build. ' + debugHint('Open DevTools console (F12) for details.'));
     return;
   }
 
@@ -741,14 +741,14 @@ function bootApp() {
     if (result && typeof result.then === 'function') {
       result.then(gotParams).catch(function(err) {
         console.error('[SubmissionHistory] getInitParams rejected', err);
-        showError('Initialization failed', 'Could not read init params. Open DevTools console (F12) for details.');
+        showError('Initialization failed', 'Could not read init params. ' + debugHint('Open DevTools console (F12) for details.'));
       });
     } else {
       gotParams(result);
     }
   } catch (err) {
     console.error('[SubmissionHistory] getInitParams threw', err);
-    showError('Initialization failed', 'Could not read init params. Open DevTools console (F12) for details.');
+    showError('Initialization failed', 'Could not read init params. ' + debugHint('Open DevTools console (F12) for details.'));
   }
 }
 
@@ -854,7 +854,7 @@ function loadAllRecords() {
   loadSafetyTimer = setTimeout(function() {
     if (loadId !== currentLoadId) return;
     showError('Loading is taking longer than expected',
-      'Try a smaller date range. Open DevTools console (F12) for details.');
+      'Try a smaller date range. ' + debugHint('Open DevTools console (F12) for details.'));
   }, 60000);
 
   fetchPage(loadId, 1, [], range);
@@ -955,7 +955,7 @@ function fetchPage(loadId, fromIdx, accumulated, range) {
     if (loadId !== currentLoadId) return;
     clearTimeout(loadSafetyTimer);
     console.error('[SubmissionHistory] /broker-report failed at idx', fromIdx, err);
-    showError('Could not load submissions', 'Open DevTools console (F12) for the error.');
+    showError('Could not load submissions', debugHint('Open DevTools console (F12) for the error.'));
   });
 }
 
@@ -1199,6 +1199,13 @@ function renderFooter() {
   document.getElementById('footer-count').textContent = 'Showing ' + filteredRecords.length + ' of ' + allRecords.length + ' submissions';
 }
 
+// Troubleshooting pointers (DevTools/F12) are for OperFi staff; clients get a
+// support line. operfi-impersonate.js decides who is staff; if it did not load,
+// assume a client.
+function debugHint(staffText) {
+  return (window.OPERFI_IMP && OPERFI_IMP.hint) ? OPERFI_IMP.hint(staffText)
+    : 'If this keeps happening, contact OperFi support.';
+}
 function showError(title, msg) {
   document.getElementById('results').innerHTML = '<div class="state"><div class="state-title">' + esc(title) + '</div><div class="state-msg">' + esc(msg) + '</div></div>';
 }

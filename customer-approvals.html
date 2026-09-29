@@ -905,7 +905,7 @@ function bootApp() {
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) {
       showError('Could not identify broker',
-        'No login email returned from Creator. Open DevTools console (F12): the init params object is logged there.');
+        'No login email returned from Creator. ' + debugHint('Open DevTools console (F12): the init params object is logged there.'));
       return;
     }
     console.log('[CustomerApprovals] Booted as', brokerEmail);
@@ -914,7 +914,7 @@ function bootApp() {
 
   if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
     console.error('[CustomerApprovals] getInitParams not available. ZOHO.CREATOR keys:', Object.keys(ZOHO.CREATOR || {}));
-    showError('SDK shape unexpected', 'getInitParams is not available on this SDK build. Open DevTools console (F12).');
+    showError('SDK shape unexpected', 'getInitParams is not available on this SDK build. ' + debugHint('Open DevTools console (F12).'));
     return;
   }
 
@@ -923,14 +923,14 @@ function bootApp() {
     if (result && typeof result.then === 'function') {
       result.then(gotParams).catch(function(err) {
         console.error('[CustomerApprovals] getInitParams rejected', err);
-        showError('Initialization failed', 'Could not read init params. Open DevTools console (F12).');
+        showError('Initialization failed', 'Could not read init params. ' + debugHint('Open DevTools console (F12).'));
       });
     } else {
       gotParams(result);
     }
   } catch (err) {
     console.error('[CustomerApprovals] getInitParams threw', err);
-    showError('Initialization failed', 'Could not read init params. Open DevTools console (F12).');
+    showError('Initialization failed', 'Could not read init params. ' + debugHint('Open DevTools console (F12).'));
   }
 }
 
@@ -1013,7 +1013,7 @@ function loadAllRecords() {
   clearTimeout(loadSafetyTimer);
   loadSafetyTimer = setTimeout(function() {
     if (loadId !== currentLoadId) return;
-    showError('Loading is taking longer than expected', 'Open DevTools console (F12) for details.');
+    showError('Loading is taking longer than expected', debugHint('Open DevTools console (F12) for details.'));
   }, 60000);
 
   fetchAll(loadId);
@@ -1051,7 +1051,7 @@ function fetchAll(loadId) {
     if (loadId !== currentLoadId) return;
     clearTimeout(loadSafetyTimer);
     console.error('[CustomerApprovals] /broker-report failed', err);
-    showError('Could not load customer approvals', 'Open DevTools console (F12) for the error.');
+    showError('Could not load customer approvals', debugHint('Open DevTools console (F12) for the error.'));
   });
 }
 
@@ -1337,6 +1337,13 @@ function renderFooter() {
     'Showing ' + filteredRecords.length + ' of ' + allRecords.length + ' customers';
 }
 
+// Troubleshooting pointers (DevTools/F12) are for OperFi staff; clients get a
+// support line. operfi-impersonate.js decides who is staff; if it did not load,
+// assume a client.
+function debugHint(staffText) {
+  return (window.OPERFI_IMP && OPERFI_IMP.hint) ? OPERFI_IMP.hint(staffText)
+    : 'If this keeps happening, contact OperFi support.';
+}
 function showError(title, msg) {
   document.getElementById('results').innerHTML =
     '<div class="state"><div class="state-title">' + esc(title) + '</div><div class="state-msg">' + esc(msg) + '</div></div>';

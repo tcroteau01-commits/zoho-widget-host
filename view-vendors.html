@@ -372,7 +372,7 @@ function bootApp() {
     console.log('[ViewVendors] init params:', params);
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) {
-      showError('Could not identify broker', 'Open DevTools console (F12) for details.');
+      showError('Could not identify broker', debugHint('Open DevTools console (F12) for details.'));
       return;
     }
     console.log('[ViewVendors] Booted as', brokerEmail);
@@ -466,7 +466,7 @@ function loadAllRecords() {
   }).catch(function(err) {
     if (loadId !== currentLoadId) return;
     console.error('[ViewVendors] /broker-report failed', err);
-    showError('Could not load vendors', 'Open DevTools console (F12) for the error.');
+    showError('Could not load vendors', debugHint('Open DevTools console (F12) for the error.'));
   });
 }
 
@@ -719,6 +719,13 @@ function renderFooter() {
     'Showing ' + filteredRecords.length + ' of ' + allRecords.length + ' vendors';
 }
 
+// Troubleshooting pointers (DevTools/F12) are for OperFi staff; clients get a
+// support line. operfi-impersonate.js decides who is staff; if it did not load,
+// assume a client.
+function debugHint(staffText) {
+  return (window.OPERFI_IMP && OPERFI_IMP.hint) ? OPERFI_IMP.hint(staffText)
+    : 'If this keeps happening, contact OperFi support.';
+}
 function showError(title, msg) {
   document.getElementById('results').innerHTML =
     '<div class="state"><div class="state-title">' + esc(title) + '</div><div class="state-msg">' + esc(msg) + '</div></div>';

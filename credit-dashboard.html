@@ -270,6 +270,13 @@ var PALETTE = [
 
 var brokerEmail = '';
 
+// Troubleshooting pointers (DevTools/F12) are for OperFi staff; clients get a
+// support line. operfi-impersonate.js decides who is staff; if it did not load,
+// assume a client.
+function debugHint(staffText) {
+  return (window.OPERFI_IMP && OPERFI_IMP.hint) ? OPERFI_IMP.hint(staffText)
+    : 'If this keeps happening, contact OperFi support.';
+}
 function showStatus(msg, type) {
   var el = document.getElementById('statusMsg');
   el.innerHTML = type === 'loading' ? '<span class="spinner"></span>' + msg : msg;
@@ -619,7 +626,7 @@ function bootApp() {
     console.log('[CreditDashboard] init params:', params);
     brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
     if (!brokerEmail) {
-      showStatus('Could not identify broker. Open DevTools (F12) for details.', 'error');
+      showStatus('Could not identify broker. ' + debugHint('Open DevTools (F12) for details.'), 'error');
       return;
     }
     // DEMOUSER1: settle the OperFi Demo account flag, then re-check. This is the

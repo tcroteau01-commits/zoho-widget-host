@@ -508,6 +508,13 @@
     // Standalone-test mode: ?clientId=<id> bypasses Creator SDK
     state.clientId = null;
 
+    // Troubleshooting pointers (DevTools/F12) are for OperFi staff; clients get a
+    // support line. operfi-impersonate.js decides who is staff; if it did not load,
+    // assume a client.
+    function debugHint(staffText) {
+      return (window.OPERFI_IMP && OPERFI_IMP.hint) ? OPERFI_IMP.hint(staffText)
+        : 'If this keeps happening, contact OperFi support.';
+    }
     function showError(msg) {
       document.getElementById('aging-app').innerHTML =
         '<div style="padding:24px;color:#DC2626">' + esc(msg) + '</div>';
@@ -551,7 +558,7 @@
         var loginUser = initParams && (initParams.loginUser || initParams.login_user || initParams.email);
         brokerEmail = loginUser || '';
         if (!brokerEmail) {
-          throw new Error('No login email returned from Creator. Open DevTools console (F12) for details.');
+          throw new Error('No login email returned from Creator. ' + debugHint('Open DevTools console (F12) for details.'));
         }
         // DEMOUSER1: settle the OperFi Demo account flag before the first render.
         return window.OPERFI_DEMO && window.OPERFI_DEMO.ready(brokerEmail);

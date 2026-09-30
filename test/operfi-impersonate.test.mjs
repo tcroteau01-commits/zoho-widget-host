@@ -23,6 +23,24 @@ test('fetch wrapper appends impersonate to backend calls when set', () => {
   assert.ok(!seen[1].includes('impersonate'));   // non-backend untouched
 });
 
+test('portal-served copy never decorates a blob: or data: URL (page origin IS the API host)', () => {
+  // On /portal/w/ the proxy swaps API_HOST for the portal's own host, so a blob
+  // URL minted by the page ("blob:https://<portal>/uuid") contains API_HOST.
+  // Appending ?impersonate= to it breaks the blob lookup (doc viewer fails).
+  const { w } = boot();
+  const seen = [];
+  w.fetch = (u) => { seen.push(u); return Promise.resolve({ json: () => Promise.resolve({}) }); };
+  w.eval(js.replace(/operfi-broker-api\.onrender\.com/g, 'brokers.operfi.com'));
+  w.localStorage.setItem('operfiImpersonate', 'client@x.com');
+  w.fetch('blob:https://brokers.operfi.com/6f1c-uuid');
+  w.fetch('data:application/pdf;base64,JVBERi0=');
+  w.fetch('https://brokers.operfi.com/tms-loads?email=a@op.com');
+  w.fetch('/tms-loads?email=a@op.com');
+  assert.strictEqual(seen[0], 'blob:https://brokers.operfi.com/6f1c-uuid');
+  assert.strictEqual(seen[1], 'data:application/pdf;base64,JVBERi0=');
+  assert.ok(seen[2].includes('impersonate=client%40x.com'), 'real API call still decorated');
+});
+
 test('renderAdminBar shows picker for admin payload', () => {
   const { w } = boot();
   w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });

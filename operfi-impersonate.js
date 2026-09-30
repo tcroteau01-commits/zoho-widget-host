@@ -17,7 +17,10 @@
   function decorate(url){
     try {
       var imp = target();
-      if (imp && typeof url === 'string' && url.indexOf(API_HOST) !== -1 && url.indexOf('impersonate=') === -1) {
+      // Never blob:/data: -- on /portal/w/ API_HOST is the page's own host, so a
+      // page-minted blob URL contains it and a query string breaks the lookup.
+      if (imp && typeof url === 'string' && !/^(blob|data):/i.test(url) &&
+          url.indexOf(API_HOST) !== -1 && url.indexOf('impersonate=') === -1) {
         return url + (url.indexOf('?') === -1 ? '?' : '&') + 'impersonate=' + encodeURIComponent(imp);
       }
     } catch (e) {}

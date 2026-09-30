@@ -1115,8 +1115,17 @@ function buildChips() {
     el.innerHTML = esc(c.label) + ' <span class="count">' + c.count + '</span>';
     el.addEventListener('click', function() {
       currentStatus = c.key;
-      document.querySelectorAll('#chips .chip').forEach(function(x) { x.classList.remove('active'); });
-      el.classList.add('active');
+      // 🚨 FILTERPILL1 (Tom, 2026-09-29: "sometimes i have to click All twice or
+      // Needs Attention twice"). This used to strip `active` from EVERY .chip,
+      // the bell included, without turning the bell's filter off: the bell read
+      // off while the list stayed filtered, so each later bell click did the
+      // opposite of what it showed. Redraw from state instead, so the pills can
+      // never disagree with the filter.
+      //
+      // "All" means everything: it also turns the Needs Attention filter off.
+      // Any other status keeps it, so "Needs Attention within Approved" works.
+      if (c.key === 'all') attentionFilterActive = false;
+      buildChips();
       applyFilters();
     });
     chips.appendChild(el);

@@ -467,3 +467,43 @@ test('Payment History factor dropdown populates once history rows load, not just
   const filteredIds = Array.from(w.document.querySelectorAll('#hist-table-wrap tbody tr[data-id]')).map(tr => tr.dataset.id);
   assert.deepEqual(filteredIds, ['h2'], 'selecting a factor from the (now populated) dropdown must actually filter the table');
 });
+
+// ── BROKERTERMS1: brokers see only their Account/Vendor term ──────────────────
+// Tom, 2026-09-30: "FactorView doesn't have the source of truth. The
+// Account/Vendor record is the source of truth on how something was paid."
+
+async function openDetailWith(row, seeAll) {
+  const dom = makeWidget();
+  const w = dom.window;
+  w.fetch = (url) => {
+    if (String(url).includes('/vendor-payments/open')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          accountName: seeAll ? 'All clients' : 'Test Co', seeAll: !!seeAll,
+          rows: [row], totals: { openLoads: 1, totalOwed: 850, carrierCount: 1 }
+        })
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(() => w.document.querySelector('#open-table-wrap tbody tr[data-id]'));
+  w.document.querySelector('#open-table-wrap tbody tr[data-id]').click();
+  return w.document.getElementById('detail-panel').textContent;
+}
+
+test('broker detail panel never shows FactorView vendor terms or an override marker', async () => {
+  const row = Object.assign({}, MOCK_ROW, { 'Broker Pmt Terms': 'Quick Pay', 'Vendor Pmt Terms': 'Factoring Company' });
+  const text = await openDetailWith(row, false);
+  assert.match(text, /Quick Pay/);
+  assert.doesNotMatch(text, /Vendor Pmt Terms/);
+  assert.doesNotMatch(text, /override/i);
+});
+
+test('OperFi see-all detail panel keeps the FactorView term and the override marker', async () => {
+  const row = Object.assign({}, MOCK_ROW, { 'Client': 'All American Freight', 'Broker Pmt Terms': 'Quick Pay', 'Vendor Pmt Terms': 'Factoring Company' });
+  const text = await openDetailWith(row, true);
+  assert.match(text, /Vendor Pmt Terms/);
+  assert.match(text, /Broker Pmt Terms \(override\)/);
+});

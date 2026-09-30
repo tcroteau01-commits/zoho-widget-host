@@ -453,6 +453,15 @@
     var brokerTerms = row['Broker Pmt Terms'] || '';
     var vendorTerms = row['Vendor Pmt Terms'] || '';
     var override = brokerTerms && vendorTerms && brokerTerms !== vendorTerms;
+    // BROKERTERMS1: the Account/Vendor term is the source of truth for how a load
+    // was paid, so a broker never sees FactorView's term or an "override" marker.
+    // OperFi's see-all view keeps both for reconciliation.
+    var termsRows = state.seeAll ? [
+      ['Vendor Pmt Terms',                                       escapeHtml(vendorTerms || '-')],
+      [override ? 'Broker Pmt Terms (override)' : 'Broker Pmt Terms', '<span class="' + (override ? 'override' : '') + '">' + escapeHtml(brokerTerms || '-') + '</span>'],
+    ] : [
+      ['Payment Terms', escapeHtml(brokerTerms || '-')],
+    ];
     var vendorDisplay = row['Vendor Name'] || (row['USDOT'] + ' (pending)');
     var html = '' +
       '<div class="detail-overlay" id="detail-overlay"></div>' +
@@ -480,12 +489,10 @@
           ['Other Reference',  row['Other Reference'] || '-'],
           ['Client (Debtor)',  row['Debtor'] || '-'],
         ]) +
-        detailSection('Terms & Routing', [
-          ['Vendor Pmt Terms',                                       escapeHtml(vendorTerms || '-')],
-          [override ? 'Broker Pmt Terms (override)' : 'Broker Pmt Terms', '<span class="' + (override ? 'override' : '') + '">' + escapeHtml(brokerTerms || '-') + '</span>'],
+        detailSection('Terms & Routing', termsRows.concat([
           ['Factoring Company', escapeHtml(row['Factoring Company'] || '-')],
           ['Pmt Acct Number',   escapeHtml(row['Pmt Acct Number'] || '-')],
-        ]) +
+        ])) +
         '<div class="dp-section">' +
           '<div class="dp-heading">Carrier Vetting</div>' +
           '<div id="vp-carrier-av"></div>' +

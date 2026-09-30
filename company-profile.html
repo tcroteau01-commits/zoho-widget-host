@@ -1199,12 +1199,19 @@ function inviteChipHtml(u) {
   return '<div class="invite-chip' + cls + '"><span class="chip">' + esc(text) + '</span>' + btn + '</div>';
 }
 
+function inviteErrorText(code) {
+  if (code === 'already_active') return 'already active';
+  if (code === 'not_flipped') return 'not on the new portal yet';
+  if (code === 'no_such_user') return 'user not found';
+  return 'please try again';
+}
+
 function sendInvite(email, btn) {
   btn.disabled = true;
   btn.textContent = 'Sending...';
   fetch(BROKER_API_BASE + '/permissions/invite-resend', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ broker_email: brokerEmail, email: email })
+    body: JSON.stringify({ email: brokerEmail, target_email: email })
   }).then(function (r) { return r.json().then(function (b) { return { r: r, b: b }; }); })
     .then(function (res) {
       var prev = inviteStatusByEmail[email] || {};
@@ -1212,8 +1219,11 @@ function sendInvite(email, btn) {
         var next = res.b.state || {};
         next._sent = true;
         inviteStatusByEmail[email] = next;
+        // The route no longer re-reads WorkOS before answering; refresh in
+        // the background so the chip settles on the real state.
+        loadInviteStatus();
       } else {
-        prev._error = (res.b && res.b.error) || 'please try again';
+        prev._error = inviteErrorText(res.b && res.b.error);
         inviteStatusByEmail[email] = prev;
       }
       renderUsers();

@@ -139,6 +139,14 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 /* Overrides, ownership and disabled state sit under the name, where there is
    room, rather than being squeezed into the badge column. */
 .user-notes { font-size: 11px; color: #999; margin-top: 2px; }
+.invite-chip { font-size: 11px; margin-top: 3px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.invite-chip .chip { color: #6b6b6b; }
+.invite-chip.warn .chip { color: #a15c00; }
+.invite-chip.ok .chip { color: #2f7d32; }
+.invite-chip.err .chip { color: #b3261e; }
+.invite-btn { font-size: 11px; background: none; border: 0; padding: 0; color: #1a5fb4; cursor: pointer; text-decoration: underline; }
+.invite-btn[disabled] { color: #999; cursor: default; text-decoration: none; }
+.invite-unavailable { font-size: 11px; color: #999; margin: 0 0 6px; }
 /* Disabled reads as inert without hiding the row -- the row is how you re-enable. */
 .user-row.is-disabled { background: #fbfbf9; }
 .user-row.is-disabled .user-name,
@@ -1133,6 +1141,101 @@ function emailRowHtml(purpose, addr, note) {
 }
 
 // ── Data load: Authorized Users ───────────────────────────────────────────
+// INVRESEND1: live WorkOS invite state per user, fetched SEPARATELY from the
+// list so a slow or failing WorkOS never delays or blanks the Users tab.
+var inviteStatusByEmail = {};
+var inviteStatusUnavailable = false;
+
+function loadInviteStatus() {
+  if (!canManage) return;
+  fetch(BROKER_API_BASE + '/permissions/invite-status?email=' + encodeURIComponent(brokerEmail))
+    .then(function (r) {
+      // 503 is invite_status_unavailable -- WorkOS is down, worth a line so
+      // the admin knows why every chip is missing. Any OTHER non-OK status
+      // (403, 500, ...) is a different failure the "unavailable" copy would
+      // mislabel, so it renders no chips and no line instead of a wrong one.
+      if (r.ok) {
+        return r.json().then(function (res) {
+          inviteStatusByEmail = (res && res.statuses) || {};
+          inviteStatusUnavailable = false;
+          renderUsers();
+        });
+      }
+      inviteStatusByEmail = {};
+      inviteStatusUnavailable = (r.status === 503);
+      renderUsers();
+    })
+    .catch(function (err) {
+      console.warn('[CompanyProfile] invite status unavailable', err);
+      inviteStatusByEmail = {};
+      inviteStatusUnavailable = true;
+      renderUsers();
+    });
+}
+
+function inviteDate(iso) {
+  var d = activityDate(iso);
+  return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function inviteChipHtml(u) {
+  if (!canManage) return '';
+  var email = String(u.Email || '').toLowerCase();
+  var s = inviteStatusByEmail[email];
+  if (!s || s.state === 'not_applicable') return '';
+  var text = '', cls = '';
+  if (s.state === 'active') text = 'Active' + (s.last_sign_in ? ' · last sign-in ' + inviteDate(s.last_sign_in) : '');
+  else if (s.state === 'never_signed_in') text = 'Active · never signed in';
+  else if (s.state === 'pending') text = 'Invited ' + inviteDate(s.invited_at) + ' · expires ' + inviteDate(s.expires_at);
+  else if (s.state === 'expired') { text = 'Invite expired ' + inviteDate(s.expires_at); cls = ' warn'; }
+  else if (s.state === 'not_invited') { text = 'Not invited'; cls = ' warn'; }
+  if (s._sent) { text = 'Invite sent' + (s.expires_at ? ' · expires ' + inviteDate(s.expires_at) : ''); cls = ' ok'; }
+  if (s._error) { text = 'Could not send: ' + s._error; cls = ' err'; }
+  var btn = '';
+  if (s.can_send && !s._sent) {
+    btn = '<button type="button" class="invite-btn" data-invite-email="' + esc(email) + '">' +
+          (s.state === 'not_invited' ? 'Send invite' : 'Resend invite') + '</button>';
+  }
+  return '<div class="invite-chip' + cls + '"><span class="chip">' + esc(text) + '</span>' + btn + '</div>';
+}
+
+function inviteErrorText(code) {
+  if (code === 'already_active') return 'already active';
+  if (code === 'not_flipped') return 'not on the new portal yet';
+  if (code === 'no_such_user') return 'user not found';
+  return 'please try again';
+}
+
+function sendInvite(email, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  fetch(BROKER_API_BASE + '/permissions/invite-resend', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, target_email: email })
+  }).then(function (r) { return r.json().then(function (b) { return { r: r, b: b }; }); })
+    .then(function (res) {
+      var prev = inviteStatusByEmail[email] || {};
+      if (res.r.ok && res.b.ok) {
+        var next = res.b.state || {};
+        next._sent = true;
+        inviteStatusByEmail[email] = next;
+        // The route no longer re-reads WorkOS before answering; refresh in
+        // the background so the chip settles on the real state.
+        loadInviteStatus();
+      } else {
+        prev._error = inviteErrorText(res.b && res.b.error);
+        inviteStatusByEmail[email] = prev;
+      }
+      renderUsers();
+    })
+    .catch(function () {
+      var prev = inviteStatusByEmail[email] || {};
+      prev._error = 'please try again';
+      inviteStatusByEmail[email] = prev;
+      renderUsers();
+    });
+}
+
 function loadUsers() {
   fetch(BROKER_API_BASE + '/broker-users?email=' + encodeURIComponent(brokerEmail))
     .then(function(res) { return res.json(); })
@@ -1155,6 +1258,7 @@ function loadUsers() {
         return parseDate(b.Added_Time) - parseDate(a.Added_Time);
       });
       applyUserFilter();
+      loadInviteStatus();
     }).catch(function(err) {
       console.error('[CompanyProfile] /broker-users failed', err);
       document.getElementById('users-body').innerHTML =
@@ -1292,7 +1396,9 @@ function renderUsers() {
     return;
   }
 
-  var html = '<div class="user-list">';
+  var html = (canManage && inviteStatusUnavailable
+    ? '<div class="invite-unavailable">Invite status unavailable right now.</div>' : '') +
+    '<div class="user-list">';
   filteredUsers.forEach(function(u) {
     html += userRowHtml(u);
   });
@@ -1300,6 +1406,13 @@ function renderUsers() {
   body.innerHTML = html;
 
   bindRowMenus(body);
+
+  Array.prototype.forEach.call(body.querySelectorAll('.invite-btn'), function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();   // the row itself opens View contact
+      sendInvite(btn.getAttribute('data-invite-email'), btn);
+    });
+  });
 
   // Summary counts based on full list, not filtered.
   //
@@ -1374,6 +1487,7 @@ function userRowHtml(u) {
       '<div class="user-name">' + esc(name) + '</div>' +
       '<div class="user-email">' + esc(u.Email || '') + '</div>' +
       (notes.length ? '<div class="user-notes">' + esc(notes.join(' · ')) + '</div>' : '') +
+      inviteChipHtml(u) +
     '</div>' +
     '<div><span class="user-perm ' + permClass + '" title="' +
       esc(a ? (a.template_name || 'No template') : permLabel) + '">' +
@@ -2634,7 +2748,7 @@ function toggleUserStatus(user) {
     });
 }
 
-// The six actions permissions_store.write_audit can record. Anything not in
+// The seven actions permissions_store.write_audit can record. Anything not in
 // here falls back to the raw key rather than rendering blank, so a new action
 // added server-side degrades to something readable instead of disappearing.
 //
@@ -2642,6 +2756,7 @@ function toggleUserStatus(user) {
 // and it was the only user-management action the audit log did not carry.
 var ACTIVITY_ACTION = {
   invite:          'Invited user',
+  invite_resend:   'Resent invite',
   set_access:      'Changed access',
   set_status:      'Changed status',
   template_create: 'Created template',

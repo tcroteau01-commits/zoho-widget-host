@@ -1206,3 +1206,144 @@ test('reopen overlay show/hide/error toggles visibility', () => {
   assert.strictEqual(o().hidden, false);
   assert.match(o().className, /error/);
 });
+
+// ── DOCREMOVE1: review + remove picked docs before submit ─────────────────────
+
+function _fillAll(w) {
+  ['customer-select','customer-reference','customer-rate','carrier-select','carrier-rate','carrier-factoring-invoice','rate-con']
+    .forEach(function (id) { w.setField(id, id.indexOf('rate') > -1 ? '100' : 'x'); });
+}
+// File-shaped stand-in (jsdom's File has no arrayBuffer()), same as the merge tests above.
+function _file(w, name, body) {
+  const bytes = new TextEncoder().encode(body || 'x');
+  return { name: name, size: bytes.length, type: name.endsWith('.pdf') ? 'application/pdf' : '',
+           arrayBuffer: () => Promise.resolve(bytes.buffer) };
+}
+function _names(w, inputId) { return Array.from(w.fileStore[inputId], f => f.name); }
+function _rows(w, inputId) { return Array.from(w.document.querySelectorAll('#' + inputId + '_list .file-row')); }
+
+test('includes the shared doc viewer and PDF.js for previews', () => {
+  assert.match(HTML, /pdfjs\/pdf\.min\.js/);
+  assert.match(HTML, /operfi-docviewer\.js/);
+});
+
+test('each slot has a file list rendered OUTSIDE the dropzone (clicks never open the picker)', () => {
+  const d = new JSDOM(HTML).window.document;
+  ['cust_docs', 'carrier_docs'].forEach(function (id) {
+    const list = d.getElementById(id + '_list');
+    assert.ok(list, 'missing #' + id + '_list');
+    assert.ok(!d.getElementById(id + '_area').contains(list), id + ' list must sit outside the uploader');
+  });
+});
+
+test('multiple picked docs each get their own row with name and a Remove button', async () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  await w.mergeFiles('cust_docs', [_file(w, 'bol.pdf'), _file(w, 'pod.jpg'), _file(w, 'invoice.docx')]);
+  w.updateFileLabel('cust_docs', 'cust_docs_label');
+  const rows = _rows(w, 'cust_docs');
+  assert.strictEqual(rows.length, 3);
+  assert.match(rows[0].textContent, /bol\.pdf/);
+  assert.match(rows[2].textContent, /invoice\.docx/);
+  rows.forEach(function (r) { assert.ok(r.querySelector('[data-remove-file]'), 'row has remove'); });
+  assert.match(w.document.getElementById('cust_docs_label').textContent, /3 files/);
+});
+
+test('Remove drops just that doc, leaves the others, and keeps the slot valid', async () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillAll(w);
+  await w.mergeFiles('cust_docs', [_file(w, 'a.pdf'), _file(w, 'wrong.pdf')]);
+  await w.mergeFiles('carrier_docs', [_file(w, 'rc.pdf')]);
+  w.updateFileLabel('cust_docs', 'cust_docs_label');
+  w.refreshValidity();
+  _rows(w, 'cust_docs')[1].querySelector('[data-remove-file]').click();
+  assert.deepStrictEqual(_names(w, 'cust_docs'), ['a.pdf']);
+  assert.strictEqual(_rows(w, 'cust_docs').length, 1);
+  assert.strictEqual(w.document.getElementById('submit-btn').disabled, false);
+});
+
+test('removing the last doc in a slot re-locks the gate and disables submit', async () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  _fillAll(w);
+  await w.mergeFiles('cust_docs', [_file(w, 'a.pdf')]);
+  await w.mergeFiles('carrier_docs', [_file(w, 'rc.pdf')]);
+  w.updateFileLabel('carrier_docs', 'carrier_docs_label');
+  w.refreshValidity();
+  assert.strictEqual(w.document.getElementById('submit-btn').disabled, false);
+  _rows(w, 'carrier_docs')[0].querySelector('[data-remove-file]').click();
+  assert.strictEqual(w.fileStore.carrier_docs.length, 0);
+  assert.strictEqual(w.document.getElementById('submit-btn').disabled, true);
+  assert.ok(!w.document.getElementById('carrier_docs_area').classList.contains('valid'));
+  assert.match(w.document.getElementById('carrier_docs_label').textContent, /Click or drag files here/);
+});
+
+test('an unreadable doc can be removed, which un-blocks the slot', async () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  w.fileStore = { cust_docs: [_doc(w, 'good.pdf'), { name: 'bad.pdf', ext: 'pdf', blob: null, error: 'NotFoundError' }], carrier_docs: [] };
+  w.updateFileLabel('cust_docs', 'cust_docs_label');
+  assert.strictEqual(w._docSlotSatisfied('customer'), false);
+  const bad = _rows(w, 'cust_docs')[1];
+  assert.match(bad.textContent, /bad\.pdf/);
+  bad.querySelector('[data-remove-file]').click();
+  assert.strictEqual(w._docSlotSatisfied('customer'), true);
+});
+
+test('View opens the shared viewer on the in-memory copy of that exact doc', async () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  const opened = [];
+  w.OperFiDocViewer = { open: (o) => opened.push(o) };
+  w.URL.createObjectURL = (b) => { w.__lastBlob = b; return 'blob:fake-1'; };
+  await w.mergeFiles('cust_docs', [_file(w, 'bol.pdf', 'PDFBYTES')]);
+  w.updateFileLabel('cust_docs', 'cust_docs_label');
+  _rows(w, 'cust_docs')[0].querySelector('[data-view-file]').click();
+  assert.strictEqual(opened.length, 1);
+  assert.strictEqual(opened[0].url, 'blob:fake-1');
+  assert.strictEqual(opened[0].filename, 'bol.pdf');
+  assert.strictEqual(w.__lastBlob, w.fileStore.cust_docs[0].blob);
+});
+
+test('formats the browser cannot render get no View button, only Remove', async () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  await w.mergeFiles('cust_docs', [_file(w, 'notes.docx'), _file(w, 'scan.tiff'), _file(w, 'photo.heic')]);
+  w.updateFileLabel('cust_docs', 'cust_docs_label');
+  assert.strictEqual(_rows(w, 'cust_docs').length, 3);
+  _rows(w, 'cust_docs').forEach(function (r) {
+    assert.strictEqual(r.querySelector('[data-view-file]'), null, r.textContent);
+    assert.ok(r.querySelector('[data-remove-file]'));
+    assert.match(r.textContent, /no preview/i);
+  });
+});
+
+test('a doc removed by mistake can be picked again (input value is cleared after each pick)', async () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  const input = w.document.getElementById('cust_docs');
+  Object.defineProperty(input, 'files', { configurable: true, value: [_file(w, 'a.pdf')] });
+  let cleared = false;
+  Object.defineProperty(input, 'value', { configurable: true, get: () => '', set: (v) => { if (v === '') cleared = true; } });
+  await w.onFileChange('cust_docs', 'cust_docs_label');
+  assert.ok(cleared, 'input.value reset so re-selecting the same file fires change');
+  _rows(w, 'cust_docs')[0].querySelector('[data-remove-file]').click();
+  await w.onFileChange('cust_docs', 'cust_docs_label');
+  assert.deepStrictEqual(_names(w, 'cust_docs'), ['a.pdf']);
+});
+
+test('reopened draft: adding then removing a doc falls back to the packet-on-file indicator', async () => {
+  const w = makeStorageDom().window;
+  w.prefillFromDraft({ id: '900', has_customer_docs: true, has_carrier_docs: false });
+  await w.mergeFiles('cust_docs', [_file(w, 'extra.pdf')]);
+  w.updateFileLabel('cust_docs', 'cust_docs_label');
+  assert.doesNotMatch(w.document.getElementById('cust_docs_label').textContent, /on file/i);
+  _rows(w, 'cust_docs')[0].querySelector('[data-remove-file]').click();
+  assert.match(w.document.getElementById('cust_docs_label').textContent, /on file/i);
+  assert.strictEqual(w._docSlotSatisfied('customer'), true);
+});
+
+test('resetFormAfterSubmit empties both file lists', async () => {
+  const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
+  await w.mergeFiles('cust_docs', [_file(w, 'a.pdf')]);
+  await w.mergeFiles('carrier_docs', [_file(w, 'b.pdf')]);
+  w.updateFileLabel('cust_docs', 'cust_docs_label');
+  w.updateFileLabel('carrier_docs', 'carrier_docs_label');
+  w.resetFormAfterSubmit('rec_1', false);
+  assert.strictEqual(_rows(w, 'cust_docs').length, 0);
+  assert.strictEqual(_rows(w, 'carrier_docs').length, 0);
+});

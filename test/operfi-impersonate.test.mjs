@@ -35,6 +35,44 @@ test('renderAdminBar shows picker for admin payload', () => {
   assert.ok(bar.querySelector('[data-email="p@m.com"]'));
 });
 
+function openPicker(){
+  const { w } = boot();
+  w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
+  w.eval(js);
+  w.OPERFI_IMP.renderAdminBar({ is_admin: true, clients: [{ name: 'Marek LLC', contact_email: 'p@m.com' }] });
+  const search = w.document.getElementById('operfi-imp-search');
+  const list = w.document.getElementById('operfi-imp-list');
+  search.focus();
+  search.value = 'mar';
+  search.dispatchEvent(new w.Event('input'));
+  assert.equal(list.style.display, 'block');
+  return { w, search, list };
+}
+
+test('clicking away closes the picker, clears the text, keeps the current client', () => {
+  const { w, search, list } = openPicker();
+  w.localStorage.setItem('operfiImpersonate', 'prev@x.com');
+  search.blur();
+  assert.equal(list.style.display, 'none');
+  assert.equal(search.value, '');
+  assert.equal(w.localStorage.getItem('operfiImpersonate'), 'prev@x.com');
+});
+
+test('Escape closes the picker', () => {
+  const { w, search, list } = openPicker();
+  search.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' }));
+  assert.equal(list.style.display, 'none');
+  assert.equal(search.value, '');
+});
+
+test('mousedown on a client row does not steal focus, so the pick still lands', () => {
+  const { w, list } = openPicker();
+  const ev = new w.MouseEvent('mousedown', { bubbles: true, cancelable: true });
+  list.querySelector('[data-email]').dispatchEvent(ev);
+  assert.equal(ev.defaultPrevented, true);
+  assert.equal(list.style.display, 'block');
+});
+
 test('non-admin payload renders no bar', () => {
   const { w } = boot();
   w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });

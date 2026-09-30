@@ -75,8 +75,15 @@
       }).join('') || '<div style="padding:8px 12px;color:#667085">No match</div>';
       list.style.display = 'block';
     }
+    // Clicking away (anywhere in the widget, the portal shell around it, or tabbing
+    // off) cancels: the list closes, the typed text clears, the current client stays.
+    function cancel() { list.style.display = 'none'; search.value = ''; }
     search.addEventListener('focus', function () { paint(search.value); });
     search.addEventListener('input', function () { paint(search.value); });
+    search.addEventListener('blur', cancel);
+    search.addEventListener('keydown', function (e) { if (e.key === 'Escape') search.blur(); });
+    // keep focus on the input while picking, so the blur above doesn't close the list first
+    list.addEventListener('mousedown', function (e) { e.preventDefault(); });
     list.addEventListener('click', function (e) {
       var row = e.target.closest('[data-email]'); if (!row) return;
       try { localStorage.setItem(KEY, row.getAttribute('data-email')); } catch (x) {}

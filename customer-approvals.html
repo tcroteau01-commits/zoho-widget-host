@@ -980,8 +980,16 @@ if (typeof window !== 'undefined') { window.isTypingTarget = isTypingTarget; }
 // lists the broker's unfinished checks on load, so a storage write that is
 // blocked, cleared or unavailable costs one extra click rather than stranding
 // the record. That is why a throw here is swallowed.
-function resumeOnCreditCheck(recId) {
-  try { sessionStorage.setItem('operfi.resumeSubmission', recId); } catch (e) {}
+// CCEDIT1: `mode` 'edit' opens a check still Awaiting Credit Decision for
+// editing. Anything else is the resume / Add Documents path it always was. The
+// credit check asks the server whether the edit is still allowed; this only
+// says which one the broker clicked.
+function resumeOnCreditCheck(recId, mode) {
+  try {
+    sessionStorage.setItem('operfi.resumeSubmission', recId);
+    if (mode === 'edit') sessionStorage.setItem('operfi.resumeMode', 'edit');
+    else sessionStorage.removeItem('operfi.resumeMode');
+  } catch (e) {}
   navigateParent('#Page:Credit_Check');
 }
 
@@ -1226,6 +1234,7 @@ function renderList() {
       if (action === 'boost') openCreditBoost(recId);
       else if (action === 'resubmit') navigateParent('#Page:Credit_Check');
       else if (action === 'resume') resumeOnCreditCheck(recId);
+      else if (action === 'edit') resumeOnCreditCheck(recId, 'edit');
       else if (action === 'send-credit-app') openSendCreditApp(btn.dataset.recid, btn.dataset.email || '', btn.dataset.site || '');
     });
   });
@@ -1265,7 +1274,11 @@ function rowHtml(r, idx) {
     actionCell = '<span class="row-action-placeholder">Pending customer reply</span>';
   } else if (s.key === 'app-rcvd') {
     actionCell = '<span class="row-action-placeholder">In credit review</span>';
-  } else if (s.key === 'awaiting' || s.key === 'pending-app') {
+  } else if (s.key === 'awaiting') {
+    // CCEDIT1 (Tom, 2026-09-29): editable until credit decides, and only then.
+    actionCell = '<button class="row-action" data-action="edit" data-recid="' +
+                 esc(recId) + '">Edit submission</button>';
+  } else if (s.key === 'pending-app') {
     actionCell = '<span class="row-action-placeholder">Awaiting OperFi review</span>';
   } else if (s.key === 'expired') {
     actionCell = '<button class="row-action" data-action="resubmit">Resubmit</button>';
@@ -1407,6 +1420,9 @@ function renderPanel() {
         '<button class="btn primary" id="p-resume">Finish credit check</button>' +
         footerActionsHtml;
     } else if (s.key !== 'unknown') {
+      if (s.key === 'awaiting') {
+        footerActionsHtml += '<button class="btn" id="p-edit-sub">Edit submission</button>';
+      }
       footerActionsHtml += '<button class="btn" id="p-add-docs">Add Documents</button>';
     }
   }
@@ -1678,6 +1694,8 @@ function renderPanel() {
   if (rsm) rsm.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
   var adoc = document.getElementById('p-add-docs');
   if (adoc) adoc.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
+  var edSub = document.getElementById('p-edit-sub');
+  if (edSub) edSub.addEventListener('click', function() { resumeOnCreditCheck(r.ID || '', 'edit'); });
   var cbUp = document.getElementById('ca-cobroker-upload');
   if (cbUp) cbUp.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
   var openProfileBtn = document.getElementById('ca-open-profile');
@@ -2837,6 +2855,7 @@ if (typeof window !== 'undefined') { window.hasUnreadEvents = hasUnreadEvents; }
 var CUSTOMER_EVENT_KIND_LABELS = {
   reference_completed:    { one: 'reference',     many: 'references' },
   credit_boost_requested: { one: 'boost request', many: 'boost requests' },
+  customer_details_changed: { one: 'edit', many: 'edits' },
   co_broker_agreement_submitted: { one: 'co-broker agreement', many: 'co-broker agreements' },
   credit_app_received:    { one: 'application',   many: 'applications' },
   credit_check_submitted: { one: 'new check',     many: 'new checks' }
@@ -3040,7 +3059,7 @@ if (typeof window !== 'undefined') { window.clearCustomerEvents = clearCustomerE
 // alert (credit_event_store.DECISION_CLEARS), a boost decision only the boost
 // alert. A returned reference or an application still needs its own review, so
 // it stays on the panel.
-var DECISION_CLEARED_KINDS = ['credit_check_submitted'];
+var DECISION_CLEARED_KINDS = ['credit_check_submitted', 'customer_details_changed'];   // CCEDIT1: an edit happens only before the decision
 var BOOST_CLEARED_KINDS = ['credit_boost_requested'];
 
 // Called AFTER applyDecisionResult, so the panel stays open on the customer the

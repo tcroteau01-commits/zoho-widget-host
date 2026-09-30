@@ -267,6 +267,17 @@ textarea { resize: vertical; min-height: 90px; }
 .combo-empty { padding: 10px 12px; color: #999; font-size: 13px; }
 .uploader b { color: #666; display: block; margin-bottom: 3px; }
 .uploader input[type=file] { display: none; }
+.file-list:empty { display: none; }
+.file-list { margin-top: 6px; border: 1px solid #e6e3da; border-radius: 8px; background: #fff; }
+.file-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; border-bottom: 1px solid #f0eee8; }
+.file-row:last-child { border-bottom: none; }
+.file-row .fr-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333; }
+.file-row .fr-meta { color: #999; white-space: nowrap; }
+.file-row.fr-bad .fr-name { color: #c62828; }
+.file-row button { background: none; border: 1px solid #d6d9e0; border-radius: 5px; padding: 2px 8px; font-size: 12px; cursor: pointer; color: #444; }
+.file-row button:hover { border-color: #e8a020; color: #e8a020; }
+.file-row button[data-remove-file] { color: #c62828; }
+.file-row button[data-remove-file]:hover { border-color: #c62828; color: #c62828; }
 
 /* Step actions */
 .actions {
@@ -369,6 +380,9 @@ textarea { resize: vertical; min-height: 90px; }
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <!-- Shared AV (carrier vetting + credit) component -->
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
+<!-- Shared document viewer: previews a picked doc before submit -->
+<script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-docviewer.js?v=3"></script>
 </head>
 <body>
 <div id="reopen-overlay" class="reopen-overlay" hidden>
@@ -471,6 +485,7 @@ textarea { resize: vertical; min-height: 90px; }
                    onchange="onFileChange('cust_docs','cust_docs_label')" />
             <span id="cust_docs_label">Click or drag files here</span>
           </div>
+          <div class="file-list" id="cust_docs_list"></div>
         </div>
 
         <div class="field-err" id="customer-error">Please complete all required customer fields.</div>
@@ -547,6 +562,7 @@ textarea { resize: vertical; min-height: 90px; }
                    onchange="onFileChange('carrier_docs','carrier_docs_label')" />
             <span id="carrier_docs_label">Click or drag files here</span>
           </div>
+          <div class="file-list" id="carrier_docs_list"></div>
         </div>
 
         <div class="field-err" id="carrier-error">Please complete all required carrier fields.</div>
@@ -1238,21 +1254,81 @@ async function mergeFiles(inputId, newFiles) {
 
 function updateFileLabel(inputId, labelId) {
   var files = fileStore[inputId] || [];
+  renderFileList(inputId, labelId);
   var lbl = document.getElementById(labelId);
   if (!lbl) return;
-  if (!files.length) { lbl.textContent = 'Click or drag files here'; return; }
-  var tag = function(f) { return (f.error ? '⚠️ ' : '') + f.name; };
-  if (files.length === 1) {
-    lbl.innerHTML = '📄 ' + tag(files[0]);
-  } else {
-    lbl.innerHTML = '📄 <strong>' + files.length + ' files:</strong> ' +
-      files.map(tag).join(', ');
+  if (!files.length) {
+    // Reopened draft: picking then removing a file falls back to the on-file packet.
+    var slot = inputId === 'cust_docs' ? 'customer' : 'carrier';
+    if (typeof docsOnFile !== 'undefined' && docsOnFile[slot]) { _setDocOnFile(slot, true); return; }
+    lbl.textContent = 'Click or drag files here'; return;
   }
+  lbl.innerHTML = '📄 <strong>' + files.length + (files.length === 1 ? ' file' : ' files') +
+    ' attached</strong> · click or drag to add more';
+}
+
+// Formats the shared viewer can render; the rest are still merged at submit.
+var _PREVIEWABLE = /^(pdf|jpg|jpeg|png|gif|webp|bmp)$/;
+
+function _fmtSize(n) {
+  if (!n && n !== 0) return '';
+  return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+}
+
+// One row per picked doc (View + Remove) under the dropzone, so a wrong pick can
+// be checked and dropped before submit. Lives OUTSIDE the uploader so its clicks
+// never open the file picker.
+function renderFileList(inputId, labelId) {
+  var list = document.getElementById(inputId + '_list');
+  if (!list) return;
+  var files = fileStore[inputId] || [];
+  list.innerHTML = files.map(function (f, i) {
+    var canView = !f.error && f.blob && _PREVIEWABLE.test(f.ext);
+    var meta = f.error ? '⚠️ could not read, remove and re-add'
+             : (canView ? _fmtSize(f.size) : _fmtSize(f.size) + ' · no preview');
+    return '<div class="file-row' + (f.error ? ' fr-bad' : '') + '">' +
+      '<span class="fr-name" title="' + esc(f.name) + '">📄 ' + esc(f.name) + '</span>' +
+      '<span class="fr-meta">' + esc(meta) + '</span>' +
+      (canView ? '<button type="button" data-view-file="' + i + '">View</button>' : '') +
+      '<button type="button" data-remove-file="' + i + '" aria-label="Remove ' + esc(f.name) + '">✕ Remove</button>' +
+      '</div>';
+  }).join('');
+  list.querySelectorAll('[data-view-file]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      viewPickedFile(inputId, +b.getAttribute('data-view-file'));
+    });
+  });
+  list.querySelectorAll('[data-remove-file]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      removePickedFile(inputId, labelId, +b.getAttribute('data-remove-file'));
+    });
+  });
+}
+
+function viewPickedFile(inputId, idx) {
+  var f = (fileStore[inputId] || [])[idx];
+  if (!f || !f.blob || !window.OperFiDocViewer) return;
+  OperFiDocViewer.open({ url: URL.createObjectURL(f.blob), filename: f.name,
+                         mime: f.ext === 'pdf' ? 'application/pdf' : 'image/' + f.ext });
+}
+
+function removePickedFile(inputId, labelId, idx) {
+  var files = fileStore[inputId] || [];
+  if (idx < 0 || idx >= files.length) return;
+  files.splice(idx, 1);
+  updateFileLabel(inputId, labelId);
+  if (typeof updateDocVisuals === 'function') updateDocVisuals();
+  if (typeof refreshValidity === 'function') refreshValidity();
 }
 
 function onFileChange(inputId, labelId) {
   var input = document.getElementById(inputId);
-  return mergeFiles(inputId, input.files).then(function() {
+  var picked = Array.from(input.files || []);
+  // Clear so re-picking the same file (e.g. after removing it) fires change again.
+  try { input.value = ''; } catch (e) {}
+  return mergeFiles(inputId, picked).then(function() {
     updateFileLabel(inputId, labelId);
     if (typeof refreshValidity === 'function') refreshValidity();
   });

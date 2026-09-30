@@ -507,6 +507,7 @@ html, body {
           <div class="helper">Required fields marked with <span style="color:#c62828; font-weight:700;">*</span></div>
           <div class="btn-group">
             <button type="button" class="btn" id="resetBtn">Reset</button>
+            <button type="button" class="btn" id="saveDraftBtn">Save and finish later</button>
             <button type="button" class="btn primary" id="submitBtn">Submit for Credit Review</button>
           </div>
         </div>
@@ -637,18 +638,21 @@ function validate() {
   // The completeness pass is skipped for the same reason: a legacy record may
   // be missing a field that only became required later, and the server's
   // append-only path writes blanks without demanding the rest.
-  var addingToSubmitted = (draftId && !resumeIsDraft);
+  var addingToSubmitted = (draftId && !resumeIsDraft && !editMode);
+  // CCEDIT1: an edit re-checks every required field (it is changing what
+  // credit reads), but the customer type of a submitted record stays settled.
+  var typeSettled = (draftId && !resumeIsDraft);
 
   // COCHK1. Checked FIRST so the answer is the first thing they are sent back
   // to, and the server enforces all of this again -- this only saves a round
   // trip, it is not the control.
-  if (!addingToSubmitted && !customerType) {
+  if (!typeSettled && !customerType) {
     showErr('Customer_Type');
     document.getElementById('ctype-block').scrollIntoView({ behavior: 'smooth',
                                                             block: 'center' });
     return false;
   }
-  if (!addingToSubmitted && customerType === 'Freight Broker' && !draftId) {
+  if (!typeSettled && customerType === 'Freight Broker' && !draftId) {
     var e = document.getElementById('mc-err');
     e.textContent = 'Look up their MC or DOT number before submitting.';
     e.classList.add('show');
@@ -656,12 +660,10 @@ function validate() {
                                                          block: 'center' });
     return false;
   }
-  if (!addingToSubmitted && needsCoBroker && selectedFiles.length === 0) {
-    showErr('files');
-    var f = document.getElementById('cobroker-req');
-    if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-    return false;
-  }
+  // COBROKERGATE1 (Tom, 2026-09-29): "Broker's should still be able to submit a
+  // credit check on a broker without the co-broker agreement... they just can't
+  // fund until we have the agreement and it's approved." No longer a submit
+  // blocker; the requirement below says where it bites instead.
 
   // 🚨 Billing must have its OWN mailbox. Refused server-side on /credit-submit
   // too; this is only so a broker learns it before filling the rest in.
@@ -780,6 +782,11 @@ var numberKind = 'mc';
 // that gets silently dropped.
 var resumeIsDraft = true;
 var resumeLocked = [];
+// CCEDIT1. `resumeMode` is what the broker clicked on Customer Approvals
+// ('edit' or nothing); `editMode` is whether the SERVER agreed (the record is
+// still Awaiting Credit Decision). Only editMode unlocks a submitted record.
+var resumeMode = '';
+var editMode = false;
 var resumePending = false;   // a resume is in flight; the banner must stand down
 
 // ── COCHK1 resume: a draft is not a dead end ──────────────────────────────
@@ -827,11 +834,12 @@ function loadMyDrafts() {
     .catch(function (e) { console.error('[credit-check] drafts', e); });
 }
 
-function resumeSubmission(id) {
+function resumeSubmission(id, mode) {
   // Set SYNCHRONOUSLY, before the fetch: the drafts banner and this request
   // are both in flight from page load, and whichever returns first must not
   // decide whether two customers end up on screen together.
   resumePending = true;
+  resumeMode = mode === 'edit' ? 'edit' : '';
   showStatus('Loading…', 'loading');
   fetch(BROKER_API_BASE + '/credit-check/submission/' + encodeURIComponent(id) +
         '?email=' + encodeURIComponent(brokerEmail), { credentials: 'include' })
@@ -858,6 +866,10 @@ function applyResume(id, j) {
   draftId = id;
   resumeIsDraft = !!j.is_draft;
   resumeLocked = j.locked || [];
+  editMode = !resumeIsDraft && resumeMode === 'edit' && j.can_edit === true;
+  // Asked to edit, but credit has acted since: it opens as Add Documents, and
+  // the note says why rather than leaving every field mysteriously locked.
+  var editRefused = !resumeIsDraft && resumeMode === 'edit' && !editMode;
   needsCoBroker = !!j.requires_co_broker_agreement && !j.has_agreement;
   authorityClass = j.authority_class || null;
   // 🚨 FALSE, not `has_agreement`. This flag exists to stop the SAME files
@@ -939,11 +951,13 @@ function applyResume(id, j) {
   // what's been submitted but only add more if the previous fields were empty."
   // Showing an editable box over a value that cannot change is a lie the user
   // only discovers after typing.
-  resumeLocked.forEach(function (k) {
+  // CCEDIT1: an edit unlocks the details. The type pills and the MC block were
+  // already locked and hidden above for every submitted record, edit included.
+  if (!editMode) resumeLocked.forEach(function (k) {
     var el = document.getElementById(k);
     if (el) { el.readOnly = true; el.classList.add('locked'); }
   });
-  if (!resumeIsDraft) {
+  if (!resumeIsDraft && !editMode) {
     ['address_line_1', 'district_city', 'state_province', 'postal_Code']
       .forEach(function (k) {
         var el = document.getElementById(k);
@@ -954,10 +968,18 @@ function applyResume(id, j) {
   var banner = document.getElementById('draft-banner');
   if (banner) { banner.style.display = 'none'; }
   var btn = document.getElementById('submitBtn');
-  btn.textContent = resumeIsDraft ? 'Finish credit check' : 'Save additions';
+  btn.textContent = submitLabel();
+  syncSaveDraftBtn();
   var note = document.getElementById('resume-note');
   if (note) {
-    note.textContent = resumeIsDraft
+    note.textContent = editMode
+      ? 'This credit check is still awaiting a decision, so you can change its ' +
+        'details. The customer type and MC/DOT stay as submitted. Our credit ' +
+        'team will see what you changed.'
+      : editRefused
+      ? 'OperFi has already acted on this credit check, so its details can no ' +
+        'longer be edited. You can still add documents and fill in anything left blank.'
+      : resumeIsDraft
       ? 'Picking up where you left off. Add anything missing and submit.'
       : 'This credit check is already with our team. You can add documents ' +
         'and fill in anything left blank — submitted details stay as they are.';
@@ -980,6 +1002,8 @@ function resetCustomerType() {
   resumeIsDraft = true;
   resumeLocked = [];
   resumePending = false;
+  resumeMode = '';
+  editMode = false;
   // A field locked by a resumed submission must not stay locked for the NEXT
   // customer -- and neither must a DISABLED customer-type pill, or the next
   // credit check opens with the question unanswerable.
@@ -1149,9 +1173,10 @@ function renderCoBrokerRequirement() {
   d.id = 'cobroker-req';
   d.className = 'cobroker-req';
   d.innerHTML =
-    '<div class="req-title">A signed co-broker agreement is required</div>' +
-    '<div class="req-body">Attach it in Supporting Documents below. We have saved ' +
-    'this customer to your account, so you can come back and finish later.</div>';
+    '<div class="req-title">A signed co-broker agreement is required before loads can be funded</div>' +
+    '<div class="req-body">You can submit this credit check now. Attach the agreement in ' +
+    'Supporting Documents below, or add it later with Add Documents under Customer ' +
+    'Approvals. Loads for this customer can be funded once OperFi approves it.</div>';
   host.appendChild(d);
 }
 
@@ -1284,9 +1309,12 @@ function submitForm() {
   var resetBtn = document.getElementById('resetBtn');
   btn.disabled = true;
   resetBtn.disabled = true;
-  btn.textContent = 'Submitting…';
-  showStatus('Submitting your credit check request…', 'loading');
+  btn.textContent = editMode ? 'Saving…' : 'Submitting…';
+  showStatus(editMode ? 'Saving your changes…' : 'Submitting your credit check request…', 'loading');
+  var sdb = document.getElementById('saveDraftBtn');
+  if (sdb) sdb.disabled = true;
 
+  if (editMode) { return saveEdit(); }
   // COCHK1: a broker already HAS a record -- the lookup saved it. Submitting
   // finishes that draft instead of creating a second one.
   if (draftId) { return finalizeDraft(); }
@@ -1411,11 +1439,161 @@ function onSuccess() {
   }
 }
 
+function submitLabel() {
+  if (editMode) return 'Save changes';
+  if (draftId && !resumeIsDraft) return 'Save additions';
+  if (draftId) return 'Finish credit check';
+  return 'Submit for Credit Review';
+}
+
+// CCEDIT1: "Save and finish later" belongs to a check that is not in yet: a
+// new one or a draft. On a submitted record there is nothing to save for later.
+function syncSaveDraftBtn() {
+  var b = document.getElementById('saveDraftBtn');
+  if (!b) return;
+  b.style.display = (draftId && !resumeIsDraft) ? 'none' : '';
+  b.disabled = false;
+}
+
 function resetButtons() {
   var btn = document.getElementById('submitBtn');
   btn.disabled = false;
-  btn.textContent = 'Submit for Credit Review';
+  btn.textContent = submitLabel();
   document.getElementById('resetBtn').disabled = false;
+  syncSaveDraftBtn();
+}
+
+// CCEDIT1 (Tom, 2026-09-29): a broker in the middle of a credit check who
+// "need[s] more info so they just save that submission and come back and
+// complete the rest later." Only the company name is needed to save; nothing
+// is checked, sent or shown to credit until they finish it.
+function saveForLater() {
+  clearStatus();
+  if (!brokerEmail) {
+    showStatus('Still loading your account — wait a moment and try again.', 'error');
+    return;
+  }
+  var nameEl = document.getElementById('Customer_Company_Name');
+  if (!nameEl.value.trim()) {
+    nameEl.classList.add('invalid');
+    showErr('Customer_Company_Name');
+    showStatus('Enter the company name, then save.', 'error');
+    nameEl.focus();
+    return;
+  }
+  // A broker's draft starts at the lookup, which saves it; the server refuses
+  // anything else.
+  if (customerType === 'Freight Broker' && !draftId) {
+    showStatus('Look up their MC or DOT number first. That saves the draft.', 'error');
+    document.getElementById('mc-block').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  var p = buildPayload();
+  delete p.email;
+  delete p.Customer_Type;
+  // Blanks are left out: a save only ever adds what was typed.
+  var fields = {};
+  Object.keys(p).forEach(function (k) {
+    var val = p[k];
+    if (k === 'Address') {
+      if (Object.keys(val).some(function (x) { return val[x]; })) fields[k] = val;
+    } else if (val) {
+      fields[k] = val;
+    }
+  });
+  var sdb = document.getElementById('saveDraftBtn');
+  var btn = document.getElementById('submitBtn');
+  sdb.disabled = true; btn.disabled = true;
+  sdb.textContent = 'Saving…';
+  fetch(BROKER_API_BASE + '/credit-check/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, submission_id: draftId || '',
+                           customer_type: customerType || 'Shipper', fields: fields })
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      sdb.textContent = 'Save and finish later';
+      if (!r.ok) {
+        showStatus(j.error || 'Could not save (HTTP ' + r.status + ')', 'error');
+        resetButtons();
+        return;
+      }
+      draftId = j.submission_id;
+      resumeIsDraft = true;
+      // The type is fixed when the draft starts; a Shipper draft becomes a
+      // broker only through the MC lookup.
+      ['ctype-shipper', 'ctype-broker'].forEach(function (id) {
+        var b = document.getElementById(id);
+        if (b && customerType !== 'Freight Broker') { b.disabled = true; b.classList.add('locked'); }
+      });
+      function done(errs) {
+        showStatus('✓ Saved. Finish it any time: it is under Customer Approvals as ' +
+                   'Not Finished, and on this page.' +
+                   (errs ? ' ' + errs + ' file upload(s) failed — attach them again before you finish.' : ''),
+                   errs ? 'error' : 'success');
+        resetButtons();
+      }
+      if (selectedFiles.length > 0 && !draftFilesLanded) {
+        uploadFiles(draftId, function (errs) {
+          if (!errs) { draftFilesLanded = true; }
+          done(errs);
+        });
+      } else {
+        done(0);
+      }
+    });
+  }).catch(function (e) {
+    console.error('[credit-check] save for later failed', e);
+    sdb.textContent = 'Save and finish later';
+    showStatus('Could not save just now. Check your connection and try again.', 'error');
+    resetButtons();
+  });
+}
+
+// CCEDIT1: save an edit to a check still Awaiting Credit Decision. Files first,
+// the same order finalizeDraft uses, then the changed details.
+function saveEdit() {
+  function go(uploadErrors, uploaded) {
+    var p = buildPayload();
+    delete p.email;
+    delete p.Customer_Type;
+    fetch(BROKER_API_BASE + '/credit-check/edit/' + encodeURIComponent(draftId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: brokerEmail, fields: p })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) {
+          // 409: credit acted while the form was open. The message says so.
+          showStatus(j.message || j.error || 'Could not save (HTTP ' + r.status + ')', 'error');
+          resetButtons();
+          return;
+        }
+        var n = (j.updated || []).length;
+        var msg = n ? '✓ Changes saved. Our credit team will see what you changed.'
+                : (uploaded ? '✓ Documents added.' : 'Nothing changed.');
+        if (uploadErrors) msg += ' ' + uploadErrors + ' file upload(s) failed.';
+        showStatus(msg, uploadErrors ? 'error' : 'success');
+        resetButtons();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (!uploadErrors && (n || uploaded)) {
+          setTimeout(function () { navigateParent('#Page:Customer_Approvals'); }, 1600);
+        }
+      });
+    }).catch(function (e) {
+      console.error('[credit-check] edit failed', e);
+      showStatus('Could not save just now. Your changes are still here — try again.', 'error');
+      resetButtons();
+    });
+  }
+  if (selectedFiles.length > 0 && !draftFilesLanded) {
+    uploadFiles(draftId, function (errs) {
+      if (!errs) { draftFilesLanded = true; }
+      go(errs, selectedFiles.length - errs > 0);
+    });
+  } else {
+    go(0, false);
+  }
 }
 
 function resetForm() {
@@ -1436,6 +1614,8 @@ function resetForm() {
 // ── Wire up ───────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
   document.getElementById('submitBtn').addEventListener('click', submitForm);
+  var saveDraftBtn = document.getElementById('saveDraftBtn');
+  if (saveDraftBtn) saveDraftBtn.addEventListener('click', saveForLater);
   // COCHK1 wiring.
   ['ctype-shipper', 'ctype-broker'].forEach(function (id) {
     var b = document.getElementById(id);
@@ -1481,11 +1661,14 @@ window.addEventListener('load', function() {
           // Storage can be blocked or cleared, so the drafts banner is the
           // fallback rather than this being the only route in.
           var handoff = null;
+          var handoffMode = '';
           try {
             handoff = sessionStorage.getItem('operfi.resumeSubmission');
+            handoffMode = sessionStorage.getItem('operfi.resumeMode') || '';
             sessionStorage.removeItem('operfi.resumeSubmission');
+            sessionStorage.removeItem('operfi.resumeMode');
           } catch (e) {}
-          if (handoff) { resumeSubmission(handoff); }
+          if (handoff) { resumeSubmission(handoff, handoffMode); }
           loadMyDrafts();
         });
       }

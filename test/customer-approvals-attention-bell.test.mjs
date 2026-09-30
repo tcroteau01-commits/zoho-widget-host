@@ -204,6 +204,42 @@ test('clicking the bell turns the default off, and a list reload does not turn i
   assert.doesNotMatch(d.getElementById('results').innerHTML, /No Events Co/, 'and on again with a click');
 });
 
+// FILTERPILL1 (Tom, 2026-09-29): "sometimes i have to click All twice or Needs
+// Attention twice". A status pill stripped the bell's highlight but left its
+// filter on, so the bell read off over a list still filtered to 2 customers.
+test('a status pill never leaves the bell looking off while it still filters', async () => {
+  const w = await bootSettled();
+  const d = w.document;
+  w.brokerEmail = 'staff@operfi.com';
+  w.allClients = true;
+  w.fetch = fetchStub(function() { return Promise.resolve({ ok: true, json: function() { return Promise.resolve(eventsPayload()); } }); });
+  w.onRecordsLoaded([
+    rec({ ID: '1', Customer_Company_Name: 'Delta Foods', Credit_Decision: 'Approved' }),
+    rec({ ID: '3', Customer_Company_Name: 'No Events Co', Credit_Decision: 'Approved' })
+  ]);
+  await wait(30);
+  const chip = function(key) { return d.querySelector('#chips .chip[data-key="' + key + '"]'); };
+  const bellOn = function() { return /\bactive\b/.test(d.getElementById('attn-bell').className); };
+  const shows = function(t) { return d.getElementById('results').innerHTML.indexOf(t) !== -1; };
+
+  // Another status keeps the bell filter, and the bell SAYS so.
+  chip('approved').click();
+  assert.ok(bellOn(), 'bell still highlighted');
+  assert.ok(!shows('No Events Co'), 'and still filtering');
+  assert.match(chip('approved').className, /\bactive\b/);
+
+  // "All" means everything: bell filter off, and the bell shows it.
+  chip('all').click();
+  assert.ok(!bellOn());
+  assert.ok(shows('No Events Co'), 'All shows every customer');
+
+  // One click on the bell turns it on. Never two.
+  d.getElementById('attn-bell').click();
+  assert.ok(bellOn());
+  assert.ok(!shows('No Events Co'));
+  assert.match(chip('all').className, /\bactive\b/, 'the status pill keeps its own highlight');
+});
+
 // ── the row marker ────────────────────────────────────────────────────────────
 
 test('a row with unread events carries the marker with the latest summary', async () => {

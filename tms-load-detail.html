@@ -459,6 +459,11 @@ function populateCustomers(customers) {
       if (c.billing_complete === false) {
         o.disabled = true;
         o.textContent = c.customer_name + ' — Billing contact required';
+      } else if (c.co_broker_required === true) {
+        // COBROKERGATE1: /tms-submit refuses it until OperFi approves the
+        // co-broker agreement. Only an explicit true blocks.
+        o.disabled = true;
+        o.textContent = c.customer_name + ' — Co-broker agreement required';
       }
       sel.appendChild(o);
     });

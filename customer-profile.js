@@ -220,7 +220,14 @@ function renderHeader(p) {
         '<div>' +
           '<div class="cp-eyebrow">Credit Submission #' + esc(p.submission_id) + '</div>' +
           '<div class="cp-customer">' + esc(p.customer_name) + '</div>' +
-          '<div class="cp-broker">Submitted by ' + esc(p.broker) + '</div>' +
+          // SUBMITBY1: the person, then the account they sent it for.
+          '<div class="cp-broker">Submitted by ' +
+            (p.submitted_by && (p.submitted_by.name || p.submitted_by.email)
+              ? esc(p.submitted_by.name || p.submitted_by.email) +
+                (p.submitted_by.name && p.submitted_by.email
+                  ? ' &middot; ' + esc(p.submitted_by.email) : '') + ', '
+              : '') +
+            esc(p.broker) + '</div>' +
         '</div>' +
         '<div class="cp-header-status">' +
           // 🚨 A settled decision must not read like an open one. Tom, after

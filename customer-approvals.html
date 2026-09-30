@@ -1566,7 +1566,10 @@ function renderPanel() {
         '<span>' + esc(formatAddress(r) || 'No address on file') + '</span>' +
       '</div>' +
       '<div class="panel-meta">' +
-        '<span>Submitted ' + (added ? fmtDateTime(added) : '—') + '</span>' +
+        '<span>Submitted ' + (added ? fmtDateTime(added) : '—') +
+          (submitterOf(r) ? ' by ' + esc(submitterOf(r).name || submitterOf(r).email) +
+            (submitterOf(r).name && submitterOf(r).email ? ' (' + esc(submitterOf(r).email) + ')' : '')
+            : '') + '</span>' +
         (phoneOf(r) ? '<span> · ' + esc(phoneOf(r)) + '</span>' : '') +
       '</div>' +
       '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + pillWarnHtml(r) + '</div>' +
@@ -4274,6 +4277,24 @@ function parseUtcAsCentral(v) {
 }
 window.parseUtcAsCentral = parseUtcAsCentral;
 window.fmtRelative = function (d) { return fmtRelative(d); };
+
+// SUBMITBY1 (Tom, 2026-09-30): "show the user that submitted that credit
+// check". The record's Contact lookup IS the broker user who sent it; the
+// row carries it when Creator returns the lookup. {name, email} or null.
+function submitterOf(r) {
+  var c = r && r.Contact;
+  if (!c || typeof c !== 'object') return null;
+  var name = [c['Contact_Name.first_name'], c['Contact_Name.last_name']]
+    .filter(function(x) { return x && String(x).trim(); }).join(' ').trim();
+  var email = String(c.Email || '').trim();
+  if (!name && !email) {
+    var disp = String(c.zc_display_value || '').trim();
+    if (!disp) return null;
+    name = disp;
+  }
+  return { name: name, email: email };
+}
+window.submitterOf = submitterOf;
 
 function fmtRelative(d) {
   if (!d) return '';

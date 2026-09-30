@@ -646,18 +646,23 @@ var AUTHORITY_WORDS = { broker_only: 'Broker only', dual: 'Broker and carrier',
 // Each file opens through the API by SLOT (field, idx). The stored Creator path
 // never reaches the page. api_base is set by the host; without it the list still
 // says what is on file, it just cannot open it.
+// One file, opened by slot. Shared by the Documents list and the co-broker
+// section, so a file credit is asked to approve is one it can open.
+function docLinkHtml(p, d) {
+  var label = esc(d.label) + (d.ext ? ' <span class="muted">&middot; ' + esc(d.ext) + '</span>' : '');
+  if (!p.api_base) { return label; }
+  var href = p.api_base + '/customer-profile/' + encodeURIComponent(p.submission_id) +
+    '/doc?field=' + encodeURIComponent(d.field) + '&idx=' + encodeURIComponent(d.idx);
+  return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+}
+
 function renderDocs(p) {
   var docs = (p.submitted && p.submitted.documents) || [];
   if (!docs.length) {
     return '<div class="field-val muted">No documents attached.</div>';
   }
   return '<ul class="cp-doc-list">' + docs.map(function (d) {
-    var label = esc(d.label) + (d.ext ? ' <span class="muted">&middot; ' + esc(d.ext) + '</span>' : '');
-    if (!p.api_base) { return '<li>' + label + '</li>'; }
-    var href = p.api_base + '/customer-profile/' + encodeURIComponent(p.submission_id) +
-      '/doc?field=' + encodeURIComponent(d.field) + '&idx=' + encodeURIComponent(d.idx);
-    return '<li><a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' +
-           label + '</a></li>';
+    return '<li>' + docLinkHtml(p, d) + '</li>';
   }).join('') + '</ul>';
 }
 
@@ -710,8 +715,9 @@ function renderCoBroker(p) {
   body += '<div class="cp-subhead">Approve an attached file</div>';
   body += docs.length
     ? '<ul class="cp-doc-list cp-cb-docs">' + docs.map(function (d) {
-        return '<li><span>' + esc(d.label) + (d.ext ? ' <span class="muted">&middot; ' +
-          esc(d.ext) + '</span>' : '') + '</span> <button type="button" class="btn" ' +
+        // COBROKERDOC1 (Tom, 2026-09-30): "No way for our team to review the
+        // agreement." Every file here opens, so credit reads it before approving.
+        return '<li><span>' + docLinkHtml(p, d) + '</span> <button type="button" class="btn" ' +
           'data-cb-approve="' + esc(d.field + ':' + d.idx) + '">Approve as agreement</button></li>';
       }).join('') + '</ul>'
     : '<div class="field-val muted">No files attached yet.</div>';

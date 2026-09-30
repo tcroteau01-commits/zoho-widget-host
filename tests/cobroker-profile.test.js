@@ -43,6 +43,16 @@ test('a submitted agreement offers approve per file, upload, and send back', () 
   assert.ok(!html.includes('data-cb-switch'));
 });
 
+test('every file offered for approval opens, so credit can read it first', () => {
+  // COBROKERDOC1, Tom 2026-09-30: "No way for our team to review the agreement."
+  const html = P.render(withCb({ status: 'submitted', blocked: true },
+                               { api_base: 'https://api.test' }));
+  const section = html.split('Co-broker Agreement')[1].split('Upload from the client file')[0];
+  assert.ok(section.includes('href="https://api.test/customer-profile/4455/doc?field=co_broker&amp;idx=0"'));
+  assert.ok(section.includes('href="https://api.test/customer-profile/4455/doc?field=supporting&amp;idx=1"'));
+  assert.ok(section.includes('target="_blank"'));
+});
+
 test('a rejected agreement shows the reason and cannot be rejected again', () => {
   const html = P.render(withCb({ status: 'rejected', blocked: true,
                                  reject_reason: 'unsigned copy' }));

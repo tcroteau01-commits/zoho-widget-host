@@ -187,7 +187,13 @@ function renderHeader(p) {
           'Pending Credit App</button>' +
         '<input type="number" class="dec-input cp-limit-input" id="cp-limit" min="0" step="1" ' +
           'placeholder="Credit limit" value="' + esc(prefill) + '">' +
-      '</div>';
+      '</div>' +
+      // DECNOTE1 (Tom, 2026-09-30): the drawer lets credit send the broker a
+      // note with the decision; the profile did not. Same field, same write
+      // (Credit_Notes on /credit-decision). Blank sends nothing and leaves an
+      // earlier note as it is.
+      '<textarea class="dec-input cp-decision-notes" id="cp-decision-notes" rows="2" ' +
+        'placeholder="Note to the broker (optional). It goes with the decision."></textarea>';
   }
 
   // 🚨 Tom, 2026-09-25: "it needs to show somewhere prominent so you know who
@@ -1184,6 +1190,7 @@ var CP_CSS = '' +
   '.cp-header-contacts .field-val{color:#fff;}' +
   '.cp-decision-row{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}' +
   '.cp-limit-input{max-width:160px;}' +
+  '.cp-decision-notes{display:block;width:100%;max-width:640px;margin-top:10px;box-sizing:border-box;resize:vertical;}' +
   '.cp-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:6px;}' +
   '.cp-badge-danger{background:#fdecea;color:#c62828;}' +
   '.cp-badge-muted{background:#eee;color:#777;}' +
@@ -1300,7 +1307,9 @@ function mount(root, payload, handlers) {
         if (t.hasAttribute('data-decide')) {
           if (handlers.onDecide) {
             var limitEl = root.querySelector('#cp-limit');
-            handlers.onDecide(t.getAttribute('data-decide'), limitEl ? limitEl.value : null);
+            var notesEl = root.querySelector('#cp-decision-notes');
+            handlers.onDecide(t.getAttribute('data-decide'), limitEl ? limitEl.value : null,
+                              notesEl ? notesEl.value : '');
           }
           return;
         }

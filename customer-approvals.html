@@ -1957,7 +1957,10 @@ function renderProfile(rec, payload) {
   root.querySelectorAll('[data-decide]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var limitEl = document.getElementById('cp-limit');
-      var vals = { decision: btn.getAttribute('data-decide'), credit_limit: limitEl ? limitEl.value : '' };
+      var notesEl = document.getElementById('cp-decision-notes');
+      var vals = { decision: btn.getAttribute('data-decide'), credit_limit: limitEl ? limitEl.value : '',
+                   // DECNOTE1: the note the broker gets, as the drawer sends it.
+                   credit_notes: notesEl ? String(notesEl.value || '').trim() : '' };
       btn.disabled = true;
       submitDecision(rec, vals).then(function(resp) {
         btn.disabled = false;

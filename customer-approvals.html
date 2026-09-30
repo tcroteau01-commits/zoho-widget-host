@@ -2982,7 +2982,7 @@ function customerEventRowMarkerHtml(r) {
   var list = r && r.ID ? customerEventsBySubject[r.ID] : null;
   if (!list || !list.length) return '';
   var latest = list[0];
-  var when = latest.at ? fmtRelative(parseDate(latest.at)) : '';
+  var when = latest.at ? fmtRelative(parseUtcAsCentral(latest.at)) : '';
   return '' +
     '<div class="ca-attn-marker">' +
       '<span class="ca-attn-bell" aria-hidden="true">🔔</span>' +
@@ -3011,7 +3011,7 @@ function renderCustomerEventsSection(r) {
     return;
   }
   body.innerHTML = list.map(function(ev) {
-    var when = ev.at ? fmtDateTime(parseDate(ev.at)) : '';
+    var when = ev.at ? fmtDateTime(parseUtcAsCentral(ev.at)) : '';
     return '<div class="ca-attn-event">' +
       '<div class="ca-attn-event-summary">' + esc(ev.summary || '') + '</div>' +
       (when ? '<div class="ca-attn-event-time">' + esc(when) + '</div>' : '') +
@@ -3102,7 +3102,7 @@ function dropCustomerEventKinds(subjectId, kinds) {
     var body = document.getElementById('ca-attn-events');
     if (body) {
       body.innerHTML = left.map(function(ev) {
-        var when = ev.at ? fmtDateTime(parseDate(ev.at)) : '';
+        var when = ev.at ? fmtDateTime(parseUtcAsCentral(ev.at)) : '';
         return '<div class="ca-attn-event">' +
           '<div class="ca-attn-event-summary">' + esc(ev.summary || '') + '</div>' +
           (when ? '<div class="ca-attn-event-time">' + esc(when) + '</div>' : '') +
@@ -4226,9 +4226,58 @@ function fmtDateTime(d) {
 }
 window.fmtDateTime = fmtDateTime;  // exposed for tests
 window.parseDate = parseDate;      // exposed for tests
+// 🚨 RELTIME1 (Tom, 2026-09-30): "It says Just Now but my slack notification
+// says 12:36 and it's currently 2:12PM." parseDate keeps Creator's CENTRAL
+// digits in a local-naive Date (see above), which is right for DISPLAY and wrong
+// for "how long ago": subtracted from Date.now() it is off by the viewer's
+// distance from Central. In Arizona that is two hours, so anything under two
+// hours old sat in the future and read "just now".
+//
+// These convert between that Central-naive Date and the real instant. Intl does
+// the DST arithmetic, so CDT/CST and a viewer anywhere are both handled.
+var CENTRAL_TZ = 'America/Chicago';
+var _centralParts = (typeof Intl !== 'undefined') ? new Intl.DateTimeFormat('en-US', {
+  timeZone: CENTRAL_TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
+
+function _centralWall(ms) {
+  var o = {};
+  _centralParts.formatToParts(new Date(ms)).forEach(function(p) { o[p.type] = p.value; });
+  return { y: +o.year, mo: +o.month - 1, d: +o.day, h: +o.hour % 24, mi: +o.minute, s: +o.second };
+}
+
+// Central-naive Date (parseDate of a Creator field) -> real epoch ms.
+function centralNaiveToInstant(d) {
+  if (!_centralParts) return d.getTime();
+  var guess = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds());
+  var inst = guess;
+  for (var i = 0; i < 2; i++) {          // twice settles a guess that crossed a DST edge
+    var w = _centralWall(inst);
+    inst = guess - (Date.UTC(w.y, w.mo, w.d, w.h, w.mi, w.s) - inst);
+  }
+  return inst;
+}
+window.centralNaiveToInstant = centralNaiveToInstant;
+
+// A UTC timestamp from the API (customer events are stored utcnow() and sent as
+// ISO WITHOUT a zone, which a browser reads as LOCAL time) -> the Central-naive
+// Date the rest of this page renders and labels "CT".
+function parseUtcAsCentral(v) {
+  if (!v) return null;
+  var iso = String(v);
+  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(iso)) iso += 'Z';
+  var ms = Date.parse(iso);
+  if (isNaN(ms)) return null;
+  if (!_centralParts) return new Date(ms);
+  var w = _centralWall(ms);
+  return new Date(w.y, w.mo, w.d, w.h, w.mi, w.s);
+}
+window.parseUtcAsCentral = parseUtcAsCentral;
+window.fmtRelative = function (d) { return fmtRelative(d); };
+
 function fmtRelative(d) {
   if (!d) return '';
-  var diffMs = Date.now() - d.getTime();
+  var diffMs = Date.now() - centralNaiveToInstant(d);
   var diffMin = Math.floor(diffMs / 60000);
   if (diffMin < 1)  return 'just now';
   if (diffMin < 60) return diffMin + 'm ago';

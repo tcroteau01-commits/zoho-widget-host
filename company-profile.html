@@ -1150,12 +1150,19 @@ function loadInviteStatus() {
   if (!canManage) return;
   fetch(BROKER_API_BASE + '/permissions/invite-status?email=' + encodeURIComponent(brokerEmail))
     .then(function (r) {
-      if (!r.ok) throw new Error('status ' + r.status);
-      return r.json();
-    })
-    .then(function (res) {
-      inviteStatusByEmail = (res && res.statuses) || {};
-      inviteStatusUnavailable = false;
+      // 503 is invite_status_unavailable -- WorkOS is down, worth a line so
+      // the admin knows why every chip is missing. Any OTHER non-OK status
+      // (403, 500, ...) is a different failure the "unavailable" copy would
+      // mislabel, so it renders no chips and no line instead of a wrong one.
+      if (r.ok) {
+        return r.json().then(function (res) {
+          inviteStatusByEmail = (res && res.statuses) || {};
+          inviteStatusUnavailable = false;
+          renderUsers();
+        });
+      }
+      inviteStatusByEmail = {};
+      inviteStatusUnavailable = (r.status === 503);
       renderUsers();
     })
     .catch(function (err) {

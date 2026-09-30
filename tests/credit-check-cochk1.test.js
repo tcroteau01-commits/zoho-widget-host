@@ -104,14 +104,18 @@ test('switching away from Freight Broker does not undo the draft', () => {
 });
 
 test('submitting without an answer is refused before the network', () => {
-  // Guarded by !addingToSubmitted: the gate is on INTAKE, not on attaching a
-  // document to a record credit has already read.
-  assert.ok(html.includes('if (!addingToSubmitted && !customerType)'));
+  // Guarded by !typeSettled: the gate is on INTAKE, not on a record credit has
+  // already read (adding a document to it, or CCEDIT1's edit).
+  assert.ok(html.includes('if (!typeSettled && !customerType)'));
   assert.ok(html.includes("customerType === 'Freight Broker' && !draftId"));
 });
 
-test('a broker with no agreement attached cannot submit', () => {
-  assert.ok(html.includes('needsCoBroker && selectedFiles.length === 0'));
+test('a broker with no agreement attached CAN submit (COBROKERGATE1)', () => {
+  // Tom, 2026-09-29: the agreement gates FUNDING, not the credit check.
+  assert.ok(!html.includes('needsCoBroker && selectedFiles.length === 0'));
+  const fn = html.split('function renderCoBrokerRequirement')[1].split('\nfunction ')[0];
+  assert.ok(fn.includes('before loads can be funded'));
+  assert.ok(fn.includes('You can submit this credit check now'));
 });
 
 test('files upload BEFORE the draft is finalized', () => {
@@ -225,10 +229,12 @@ test('adding a document to a legacy customer is not an intake', () => {
   // that guesses, and guesses wrong for exactly the population the co-broker
   // control exists to catch.
   const fn = html.split('function validate')[1].split('\nfunction ')[0];
-  assert.ok(fn.includes('var addingToSubmitted = (draftId && !resumeIsDraft)'));
-  assert.ok(fn.includes('if (!addingToSubmitted && !customerType)'));
-  assert.ok(fn.includes("!addingToSubmitted && customerType === 'Freight Broker'"));
-  assert.ok(fn.includes('!addingToSubmitted && needsCoBroker'));
+  // CCEDIT1: an edit is not "adding", so it still checks required fields; the
+  // type of ANY submitted record stays settled.
+  assert.ok(fn.includes('var addingToSubmitted = (draftId && !resumeIsDraft && !editMode)'));
+  assert.ok(fn.includes('var typeSettled = (draftId && !resumeIsDraft)'));
+  assert.ok(fn.includes('if (!typeSettled && !customerType)'));
+  assert.ok(fn.includes("!typeSettled && customerType === 'Freight Broker'"));
   // a legacy row may lack a field that only became required later
   assert.ok(fn.includes('(addingToSubmitted ? [] : REQUIRED_IDS)'));
   // ...but what they TYPED just now is still validated

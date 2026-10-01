@@ -174,9 +174,18 @@
         state.kind = 'image';
         return renderImage(state.objectUrl);
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (myToken !== state.loadToken) return; // superseded — don't clobber the new doc's error state
-      showError('Could not display this document. Use Download to save it instead.');
+      // 🚨 SAY WHICH FAILURE IT WAS. This collapsed a 403, a dead network, a
+      // CORS refusal and a malformed body into one sentence, and on
+      // 2026-10-01 that cost two round trips with Tom on a live client issue:
+      // the file, the server and pdf.js were each verified good while the
+      // actual reason sat only in a browser nobody could see. The reason is
+      // appended, never substituted, so the carrier-facing instruction
+      // ("use Download") is unchanged.
+      var why = (err && err.message) ? String(err.message).slice(0, 60) : '';
+      showError('Could not display this document. Use Download to save it instead.'
+                + (why ? ' (' + why + ')' : ''));
     });
   }
 

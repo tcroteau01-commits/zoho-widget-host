@@ -91,6 +91,64 @@ test('mousedown on a client row does not steal focus, so the pick still lands', 
   assert.equal(list.style.display, 'block');
 });
 
+function openMany(q){
+  const { w } = boot();
+  w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
+  w.eval(js);
+  w.OPERFI_IMP.renderAdminBar({ is_admin: true, clients: [
+    { name: 'Turas Global', contact_email: 't1@x.com' },
+    { name: 'Turas North', contact_email: 't2@x.com' },
+    { name: 'Turas South', contact_email: 't3@x.com' },
+    { name: 'Marek LLC', contact_email: 'p@m.com' }] });
+  const search = w.document.getElementById('operfi-imp-search');
+  const list = w.document.getElementById('operfi-imp-list');
+  search.focus();
+  search.value = q;
+  search.dispatchEvent(new w.Event('input'));
+  const key = (k) => { const ev = new w.KeyboardEvent('keydown', { key: k, cancelable: true }); search.dispatchEvent(ev); return ev; };
+  return { w, search, list, key };
+}
+
+test('arrow keys move the highlight and Enter picks the highlighted client', () => {
+  const { w, list, key } = openMany('turas');
+  key('ArrowDown'); key('ArrowDown');
+  assert.equal(list.querySelector('[aria-selected="true"]').getAttribute('data-email'), 't2@x.com');
+  key('ArrowDown'); key('ArrowDown');                  // stops at the last row
+  key('ArrowUp');
+  assert.equal(list.querySelector('[aria-selected="true"]').getAttribute('data-email'), 't2@x.com');
+  const ev = key('Enter');
+  assert.equal(ev.defaultPrevented, true);
+  assert.equal(w.localStorage.getItem('operfiImpersonate'), 't2@x.com');
+});
+
+test('ArrowDown opens the full list when the box is empty', () => {
+  const { list, key } = openMany('');
+  key('ArrowDown');
+  assert.equal(list.style.display, 'block');
+  assert.equal(list.querySelector('[aria-selected="true"]').getAttribute('data-email'), 't1@x.com');
+});
+
+test('Enter with a single match picks it without arrowing', () => {
+  const { w, key } = openMany('marek');
+  key('Enter');
+  assert.equal(w.localStorage.getItem('operfiImpersonate'), 'p@m.com');
+});
+
+test('Enter with several matches and nothing highlighted picks nobody', () => {
+  const { w, key } = openMany('turas');
+  w.localStorage.setItem('operfiImpersonate', 'prev@x.com');
+  key('Enter');
+  assert.equal(w.localStorage.getItem('operfiImpersonate'), 'prev@x.com');
+});
+
+test('typing again resets the highlight', () => {
+  const { w, search, list, key } = openMany('turas');
+  key('ArrowDown'); key('ArrowDown');
+  search.value = 'turas n';
+  search.dispatchEvent(new w.Event('input'));
+  assert.equal(list.querySelector('[aria-selected="true"]'), null);
+});
+
 test('non-admin payload renders no bar', () => {
   const { w } = boot();
   w.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });

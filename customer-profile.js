@@ -299,6 +299,20 @@ function renderIdentity(p) {
       ? '<button type="button" class="btn cp-undo" ' + attr + '="1">' + label + '</button>'
       : '';
   };
+  // CSID1: the analyst found the company on Creditsafe's own site. Offered in
+  // every state, including a bound one, since a typed ID also corrects a wrong pick.
+  var manualHtml = p.can_act
+    ? '<div class="cp-cs-manual">' +
+        '<label class="field-label" for="cp-cs-manual-id">Found it in Creditsafe? Enter its ID</label>' +
+        '<div class="cp-cs-manual-row">' +
+          '<input type="text" id="cp-cs-manual-id" class="cp-note-input" autocomplete="off" ' +
+            'placeholder="Safe Number, e.g. US12345678">' +
+          '<button type="button" class="btn" data-cs-manual="1">Get report</button>' +
+        '</div>' +
+        '<div class="field-val muted cp-note" id="cp-cs-manual-msg">Paid lookup. Nothing is ' +
+          'saved unless Creditsafe finds the company.</div>' +
+      '</div>'
+    : '';
   if (id && id.not_in_creditsafe) {
     body = '' +
       '<div class="cp-identity-resolved">' +
@@ -385,7 +399,7 @@ function renderIdentity(p) {
         '<div class="cp-cs-search-row">' + absentBtnEmpty + '</div>' +
       '</div>';
   }
-  return section('Creditsafe Match', body);
+  return section('Creditsafe Match', body + manualHtml);
 }
 
 // ---- the credit bureau report, once an identity is bound ----
@@ -443,6 +457,12 @@ function renderSummary(p) {
            '</div>' + pull;
     return section('Credit Report', body);
   }
+  // CSID1: who this report is about, so a typed ID can be checked by eye.
+  var aboutHtml = s.company_name
+    ? '<div class="cp-report-about"><strong>' + esc(s.company_name) + '</strong>' +
+        (s.company_address ? ' <span class="muted">' + esc(s.company_address) + '</span>' : '') +
+      '</div>'
+    : '';
   if (!s.scored) {
     // Not Rated is a real answer from a real report, not a missing one.
     body = '<div class="field-val muted">Creditsafe returned a report but has not ' +
@@ -499,7 +519,7 @@ function renderSummary(p) {
                (h.date ? '<i>' + esc(String(h.date).slice(0, 7)) + '</i>' : '') + '</span>';
       }).join('') + '</div>';
   }
-  return section('Credit Report', body);
+  return section('Credit Report', aboutHtml + body);
 }
 
 // ---- what OperFi's own book (FactorView) already knows ----
@@ -1183,6 +1203,11 @@ var CP_CSS = '' +
     'border-radius:6px;font-family:inherit;font-size:13px;resize:vertical;}' +
   '.cp-note-input:focus{outline:none;border-color:#94a3b8;}' +
   '.cp-note-add{margin-bottom:6px;}' +
+  '.cp-cs-manual{margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;}' +
+  '.cp-cs-manual-row{display:flex;gap:8px;align-items:center;margin-top:4px;}' +
+  '.cp-cs-manual-row .cp-note-input{flex:1;min-width:0;}' +
+  '.cp-cs-manual-err{color:#b42318;}' +
+  '.cp-report-about{font-size:13px;margin-bottom:10px;}' +
   '.cp-entry{padding:9px 0;border-bottom:1px solid #f1f5f9;}' +
   '.cp-entry:last-child{border-bottom:none;}' +
   '.cp-entry-head{font-size:13px;font-weight:600;color:#0f172a;}' +

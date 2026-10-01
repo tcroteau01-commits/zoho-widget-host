@@ -1806,6 +1806,23 @@ function renderProfile(rec, payload) {
                   btn, 'Getting report…');
     });
   });
+  // CSID1: a Creditsafe ID the analyst found by hand. The server buys the report
+  // BEFORE binding, so a typo saves nothing and comes back as a message here.
+  root.querySelectorAll('[data-cs-manual]').forEach(function(btn) {
+    var input = document.getElementById('cp-cs-manual-id');
+    var msg = document.getElementById('cp-cs-manual-msg');
+    var go = function() {
+      var typed = (input && input.value || '').trim();
+      if (!typed) { input && input.focus(); return; }
+      pinCustomer(rec, { manual_id: typed }, btn, 'Getting report…', function(text) {
+        if (msg) { msg.textContent = text; msg.classList.add('cp-cs-manual-err'); }
+      });
+    };
+    btn.addEventListener('click', go);
+    if (input) input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); go(); }
+    });
+  });
   root.querySelectorAll('[data-fv-pick]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       pinCustomer(rec, { fv_debtor_id: btn.getAttribute('data-fv-pick') },
@@ -1990,7 +2007,7 @@ function renderProfile(rec, payload) {
 // gave no sign it had been pressed, so the analyst's natural next move is to
 // click again -- and a second click on a DIFFERENT candidate races two pins,
 // with the loser silently overwriting the winner's binding.
-var PROFILE_ACTIONS = '[data-cs-pick],[data-fv-pick],[data-cs-absent],' +
+var PROFILE_ACTIONS = '[data-cs-pick],[data-cs-manual],[data-fv-pick],[data-cs-absent],' +
   '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide],[data-note],' +
   '[data-cb-switch],[data-cb-approve],[data-cb-reject],[data-cb-upload]';
 
@@ -2014,14 +2031,23 @@ function setProfileBusy(btn, label) {
   };
 }
 
-function pinCustomer(rec, body, btn, label) {
+// onError, when given, receives the server's own message (CSID1: "Creditsafe has
+// no company with ID ..." is the analyst's next step, not "Could not save").
+function pinCustomer(rec, body, btn, label, onError) {
   var undo = setProfileBusy(btn, label || 'Saving…');
   fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/pin', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
-  }).then(function(res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
+  }).then(function(res) {
+      if (res.ok) return res.json();
+      return res.json().catch(function() { return {}; }).then(function(b) {
+        var err = new Error('HTTP ' + res.status);
+        err.serverMessage = b && b.error;
+        return Promise.reject(err);
+      });
+    })
     .then(function() {
       // The reward for resolving the ambiguity: re-fetch so the analyst immediately
       // sees the report and history the pin just unlocked, not a stale picker.
@@ -2033,6 +2059,7 @@ function pinCustomer(rec, body, btn, label) {
     .catch(function(err) {
       console.error('[CustomerApprovals] customer-profile pin failed', err);
       undo();
+      if (onError && err && err.serverMessage) { onError(err.serverMessage); return; }
       showToast('Could not save. Try again.');
     });
 }

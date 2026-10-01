@@ -533,3 +533,20 @@ test('reload degrading to error after a prior success falls back to neutral (cpD
   assert.equal(w.cpDocsLoaded, false, 'cpDocsLoaded reset to unknown on degraded reload');
   assert.equal(w.document.querySelector(NOA_ITEM).disabled, false, 'falls back to neutral, not stale hard-lock');
 });
+
+test('DOCSTAMP2: each doc card shows when it was added; no stamp when the time is missing', async () => {
+  const at = new Date(2026, 9, 1, 14, 5).getTime();   // Oct 1 2026 2:05 PM, viewer-local
+  const dom = boot(async () => ({ ok: true, json: async () => ({ count: 2, documents: [
+    // WorkDrive sends created_time_in_millisecond as a STRING on some routes
+    { type: 'coi', label: 'Insurance (COI)', filename: 'COI-1.pdf', created_time: String(at), preview_token: 'TOKA' },
+    { type: 'noa', label: 'NOA', filename: 'NOA-1.pdf', created_time: 0, preview_token: 'TOKB' },
+  ] }) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@o.com'; w.vendorId = '1001';
+  await w.loadCarrierDocs();
+  const cards = [...w.document.querySelectorAll('#cp-docs-body .cp-doccard:not(.cp-rec)')];
+  const stamp0 = cards[0].querySelector('.cp-dtime');
+  assert.ok(stamp0, 'stamp element present');
+  assert.strictEqual(stamp0.textContent, 'Added Oct 1, 2026, 2:05 PM');
+  assert.strictEqual(cards[1].querySelector('.cp-dtime'), null, 'no stamp for a zero time');
+});

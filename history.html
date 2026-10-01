@@ -1132,11 +1132,34 @@ function renderList(truncated) {
   });
 }
 
+// BROKERTERMS2: how THIS broker's relationship with the carrier pays today,
+// from the Account/Vendor junction (Broker_Pay_Term, added by /broker-report).
+// Tom, 2026-09-30: "this submission history still shows RTS but the Vendor
+// record shows Quick Pay".
+//
+// Payment_Terms is the term STAMPED ON THE LOAD at submit, composed
+// server-side as "Factoring Company - <factor>". It is not wrong, it is just
+// older: a load submitted before an LOR still names the factor that held the
+// assignment then. The API adds the current term rather than overwriting it,
+// because a load that already paid did pay under the stamped one -- so we lead
+// with the current term and surface the stamped one wherever they differ,
+// never silently replacing it. A blank Broker_Pay_Term means no relationship
+// row (or a junction read that failed), so the stamped term stands alone.
+function payTermNow(r) {
+  return (r.Broker_Pay_Term || '').trim() || (r.Payment_Terms || '');
+}
+
+function payTermWasDifferent(r) {
+  var now = (r.Broker_Pay_Term || '').trim();
+  var stamped = (r.Payment_Terms || '').trim();
+  return !!(now && stamped && now !== stamped);
+}
+
 function rowHtml(r, idx) {
   var s = statusMeta(r);
   var carrier = displayCarrier(r);
   var carrierSub = carrierSubLine(r);
-  var payTerms = r.Payment_Terms || '';   // composed server-side: "Factoring Company - <factor>"
+  var payTerms = payTermNow(r);
   var custRate = parseMoney(r.Customer_Rate);
   var carrRate = parseMoney(r.Carrier_Rate);
   var marginPct = custRate > 0 ? ((custRate - carrRate) / custRate * 100) : 0;
@@ -1309,7 +1332,9 @@ function renderPanel() {
           field('MC / DOT', carrierSubLine(r)) +
           field('Load / Rate Conf #', r.Load_Rate_Confirmation_Number) +
           field('Carrier Factoring Invoice #', r.Carrier_Factoring_Invoice) +
-          field('Payment Terms', r.Payment_Terms) +
+          field('Payment Terms', payTermNow(r)) +
+          (payTermWasDifferent(r)
+            ? field('Terms at submission', r.Payment_Terms) : '') +
           field('Submitted', added ? fmtDateTime(added) : null) +
           (purchased ? field('Purchased', fmtDateTime(purchased)) : '') +
         '</div>' +
@@ -1569,7 +1594,7 @@ function esc(s) {
 // ── CSV export ────────────────────────────────────────────────────────────
 function exportCsv() {
   if (!filteredRecords.length) return;
-  var headers = ['Submitted','Status','Customer','Reference #','Carrier','MC/DOT','Customer Rate','Carrier Rate','Margin %','Load Conf #','Carrier Invoice #','Payment Terms'];
+  var headers = ['Submitted','Status','Customer','Reference #','Carrier','MC/DOT','Customer Rate','Carrier Rate','Margin %','Load Conf #','Carrier Invoice #','Payment Terms','Terms at submission'];
   var rows = filteredRecords.map(function(r) {
     var custRate = parseMoney(r.Customer_Rate);
     var carrRate = parseMoney(r.Carrier_Rate);
@@ -1587,7 +1612,8 @@ function exportCsv() {
       marginPct,
       r.Load_Rate_Confirmation_Number || '',
       r.Carrier_Factoring_Invoice || '',
-      r.Payment_Terms || ''
+      payTermNow(r),
+      payTermWasDifferent(r) ? (r.Payment_Terms || '') : ''
     ];
   });
   var csv = [headers].concat(rows).map(function(row) {

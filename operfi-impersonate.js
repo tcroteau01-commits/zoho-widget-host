@@ -70,6 +70,7 @@
 
     var search = document.getElementById('operfi-imp-search');
     var list = document.getElementById('operfi-imp-list');
+    var active = -1;           // keyboard-highlighted row; -1 = none
     function paint(q) {
       q = (q || '').toLowerCase();
       var rows = clients.filter(function (c) { return !q || (c.name || '').toLowerCase().indexOf(q) !== -1; }).slice(0, 50);
@@ -77,20 +78,50 @@
         return '<div data-email="' + esc(c.contact_email) + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f2f4f7">' + esc(c.name) + '</div>';
       }).join('') || '<div style="padding:8px 12px;color:#667085">No match</div>';
       list.style.display = 'block';
+      active = -1;
+    }
+    function rowsEls() { return list.querySelectorAll('[data-email]'); }
+    function highlight(i) {
+      var rows = rowsEls();
+      if (!rows.length) return;
+      active = Math.max(0, Math.min(i, rows.length - 1));
+      for (var k = 0; k < rows.length; k++) {
+        rows[k].style.background = k === active ? '#fef3c7' : '';
+        rows[k].setAttribute('aria-selected', k === active ? 'true' : 'false');
+      }
+      if (rows[active].scrollIntoView) rows[active].scrollIntoView({ block: 'nearest' });
+    }
+    function pick(email) {
+      try { localStorage.setItem(KEY, email); } catch (x) {}
+      location.reload();
     }
     // Clicking away (anywhere in the widget, the portal shell around it, or tabbing
     // off) cancels: the list closes, the typed text clears, the current client stays.
-    function cancel() { list.style.display = 'none'; search.value = ''; }
+    function cancel() { list.style.display = 'none'; search.value = ''; active = -1; }
     search.addEventListener('focus', function () { paint(search.value); });
     search.addEventListener('input', function () { paint(search.value); });
     search.addEventListener('blur', cancel);
-    search.addEventListener('keydown', function (e) { if (e.key === 'Escape') search.blur(); });
+    search.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { search.blur(); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.style.display === 'none') paint(search.value);
+        highlight(e.key === 'ArrowDown' ? active + 1 : active - 1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var rows = rowsEls();
+        // nothing highlighted: Enter only commits when the typed text narrowed to one client
+        var row = active >= 0 ? rows[active] : (rows.length === 1 ? rows[0] : null);
+        if (row) pick(row.getAttribute('data-email'));
+      }
+    });
     // keep focus on the input while picking, so the blur above doesn't close the list first
     list.addEventListener('mousedown', function (e) { e.preventDefault(); });
     list.addEventListener('click', function (e) {
       var row = e.target.closest('[data-email]'); if (!row) return;
-      try { localStorage.setItem(KEY, row.getAttribute('data-email')); } catch (x) {}
-      location.reload();
+      pick(row.getAttribute('data-email'));
     });
     var exit = document.getElementById('operfi-imp-exit');
     if (exit) exit.addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (x) {} location.reload(); });

@@ -599,10 +599,22 @@ function clearStatus() {
   document.getElementById('statusMsg').className = 'status-msg';
 }
 
-function showErr(id) {
+function showErr(id, text) {
   var err = document.querySelector('[data-err-for="' + id + '"]');
-  if (err) err.classList.add('show');
+  if (!err) return;
+  // BILLERR1: one box can carry more than one reason. Remember the markup's
+  // own text as the default, and say the reason that actually applies.
+  if (err.getAttribute('data-default-text') === null) {
+    err.setAttribute('data-default-text', err.textContent);
+  }
+  err.textContent = text || err.getAttribute('data-default-text');
+  err.classList.add('show');
 }
+// BILLERR1 (Tom, 2026-10-01): a broker entered the same mailbox for the contact
+// and billing and was told "Billing email format is invalid" -- about a valid
+// address, so there was nothing they could see to fix.
+var SAME_MAILBOX_MSG = 'Billing needs its own email, different from the contact email. ' +
+  'Use the billing or AP department\'s address, or leave the billing contact blank for now.';
 function clearErr(id) {
   var err = document.querySelector('[data-err-for="' + id + '"]');
   if (err) err.classList.remove('show');
@@ -672,7 +684,8 @@ function validate() {
   if (pocE && billE && pocE === billE) {
     var be = document.getElementById('Billing_Email');
     be.classList.add('invalid');
-    showErr('Billing_Email');
+    showErr('Billing_Email', SAME_MAILBOX_MSG);
+    be.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return false;
   }
 

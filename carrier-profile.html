@@ -521,6 +521,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .cp-dmain { flex:1; min-width:0; }
 .cp-dlabel { font-size:13px; font-weight:600; color:var(--of-charcoal-soft); }
 .cp-dfile { font-size:12px; color:var(--of-gray-500); word-break:break-all; }
+.cp-dtime { font-size:11px; color:var(--of-gray-500); margin-top:1px; }
 .cp-doc-advisory { display:block; font-size:11px; font-weight:700; color:var(--of-amber-text); margin-top:4px; }
 .cp-doc-advisory:empty { display:none; }
 .cp-check-hint { display:block; font-size:11px; color:var(--of-amber-text); margin-left:24px; }
@@ -2186,6 +2187,19 @@ function cpRecommendedDocs() {
   return rec;
 }
 
+// WorkDrive upload time (epoch ms, number or numeric string) -> "Oct 1, 2026, 2:05 PM"
+// in the viewer's zone. Same format as the Vendors panel (DOCSTAMP1). Empty when missing.
+var CP_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function cpFormatDocAdded(ms) {
+  var n = Number(ms);
+  if (!n) return '';
+  var d = new Date(n);
+  if (isNaN(d.getTime())) return '';
+  var h = d.getHours(), mm = d.getMinutes();
+  return CP_MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear() + ', ' +
+    ((h % 12) || 12) + ':' + (mm < 10 ? '0' : '') + mm + ' ' + (h < 12 ? 'AM' : 'PM');
+}
+
 function renderCarrierDocs(data) {
   var body = document.getElementById('cp-docs-body');
   var countEl = document.getElementById('cp-docs-count');
@@ -2214,10 +2228,12 @@ function renderCarrierDocs(data) {
       var icon = CP_DOC_ICON[d.type] || '📎';
       var label = esc(String(d.label || d.type || 'Document'));
       var fname = esc(String(d.filename || ''));
+      var added = cpFormatDocAdded(d.created_time);
       html += '<div class="cp-doccard">' +
         '<div class="cp-dic">' + icon + '</div>' +
         '<div class="cp-dmain"><div class="cp-dlabel">' + label + '</div>' +
         '<div class="cp-dfile">' + fname + '</div>' +
+        (added ? '<div class="cp-dtime">Added ' + esc(added) + '</div>' : '') +
         '<span class="cp-doc-advisory" data-token="' + esc(token) + '"></span></div>' +
         '<div class="cp-dacts">' +
         '<button class="cp-dbtn cp-doc-preview" data-token="' + esc(token) + '" data-filename="' + fname + '" data-type="' + esc(String(d.type || '')) + '">View</button>' +

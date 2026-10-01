@@ -341,6 +341,29 @@ test('opening a vendor lazy-loads carrier docs sorted recent-first', async () =>
   assert.ok(opened && /carrier-doc-file\?t=tCoi/.test(opened.url), 'viewer opened with doc url');
 });
 
+test('each doc row shows when it was added; no stamp when the time is missing', async () => {
+  const records = [{ ID: '901', Vendor_Name: 'ACME', Vendor_Status: 'Approved', Email: 'a@b.com' }];
+  const at = new Date(2026, 9, 1, 14, 5).getTime();   // Oct 1 2026 2:05 PM, viewer-local
+  const docs = [
+    // WorkDrive sends created_time_in_millisecond as a STRING on some routes
+    { type: 'coi', label: 'Insurance (COI)', filename: 'COI-1.pdf', created_time: String(at), preview_token: 'a' },
+    { type: 'noa', label: 'NOA', filename: 'NOA-1.pdf', created_time: 0, preview_token: 'b' }
+  ];
+  const dom = makeDom();
+  const w = dom.window;
+  w.fetch = makeVetFetch(records, {}, docs);
+  w.OperFiDocViewer = { open: () => {}, close: () => {} };
+  w.dispatchEvent(new w.Event('load'));
+  await waitForRows(w);
+  w.document.querySelector('.row').click();
+  await new Promise(r => setTimeout(r, 40));
+  const items = [...w.document.querySelectorAll('#vv-docs .vvp-doc:not(.recommended)')];
+  const stamp0 = items[0].querySelector('.vvp-dtime');
+  assert.ok(stamp0, 'stamp element present');
+  assert.equal(stamp0.textContent, 'Added Oct 1, 2026, 2:05 PM');
+  assert.equal(items[1].querySelector('.vvp-dtime'), null, 'no stamp for a zero time');
+});
+
 function makeVetFetch(records, profile, docs) {
   return (url) => {
     if (url.indexOf('/carrier-profile') !== -1)

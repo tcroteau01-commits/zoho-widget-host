@@ -513,6 +513,16 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
    same muted style as .ca-app-row-who, no new component. */
 .ca-app-row-supplemental { font-size: 11px; color: #999; margin-top: 2px; }
 
+/* BROKERREFVIEW1 -- a trade reference's shared answer, full width under its
+   row. Same muted label / dark value pairing as the rest of the pane. */
+.ca-app-answer { grid-column: 1 / -1; border-top: 1px dashed #e3e0d5; padding-top: 8px; }
+.ca-app-answer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px 14px; }
+.ca-app-answer-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #999; }
+.ca-app-answer-val { font-size: 12px; color: #272727; font-weight: 600; margin-top: 1px; }
+.ca-app-answer-comments { font-size: 12px; color: #444; margin-top: 8px; white-space: pre-wrap; }
+.ca-app-answer-by, .ca-app-answer-note { font-size: 11px; color: #999; margin-top: 6px; }
+.ca-app-answer-note { grid-column: 1 / -1; margin-top: 0; }
+
 /* CREDITAPP3 Task 7 -- ask customer for more references. Broker and staff
    both see this (it lives inside the shared tracker, #ca-app-section, never
    gated on allClients). Reuses .row-action for the buttons, .ca-app-msg for
@@ -2294,12 +2304,66 @@ if (typeof window !== 'undefined') {
   window.caAppWaitingText = caAppWaitingText;
 }
 
-function caAppRowHtml(p) {
+// BROKERREFVIEW1 (Tom, 2026-10-01): a trade reference's answer, shown to the
+// broker whose customer it is. The API sends `answer` only for a trade
+// reference who answered on the survey that told them the requesting OperFi
+// client may see it (credit_app_routes._broker_reference_answer); this never
+// decides that, it only renders what it is given. A figure left blank is
+// left out rather than shown as $0, and a figure the reference typed as words
+// ("Open account") is shown as typed.
+function caAppAnswerMoney(v) {
+  if (v === null || v === undefined || String(v).trim() === '') return '';
+  var n = Number(String(v).replace(/[$,\s]/g, ''));
+  return isFinite(n) ? '$' + Math.round(n).toLocaleString('en-US') : String(v);
+}
+
+function caAppAnswerHtml(a) {
+  if (!a) return '';
+  var aging = a.aging || {};
+  var agingParts = [['0-30', aging.d0_30], ['31-60', aging.d31_60], ['61+', aging.d61_plus]]
+    .filter(function(x) { return caAppAnswerMoney(x[1]); })
+    .map(function(x) { return x[0] + ': ' + caAppAnswerMoney(x[1]); });
+  var rows = [
+    ['Customer since', a.customer_since],
+    ['Terms', a.net_terms],
+    ['Credit limit', caAppAnswerMoney(a.credit_limit)],
+    ['High credit', caAppAnswerMoney(a.high_credit)],
+    ['Balance', caAppAnswerMoney(a.balance)],
+    ['Aging', agingParts.join(' \u00b7 ')],
+    ['Last sale', a.last_sale],
+    ['Rating', (a.rating === null || a.rating === undefined || a.rating === '') ? '' : a.rating + ' / 5'],
+  ].filter(function(x) { return x[1] !== null && x[1] !== undefined && String(x[1]).trim() !== ''; });
+  var rep = a.rep || {};
+  var by = [rep.name, rep.title].filter(Boolean).join(', ');
+  var when = a.answered_at ? String(a.answered_at).slice(0, 10) : '';
+  return '' +
+    '<div class="ca-app-answer">' +
+      '<div class="ca-app-answer-grid">' +
+        rows.map(function(x) {
+          return '<div><div class="ca-app-answer-label">' + esc(x[0]) + '</div>' +
+                 '<div class="ca-app-answer-val">' + esc(String(x[1])) + '</div></div>';
+        }).join('') +
+      '</div>' +
+      (a.comments ? '<div class="ca-app-answer-comments">' + esc(a.comments) + '</div>' : '') +
+      ((by || when) ? '<div class="ca-app-answer-by">Answered' + (by ? ' by ' + esc(by) : '') +
+                      (when ? ' on ' + esc(when) : '') + '</div>' : '') +
+    '</div>';
+}
+if (typeof window !== 'undefined') { window.caAppAnswerHtml = caAppAnswerHtml; }
+
+// `legacy` (BROKERREFVIEW1): an app imported from the old Zoho Forms credit
+// application. Most were decided months ago and the broker never sent them,
+// so the row shows who answered and nothing to act on: no Nudge, no Report a
+// problem (the API refuses both for an imported app), and no waiting clock.
+function caAppRowHtml(p, legacy) {
   var st = caAppPartyState(p.status);
   var nameCompany = [p.company, p.name].filter(Boolean).join(', ');
   var detail;
   var stalled = false;
-  if (st.cls === 'bounced') {
+  if (legacy && p.status !== 'completed' && p.status !== 'waived') {
+    detail = 'No response';
+    st = { label: detail, cls: 'not-required' };
+  } else if (st.cls === 'bounced') {
     // CREDITAPP2: correction is credit-only (see credit_app_correct_address's
     // docstring -- a complicit broker redirecting their own customer's bank
     // reference to an accomplice is exactly the attack that boundary guards
@@ -2331,7 +2395,7 @@ function caAppRowHtml(p) {
   // application. Same exclusion as reportBtnHtml below, same reasoning --
   // the server now refuses slot="customer" (400) too, but the button must
   // not be offered in the first place.
-  var canNudge = p.slot !== 'customer' && CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
+  var canNudge = !legacy && p.slot !== 'customer' && CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
   var nudgeHtml = canNudge
     ? '<button type="button" class="row-action ca-app-nudge" data-slot="' + esc(p.slot) + '">Nudge</button>'
     : '';
@@ -2341,9 +2405,9 @@ function caAppRowHtml(p) {
   // applicant's own party), so this never offers a control that would 400.
   // Takes a note, never an address -- see credit_app_report_problem's own
   // docstring for the attack that boundary guards against.
-  var reportBtnHtml = (p.slot === 'customer') ? '' :
+  var reportBtnHtml = (legacy || p.slot === 'customer') ? '' :
     '<button type="button" class="row-action ca-app-report-problem" data-slot="' + esc(p.slot) + '">Report a problem</button>';
-  var reportFormHtml = (p.slot === 'customer') ? '' :
+  var reportFormHtml = (legacy || p.slot === 'customer') ? '' :
     '<div class="ca-app-report-form" data-slot="' + esc(p.slot) + '" style="display:none;">' +
       '<textarea class="ca-app-report-note" placeholder="What looks wrong with this reference?"></textarea>' +
       '<div class="ca-app-report-btns">' +
@@ -2363,6 +2427,12 @@ function caAppRowHtml(p) {
   var tradeN = caAppTradeIndex(p.slot);
   var supplementalHtml = (tradeN && tradeN > 3)
     ? '<div class="ca-app-row-supplemental">Added after signing (not on the signed PDF)</div>' : '';
+  // A trade reference that answered before references were told the broker
+  // may see it: say where the answer is, so the broker isn't left guessing.
+  var answerHtml = p.answer
+    ? caAppAnswerHtml(p.answer)
+    : ((tradeN && p.status === 'completed')
+        ? '<div class="ca-app-answer-note">Answer on file with OperFi</div>' : '');
   return '' +
     '<div class="ca-app-row" data-slot="' + esc(p.slot) + '">' +
       '<div>' +
@@ -2372,6 +2442,7 @@ function caAppRowHtml(p) {
       '</div>' +
       '<div class="' + stateCls + '">' + esc(detail) + '</div>' +
       '<div class="ca-app-row-action">' + nudgeHtml + reportBtnHtml + msgHtml + reportFormHtml + '</div>' +
+      answerHtml +
     '</div>';
 }
 if (typeof window !== 'undefined') { window.caAppRowHtml = caAppRowHtml; }
@@ -2434,11 +2505,14 @@ function renderCreditAppSection(r, payload) {
   var ordered = caAppOrderedParties(payload && payload.parties);
   if (!ordered.length) return;   // nothing to show -- stays hidden, not an empty shell
 
+  var legacy = !!payload.legacy;
   var summaryEl = document.getElementById('ca-app-summary-text');
-  if (summaryEl) summaryEl.textContent = CA_APP_SUMMARY[payload.status] || '';
+  if (summaryEl) summaryEl.textContent = legacy
+    ? 'Submitted on our previous credit application form'
+    : (CA_APP_SUMMARY[payload.status] || '');
 
   var rowsEl = document.getElementById('ca-app-rows');
-  if (rowsEl) rowsEl.innerHTML = ordered.map(caAppRowHtml).join('');
+  if (rowsEl) rowsEl.innerHTML = ordered.map(function(p) { return caAppRowHtml(p, legacy); }).join('');
 
   // CREDITAPP2 fix round 1: two different questions, two different sets.
   // "Has this party answered" is CA_APP_ANSWERED (completed/waived only) --
@@ -2452,7 +2526,7 @@ function renderCreditAppSection(r, payload) {
   // Nudge button in the first place (caAppRowHtml's own canNudge) -- so a
   // bounced party, which needs no nudge, is excluded from both the count and
   // the threshold, never just from the count.
-  var nudgeable = ordered.filter(function(p) {
+  var nudgeable = legacy ? [] : ordered.filter(function(p) {
     return p.slot !== 'customer' && CA_APP_NEEDS_NO_NUDGE.indexOf(p.status) === -1;
   });
   var allRow = document.getElementById('ca-app-nudgeall-row');
@@ -2497,7 +2571,9 @@ function renderCreditAppSection(r, payload) {
   // per-row listener bound here would be gone the moment this innerHTML is
   // replaced by the next render.
   var supplementEl = document.getElementById('ca-app-supplement');
-  if (supplementEl) supplementEl.innerHTML = caAppSupplementSectionHtml(payload);
+  // An imported app cannot take supplemental references (the API refuses),
+  // so it gets no ask control.
+  if (supplementEl) supplementEl.innerHTML = legacy ? '' : caAppSupplementSectionHtml(payload);
 
   section.style.display = '';
 }

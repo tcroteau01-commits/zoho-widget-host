@@ -1193,7 +1193,8 @@ function inviteChipHtml(u) {
   if (!canManage) return '';
   var email = String(u.Email || '').toLowerCase();
   var s = inviteStatusByEmail[email];
-  if (!s || s.state === 'not_applicable') return '';
+  // 'disabled': access is switched off, so no invite state and no button.
+  if (!s || s.state === 'not_applicable' || s.state === 'disabled') return '';
   var text = '', cls = '';
   if (s.state === 'active') text = 'Active' + (s.last_sign_in ? ' · last sign-in ' + inviteDate(s.last_sign_in) : '');
   else if (s.state === 'never_signed_in') text = 'Active · never signed in';
@@ -1214,6 +1215,7 @@ function inviteErrorText(code) {
   if (code === 'already_active') return 'already active';
   if (code === 'not_flipped') return 'not on the new portal yet';
   if (code === 'no_such_user') return 'user not found';
+  if (code === 'user_disabled') return 'this user is disabled';
   return 'please try again';
 }
 
@@ -2759,7 +2761,7 @@ function toggleUserStatus(user) {
     });
 }
 
-// The seven actions permissions_store.write_audit can record. Anything not in
+// The actions permissions_store.write_audit can record. Anything not in
 // here falls back to the raw key rather than rendering blank, so a new action
 // added server-side degrades to something readable instead of disappearing.
 //
@@ -2768,6 +2770,8 @@ function toggleUserStatus(user) {
 var ACTIVITY_ACTION = {
   invite:          'Invited user',
   invite_resend:   'Resent invite',
+  provision_admin: 'Set up account owner',
+  account_activation: 'Activated portal access',
   set_access:      'Changed access',
   set_status:      'Changed status',
   template_create: 'Created template',

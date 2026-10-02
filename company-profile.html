@@ -1075,13 +1075,24 @@ function renderAccount() {
   var statusRaw = account.Account_Status || '';
   var statusClass = statusClassFor(statusRaw);
   var statusLabel = statusRaw || 'Unknown';
+  // Account Status is OperFi's internal rating (the FV Monthly Sync sets
+  // INACTIVE for no recent factoring), not the client's access. Clients read
+  // "INACTIVE" as "you are shut off", so only OperFi staff see it. Staff is
+  // known only after /whoami resolves; until then this fails toward hidden.
+  var showStatus = !!(window.OPERFI_IMP && OPERFI_IMP.isStaff && OPERFI_IMP.isStaff());
+  if (!showStatus && window.OPERFI_IMP && !renderAccount._staffRecheck) {
+    renderAccount._staffRecheck = true;
+    setTimeout(function () {
+      if (OPERFI_IMP.isStaff && OPERFI_IMP.isStaff()) renderAccount();
+    }, 2000);
+  }
 
   var html = '' +
     '<div class="company-name">' + esc(account.Account_Name || '—') + '</div>' +
     '<div class="company-meta">' +
       (account.USDOT ? '<span class="meta-pill">USDOT ' + esc(account.USDOT) + '</span>' : '') +
       (account.MC_Number ? '<span class="meta-pill">MC ' + esc(account.MC_Number) + '</span>' : '') +
-      '<span class="meta-pill ' + statusClass + '">' + esc(statusLabel) + '</span>' +
+      (showStatus ? '<span class="meta-pill ' + statusClass + '">' + esc(statusLabel) + '</span>' : '') +
     '</div>' +
 
     '<div class="detail-grid full">' +
@@ -1092,7 +1103,7 @@ function renderAccount() {
       detailHtml('Phone', formatPhone(account.Phone)) +
       detailHtml('SMS Admin Phone', formatPhone(account.SMS_Admin_Phone)) +
       detailHtml('Quick Pay Fee', formatPct(account.Quick_Pay_Fee)) +
-      detailHtml('Account Status', statusLabel) +
+      (showStatus ? detailHtml('Account Status', statusLabel) : '') +
     '</div>' +
 
     '<div class="section-divider">Notification Emails</div>' +

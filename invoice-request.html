@@ -21,6 +21,11 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .dropzone { border: 2px dashed #d8cfa8; border-radius: 8px; padding: 16px; text-align: center; color: #888; cursor: pointer; margin-bottom: 12px; }
 .dropzone.staged { border-color: #2e7d32; color: #2e7d32; font-weight: 600; }
 .dropzone.dragover { border-color: #F97316; background: #fef6e7; }
+.hint { font-size: 12px; color: #666; margin-bottom: 10px; }
+.staged-list { margin: -4px 0 12px; }
+.staged-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; border-bottom: 1px solid #f0efe9; }
+.staged-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.staged-row button { background: none; border: none; color: #c62828; font-weight: 600; cursor: pointer; font-family: inherit; }
 
 @media (max-width: 640px) {
   html, body { overflow-x: hidden; }
@@ -36,15 +41,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   <div class="card" id="summary"><div class="sub">Loading…</div></div>
   <div class="card hidden" id="upload-card">
     <div class="sec-h">Upload your invoice</div>
-    <div class="dropzone" id="cdropzone">Drop your invoice here or tap to choose a file</div>
-    <input type="file" id="cfile" accept="application/pdf,image/*" style="display:none">
+    <div class="hint">Add every page for this load (invoice, rate confirmation, POD) before you submit. They are sent together as one invoice.</div>
+    <div class="dropzone" id="cdropzone">Drop your files here or tap to choose</div>
+    <div class="staged-list" id="cstaged"></div>
+    <input type="file" id="cfile" accept="application/pdf,image/*" multiple style="display:none">
     <button class="btn" id="cupload">Submit Invoice</button>
     <div class="status" id="cstatus"></div>
   </div>
 </div>
 <script>
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
-var stagedFile = null;
+var stagedFiles = [];
+var MAX_FILES = 10;
 var brokerCompany = '';
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -58,21 +66,55 @@ function status(msg, cls) {
   if (el) { el.textContent = msg || ''; el.className = 'status ' + (cls || ''); }
 }
 
+// Several files for ONE load go up in one request and become one invoice on one
+// draft. stageFile(null) clears; stageFile(file) and stageFiles(list) add.
 function stageFile(file) {
-  stagedFile = file || null;
+  if (!file) stagedFiles = [];
+  else stagedFiles.push(file);
+  renderStaged();
+}
+
+function stageFiles(list) {
+  Array.prototype.forEach.call(list || [], function (f) { if (f) stagedFiles.push(f); });
+  renderStaged();
+}
+
+function unstage(idx) {
+  stagedFiles.splice(idx, 1);
+  renderStaged();
+}
+
+function renderStaged() {
   var dz = document.getElementById('cdropzone');
-  if (!dz) return;
-  if (stagedFile) { dz.classList.add('staged'); dz.textContent = stagedFile.name; }
-  else { dz.classList.remove('staged'); dz.textContent = 'Drop your invoice here or tap to choose a file'; }
+  var box = document.getElementById('cstaged');
+  if (dz) {
+    if (stagedFiles.length) {
+      dz.classList.add('staged');
+      dz.textContent = stagedFiles.length + (stagedFiles.length === 1 ? ' file' : ' files') + ' ready · tap to add more';
+    } else {
+      dz.classList.remove('staged');
+      dz.textContent = 'Drop your files here or tap to choose';
+    }
+  }
+  if (box) {
+    box.innerHTML = stagedFiles.map(function (f, i) {
+      return '<div class="staged-row"><span>📄 ' + esc(f.name) + '</span>' +
+        '<button type="button" data-unstage="' + i + '">Remove</button></div>';
+    }).join('');
+    box.querySelectorAll('[data-unstage]').forEach(function (b) {
+      b.addEventListener('click', function () { unstage(+b.getAttribute('data-unstage')); });
+    });
+  }
 }
 
 function submitInvoice() {
-  if (!stagedFile) { status('Please choose a file first.', 'err'); return Promise.resolve(); }
+  if (!stagedFiles.length) { status('Please choose a file first.', 'err'); return Promise.resolve(); }
+  if (stagedFiles.length > MAX_FILES) { status('Please upload at most ' + MAX_FILES + ' files at once.', 'err'); return Promise.resolve(); }
   var btn = document.getElementById('cupload');
   if (btn) btn.disabled = true;
   status('Uploading…', '');
   var fd = new FormData();
-  fd.append('file', stagedFile, stagedFile.name);
+  stagedFiles.forEach(function (f) { fd.append('file', f, f.name); });
   return fetch(BROKER_API_BASE + '/invoice-request/upload?token=' + encodeURIComponent(getToken()),
                { method: 'POST', body: fd })
     .then(function (res) { return res.json().then(function (p) { return { ok: res.ok, p: p }; }); })
@@ -121,12 +163,12 @@ function boot() {
   var input = document.getElementById('cfile');
   if (dz && input) {
     dz.addEventListener('click', function () { input.click(); });
-    input.addEventListener('change', function () { stageFile(input.files && input.files[0]); });
+    input.addEventListener('change', function () { stageFiles(input.files); input.value = ''; });
     dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('dragover'); });
     dz.addEventListener('dragleave', function () { dz.classList.remove('dragover'); });
     dz.addEventListener('drop', function (e) {
       e.preventDefault(); dz.classList.remove('dragover');
-      stageFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+      stageFiles(e.dataTransfer && e.dataTransfer.files);
     });
   }
   var btn = document.getElementById('cupload');
@@ -136,6 +178,7 @@ function boot() {
 window.addEventListener('load', boot);
 window.getToken = getToken;
 window.stageFile = stageFile;
+window.stageFiles = stageFiles;
 window.submitInvoice = submitInvoice;
 </script>
 </body>

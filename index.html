@@ -1944,8 +1944,14 @@ function _setDocOnFile(slot, present) {
   var label = document.getElementById(map.label); if (!label) return;
   if (present) {
     label.innerHTML = '<span style="color:#2e7d32;font-weight:600">' + slot + ' packet on file ✓</span>' +
+      (currentDraftId ? ' · <a href="#" data-view-doc="' + slot + '" style="color:#1565c0">View</a>' : '') +
       ' · <a href="#" data-remove-doc="' + slot + '" style="color:#c62828">Remove</a>' +
       '<br><span style="color:#999">drop a new file to replace it</span>';
+    var vw = label.querySelector('[data-view-doc="' + slot + '"]');
+    if (vw) vw.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      viewDraftDoc(slot, vw);
+    });
     var rm = label.querySelector('[data-remove-doc="' + slot + '"]');
     if (rm) rm.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
@@ -1955,6 +1961,25 @@ function _setDocOnFile(slot, present) {
     label.textContent = 'Click or drag files here';
   }
 }
+
+// DRAFTDOCVIEW1: open the file already stored on this draft (e.g. the invoice a
+// carrier sent through an invoice-request link) in the shared viewer.
+function viewDraftDoc(slot, link) {
+  if (!currentDraftId || !window.OperFiDocViewer) return Promise.resolve(false);
+  return fetch(BROKER_API_BASE + '/draft-loads/' + encodeURIComponent(currentDraftId) + '/doc?email=' +
+               encodeURIComponent(brokerEmail) + '&slot=' + encodeURIComponent(slot))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
+    .then(function (blob) {
+      OperFiDocViewer.open({ url: URL.createObjectURL(blob), filename: slot + ' documents',
+                             mime: blob.type });
+      return true;
+    })
+    .catch(function () {
+      if (link) link.textContent = 'View (could not open, try again)';
+      return false;
+    });
+}
+window.viewDraftDoc = viewDraftDoc;
 
 // Delete an attached doc on the current draft, then clear the indicator.
 function removeDraftDoc(slot) {

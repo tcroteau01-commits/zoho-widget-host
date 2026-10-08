@@ -1347,3 +1347,37 @@ test('resetFormAfterSubmit empties both file lists', async () => {
   assert.strictEqual(_rows(w, 'cust_docs').length, 0);
   assert.strictEqual(_rows(w, 'carrier_docs').length, 0);
 });
+
+// ── DRAFTDOCVIEW1: view the file already on a reopened draft ──────────────────
+
+test('on-file indicator has a View link that streams the stored doc into the viewer', async () => {
+  const seen = [];
+  const dom = makeB2Dom((url) => { seen.push(String(url));
+    if (String(url).includes('/doc?'))
+      return Promise.resolve({ ok: true, blob: () => Promise.resolve(new dom.window.Blob(['%PDF'], { type: 'application/pdf' })) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w.brokerEmail = 'b@x.com';
+  let opened = null;
+  w.OperFiDocViewer = { open: (o) => { opened = o; } };
+  w.URL.createObjectURL = () => 'blob:x';
+  w.prefillFromDraft({ id: '900', has_customer_docs: false, has_carrier_docs: true });
+  const link = w.document.querySelector('[data-view-doc="carrier"]');
+  assert.ok(link, 'View link rendered for the carrier slot');
+  assert.equal(w.document.querySelector('[data-view-doc="customer"]'), null);
+  assert.equal(await w.viewDraftDoc('carrier', link), true);
+  assert.ok(seen.some(u => u.includes('/draft-loads/900/doc?email=b%40x.com&slot=carrier')));
+  assert.equal(opened.mime, 'application/pdf');
+});
+
+test('viewDraftDoc failure says so on the link instead of failing silently', async () => {
+  const dom = makeB2Dom(() => Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  w.brokerEmail = 'b@x.com';
+  w.OperFiDocViewer = { open: () => { throw new Error('should not open'); } };
+  w.prefillFromDraft({ id: '900', has_customer_docs: false, has_carrier_docs: true });
+  const link = w.document.querySelector('[data-view-doc="carrier"]');
+  assert.equal(await w.viewDraftDoc('carrier', link), false);
+  assert.match(link.textContent, /could not open/i);
+});

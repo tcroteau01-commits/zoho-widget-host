@@ -1347,3 +1347,21 @@ test('queue loading state show/hide toggles visibility', () => {
   w._hideQueueLoading();
   assert.equal(el().hidden, true);
 });
+
+// ── DRAFTDOCVIEW1: the status says WHICH side's docs are missing ──────────────
+
+test('reasonLabel names the missing doc side', () => {
+  const { window } = makeWidget();
+  assert.equal(window.reasonLabel(['customer_docs']), 'Customer docs needed');
+  assert.equal(window.reasonLabel(['carrier_docs']), 'Carrier invoice needed');
+  assert.equal(window.reasonLabel(['customer_docs', 'carrier_docs']), 'Docs needed');
+});
+
+test('docs count carries a tooltip saying which side is on file', () => {
+  const { window } = makeWidget();
+  window.renderQueue([{ id: '950', status: 'attention', reasons: ['customer_docs'], source: 'Invoice Request',
+    customer_name: 'CAPSTONE', carrier_name: 'RW GLOBAL', has_customer_docs: false, has_carrier_docs: true }]);
+  const span = window.document.querySelector('#queue-body td[data-label="Docs"] span');
+  assert.equal(span.getAttribute('title'), 'Customer docs: missing · Carrier invoice: on file');
+  assert.match(window.document.querySelector('.stat.attn').textContent, /Customer docs needed/);
+});

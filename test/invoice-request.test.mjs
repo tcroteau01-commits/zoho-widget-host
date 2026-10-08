@@ -120,3 +120,41 @@ test('upload failure shows a visible error, never silent', async () => {
   assert.match(st.textContent, /failed/i);
   assert.match(st.className, /err/);
 });
+
+// ── DRAFTDOCVIEW1: several files for one load go up in ONE request ────────────
+
+test('several staged files are posted together in one upload', async () => {
+  const posts = [];
+  const dom = makeDom((u, opts) => {
+    if (String(u).includes('/invoice-request/info')) return infoOk();
+    if (String(u).includes('/invoice-request/upload')) {
+      posts.push(opts.body);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await settle(w);
+  w.stageFiles([new w.File(['a'], 'invoice.pdf', { type: 'application/pdf' }),
+                new w.File(['b'], 'pod.jpg', { type: 'image/jpeg' })]);
+  assert.equal(w.document.querySelectorAll('#cstaged .staged-row').length, 2);
+  await w.submitInvoice();
+  assert.equal(posts.length, 1, 'one request, not one per file');
+  const names = posts[0].getAll('file').map(f => f.name);
+  assert.deepEqual(names, ['invoice.pdf', 'pod.jpg']);
+  assert.equal(w.document.querySelectorAll('#cstaged .staged-row').length, 0, 'cleared after success');
+});
+
+test('a staged file can be removed before submit', async () => {
+  const dom = makeDom((u) => String(u).includes('/invoice-request/info') ? infoOk()
+    : Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await settle(w);
+  w.stageFiles([new w.File(['a'], 'a.pdf'), new w.File(['b'], 'b.pdf')]);
+  w.document.querySelector('[data-unstage="0"]').click();
+  const rows = w.document.querySelectorAll('#cstaged .staged-row');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /b\.pdf/);
+});

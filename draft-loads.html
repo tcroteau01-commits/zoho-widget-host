@@ -536,7 +536,10 @@ function reasonLabel(reasons){
   reasons = reasons||[];
   if (reasons.indexOf('customer')!==-1) return 'Customer';
   if (reasons.indexOf('carrier')!==-1) return 'Carrier';
-  if (reasons.indexOf('customer_docs')!==-1 || reasons.indexOf('carrier_docs')!==-1) return 'Docs needed';
+  var needCust=reasons.indexOf('customer_docs')!==-1, needCarr=reasons.indexOf('carrier_docs')!==-1;
+  if (needCust && needCarr) return 'Docs needed';
+  if (needCust) return 'Customer docs needed';
+  if (needCarr) return 'Carrier invoice needed';
   return 'Needs info';
 }
 
@@ -560,7 +563,7 @@ function renderQueue(drafts){
       '<td data-label="Cust. Rate" class="rt">'+money(d.customer_rate)+'</td>'+
       '<td data-label="Carr. Rate" class="rt">'+money(d.carrier_rate)+'</td>'+
       '<td data-label="Margin" class="marg">'+money(marginOf(d))+'</td>'+
-      '<td data-label="Docs"><span class="'+docCls+'">'+docCount+(docCount===2?' ✓':'')+'</span></td>'+
+      '<td data-label="Docs"><span class="'+docCls+'" title="'+docTitle(d)+'">'+docCount+(docCount===2?' ✓':'')+'</span></td>'+
       '<td data-label="Status">'+statusCellHtml(d)+'</td>'+
       '<td data-label="Actions"><div class="rowacts">'+
         '<button class="actbtn" data-edit-row="'+esc(d.id)+'" title="Open this load">Edit</button>'+
@@ -570,6 +573,9 @@ function renderQueue(drafts){
     wireRow(tr, d);
     body.appendChild(tr);
   });
+}
+function docTitle(d){
+  return 'Customer docs: '+(d.has_customer_docs?'on file':'missing')+' · Carrier invoice: '+(d.has_carrier_docs?'on file':'missing');
 }
 function srcClass(s){ return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
 

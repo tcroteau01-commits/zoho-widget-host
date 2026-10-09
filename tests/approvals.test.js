@@ -197,3 +197,20 @@ test("the profile's own styles reach the browser", () => {
   // misclick "Use this" against the wrong company.
   assert.ok(/injectStyles\s*\(\s*\)/.test(html));
 });
+
+// This file checks customer-approvals.html at SOURCE level (it reads the file
+// as text, `html` above); the rendered panel is checked by eye in Task 10.
+test('CREDFRAUD1: the staff section renders the fraud panel before the applicant detail', () => {
+  const fn = html.match(/function renderCreditAppStaffSection[\s\S]*?\n}\n/)[0];
+  const panel = fn.indexOf('OperFiCreditFraudPanel.render(payload.fraud)');
+  assert.ok(panel !== -1);
+  assert.ok(panel < fn.indexOf('Applicant Detail'));
+  assert.ok(fn.indexOf('window.OperFiCreditFraudPanel &&') !== -1, 'guarded when the script is missing');
+});
+
+test('CREDFRAUD1: review, clean and unknown badges have their own colours', () => {
+  ['review', 'clean', 'unknown'].forEach(function (lvl) {
+    assert.ok(html.includes('.ca-app-staff-risk-' + lvl), lvl);
+  });
+  assert.ok(html.includes('<script src="credit-app-fraud-panel.js"></script>'));
+});

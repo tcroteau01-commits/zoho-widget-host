@@ -940,3 +940,17 @@ test('an imported app says it came from the old Zoho Forms application', () => {
   const fresh = P.render(appWith({ slot: 'trade1', status: 'sent', response: null }));
   assert.ok(!fresh.includes('Imported from the old Zoho Forms'));
 });
+
+test('CREDFRAUD1: the credit application shows the fraud verdict line', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: {
+    status: 'ready_for_review', references: [], references_completed: 0, references_total: 0,
+    fraud: { level: 'high', reasons: ['Trade 1 and Trade 3 submitted from the same IP address.'] } } }));
+  assert.ok(html.includes('cp-fraud-high'));
+  assert.ok(html.includes('same IP address'));
+});
+
+test('CREDFRAUD1: no fraud object, no fraud line', () => {
+  const html = P.render(Object.assign({}, BASE, { credit_app: {
+    status: 'sent', references: [], references_completed: 0, references_total: 0 } }));
+  assert.ok(!html.includes('cp-fraud-'));
+});

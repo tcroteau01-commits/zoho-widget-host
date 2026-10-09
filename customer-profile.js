@@ -1082,6 +1082,15 @@ function renderCreditApp(p) {
             a.app_received_at ? esc(String(a.app_received_at).slice(0, 10))
                               : '<span class="muted">not yet</span>') +
     '</div>';
+  // CREDFRAUD1: the whole-application fraud verdict, staff page only.
+  if (a.fraud && a.fraud.level) {
+    var FRAUD_LABELS = { high: 'High fraud risk', review: 'Some fraud signals',
+                         clean: 'No fraud signals', unknown: 'Fraud check incomplete' };
+    head += '<div class="cp-fraud cp-fraud-' + esc(a.fraud.level) + '"><strong>' +
+      esc(FRAUD_LABELS[a.fraud.level] || a.fraud.level) + '</strong>' +
+      ((a.fraud.reasons || []).length ? '<ul>' + a.fraud.reasons.map(function (r) {
+        return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' : '') + '</div>';
+  }
   if (a.legacy) {
     // An imported Zoho Forms app. "Awaiting reply" there means the reference was
     // asked by Zoho when the app came in, which can be months ago.
@@ -1291,6 +1300,12 @@ var CP_CSS = '' +
     'gap:8px;margin-bottom:8px;}' +
   '.cp-pair > .panel-section{margin-bottom:0;}' +
   '.cp-refnote{margin-top:8px;font-size:11.5px;color:#b25e00;}' +
+  '.cp-fraud{margin:10px 0;padding:8px 12px;border-radius:8px;font-size:12.5px;}' +
+  '.cp-fraud ul{margin:4px 0 0 18px;padding:0;}' +
+  '.cp-fraud-high{background:#fdecea;color:#c62828;}' +
+  '.cp-fraud-review{background:#fff4e0;color:#b25e00;}' +
+  '.cp-fraud-clean{background:#e8f5e9;color:#2e7d32;}' +
+  '.cp-fraud-unknown{background:#eee;color:#666;}' +
   // Confirming a company searches, buys a report and re-runs the gate, so it is
   // SECONDS of server work behind one click. Without this the button looks dead.
   '.cp-spin{display:inline-block;width:11px;height:11px;margin-right:7px;' +

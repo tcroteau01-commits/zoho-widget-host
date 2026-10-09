@@ -36,6 +36,13 @@
     return m ? m[1] + '.' + m[2] + '.' + m[3] + '.0/24' : null;
   }
 
+  // Neighbours on one consumer ISP or mobile network are normal, so these are
+  // never highlighted on Network (same rule the server's grouping uses).
+  function residential(p) {
+    var t = String(p.connection_type || '').trim().toLowerCase();
+    return t === 'residential' || t === 'mobile';
+  }
+
   function render(fraud) {
     if (!fraud || !fraud.level) return '';
     var rep = fraud.repeats || {};
@@ -51,7 +58,7 @@
     var parties = fraud.parties || [];
     var netCount = {};
     parties.forEach(function (p) {
-      if (p.network) netCount[p.network] = (netCount[p.network] || 0) + 1;
+      if (p.network && !residential(p)) netCount[p.network] = (netCount[p.network] || 0) + 1;
     });
     if (parties.length) {
       html += '<div class="cfp-scroll"><table class="cfp-table"><thead><tr>' +
@@ -61,7 +68,7 @@
       parties.forEach(function (p) {
         var ip = p.ip_captured ? p.ip : 'not captured (before 10-09 fix)';
         var net = p.network ? p.network + (p.connection_type ? ', ' + p.connection_type : '') : '';
-        var netRepeat = !!p.network && (netCount[p.network] >= 2 ||
+        var netRepeat = !!p.network && !residential(p) && (netCount[p.network] >= 2 ||
           (!!p.ip_captured && has(rep.network, slash24(p.ip))));
         html += '<tr>' +
           '<td><strong>' + esc(p.label) + '</strong><div class="cfp-muted">' + esc(p.company) + '</div></td>' +
@@ -72,7 +79,9 @@
           cell(p.minutes_open_to_submit == null ? '' : String(p.minutes_open_to_submit), false) +
           cell(ip, !!p.ip_captured && has(rep.ip, p.ip)) +
           cell(net, netRepeat) +
-          cell(p.browser, has(rep.user_agent, p.user_agent)) +
+          // Never highlighted: identical Chrome UA strings are normal. The
+          // shared_user_agent reason still says it when it matters.
+          cell(p.browser, false) +
           cell(p.phone_carrier, has(rep.phone_carrier, p.phone_carrier)) +
           '</tr>';
       });

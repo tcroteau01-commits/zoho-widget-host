@@ -101,3 +101,24 @@ test('an uncaptured IP is never printed or highlighted', () => {
   assert.ok(!html.includes('9.9.9.9'));
   assert.ok(!/cfp-repeat[^>]*>not captured/.test(html));
 });
+
+test('the browser cell is never highlighted, even for an identical UA', () => {
+  const html = P.render({ level: 'review', reasons: [], repeats: { user_agent: ['UA'] }, parties: [
+    party({ browser: 'Chrome on Windows', user_agent: 'UA' }),
+    party({ label: 'Trade 2', ip: '2.2.2.2', browser: 'Chrome on Windows', user_agent: 'UA' })] });
+  assert.ok(html.includes('Chrome on Windows'));
+  assert.ok(!/class="cfp-repeat"[^>]*>Chrome on Windows/.test(html));
+});
+
+test('residential and mobile networks are never highlighted; a data center pair still is', () => {
+  const html = P.render({ level: 'review', reasons: [], repeats: { network: ['73.1.1.0/24'] }, parties: [
+    party({ label: 'Trade 1', ip: '73.1.1.5', network: 'Comcast (AS7922)', connection_type: 'Residential' }),
+    party({ label: 'Trade 2', ip: '73.1.1.9', network: 'Comcast (AS7922)', connection_type: 'residential' }),
+    party({ label: 'Trade 3', ip: '8.8.8.8', network: 'T-Mobile (AS21928)', connection_type: 'MOBILE' }),
+    party({ label: 'Bank', ip: '8.8.4.4', network: 'T-Mobile (AS21928)', connection_type: 'Mobile' }),
+    party({ label: 'Applicant', ip: '1.1.1.1', network: 'Micron Hosting (AS137409)', connection_type: 'Data Center' }),
+    party({ label: 'Trade 4', ip: '2.2.2.2', network: 'Micron Hosting (AS137409)', connection_type: 'Data Center' })] });
+  assert.ok(!/class="cfp-repeat"[^>]*>Comcast/.test(html));
+  assert.ok(!/class="cfp-repeat"[^>]*>T-Mobile/.test(html));
+  assert.strictEqual((html.match(/class="cfp-repeat"[^>]*>Micron Hosting/g) || []).length, 2);
+});

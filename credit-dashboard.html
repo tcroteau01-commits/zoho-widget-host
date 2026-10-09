@@ -558,7 +558,9 @@ function loadDashboard() {
   if (!brokerEmail) return;
   showStatus('Loading credit data…', 'loading');
   var url = BROKER_API_BASE + '/credit-dashboard?email=' + encodeURIComponent(brokerEmail);
-  fetch(url, { credentials: 'omit' })
+  // same-origin, not omit: the shell serves this widget on the API's origin, and
+  // EMAILAUTH1 refuses a bare ?email= without the session cookie (401 for every client).
+  fetch(url, { credentials: 'same-origin' })
     .then(function(r) {
       if (!r.ok) return r.json().then(function(j) { throw new Error(j.error || ('HTTP ' + r.status)); });
       return r.json();

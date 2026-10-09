@@ -30,6 +30,12 @@
 
   function has(list, v) { return !!v && (list || []).indexOf(v) !== -1; }
 
+  // "176.110.216.48" -> "176.110.216.0/24"; null for anything not plain IPv4.
+  function slash24(ip) {
+    var m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/.exec(String(ip || ''));
+    return m ? m[1] + '.' + m[2] + '.' + m[3] + '.0/24' : null;
+  }
+
   function render(fraud) {
     if (!fraud || !fraud.level) return '';
     var rep = fraud.repeats || {};
@@ -43,6 +49,10 @@
       }).join('') + '</ul>';
     }
     var parties = fraud.parties || [];
+    var netCount = {};
+    parties.forEach(function (p) {
+      if (p.network) netCount[p.network] = (netCount[p.network] || 0) + 1;
+    });
     if (parties.length) {
       html += '<div class="cfp-scroll"><table class="cfp-table"><thead><tr>' +
         '<th>Party</th><th>Email domain</th><th>Domain age</th><th>Opened</th><th>Submitted</th>' +
@@ -51,6 +61,8 @@
       parties.forEach(function (p) {
         var ip = p.ip_captured ? p.ip : 'not captured (before 10-09 fix)';
         var net = p.network ? p.network + (p.connection_type ? ', ' + p.connection_type : '') : '';
+        var netRepeat = !!p.network && (netCount[p.network] >= 2 ||
+          (!!p.ip_captured && has(rep.network, slash24(p.ip))));
         html += '<tr>' +
           '<td><strong>' + esc(p.label) + '</strong><div class="cfp-muted">' + esc(p.company) + '</div></td>' +
           cell(p.email_domain, false) +
@@ -58,8 +70,8 @@
           cell(time(p.opened_at), false) +
           cell(time(p.completed_at), false) +
           cell(p.minutes_open_to_submit == null ? '' : String(p.minutes_open_to_submit), false) +
-          cell(ip, has(rep.ip, p.ip)) +
-          cell(net, false) +
+          cell(ip, !!p.ip_captured && has(rep.ip, p.ip)) +
+          cell(net, netRepeat) +
           cell(p.browser, has(rep.user_agent, p.user_agent)) +
           cell(p.phone_carrier, has(rep.phone_carrier, p.phone_carrier)) +
           '</tr>';

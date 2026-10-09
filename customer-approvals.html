@@ -440,6 +440,9 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-app-staff-risk-high { background:#fdecea; color:#c62828; }
 .ca-app-staff-risk-medium { background:#fff4e0; color:#b25e00; }
 .ca-app-staff-risk-low { background:#e8f5e9; color:#2e7d32; }
+.ca-app-staff-risk-review { background:#fff4e0; color:#b25e00; }
+.ca-app-staff-risk-clean { background:#e8f5e9; color:#2e7d32; }
+.ca-app-staff-risk-unknown { background:#eee; color:#666; }
 .ca-app-staff-aging { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 8px; margin-top: 10px; }
 .ca-app-staff-aging-cell { background: #fff; border: 1px solid #f0efe9; border-radius: 6px; padding: 6px 8px; }
 @media (max-width: 640px) {
@@ -712,6 +715,7 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 <script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-docviewer.js?v=6"></script>
 <script src="customer-profile.js"></script>
+<script src="credit-app-fraud-panel.js"></script>
 <script>
 (function() {
 'use strict';
@@ -3572,6 +3576,12 @@ function renderCreditAppStaffSection(payload) {
   var addr = caAppFormatAddress(company.address);
 
   var html = '';
+  // CREDFRAUD1: whole-application fraud verdict first, so it is the first thing read.
+  if (window.OperFiCreditFraudPanel && payload.fraud) {
+    window.OperFiCreditFraudPanel.injectStyles();
+    html += '<div class="ca-app-doc-head">Fraud Check</div>' +
+            window.OperFiCreditFraudPanel.render(payload.fraud);
+  }
   html += '<div class="ca-app-doc-head">Applicant Detail</div>' +
     '<div class="field-grid">' +
       field('Legal Name', company.name) +

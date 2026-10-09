@@ -61,3 +61,43 @@ test('every level has a label and no dashes', () => {
     assert.ok(!/[–—]/.test(html));
   });
 });
+
+function party(over) {
+  return Object.assign({ slot: 'trade1', label: 'Trade 1', company: 'Co', email_domain: 'x.com',
+    ip: '1.1.1.1', ip_captured: true, network: '', connection_type: '', browser: '', user_agent: '',
+    phone_carrier: '' }, over);
+}
+
+test('the same network on two parties highlights both network cells', () => {
+  const html = P.render({ level: 'review', reasons: [], repeats: {}, parties: [
+    party({ label: 'Trade 1', ip: '1.1.1.1', network: 'Micron Hosting (AS137409)' }),
+    party({ label: 'Trade 3', ip: '2.2.2.2', network: 'Micron Hosting (AS137409)' })] });
+  assert.strictEqual((html.match(/class="cfp-repeat"[^>]*>Micron Hosting \(AS137409\)/g) || []).length, 2);
+});
+
+test('a /24 listed in repeats.network highlights the network cell', () => {
+  const html = P.render({ level: 'review', reasons: [], repeats: { network: ['176.110.216.0/24'] }, parties: [
+    party({ ip: '176.110.216.48', network: 'Some ISP' })] });
+  assert.ok(/class="cfp-repeat"[^>]*>Some ISP/.test(html));
+});
+
+test('a single party with a unique network is not highlighted', () => {
+  const html = P.render({ level: 'review', reasons: [], repeats: { network: [] }, parties: [
+    party({ network: 'Unique ISP' }),
+    party({ label: 'Trade 2', ip: '3.3.3.3', network: 'Other ISP' })] });
+  assert.ok(!/class="cfp-repeat"[^>]*>(Unique|Other) ISP/.test(html));
+});
+
+test('level and strength are escaped in attribute context', () => {
+  const html = P.render({ level: 'high" onmouseover="x', reasons: [{ strength: '<b>', text: 't' }],
+    parties: [], repeats: {} });
+  assert.ok(!html.includes('" onmouseover="'));
+  assert.ok(!html.includes('<b>'));
+});
+
+test('an uncaptured IP is never printed or highlighted', () => {
+  const html = P.render({ level: 'review', reasons: [], repeats: { ip: ['9.9.9.9'] }, parties: [
+    party({ ip: '9.9.9.9', ip_captured: false })] });
+  assert.ok(!html.includes('9.9.9.9'));
+  assert.ok(!/cfp-repeat[^>]*>not captured/.test(html));
+});

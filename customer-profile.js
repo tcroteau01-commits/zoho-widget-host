@@ -1281,7 +1281,8 @@ var CP_CSS = '' +
   '.cp-cs-manual-row .cp-note-input{flex:1;min-width:0;}' +
   '.cp-cs-manual-err{color:#b42318;}' +
   '.cp-edit-open-row{margin:8px 0 2px;}' +
-  '.cp-edit{margin:10px 0 4px;padding:12px 14px;border:1px solid #e4e1d8;border-radius:8px;background:#fbfaf6;}' +
+  '.cp-edit{margin:10px 0 4px;padding:12px 14px;border:1px solid #e4e1d8;border-radius:8px;background:#fbfaf6;color:#1f1f1f;}' +
+  '.cp-edit .muted{color:#6b6b6b;}' +
   '.cp-edit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 12px;}' +
   '.cp-edit-field{display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6b6b6b;}' +
   '.cp-edit-field input{width:100%;box-sizing:border-box;}' +

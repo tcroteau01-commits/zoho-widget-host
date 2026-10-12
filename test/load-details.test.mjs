@@ -408,7 +408,9 @@ test('cannot reach review step until customer+carrier fields AND docs valid', ()
   w.setField('customer-reference', 'PO-1');
   w.setField('customer-rate', '2500');
   w.fileStore = { cust_docs: [], carrier_docs: [] };
-  assert.strictEqual(w.canGoTo('carrier'), false, 'customer fields ok but no customer doc -> cannot advance');
+  // DRAFTDUP1: steps 1 and 2 are open in either order; only Review is gated.
+  assert.strictEqual(w.canGoTo('carrier'), true, 'carrier step is reachable before the customer step is done');
+  assert.strictEqual(w.canGoTo('review'), false, 'customer fields ok but no customer doc -> cannot reach review');
   w.fileStore.cust_docs = [_doc(w, 'a.pdf')];
   assert.strictEqual(w.canGoTo('carrier'), true);
   assert.strictEqual(w.canGoTo('review'), false);
@@ -992,8 +994,8 @@ test('trying to advance without the required doc is blocked and flags the dropzo
   const w = makeB2Dom(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })).window;
   _fillCustomer(w);
   w.fileStore = { cust_docs: [], carrier_docs: [] };
-  w.goToStep('carrier');
-  assert.ok(!w.document.getElementById('card-carrier').classList.contains('active'), 'did not advance to carrier');
+  w.goToStep('review');  // DRAFTDUP1: carrier is open; review is the gated step
+  assert.ok(!w.document.getElementById('card-review').classList.contains('active'), 'did not advance to review');
   assert.ok(w.document.getElementById('cust_docs_area').classList.contains('invalid'), 'dropzone flagged red');
   assert.ok(w.document.getElementById('customer-error').classList.contains('show'), 'required message shown');
 });

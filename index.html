@@ -309,6 +309,10 @@ textarea { resize: vertical; min-height: 90px; }
 .post-submit-banner { padding: 12px 16px; border-radius: 8px; margin-bottom: 14px; font-weight: 600; }
 .post-submit-banner.ok { background: #eaf6ec; color: #2e7d32; border: 1px solid #b6dcbd; }
 .post-submit-banner.warn { background: #fff4e5; color: #a15c00; border: 1px solid #f0d2a0; }
+.draft-summary { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 13px;
+  background: #fff; border: 1px solid #e6e3da; color: #444; }
+.draft-summary a { color: #1565c0; font-weight: 600; }
+.draft-summary .ok { color: #2e7d32; }
 .miniprog { font-size: 11px; color: #888; text-align: center; margin-bottom: 12px; }
 .miniprog b { color: #e8a020; }
 .credit-banner {
@@ -422,6 +426,7 @@ textarea { resize: vertical; min-height: 90px; }
 
   <div id="auth-banner" class="auth-banner"></div>
   <div id="post-submit-banner" class="post-submit-banner" style="display:none"></div>
+  <div id="draft-summary" class="draft-summary" hidden></div>
 
   <!-- Horizontal stepper -->
   <div class="stepper" id="stepper">
@@ -1183,12 +1188,67 @@ function refreshValidity() {
   if (railNote) {
     railNote.textContent = allValid ? 'Ready to submit' : 'Finish all 3 steps to enable submit';
   }
+
+  _renderStepStatus(custDone, carrDone);
 }
 
-// Returns true if navigation to the given step is permitted.
+// DRAFTDUP1: what each step still needs, in the stepper and (for a reopened draft)
+// one summary line above it, so a broker can see a carrier-submitted draft is
+// half done without clicking through.
+var _FIELD_SHORT = {
+  'customer-select': 'customer', 'customer-reference': 'ref #', 'customer-rate': 'rate',
+  'carrier-select': 'carrier', 'carrier-rate': 'rate',
+  'carrier-factoring-invoice': 'invoice #', 'rate-con': 'rate con #'
+};
+function _stepNeeds(step) {
+  var needs = _STEP_FIELDS[step].filter(function (id) { return !_fieldFilled(id); })
+    .map(function (id) { return _FIELD_SHORT[id]; });
+  if (!_docSlotSatisfied(step)) needs.push('docs');
+  return needs;
+}
+function _stepHasData(step) {
+  return _STEP_FIELDS[step].some(_fieldFilled) || _docSlotSatisfied(step);
+}
+function _renderStepStatus(custDone, carrDone) {
+  var subs = { customer: custDone ? 'Complete' : 'Needs ' + _stepNeeds('customer').join(', '),
+               carrier: carrDone ? 'Complete' : 'Needs ' + _stepNeeds('carrier').join(', '),
+               review: (custDone && carrDone) ? 'Ready to submit' : 'Finish steps 1 and 2' };
+  Object.keys(subs).forEach(function (s) {
+    var el = document.getElementById('step-' + s + '-sub');
+    if (el) { el.textContent = subs[s]; el.title = subs[s]; }
+  });
+
+  var box = document.getElementById('draft-summary');
+  if (!box) return;
+  if (!currentDraftId) { box.hidden = true; box.innerHTML = ''; return; }
+  var side = function (step, label, done) {
+    if (done) return '<span class="ok">' + label + ' side complete ✓</span>';
+    return label + ' side needs ' + esc(_stepNeeds(step).join(', ')) +
+      ' · <a href="#" data-goto="' + step + '">Go to ' + label + '</a>';
+  };
+  var carrNote = docsOnFile.carrier ? 'The carrier invoice is on file. ' : '';
+  box.innerHTML = '<strong>Draft:</strong> ' + carrNote +
+    side('customer', 'Customer', custDone) + ' &nbsp;|&nbsp; ' + side('carrier', 'Carrier', carrDone);
+  box.querySelectorAll('[data-goto]').forEach(function (a) {
+    a.addEventListener('click', function (e) { e.preventDefault(); goToStep(a.getAttribute('data-goto')); });
+  });
+  box.hidden = false;
+}
+
+// The step a reopened draft opens on: where its work is, not always step 1. A
+// carrier's invoice-request upload has only the carrier side filled in.
+function _draftLandingStep() {
+  var custDone = stepValid('customer'), carrDone = stepValid('carrier');
+  if (custDone && carrDone) return 'review';
+  if (custDone) return 'carrier';
+  if (!_stepHasData('customer') && _stepHasData('carrier')) return 'carrier';
+  return 'customer';
+}
+
+// Returns true if navigation to the given step is permitted. Steps 1 and 2 are
+// open in either order (DRAFTDUP1); only Review needs both complete.
 function canGoTo(step) {
-  if (step === 'customer') return true;
-  if (step === 'carrier') return stepValid('customer');
+  if (step === 'customer' || step === 'carrier') return true;
   if (step === 'review') return stepValid('customer') && stepValid('carrier');
   return false;
 }
@@ -1759,6 +1819,9 @@ function submitLoad() {
   return _mergedPdfs().then(function (pdfs) {
     setStatus('Submitting load…');
     var payload = Object.assign({ email: brokerEmail }, _collectFields());
+    // DRAFTDUP1: a reopened draft is submitted IN PLACE. Without this the backend
+    // creates a second record and the draft (and any doc on it) is left behind.
+    if (currentDraftId) payload.draft_id = String(currentDraftId);
     return fetch(BROKER_API_BASE + '/funding-submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload) })
@@ -1910,6 +1973,9 @@ function prefillFromDraft(draft) {
   // Seed the doc-on-file indicator from the draft's has_*_docs flags.
   _setDocOnFile('customer', !!draft.has_customer_docs);
   _setDocOnFile('carrier', !!draft.has_carrier_docs);
+
+  // DRAFTDUP1: open on the step where this draft's work is.
+  gotoStep(_draftLandingStep());
 }
 
 // Show a clear warning when a reopened draft references a customer that isn't in

@@ -118,3 +118,10 @@ test('a successful save re-reads the profile', async () => {
   const reads = calls.filter(function(c) { return /\/customer-profile\/4455$/.test(c.url); });
   assert.ok(reads.length >= 1);
 });
+
+test('the form sets its own text colour, not the dark header\'s', () => {
+  // The editor sits inside the dark header but has a light background; the
+  // inherited light text made the "logged in Notes" line unreadable.
+  assert.match(profileJs, /\.cp-edit\{[^}]*color:#1f1f1f/);
+  assert.match(profileJs, /\.cp-edit \.muted\{color:#6b6b6b;\}/);
+});

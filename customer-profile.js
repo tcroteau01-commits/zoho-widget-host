@@ -122,6 +122,66 @@ function isDecided(status) {
   return !!s && s !== 'awaiting credit decision';
 }
 
+// CUSTEDIT1 (Tom, 2026-10-12): "OperFi internally should be able to make edits
+// on the main POC, Billing POC, or anything the client submitted on their credit
+// check." Rendered closed; the host wires open/save and sends only what changed
+// (data-orig is the value Creator held when the page was drawn). Type, MC and DOT
+// are not here: they change through Switch to Freight Broker, which runs FMCSA.
+function renderEditForm(p) {
+  var c = p.contacts || {};
+  var s = p.submitted || {};
+  var a = s.address_parts || {};
+  var box = function (label, key, value, wide) {
+    var v = value == null ? '' : String(value);
+    return '<label class="cp-edit-field' + (wide ? ' cp-edit-wide' : '') + '"><span>' +
+      esc(label) + '</span><input type="text" class="dec-input" data-edit-key="' + esc(key) +
+      '" data-orig="' + esc(v) + '" value="' + esc(v) + '"></label>';
+  };
+  var addr = function (label, part, value) {
+    var v = value == null ? '' : String(value);
+    return '<label class="cp-edit-field"><span>' + esc(label) + '</span>' +
+      '<input type="text" class="dec-input" data-edit-addr="' + esc(part) +
+      '" data-orig="' + esc(v) + '" value="' + esc(v) + '"></label>';
+  };
+  return '' +
+    '<div class="cp-edit" id="cp-edit" hidden>' +
+      '<div class="cp-subhead">Company</div>' +
+      '<div class="cp-edit-grid">' +
+        box('Company Name', 'Customer_Company_Name', s.company_name, true) +
+        addr('Address', 'address_line_1', a.line1) +
+        addr('Address Line 2', 'address_line_2', a.line2) +
+        addr('City', 'district_city', a.city) +
+        addr('State', 'state_province', a.state) +
+        addr('Postal Code', 'postal_Code', a.postal) +
+        box('Company Phone', 'Phone_Number', c.company_phone) +
+        box('Website', 'Company_Website', s.website) +
+        box('LinkedIn', 'LinkedIn_Profile', s.linkedin) +
+        box('Other Social', 'Other_Social_Media_Links', s.social) +
+      '</div>' +
+      '<div class="cp-subhead">Main Contact</div>' +
+      '<div class="cp-edit-grid">' +
+        box('POC', 'Customer_Point_of_Contact', c.poc) +
+        box('POC Email', 'Email', c.email) +
+        box('POC Phone', 'Phone_Number1', c.poc_phone) +
+      '</div>' +
+      '<div class="cp-subhead">Billing Contact</div>' +
+      '<div class="cp-edit-grid">' +
+        box('Billing POC', 'Billing_Point_of_Contact', c.billing_poc) +
+        box('Billing Email', 'Billing_Email', c.billing_email) +
+        box('Billing Phone', 'Billing_AP_Contact_Number', c.billing_phone) +
+      '</div>' +
+      '<div class="cp-subhead">Broker Comments</div>' +
+      '<textarea class="dec-input cp-edit-comments" rows="2" data-edit-key="Comments" data-orig="' +
+        esc(s.comments || '') + '">' + esc(s.comments || '') + '</textarea>' +
+      '<div class="cp-edit-actions">' +
+        '<button type="button" class="btn primary" data-edit-save="1">Save changes</button>' +
+        '<button type="button" class="btn" data-edit-cancel="1">Cancel</button>' +
+        '<span class="muted">Every change is logged in Notes with your name.</span>' +
+        '<span class="cp-edit-msg" id="cp-edit-msg"></span>' +
+      '</div>' +
+    '</div>';
+}
+
 function renderHeader(p) {
   var engine = p.engine;
   // 🚨 ONE status in the header. Tom, seeing APPROVED and REVIEW REQUIRED side
@@ -212,7 +272,11 @@ function renderHeader(p) {
       field('POC Email', c.email ? esc(c.email) : emptyDash()) +
       field('Billing POC', c.billing_poc ? esc(c.billing_poc) : emptyDash()) +
       field('Billing Email', c.billing_email ? esc(c.billing_email) : emptyDash()) +
-    '</div>';
+    '</div>' +
+    (p.can_act
+      ? '<div class="cp-edit-open-row"><button type="button" class="btn" data-edit-open="1">' +
+        'Edit details</button></div>' + renderEditForm(p)
+      : '');
 
   return '' +
     '<div class="cp-header">' +
@@ -1216,6 +1280,15 @@ var CP_CSS = '' +
   '.cp-cs-manual-row{display:flex;gap:8px;align-items:center;margin-top:4px;}' +
   '.cp-cs-manual-row .cp-note-input{flex:1;min-width:0;}' +
   '.cp-cs-manual-err{color:#b42318;}' +
+  '.cp-edit-open-row{margin:8px 0 2px;}' +
+  '.cp-edit{margin:10px 0 4px;padding:12px 14px;border:1px solid #e4e1d8;border-radius:8px;background:#fbfaf6;}' +
+  '.cp-edit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 12px;}' +
+  '.cp-edit-field{display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6b6b6b;}' +
+  '.cp-edit-field input{width:100%;box-sizing:border-box;}' +
+  '.cp-edit-wide{grid-column:1/-1;}' +
+  '.cp-edit-comments{width:100%;box-sizing:border-box;}' +
+  '.cp-edit-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px;}' +
+  '.cp-edit-msg{color:#b42318;}' +
   '.cp-report-about{font-size:13px;margin-bottom:10px;}' +
   '.cp-entry{padding:9px 0;border-bottom:1px solid #f1f5f9;}' +
   '.cp-entry:last-child{border-bottom:none;}' +

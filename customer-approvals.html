@@ -1885,6 +1885,69 @@ function renderProfile(rec, payload) {
         });
     });
   });
+  // CUSTEDIT1: credit corrects what the client submitted. Only fields that differ
+  // from what the page was drawn with are sent; the server re-reads Creator,
+  // diffs again, writes, and logs every change in Notes under the session's name.
+  var editForm = document.getElementById('cp-edit');
+  var editOpen = root.querySelector('[data-edit-open]');
+  if (editForm && editOpen) {
+    editOpen.addEventListener('click', function() {
+      editForm.hidden = false; editOpen.hidden = true;
+      var first = editForm.querySelector('input'); if (first) first.focus();
+    });
+    editForm.querySelector('[data-edit-cancel]').addEventListener('click', function() {
+      editForm.hidden = true; editOpen.hidden = false;
+    });
+    var editSave = editForm.querySelector('[data-edit-save]');
+    var editMsg = document.getElementById('cp-edit-msg');
+    editSave.addEventListener('click', function() {
+      var fields = {};
+      editForm.querySelectorAll('[data-edit-key]').forEach(function(el) {
+        var v = String(el.value || '').trim();
+        if (v !== el.getAttribute('data-orig')) fields[el.getAttribute('data-edit-key')] = v;
+      });
+      // An address is one Creator field: any part changing sends all of it,
+      // in the shape Creator writes (postal_Code, capital C).
+      var addrEls = editForm.querySelectorAll('[data-edit-addr]');
+      var addrChanged = false, address = {};
+      addrEls.forEach(function(el) {
+        var v = String(el.value || '').trim();
+        address[el.getAttribute('data-edit-addr')] = v;
+        if (v !== el.getAttribute('data-orig')) addrChanged = true;
+      });
+      if (addrChanged) fields.Address = address;
+      if (!Object.keys(fields).length) { editMsg.textContent = 'Nothing changed.'; return; }
+      editMsg.textContent = '';
+      editSave.disabled = true; editSave.textContent = 'Saving…';
+      fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/edit', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: fields })
+      }).then(function(res) {
+        return res.json().catch(function() { return {}; })
+          .then(function(j) { return { ok: res.ok && j.ok !== false, j: j || {} }; });
+      }).then(function(r) {
+        if (!r.ok) {
+          // 🚨 Keep the form open with what was typed: Creator's reason ("Enter a
+          // value for Billing Number") is only useful next to the fields it names.
+          editSave.disabled = false; editSave.textContent = 'Save changes';
+          editMsg.textContent = 'Not saved: ' + (r.j.error || 'try again') + '.';
+          return;
+        }
+        // The list row behind the profile holds the same record; without this the
+        // billing warning on it outlives the fix until the next full reload.
+        Object.keys(fields).forEach(function(k) { if (k !== 'Address') rec[k] = fields[k]; });
+        if (typeof renderList === 'function') { try { renderList(); } catch (e) {} }
+        showToast('Saved');
+        fetchProfile(rec);
+      }).catch(function(err) {
+        console.error('[CustomerApprovals] profile edit failed', err);
+        editSave.disabled = false; editSave.textContent = 'Save changes';
+        editMsg.textContent = 'Not saved. Check your connection and try again.';
+      });
+    });
+  }
   root.querySelectorAll('[data-nudge]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var undo = setProfileBusy(btn, 'Sending…');

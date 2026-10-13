@@ -401,7 +401,8 @@ function bootApp() {
 
 function bindGlobalUI() {
   document.getElementById('search-input').addEventListener('input', function(e) {
-    currentSearch = e.target.value.toLowerCase().trim();
+    // An all-digit query drops leading zeros: FMCSA pads MC/DOT numbers (04556426).
+    currentSearch = e.target.value.toLowerCase().trim().replace(/^0+(?=\d+$)/, '');
     applyFilters();
   });
   document.getElementById('sort-select').addEventListener('change', function(e) {

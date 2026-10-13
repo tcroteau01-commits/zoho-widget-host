@@ -889,7 +889,8 @@ function cpCarrierStatusSuffix(c) {
 }
 
 function cpFilterCarriers(q) {
-  q = String(q || '').trim().toLowerCase();
+  // An all-digit query drops leading zeros: FMCSA pads MC/DOT numbers (04556426).
+  q = String(q || '').trim().toLowerCase().replace(/^0+(?=\d+$)/, '');
   if (!q) return _cpCarriers;
   return _cpCarriers.filter(function (c) {
     return String(c.carrier_name || '').toLowerCase().indexOf(q) !== -1 ||

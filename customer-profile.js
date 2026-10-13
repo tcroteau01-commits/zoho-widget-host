@@ -122,6 +122,111 @@ function isDecided(status) {
   return !!s && s !== 'awaiting credit decision';
 }
 
+// ---- BOOSTHIST1: what happened to each credit boost ------------------------
+// Tom, 2026-10-13: "I don't see anything in the customer profile that makes it
+// clear for our team that we are denying the credit boost but keeping their
+// existing credit limit in place." A declined boost puts the customer back to
+// Approved at the SAME limit, so the status pill alone reads exactly like a
+// customer who never asked for more. Each row says what was asked and what we did.
+// boostSentence is shared with the detail pane (customer-approvals.html), which
+// wraps it in its own styling: one sentence, two places.
+
+// A note's time ends in Z and is shown in the viewer's zone. Creator's Added_Time
+// has no zone, so its date is read straight off the string, never shifted.
+function boostDay(iso) {
+  if (!iso) { return ''; }
+  var s = String(iso);
+  var d = /Z$/.test(s) ? new Date(s) : null;
+  var y, m, day;
+  if (d && !isNaN(d.getTime())) {
+    y = d.getFullYear(); m = d.getMonth(); day = d.getDate();
+  } else {
+    var parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (!parts) { return ''; }
+    y = +parts[1]; m = +parts[2] - 1; day = +parts[3];
+  }
+  return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct',
+          'Nov', 'Dec'][m] + ' ' + day + ', ' + y;
+}
+
+var BOOST_HEADLINES = {
+  declined: 'Credit boost declined',
+  approved: 'Credit boost approved',
+  open: 'Credit boost requested, awaiting our decision',
+  no_record: 'Credit boost requested, no decision recorded'
+};
+
+// {headline, detail, reason} as ESCAPED html. `showWho` is false for a broker.
+function boostSentence(b, showWho) {
+  var asked = '';
+  if (b.requested_at || b.band || b.amount) {
+    asked = 'Requested' + (b.requested_at ? ' ' + boostDay(b.requested_at) : '') +
+      (b.band ? ' &middot; ' + esc(b.band) : '') +
+      (b.amount && b.band !== 'Up to $50,000' ? ' (' + esc(money(b.amount)) + ' asked)' : '');
+  }
+  var did = '';
+  if (b.state === 'declined') {
+    // 🚨 The half that matters: the limit they already had still stands.
+    did = 'Existing limit of <strong>' + esc(money(b.limit)) + '</strong> kept';
+  } else if (b.state === 'approved') {
+    did = 'Limit raised from ' + esc(money(b.previous_limit)) + ' to <strong>' +
+          esc(money(b.limit)) + '</strong>';
+  }
+  if (did && b.decided_at) { did += ' &middot; ' + boostDay(b.decided_at); }
+  if (did && showWho && b.decided_by) { did += ' by ' + esc(b.decided_by); }
+  return {
+    headline: esc(BOOST_HEADLINES[b.state] || 'Credit boost'),
+    detail: [did, asked].filter(Boolean).join(' &middot; '),
+    reason: b.reason ? esc(b.reason) : ''
+  };
+}
+
+function boostTone(state) {
+  return state === 'declined' ? 'no' : (state === 'approved' ? 'yes' : 'wait');
+}
+
+// The newest boost leads; older ones follow, smaller. Empty when there are none.
+function renderBoosts(p) {
+  var rows = p.boosts || [];
+  if (!rows.length) { return ''; }
+  return '<div class="cp-boosts">' + rows.map(function (b, i) {
+    var t = boostSentence(b, true);
+    return '<div class="cp-boost cp-boost-' + boostTone(b.state) + (i ? ' cp-boost-older' : '') + '">' +
+      '<div class="cp-boost-head">' + t.headline + '</div>' +
+      (t.detail ? '<div class="cp-boost-detail">' + t.detail + '</div>' : '') +
+      (t.reason ? '<div class="cp-boost-reason">&ldquo;' + t.reason + '&rdquo;</div>' : '') +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+// While a boost is open, the decision a person makes is about the BOOST, not the
+// customer: either way the customer stays Approved (BOOSTDEC1). The generic
+// Approved/Denied row below still exists for refusing the customer outright.
+function renderBoostDecide(p) {
+  if (!p.can_act || String(p.status || '').trim().toLowerCase() !== 'credit boost requested') {
+    return '';
+  }
+  var cur = p.submitted && p.submitted.credit_limit;
+  var hasCur = cur !== null && cur !== undefined && cur !== '';
+  return '<div class="cp-boost-decide">' +
+    '<div class="cp-boost-decide-title">Decide the boost. Either way the customer stays ' +
+      'approved' + (hasCur ? ' (now ' + esc(money(cur)) + ')' : '') +
+      ' and the client is emailed.</div>' +
+    '<div class="cp-decision-row">' +
+      '<input type="number" class="dec-input cp-limit-input" id="cp-boost-limit" min="0" step="1" ' +
+        'placeholder="New limit (to approve)">' +
+      '<button type="button" class="btn cp-decide cp-decide-approve" data-boost="approve">' +
+        'Approve boost</button>' +
+      '<button type="button" class="btn cp-decide" data-boost="decline">' +
+        'Decline boost, keep limit</button>' +
+    '</div>' +
+    '<textarea class="dec-input cp-decision-notes" id="cp-boost-reason" rows="2" ' +
+      'placeholder="Note to the client (required to decline). It goes in their email."></textarea>' +
+    '<div class="cp-boost-msg" id="cp-boost-msg"></div>' +
+    '<div class="muted cp-boost-or">To refuse the customer outright, use Denied below.</div>' +
+  '</div>';
+}
+
 // CUSTEDIT1 (Tom, 2026-10-12): "OperFi internally should be able to make edits
 // on the main POC, Billing POC, or anything the client submitted on their credit
 // check." Rendered closed; the host wires open/save and sends only what changed
@@ -303,7 +408,9 @@ function renderHeader(p) {
           verdictHtml +
         '</div>' +
       '</div>' +
+      renderBoosts(p) +
       contactsHtml +
+      renderBoostDecide(p) +
       decisionHtml +
     '</div>';
 }
@@ -1273,6 +1380,20 @@ var CP_CSS = '' +
   '.cp-decided-yes{background:rgba(21,128,61,.18);color:#bbf7d0;}' +
   '.cp-decided-no{background:rgba(185,28,28,.22);color:#fecaca;}' +
   '.cp-decided-wait{background:rgba(180,83,9,.25);color:#fed7aa;}' +
+  '.cp-boosts{display:flex;flex-direction:column;gap:6px;margin:12px 0 4px;}' +
+  '.cp-boost{padding:9px 12px;border-radius:8px;font-size:12px;line-height:1.45;}' +
+  '.cp-boost-head{font-size:13px;font-weight:700;}' +
+  '.cp-boost-reason{margin-top:3px;font-style:italic;}' +
+  '.cp-boost-no{background:rgba(185,28,28,.22);color:#fecaca;}' +
+  '.cp-boost-yes{background:rgba(21,128,61,.18);color:#bbf7d0;}' +
+  '.cp-boost-wait{background:rgba(180,83,9,.25);color:#fed7aa;}' +
+  '.cp-boost-older{opacity:.75;padding:6px 12px;}' +
+  '.cp-boost-older .cp-boost-head{font-size:12px;}' +
+  '.cp-boost strong{color:#fff;}' +
+  '.cp-boost-decide{margin:12px 0;padding:10px 12px;border:1px solid rgba(255,255,255,.25);border-radius:8px;}' +
+  '.cp-boost-decide-title{font-size:12px;font-weight:700;margin-bottom:8px;}' +
+  '.cp-boost-msg{font-size:12px;margin-top:6px;color:#fecaca;}' +
+  '.cp-boost-or{font-size:11px;margin-top:4px;}' +
   '.cp-decided-sent{background:rgba(29,78,216,.28);color:#bfdbfe;}' +
   // Internal audit. One row per thing that happened, so a reader scans down a
   // column of actors rather than through a paragraph.
@@ -1472,5 +1593,5 @@ function mount(root, payload, handlers) {
   });
 }
 
-if (typeof module !== 'undefined' && module.exports) { module.exports = { render: render, mount: mount, injectStyles: injectStyles, esc: esc, money: money, renderCoBroker: renderCoBroker }; }
-if (typeof window !== 'undefined') { window.OperFiCustomerProfile = { render: render, mount: mount, injectStyles: injectStyles }; }
+if (typeof module !== 'undefined' && module.exports) { module.exports = { render: render, mount: mount, injectStyles: injectStyles, esc: esc, money: money, renderCoBroker: renderCoBroker, boostSentence: boostSentence, boostTone: boostTone }; }
+if (typeof window !== 'undefined') { window.OperFiCustomerProfile = { render: render, mount: mount, injectStyles: injectStyles, boostSentence: boostSentence, boostTone: boostTone }; }

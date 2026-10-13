@@ -102,3 +102,61 @@ test('XSS: a filename with quotes renders safely and still opens', () => {
   const opened = w.OperFiDocViewer._calls.find(c => c.method === 'open');
   assert.ok(opened, 'opens despite special chars in filename');
 });
+
+// ── BOOSTDOCS2: credit boost files in the pane ────────────────────────────────
+function bootPane(own) {
+  const w = boot();
+  const d = w.document;
+  const holder = d.createElement('div');
+  holder.innerHTML = '<div id="ca-docs-list">' + w.docsListHtml(own || [], '4455') + '</div>' +
+                     '<div id="ca-boost-docs"></div>';
+  d.body.appendChild(holder);
+  w.wireDocOpen(holder);
+  return { w, holder };
+}
+const BOOST = [{ field: 'boost_agreement', idx: 0, label: 'Credit boost: customer agreement', ext: 'PDF' },
+               { field: 'boost_coi', idx: 0, label: 'Credit boost: certificate of insurance', ext: 'PDF' }];
+
+test('boost files replace the empty state and open /credit-doc by slot', () => {
+  const { w, holder } = bootPane([]);
+  w.renderBoostDocs('4455', BOOST);
+  assert.ok(!/No supporting documents uploaded/.test(holder.innerHTML));
+  const btns = holder.querySelectorAll('#ca-boost-docs button.doc-open');
+  assert.strictEqual(btns.length, 2);
+  btns[1].click();
+  const opened = w.OperFiDocViewer._calls.find(c => c.method === 'open');
+  assert.match(opened.opts.url, /record_id=4455&idx=0&field=boost_coi$/);
+  assert.strictEqual(opened.opts.mime, 'application/pdf');
+  assert.match(opened.opts.filename, /certificate of insurance/);
+});
+
+test('boost files sit under the submission files, which keep opening without a field', () => {
+  const { w, holder } = bootPane([]);
+  const files = w.collectFiles(['/api/.../download?filepath=111_w9.pdf']);
+  holder.querySelector('#ca-docs-list').innerHTML = w.docsListHtml(files, '4455');
+  w.renderBoostDocs('4455', BOOST);
+  assert.strictEqual(holder.querySelectorAll('button.doc-open').length, 3);
+  holder.querySelector('#ca-docs-list button.doc-open').click();
+  const opened = w.OperFiDocViewer._calls.find(c => c.method === 'open');
+  assert.ok(!/field=/.test(opened.opts.url));
+});
+
+test('no boost files leaves the empty state alone', () => {
+  const { w, holder } = bootPane([]);
+  w.renderBoostDocs('4455', []);
+  assert.match(holder.innerHTML, /No supporting documents uploaded/);
+});
+
+test('a slow boost response for the previous record never lands on the new one', async () => {
+  const { w, holder } = bootPane([]);
+  const pending = [];
+  w.fetch = (url) => new Promise(res => pending.push({ url, res }));
+  w.fetchBoostDocs({ ID: '1111' });
+  w.fetchBoostDocs({ ID: '4455' });
+  const ok = files => ({ ok: true, json: () => Promise.resolve({ files }) });
+  pending[1].res(ok([]));
+  pending[0].res(ok(BOOST));
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(holder.querySelectorAll('#ca-boost-docs button').length, 0);
+  assert.match(pending[1].url, /\/credit-doc\/boost-files\?email=b%40o\.com&record_id=4455$/);
+});

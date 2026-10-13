@@ -1684,7 +1684,8 @@ function renderPanel() {
       // Supporting Documents
       '<div class="panel-section">' +
         '<div class="panel-section-title">Supporting Documents</div>' +
-        docsListHtml(collectFiles(r.Additional_Supporting_Documents), r.ID) +
+        '<div id="ca-docs-list">' + docsListHtml(collectFiles(r.Additional_Supporting_Documents), r.ID) + '</div>' +
+        '<div id="ca-boost-docs"></div>' +
       '</div>' +
 
     '</div>' +
@@ -1736,6 +1737,7 @@ function renderPanel() {
   renderCustomerEventsSection(r);
   wireBillingEdit(r);
   wireDocOpen(panel);   // delegated: open Supporting Documents in the shared viewer
+  fetchBoostDocs(r);    // BOOSTDOCS2: the BSA/COI sent with a credit boost
   wireCreditAppRecovery(panel);   // delegated: staff Correct address / Waive
   wireCreditAppSupplement(panel); // delegated: ask customer for more references
 }
@@ -4203,8 +4205,10 @@ function docsListHtml(files, recId) {
   var html = '<div class="docs-list">';
   files.forEach(function(f, i) {
     var ext = (f.name.split('.').pop() || '').toUpperCase().slice(0, 4);
+    var idx = (f.idx !== undefined) ? f.idx : i;
     html += '<button type="button" class="doc-item doc-open" ' +
-      'data-recid="' + esc(String(recId || '')) + '" data-idx="' + i + '" ' +
+      'data-recid="' + esc(String(recId || '')) + '" data-idx="' + esc(String(idx)) + '" ' +
+      (f.field ? 'data-field="' + esc(f.field) + '" ' : '') +
       'data-filename="' + esc(f.name) + '">' +
       '<div class="doc-icon">' + esc(ext || 'FILE') + '</div>' +
       '<div class="doc-info">' +
@@ -4225,14 +4229,15 @@ function wireDocOpen(root) {
   root.addEventListener('click', function(e) {
     var btn = e.target && e.target.closest ? e.target.closest('.doc-open') : null;
     if (!btn || !root.contains(btn)) return;
-    openCreditDoc(btn.dataset.recid, btn.dataset.idx, btn.dataset.filename);
+    openCreditDoc(btn.dataset.recid, btn.dataset.idx, btn.dataset.filename, btn.dataset.field);
   });
 }
 
-function creditDocUrl(recId, idx) {
+function creditDocUrl(recId, idx, field) {
   var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
   return BROKER_API_BASE + '/credit-doc?email=' + encodeURIComponent(email) +
-    '&record_id=' + encodeURIComponent(recId) + '&idx=' + encodeURIComponent(idx);
+    '&record_id=' + encodeURIComponent(recId) + '&idx=' + encodeURIComponent(idx) +
+    (field ? '&field=' + encodeURIComponent(field) : '');
 }
 
 function creditDocMime(name) {
@@ -4245,13 +4250,48 @@ function creditDocMime(name) {
   return undefined;  // let the viewer sniff from the response content-type
 }
 
-function openCreditDoc(recId, idx, filename) {
+function openCreditDoc(recId, idx, filename, field) {
   if (!window.OperFiDocViewer) return;
   OperFiDocViewer.open({
-    url: creditDocUrl(recId, idx),
+    url: creditDocUrl(recId, idx, field),
     filename: filename || 'Document',
     mime: creditDocMime(filename)
   });
+}
+
+// BOOSTDOCS2 (Tom, 2026-10-12): the BSA and COI sent with a credit boost live on
+// the Credit_Boost_Request record, so the submission row never carries them and
+// the pane said "No supporting documents uploaded" while the profile listed both.
+// Listed under the submission's own files; opened by slot through /credit-doc.
+var caBoostDocsSeq = 0;
+function fetchBoostDocs(r) {
+  var box = document.getElementById('ca-boost-docs');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!r || !r.ID) return;
+  var seq = ++caBoostDocsSeq;
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  fetch(BROKER_API_BASE + '/credit-doc/boost-files?email=' + encodeURIComponent(email) +
+        '&record_id=' + encodeURIComponent(r.ID), { credentials: 'include' })
+    .then(function(res) { return res.ok ? res.json() : null; })
+    .then(function(payload) {
+      if (seq !== caBoostDocsSeq) return;               // a newer record opened meanwhile
+      renderBoostDocs(r.ID, (payload && payload.files) || []);
+    })
+    .catch(function() { /* degrade quietly: the submission's own files still show */ });
+}
+if (typeof window !== 'undefined') { window.fetchBoostDocs = fetchBoostDocs; }
+
+function renderBoostDocs(recId, files) {
+  var box = document.getElementById('ca-boost-docs');
+  if (!box || !files.length) return;
+  box.innerHTML = docsListHtml(files.map(function(f) {
+    return { name: f.label + (f.ext ? '.' + String(f.ext).toLowerCase() : ''),
+             field: f.field, idx: f.idx };
+  }), recId);
+  // The submission had nothing of its own: drop the "none uploaded" line.
+  var own = document.getElementById('ca-docs-list');
+  if (own && own.querySelector('.doc-empty')) own.innerHTML = '';
 }
 
 function collectFiles(field) {
@@ -4326,6 +4366,7 @@ function addressFieldHtml(addr){
 if (typeof window !== 'undefined') {
   window.mapsHref = mapsHref; window.addressFieldHtml = addressFieldHtml;
   window.docsListHtml = docsListHtml; window.collectFiles = collectFiles;
+  window.renderBoostDocs = renderBoostDocs;
   window.fileNameFromPath = fileNameFromPath; window.wireDocOpen = wireDocOpen;
   window.creditDocUrl = creditDocUrl; window.creditDocMime = creditDocMime;
   window.openCreditDoc = openCreditDoc;

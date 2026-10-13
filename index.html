@@ -911,6 +911,8 @@ function onCarrierChange() {
 
 // ── Searchable carrier combobox (match by name, MC, or DOT) ───────────────────
 function _carrierMatch(c, q) {
+  // An all-digit query drops leading zeros: FMCSA pads MC/DOT numbers (04556426).
+  q = q.replace(/^0+(?=\d+$)/, '');
   return String(c.carrier_name || '').toLowerCase().indexOf(q) !== -1 ||
          String(c.mc || '').toLowerCase().indexOf(q) !== -1 ||
          String(c.dot || '').toLowerCase().indexOf(q) !== -1;

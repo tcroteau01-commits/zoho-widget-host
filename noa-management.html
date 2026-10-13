@@ -907,7 +907,8 @@ function applyCarrierFilters() {
     if (activeFilter === 'pending'  && c.status !== 'pending')  return false;
     if (activeFilter === 'verified' && c.status !== 'verified') return false;
     if (searchTerm) {
-      var term = searchTerm.toLowerCase();
+      // An all-digit query drops leading zeros: FMCSA pads MC/DOT numbers (04556426).
+      var term = searchTerm.toLowerCase().replace(/^0+(?=\d+$)/, '');
       var name = String(c.carrier_name || '').toLowerCase();
       var mc   = String(c.mc   || '').toLowerCase();
       var dot  = String(c.dot  || '').toLowerCase();
@@ -983,6 +984,8 @@ function loadCarriers() {
 window.loadCarriers = loadCarriers;
 
 function _noaCarrierMatch(c, q) {
+  // An all-digit query drops leading zeros: FMCSA pads MC/DOT numbers (04556426).
+  q = q.replace(/^0+(?=\d+$)/, '');
   return String(c.carrier_name || '').toLowerCase().indexOf(q) !== -1 ||
          String(c.mc || '').toLowerCase().indexOf(q) !== -1 ||
          String(c.dot || '').toLowerCase().indexOf(q) !== -1;

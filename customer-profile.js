@@ -807,8 +807,12 @@ function renderCoBroker(p) {
   }
   // Approve by SLOT, the same (field, idx) the document links open. A file the
   // broker attached under Supporting Documents is as good as one in the
-  // agreement field; credit reads it and decides.
-  var docs = (p.submitted && p.submitted.documents) || [];
+  // agreement field; credit reads it and decides. Files sent with a credit
+  // boost (BSA, COI) are never offered: they are not a co-broker agreement and
+  // the approve route refuses their slots.
+  var docs = ((p.submitted && p.submitted.documents) || []).filter(function (d) {
+    return d.source !== 'boost';
+  });
   body += '<div class="cp-subhead">Approve an attached file</div>';
   body += docs.length
     ? '<ul class="cp-doc-list cp-cb-docs">' + docs.map(function (d) {

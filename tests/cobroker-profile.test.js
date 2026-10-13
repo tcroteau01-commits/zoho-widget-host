@@ -157,3 +157,14 @@ test('a refused action keeps the profile and shows the server reason', async () 
   assert.strictEqual(h.calls.refetched, 0);
   assert.ok(h.calls.toast.includes('This agreement is already approved'));
 });
+
+test('credit boost files are listed but never offered as the co-broker agreement', () => {
+  const docs = BASE.submitted.documents.concat([
+    { field: 'boost_coi', idx: 0, label: 'Credit boost: certificate of insurance', ext: 'PDF', source: 'boost' }]);
+  const html = P.render(withCb({ status: 'submitted', blocked: true },
+    { api_base: 'https://api.example', submitted: Object.assign({}, BASE.submitted, { documents: docs }) }));
+  assert.ok(html.includes('field=boost_coi&amp;idx=0'));
+  assert.ok(html.includes('Credit boost: certificate of insurance'));
+  assert.ok(!html.includes('data-cb-approve="boost_coi:0"'));
+  assert.ok(html.includes('data-cb-approve="supporting:1"'));
+});

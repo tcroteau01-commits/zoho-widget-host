@@ -264,6 +264,15 @@ html, body {
 .field-val a:hover { text-decoration: underline; }
 
 .credit-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+/* BOOSTHIST1: what happened to each credit boost, under the limit it changed or kept. */
+.ca-boost { margin-top: 12px; padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.45; border: 1px solid; }
+.ca-boost + .ca-boost { margin-top: 6px; }
+.ca-boost-head { font-size: 13px; font-weight: 700; }
+.ca-boost-reason { margin-top: 3px; font-style: italic; }
+.ca-boost-no { background: #fdecea; border-color: #f5c2bd; color: #8a1c12; }
+.ca-boost-yes { background: #e8f5e9; border-color: #b9dfbb; color: #1f6321; }
+.ca-boost-wait { background: #fff4e5; border-color: #f3d6a8; color: #8a4b08; }
+.ca-boost-older { opacity: .8; }
 .credit-card { background: #fafafa; border: 1px solid #f0efe9; border-radius: 8px; padding: 10px 12px; }
 .credit-card.approved { background: #f1f9f1; border-color: #c8e3c8; }
 .credit-card.denied { background: #fdf2f2; border-color: #f0c6c6; }
@@ -1625,6 +1634,8 @@ function renderPanel() {
           ? '<div style="margin-top: 14px;"><div class="field-label" style="margin-bottom: 6px;">Credit Notes</div>' +
             '<div class="note-block">' + esc(r.Credit_Notes) + '</div></div>'
           : '') +
+        // BOOSTHIST1 -- filled by fetchBoostDocs from the same response as the files.
+        '<div id="ca-boost-history"></div>' +
       '</div>' +
 
       // CREDITAPP1 — Credit Application tracker (Task 16). Hidden until
@@ -2053,6 +2064,42 @@ function renderProfile(rec, payload) {
   // Reuse submitDecision -- there is one decision write path (POST /credit-decision)
   // and it stays that way. applyDecisionResult keeps allRecords/KPIs/the list in
   // sync the same way a decision made in the drawer already does.
+  // BOOSTHIST1: the profile decides a boost the way the drawer does, through the
+  // one route that keeps the customer Approved and sends the boost email.
+  root.querySelectorAll('[data-boost]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var outcome = btn.getAttribute('data-boost');
+      var limitEl = document.getElementById('cp-boost-limit');
+      var reasonEl = document.getElementById('cp-boost-reason');
+      var msg = document.getElementById('cp-boost-msg');
+      var vals = { credit_limit: limitEl ? limitEl.value : '',
+                   reason: reasonEl ? String(reasonEl.value || '').trim() : '' };
+      var current = parseMoney(rec.Credit_Limit);
+      var say = function(text) { if (msg) msg.textContent = text; };
+      if (outcome === 'approve' && !(Number(vals.credit_limit) > current)) {
+        if (limitEl) limitEl.focus();
+        return say('Enter a new limit higher than ' + fmtMoney(current) + '.');
+      }
+      if (outcome === 'decline' && !vals.reason) {
+        if (reasonEl) reasonEl.focus();
+        return say('Add a note to the client explaining the decline.');
+      }
+      say('');
+      var undo = setProfileBusy(btn, 'Saving…');
+      submitBoostDecision(rec, outcome, vals).then(function(resp) {
+        if (!resp || !resp.ok) { undo(); return say((resp && resp.error) || 'Could not save.'); }
+        applyDecisionResult(rec, { decision: 'Approved', credit_limit: String(resp.credit_limit) });
+        dropCustomerEventKinds(rec.ID, BOOST_CLEARED_KINDS);
+        showToast((outcome === 'approve' ? 'Boost approved' : 'Boost declined') +
+                  (resp.emailed ? '. Client emailed.' : '. The client email did not send, follow up directly.'));
+        fetchProfile(rec);
+      }).catch(function(err) {
+        console.error('[CustomerApprovals] boost decision failed', err);
+        undo();
+        say('Could not save. Check your connection and try again.');
+      });
+    });
+  });
   root.querySelectorAll('[data-decide]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var limitEl = document.getElementById('cp-limit');
@@ -2087,7 +2134,7 @@ function renderProfile(rec, payload) {
 // click again -- and a second click on a DIFFERENT candidate races two pins,
 // with the loser silently overwriting the winner's binding.
 var PROFILE_ACTIONS = '[data-cs-pick],[data-cs-manual],[data-fv-pick],[data-cs-absent],' +
-  '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide],[data-note],' +
+  '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide],[data-boost],[data-note],' +
   '[data-cb-switch],[data-cb-approve],[data-cb-reject],[data-cb-upload]';
 
 // Locks the whole profile and marks the pressed button. Returns the undo, which
@@ -4277,10 +4324,30 @@ function fetchBoostDocs(r) {
     .then(function(payload) {
       if (seq !== caBoostDocsSeq) return;               // a newer record opened meanwhile
       renderBoostDocs(r.ID, (payload && payload.files) || []);
+      renderBoostHistory((payload && payload.history) || []);
     })
     .catch(function() { /* degrade quietly: the submission's own files still show */ });
 }
 if (typeof window !== 'undefined') { window.fetchBoostDocs = fetchBoostDocs; }
+
+// BOOSTHIST1 (Tom, 2026-10-13): a declined boost leaves the customer Approved at
+// the same limit, so the Decision card alone cannot say a boost was refused.
+// The sentence comes from customer-profile.js so the pane and the profile agree.
+// decided_by arrives only for staff; a broker sees the outcome their email gave.
+function renderBoostHistory(rows) {
+  var box = document.getElementById('ca-boost-history');
+  var P = (typeof window !== 'undefined' && window.OperFiCustomerProfile) || null;
+  if (!box || !rows.length || !P || !P.boostSentence) return;
+  box.innerHTML = rows.map(function(b, i) {
+    var t = P.boostSentence(b, true);
+    return '<div class="ca-boost ca-boost-' + P.boostTone(b.state) + (i ? ' ca-boost-older' : '') + '">' +
+      '<div class="ca-boost-head">' + t.headline + '</div>' +
+      (t.detail ? '<div>' + t.detail + '</div>' : '') +
+      (t.reason ? '<div class="ca-boost-reason">&ldquo;' + t.reason + '&rdquo;</div>' : '') +
+    '</div>';
+  }).join('');
+}
+if (typeof window !== 'undefined') { window.renderBoostHistory = renderBoostHistory; }
 
 function renderBoostDocs(recId, files) {
   var box = document.getElementById('ca-boost-docs');

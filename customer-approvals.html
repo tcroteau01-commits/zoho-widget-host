@@ -1825,6 +1825,20 @@ function renderProfile(rec, payload) {
 
   document.getElementById('ca-profile-back').addEventListener('click', closeProfile);
 
+  // CUSTDOC2: a profile file opens in the shared viewer, like every other
+  // document on this page, rather than downloading. Wired once on the root,
+  // which survives re-renders; the link's href is the fallback without a viewer.
+  if (!root.__cpDocViewWired) {
+    root.__cpDocViewWired = true;
+    root.addEventListener('click', function(e) {
+      var a = e.target && e.target.closest ? e.target.closest('a.cp-doc-view') : null;
+      if (!a || !window.OperFiDocViewer) return;
+      e.preventDefault();
+      var name = a.getAttribute('data-doc-name') || 'Document';
+      OperFiDocViewer.open({ url: a.href, filename: name, mime: creditDocMime(name) });
+    });
+  }
+
   root.querySelectorAll('[data-cs-pick]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       // The label names the slow part. "Saving…" would be a lie: the wait is the

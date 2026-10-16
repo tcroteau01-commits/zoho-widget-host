@@ -2061,6 +2061,34 @@ function renderProfile(rec, payload) {
       coBrokerPost(btn, 'upload', { body: fd }, 'Uploading…', 'Uploaded and approved');
     });
   });
+  // CUSTDOC1: staff add a file to the supporting documents. Noted on the
+  // profile with who added it; no Needs Attention event, so nothing to clear.
+  root.querySelectorAll('[data-doc-add]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var input = document.getElementById('cp-doc-file');
+      var desc = document.getElementById('cp-doc-desc');
+      var file = input && input.files && input.files[0];
+      if (!file) { showToast('Choose a file first'); return; }
+      var fd = new FormData();
+      fd.append('file', file, file.name);
+      fd.append('description', desc ? String(desc.value || '').trim() : '');
+      var undo = setProfileBusy(btn, 'Uploading…');
+      fetch(BROKER_API_BASE + '/customer-profile/' + rec.ID + '/document',
+            { method: 'POST', credentials: 'include', body: fd })
+        .then(function(res) {
+          return res.json().catch(function() { return {}; })
+            .then(function(j) { return { ok: res.ok, j: j || {} }; });
+        }).then(function(r) {
+          if (!r.ok) { undo(); showToast(r.j.error || 'Could not add the document'); return; }
+          showToast('Document added');
+          fetchProfile(rec);
+        }).catch(function(err) {
+          console.error('[CustomerApprovals] add document failed', err);
+          undo();
+          showToast('Could not add the document. Check your connection and try again.');
+        });
+    });
+  });
   // Reuse submitDecision -- there is one decision write path (POST /credit-decision)
   // and it stays that way. applyDecisionResult keeps allRecords/KPIs/the list in
   // sync the same way a decision made in the drawer already does.
@@ -2135,7 +2163,7 @@ function renderProfile(rec, payload) {
 // with the loser silently overwriting the winner's binding.
 var PROFILE_ACTIONS = '[data-cs-pick],[data-cs-manual],[data-fv-pick],[data-cs-absent],' +
   '[data-cs-unabsent],[data-cs-clear],[data-pull-report],[data-decide],[data-boost],[data-note],' +
-  '[data-cb-switch],[data-cb-approve],[data-cb-reject],[data-cb-upload]';
+  '[data-cb-switch],[data-cb-approve],[data-cb-reject],[data-cb-upload],[data-doc-add]';
 
 // Locks the whole profile and marks the pressed button. Returns the undo, which
 // only the FAILURE path calls: on success the profile re-renders from scratch

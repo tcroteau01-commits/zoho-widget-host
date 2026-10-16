@@ -984,6 +984,15 @@ function renderSubmitted(p) {
       'co-broker agreement before loads can be funded.</span></div>';
   }
   body += '<div class="cp-subhead">Documents</div>' + renderDocs(p);
+  // CUSTDOC1 (Tom, 2026-10-16): the admin team adds an MSA, PO or anything else
+  // from the client file. Logged in Notes; raises nothing to Mark Reviewed.
+  if (p.can_act) {
+    body += '<div class="cp-cb-row cp-doc-add"><input type="file" id="cp-doc-file" ' +
+      'accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv,.txt">' +
+      '<input type="text" class="dec-input" id="cp-doc-desc" maxlength="120" ' +
+      'placeholder="What is it? (MSA, PO, W-9)">' +
+      '<button type="button" class="btn" data-doc-add="1">Add document</button></div>';
+  }
   if (s.comments) {
     body += '<div class="cp-subhead">Broker Comments</div>' +
             '<div class="cp-quote">' + esc(s.comments) + '</div>';

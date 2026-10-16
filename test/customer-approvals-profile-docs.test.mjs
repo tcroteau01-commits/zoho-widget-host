@@ -100,3 +100,55 @@ test('a refusal shows the reason and unlocks the button', async () => {
   assert.ok(!btn.disabled);
   assert.ok(d.body.textContent.includes('10 supporting documents'));
 });
+
+// --- CUSTDOC2: upload time, and the shared viewer -----------------------------
+// Tom, 2026-10-16: "Might be nice to see when a doc was uploaded. Would also be
+// nice to have the native Doc Viewing Tool here ... so we don't have to download it."
+
+const WITH_DOCS = Object.assign({}, PAYLOAD, { api_base: 'https://brokers.operfi.com',
+  submitted: { company_name: 'HOGAN EQUIPMENT', documents: [
+    { field: 'supporting', idx: 0, label: 'Supporting document 1', ext: 'PDF',
+      uploaded_at: '2026-09-30T13:52:58Z' },
+    { field: 'supporting', idx: 1, label: 'Supporting document 2', ext: 'PDF', uploaded_at: null }] } });
+
+async function bootWithViewer(payload) {
+  const b = await boot(payload);
+  const opened = [];
+  b.w.OperFiDocViewer = { open: function(o) { opened.push(o); } };
+  return Object.assign(b, { opened: opened });
+}
+
+test('each file shows when it was uploaded, and a file without a time shows none', async () => {
+  const { d } = await boot(WITH_DOCS);
+  const items = [...d.querySelectorAll('.cp-documents li')].map(function(li) { return li.textContent; });
+  assert.match(items[0], /uploaded 2026-09-30 13:52 UTC/);
+  assert.doesNotMatch(items[1], /uploaded/);
+});
+
+test('clicking a file opens it in the shared viewer by its slot URL', async () => {
+  const { w, d, opened } = await bootWithViewer(WITH_DOCS);
+  const link = d.querySelector('.cp-documents a.cp-doc-view');
+  const ev = new w.MouseEvent('click', { bubbles: true, cancelable: true });
+  link.dispatchEvent(ev);
+  assert.ok(ev.defaultPrevented, 'no new tab, no download');
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].url,
+    'https://brokers.operfi.com/customer-profile/4455/doc?field=supporting&idx=0');
+  assert.equal(opened[0].filename, 'Supporting document 1.pdf');
+  assert.equal(opened[0].mime, 'application/pdf');
+});
+
+test('the viewer still works after the profile re-renders', async () => {
+  const { w, d, opened } = await bootWithViewer(WITH_DOCS);
+  w.renderProfile({ ID: '4455' }, WITH_DOCS);
+  d.querySelector('.cp-documents a.cp-doc-view').click();
+  assert.equal(opened.length, 1, 'opened once, not once per render');
+});
+
+test('without the viewer the link is left to open in a new tab', async () => {
+  const { w, d } = await boot(WITH_DOCS);
+  delete w.OperFiDocViewer;
+  const ev = new w.MouseEvent('click', { bubbles: true, cancelable: true });
+  d.querySelector('.cp-documents a.cp-doc-view').dispatchEvent(ev);
+  assert.ok(!ev.defaultPrevented);
+});

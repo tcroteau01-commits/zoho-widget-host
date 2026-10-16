@@ -852,12 +852,19 @@ var AUTHORITY_WORDS = { broker_only: 'Broker only', dual: 'Broker and carrier',
 // says what is on file, it just cannot open it.
 // One file, opened by slot. Shared by the Documents list and the co-broker
 // section, so a file credit is asked to approve is one it can open.
+// CUSTDOC2 (Tom, 2026-10-16): each file says when it was uploaded, and opens
+// in the shared document viewer instead of downloading. The href stays as the
+// fallback: without the viewer, the link still opens the file in a new tab.
 function docLinkHtml(p, d) {
   var label = esc(d.label) + (d.ext ? ' <span class="muted">&middot; ' + esc(d.ext) + '</span>' : '');
-  if (!p.api_base) { return label; }
+  var stamp = d.uploaded_at
+    ? ' <span class="muted cp-doc-when">&middot; uploaded ' + esc(when(d.uploaded_at)) + '</span>' : '';
+  if (!p.api_base) { return label + stamp; }
   var href = p.api_base + '/customer-profile/' + encodeURIComponent(p.submission_id) +
     '/doc?field=' + encodeURIComponent(d.field) + '&idx=' + encodeURIComponent(d.idx);
-  return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+  return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" class="cp-doc-view" ' +
+    'data-doc-name="' + esc(d.label + (d.ext ? '.' + String(d.ext).toLowerCase() : '')) + '">' +
+    label + '</a>' + stamp;
 }
 
 function renderDocs(p) {

@@ -870,6 +870,24 @@ function renderDocs(p) {
   }).join('') + '</ul>';
 }
 
+// ---- documents on file, and the admin team adding to them (CUSTDOC1) -------
+// Tom, 2026-10-16: "Where is the customer docs options for our admin team to
+// upload? Shouldn't it be on the Customer Profile." Its own section, not tucked
+// under As Submitted: a file OperFi adds is not something the client submitted.
+// Logged in Notes; raises nothing to Mark Reviewed.
+function renderDocuments(p) {
+  if (!p.submitted) { return ''; }
+  var body = renderDocs(p);
+  if (p.can_act) {
+    body += '<div class="cp-cb-row cp-doc-add"><input type="file" id="cp-doc-file" ' +
+      'accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv,.txt">' +
+      '<input type="text" class="dec-input" id="cp-doc-desc" maxlength="120" ' +
+      'placeholder="What is it? (MSA, PO, W-9)">' +
+      '<button type="button" class="btn primary" data-doc-add="1">Add document</button></div>';
+  }
+  return '<div class="cp-documents">' + section('Documents', body) + '</div>';
+}
+
 // ---- co-broker agreement (COBROKERGATE1) -----------------------------------
 // A freight-broker customer cannot be funded until credit approves its signed
 // co-broker agreement. This is where credit does that: approve one of the files
@@ -983,7 +1001,6 @@ function renderSubmitted(p) {
       'data-cb-switch="1">Switch to Freight Broker</button><span class="muted">Requires a ' +
       'co-broker agreement before loads can be funded.</span></div>';
   }
-  body += '<div class="cp-subhead">Documents</div>' + renderDocs(p);
   if (s.comments) {
     body += '<div class="cp-subhead">Broker Comments</div>' +
             '<div class="cp-quote">' + esc(s.comments) + '</div>';
@@ -1314,6 +1331,7 @@ function render(payload) {
       pair(renderFactorView(p), renderPriors(p)) +
       renderSummary(p) +
       renderCreditApp(p) +
+      renderDocuments(p) +
       // The broker's raw form and the audit trail are reference material, not
       // decision material: last, and read only when a question comes up.
       pair(renderSubmitted(p), renderAudit(p)) +

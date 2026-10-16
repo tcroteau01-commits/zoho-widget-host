@@ -48,10 +48,14 @@ test('a viewer without can_act gets no add control', async () => {
   assert.equal(d.querySelector('[data-doc-add]'), null);
 });
 
-test('staff see the add control under Documents', async () => {
+test('Documents is its own section, with the add control in it', async () => {
   const { d } = await boot(PAYLOAD);
-  assert.ok(d.querySelector('[data-doc-add]'));
-  assert.ok(d.getElementById('cp-doc-file'));
+  const sec = d.querySelector('.cp-documents');
+  assert.ok(sec, 'a Documents section of its own');
+  assert.ok(sec.textContent.includes('Documents'));
+  assert.ok(sec.querySelector('[data-doc-add]'));
+  assert.ok(sec.querySelector('#cp-doc-file'));
+  assert.equal(d.querySelector('.cp-submitted [data-doc-add]'), null);
 });
 
 test('no file chosen sends nothing', async () => {

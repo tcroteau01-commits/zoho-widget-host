@@ -70,3 +70,39 @@ test('submitContact surfaces the real error message (no [object Object])', async
   assert.ok(/Email already exists/.test(msg), 'shows real message, got: ' + msg);
   assert.ok(!/object Object/.test(msg), 'no [object Object]');
 });
+
+// ACCTCHG1 Phase 0: a login email is never changed in place from the Users tab.
+const LOCKED_COPY = 'To change a login email, remove this user and invite the new address.';
+
+test('edit mode: the email is read-only with the remove-and-invite hint', () => {
+  const w = boot().window;
+  w.openEditModal({ ID: '900', Contact_Name: { first_name: 'Jane', last_name: 'Doe' },
+                    Email: 'jane@acme.com', Phone_Number: '(555) 111-2222', User_Permissions: ['Full Access'] });
+  const email = w.document.getElementById('m-email');
+  const hint = w.document.getElementById('m-email-locked');
+  assert.strictEqual(email.readOnly, true);
+  assert.ok(hint, 'hint element exists');
+  assert.ok(!hint.hidden, 'hint is shown on edit');
+  assert.strictEqual(hint.textContent.trim(), LOCKED_COPY);
+});
+
+test('edit mode: the save payload never carries contact_email', () => {
+  const w = boot().window;
+  w.openEditModal({ ID: '900', Contact_Name: { first_name: 'Jane', last_name: 'Doe' },
+                    Email: 'jane@acme.com', Phone_Number: '(555) 111-2222', User_Permissions: ['Full Access'] });
+  w.document.getElementById('m-phone').value = '(555) 999-8888';
+  let captured = null;
+  w.fetch = (url, opts) => { captured = { url, opts }; return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ ok: true, id: '900' })) }); };
+  w.submitContact();
+  const sent = JSON.parse(captured.opts.body);
+  assert.ok(!('contact_email' in sent), 'contact_email must not be sent on edit');
+});
+
+test('add mode after an edit: the email is editable again and the hint hidden', () => {
+  const w = boot().window;
+  w.openEditModal({ ID: '900', Contact_Name: { first_name: 'Jane', last_name: 'Doe' },
+                    Email: 'jane@acme.com', Phone_Number: '(555) 111-2222', User_Permissions: ['Full Access'] });
+  w.openModal();
+  assert.strictEqual(w.document.getElementById('m-email').readOnly, false);
+  assert.ok(w.document.getElementById('m-email-locked').hidden, 'hint hidden for add');
+});

@@ -344,3 +344,16 @@ test('arrow keys typed in the ops note do not navigate or wipe the note', async 
   assert.equal($(w, 'panel').querySelector('.position').textContent, before);
   assert.equal($(w, 'pf-ops-note').value, 'keep me');
 });
+
+test('pay change timeline entries follow Purchased when requested after purchase, precede it when requested before', async () => {
+  const elig = { eligible: false, reason: 'already_requested', kind: 'net30', terms: 'Standard Net 30',
+    request: Object.assign({}, REQ, { status: 'applied', resolved_at: '2026-10-17T16:00:00Z' }) };
+  const titles = (w) => [...$(w, 'panel').querySelectorAll('.timeline-title')].map((e) => e.textContent);
+  let w = await open({ Purchase_Date: '15-Jul-2026', pay_change: { status: 'applied' } }, { elig });
+  let t = titles(w);
+  assert.ok(t.indexOf('Purchased') < t.findIndex((x) => /Pay change requested/.test(x)), 'requested after purchase');
+  assert.ok(t.findIndex((x) => /Pay change requested/.test(x)) < t.indexOf('Pay change applied'));
+  w = await open({ Purchase_Date: '25-Oct-2026', pay_change: { status: 'applied' } }, { elig });
+  t = titles(w);
+  assert.ok(t.findIndex((x) => /Pay change requested/.test(x)) < t.indexOf('Purchased'), 'requested before purchase');
+});

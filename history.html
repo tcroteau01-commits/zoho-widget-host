@@ -1507,12 +1507,19 @@ function timelineHtml(r) {
   } else if (s.key === 'purchased') {
     items.push({ state: 'done', title: 'Under review', time: 'Complete' });
   }
-  payFasterTimelineItems(r).forEach(function(it) { items.push(it); });
+  var pfItems = payFasterTimelineItems(r);
+  // A request made from history after the load was purchased belongs after "Purchased";
+  // one made at submit (before purchase) stays ahead of it.
+  var pfReq = pfCurrentElig(r);
+  pfReq = pfReq && pfReq.request && pfReq.request.requested_at ? new Date(pfReq.request.requested_at) : null;
+  var pfAfter = s.key === 'purchased' && (!purchased || !pfReq || isNaN(pfReq) || pfReq >= purchased);
+  if (!pfAfter) pfItems.forEach(function(it) { items.push(it); });
   if (s.key === 'purchased') {
     items.push({ state: 'done', title: 'Purchased', time: purchased ? fmtDateTime(purchased) : '—' });
   } else {
     items.push({ state: 'upcoming', title: 'Purchase decision', time: 'Pending' });
   }
+  if (pfAfter) pfItems.forEach(function(it) { items.push(it); });
 
   return '<div class="timeline">' + items.map(function(it) {
     return '<div class="timeline-item ' + it.state + '"><div class="timeline-dot"></div>' +

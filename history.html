@@ -389,6 +389,38 @@ html, body {
 .panel-del { background:#fff; color:#b42318; border:1px solid #f0c2bc; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
 .panel-del:hover { background:#fef3f2; }
 
+/* ===== Pay carrier faster (PAYCHG1). Option/summary styles live in pay-faster.js (.pf-*). ===== */
+.pf-rowpill { display:inline-block; margin-top:6px; font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+.pf-rowpill.requested { background:#fdf1dc; color:#9a5c00; }
+.pf-rowpill.applied { background:#e3f4e3; color:#1f6321; }
+.pf-rowpill.declined { background:#f3f4f6; color:#555; }
+.panel-status-row .pf-rowpill { margin-top:0; }
+#pf-slot:empty { display:none; }
+#pf-slot { padding:12px 20px; border-bottom:1px solid #eee; }
+.pf-open { background:#fff; color:#9a5c00; border:1px solid #e8a33c; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
+.pf-open:hover { background:#fffaf1; }
+.pf-open:disabled { opacity:.55; cursor:not-allowed; }
+.pf-staff { margin-top:10px; border:1px solid #e3e0d6; border-radius:8px; padding:10px 12px; background:#faf9f5; }
+.pf-staff:first-child { margin-top:0; }
+.pf-staff-h { font-size:12px; font-weight:700; color:#272727; }
+.pf-staff-sub { font-size:12px; color:#6b6862; margin:2px 0 8px; }
+.pf-staff textarea, .pf-modal textarea { width:100%; box-sizing:border-box; border:1px solid #d9d6cc; border-radius:6px; padding:8px; font:inherit; font-size:13px; resize:vertical; min-height:56px; }
+.pf-staff-btns { display:flex; gap:8px; margin-top:8px; }
+.pf-apply { background:#2e7d32; color:#fff; border:none; border-radius:6px; padding:7px 12px; font-weight:600; cursor:pointer; }
+.pf-decline { background:#fff; color:#b42318; border:1px solid #f0c2bc; border-radius:6px; padding:7px 12px; font-weight:600; cursor:pointer; }
+.pf-apply:disabled, .pf-decline:disabled { opacity:.55; cursor:not-allowed; }
+.pf-inline-err { font-size:12px; color:#b42318; margin-top:6px; }
+.pf-modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:200; display:flex; align-items:center; justify-content:center; padding:16px; }
+.pf-modal { background:#fff; border-radius:12px; width:100%; max-width:520px; max-height:calc(100vh - 32px); overflow-y:auto; padding:20px 22px; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+.pf-modal-h { font-size:17px; font-weight:700; color:#272727; }
+.pf-modal-sub { font-size:12px; color:#6b6862; margin:2px 0 10px; }
+.pf-modal label.pf-note-l { display:block; font-size:12px; font-weight:600; color:#272727; margin:10px 0 4px; }
+.pf-modal-err { font-size:12px; color:#9b2a1c; background:#fdecea; border:1px solid #f1b0a8; border-radius:8px; padding:8px 10px; margin-top:10px; }
+.pf-modal-f { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+.pf-cancel { background:#fff; color:#272727; border:1px solid #d9d6cc; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
+.pf-send { background:#F97316; color:#fff; border:none; border-radius:6px; padding:8px 16px; font-weight:600; cursor:pointer; }
+.pf-send:disabled { opacity:.5; cursor:not-allowed; }
+
 .panel-body { flex: 1; overflow-y: auto; padding: 18px 22px 24px; }
 
 .panel-section { background: #fff; border: 1px solid #e6e3da; border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
@@ -597,6 +629,7 @@ html, body {
 <script src="https://app.operfi.com/operfi-docviewer.js?v=6"></script>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/pay-faster.js"></script>
 <script>
 (function() {
 'use strict';
@@ -725,6 +758,7 @@ function bootApp() {
       return;
     }
     console.log('[SubmissionHistory] Booted as', brokerEmail);
+    payFasterLoadContext();
     loadAllRecords();
   }
 
@@ -820,6 +854,8 @@ function bindGlobalUI() {
     else if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); navPanel(1); }
     else if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); navPanel(-1); }
   });
+
+  document.getElementById('panel').addEventListener('click', payFasterPanelClick);
 
   // Open the in-app viewer when a document row in the detail panel is clicked.
   document.getElementById('panel').addEventListener('click', function(e) {
@@ -1210,7 +1246,7 @@ function rowHtml(r, idx) {
         '<div class="cell-val">' + (added ? (isMidnight(added) ? '—' : fmtTime(added)) : '—') + '</div>' +
         (docCount > 0 ? '<div class="docs-ic">📎 ' + docCount + ' doc' + (docCount === 1 ? '' : 's') + '</div>' : '') +
       '</div>' +
-      '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
+      '<div><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + payFasterPill(r) + '</div>' +
       '<div class="chev cell-chev">›</div>' +
     '</div>';
 }
@@ -1299,9 +1335,10 @@ function renderPanel() {
         '<span class="dot">·</span>' +
         '<span class="ref">Load# ' + esc(r.Load_Rate_Confirmation_Number || '—') + '</span>' +
       '</div>' +
-      '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span></div>' +
+      '<div class="panel-status-row"><span class="status-pill ' + s.pill + '">' + esc(s.label) + '</span>' + payFasterPill(r) + '</div>' +
     '</div>' +
     panelActionsHtml(r) +
+    '<div id="pf-slot">' + payFasterSlotHtml(r) + '</div>' +
     '<div class="panel-body">' +
       // Rates
       '<div class="panel-section">' +
@@ -1358,7 +1395,7 @@ function renderPanel() {
       // Timeline
       '<div class="panel-section">' +
         '<div class="panel-section-title">Status Timeline</div>' +
-        timelineHtml(r) +
+        '<div id="pf-timeline">' + timelineHtml(r) + '</div>' +
       '</div>' +
 
     '</div>' +
@@ -1380,6 +1417,7 @@ function renderPanel() {
   if (_pe) _pe.addEventListener('click', function() { editDraftLoad(r.ID); });
   var _pd = document.getElementById('p-del');
   if (_pd) _pd.addEventListener('click', function() { deleteDraftRow(r.ID); });
+  payFasterOnPanel(r);
 }
 
 function field(label, val) {
@@ -1460,6 +1498,7 @@ function timelineHtml(r) {
   } else if (s.key === 'purchased') {
     items.push({ state: 'done', title: 'Under review', time: 'Complete' });
   }
+  payFasterTimelineItems(r).forEach(function(it) { items.push(it); });
   if (s.key === 'purchased') {
     items.push({ state: 'done', title: 'Purchased', time: purchased ? fmtDateTime(purchased) : '—' });
   } else {
@@ -1469,9 +1508,346 @@ function timelineHtml(r) {
   return '<div class="timeline">' + items.map(function(it) {
     return '<div class="timeline-item ' + it.state + '"><div class="timeline-dot"></div>' +
       '<div class="timeline-content"><div class="timeline-title">' + esc(it.title) + '</div>' +
-      '<div class="timeline-time">' + esc(it.time) + '</div></div></div>';
+      (it.time ? '<div class="timeline-time">' + esc(it.time) + '</div>' : '') + '</div></div>';
   }).join('') + '</div>';
 }
+
+// ── PAYCHG1: pay carrier faster ───────────────────────────────────────────
+// Display + request plumbing only. All fee math is window.PayFaster (pay-faster.js);
+// the API recomputes every figure. Context 404 / failure hides the whole feature.
+// Never touches payTermWasDifferent() or the BROKERTERMS2 "changed" treatment.
+// Brokers do not see dates on pay-change timeline entries until Tommy + Pat decide.
+var PAYCHG_SHOW_DATES = false;
+var PF_HELP_URL = 'https://app.operfi.com/help-center.html';
+var PF_GENERIC_ERR = "We couldn't send the request. Try again or contact OperFi.";
+var _pfCtx = null;                                   // /pay-change/context, null = feature off
+var _pfElig = { id: null, data: null, state: 'idle' }; // eligibility for the open record
+var _pfPop = null;                                   // open popup: { rec, elig, payer, sending }
+
+function pfOn() { return !!(_pfCtx && window.PayFaster); }
+function pfIsStaff() {
+  try { return !!(window.OPERFI_IMP && typeof OPERFI_IMP.isStaff === 'function' && OPERFI_IMP.isStaff()); }
+  catch (e) { return false; }
+}
+function pfOpenRecord() { return openIndex >= 0 ? filteredRecords[openIndex] : null; }
+
+var PF_PILL = { requested: 'Requested', applied: 'Applied', declined: 'Declined' };
+function payFasterPill(r) {
+  var pc = r && r.pay_change;
+  if (!pc || !PF_PILL[pc.status]) return '';
+  return '<span class="pf-rowpill ' + pc.status + '">⚡ Pay faster: ' + PF_PILL[pc.status] + '</span>';
+}
+
+var _pfCtxSeq = 0;
+function payFasterLoadContext(isRefetch) {
+  if (!brokerEmail || !window.PayFaster) return Promise.resolve();
+  var seq = ++_pfCtxSeq;
+  return fetch(BROKER_API_BASE + '/pay-change/context?email=' + encodeURIComponent(brokerEmail))
+    .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function(j) {
+      if (seq !== _pfCtxSeq) return;
+      _pfCtx = (j && j.enabled) ? j : null;
+      if (_pfCtx) window.PayFaster.injectStyles();
+    })
+    .catch(function() {
+      if (seq !== _pfCtxSeq) return;
+      if (isRefetch && _pfCtx) _pfCtx = Object.assign({}, _pfCtx, { reserve: { cash: null, status: 'unavailable' } });
+      else _pfCtx = null;
+    })
+    .then(function() { if (seq === _pfCtxSeq && !isRefetch) payFasterPanelUpdate(); });
+}
+
+function pfCurrentElig(r) {
+  return (r && _pfElig.id === String(r.ID) && _pfElig.state === 'done') ? _pfElig.data : null;
+}
+function pfFetchElig(r) {
+  var id = String(r.ID);
+  _pfElig = { id: id, data: null, state: 'loading' };
+  return fetch(BROKER_API_BASE + '/pay-change/eligibility?email=' + encodeURIComponent(brokerEmail) +
+      '&record_id=' + encodeURIComponent(id))
+    .then(function(res) { if (!res.ok) throw new Error(res.status); return res.json(); })
+    .then(function(j) {
+      if (_pfElig.id !== id) return;
+      _pfElig = { id: id, data: j, state: 'done' };
+    })
+    .catch(function() { if (_pfElig.id === id) _pfElig = { id: id, data: null, state: 'error' }; })
+    .then(function() { if (_pfElig.id === id) payFasterPanelUpdate(); });
+}
+// Called at the end of renderPanel: starts the eligibility lookup once per record.
+function payFasterOnPanel(r) {
+  if (!pfOn() || isDraft(r)) return;
+  if (_pfElig.id === String(r.ID)) return;
+  pfFetchElig(r);
+}
+// Repaint the two pay-faster regions of the open panel in place (no scroll jump).
+function payFasterPanelUpdate() {
+  var r = pfOpenRecord();
+  if (!r) return;
+  if (pfOn() && !isDraft(r) && _pfElig.id !== String(r.ID)) { pfFetchElig(r); return; }
+  var slot = document.getElementById('pf-slot');
+  if (slot) slot.innerHTML = payFasterSlotHtml(r);
+  var tl = document.getElementById('pf-timeline');
+  if (tl) tl.innerHTML = timelineHtml(r);
+}
+
+function pfPctText(v) {
+  var raw = String(v == null ? '' : v).replace('%', '').trim();
+  var n = Number(raw);
+  return (raw !== '' && isFinite(n)) ? String(Math.round(n * 100) / 100) : '';
+}
+function pfFmtIso(iso) {
+  var d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit' }) + ' CT';
+}
+function pfWhen(iso) { return (PAYCHG_SHOW_DATES && iso) ? pfFmtIso(iso) : ''; }
+
+function payFasterTimelineItems(r) {
+  var d = pfCurrentElig(r);
+  var q = d && d.request;
+  if (!q) return [];
+  var payer = q.payer === 'broker' ? 'broker' : 'carrier';
+  var pct = pfPctText(payer === 'broker' ? q.operfi_share_pct : q.qp_fee_pct);
+  var out = [{ state: 'done', time: pfWhen(q.requested_at),
+    title: 'Pay change requested: ' + (q.terms_on_file || 'Current terms') + ' → Quick Pay, ' + payer + ' pays' + (pct ? ' ' + pct + '%' : '') }];
+  if (q.status === 'applied') out.push({ state: 'done', title: 'Pay change applied', time: pfWhen(q.resolved_at) });
+  else if (q.status === 'declined') out.push({ state: 'problem', title: 'Pay change declined', time: pfWhen(q.resolved_at) });
+  return out;
+}
+
+function pfVideoLink() {
+  return '<div class="pf-msg pf-info pf-lock"><a class="pf-video-link" href="#" data-video-id="' +
+    esc((_pfCtx && _pfCtx.training_video_id) || '') + '">Watch the 2-minute Pay Faster video to unlock</a></div>';
+}
+
+function payFasterSlotHtml(r) {
+  if (!pfOn() || !r || isDraft(r)) return '';
+  var d = pfCurrentElig(r);
+  if (!d) return '';
+  var h = '';
+  if (d.eligible) {
+    var locked = _pfCtx.trained === false;
+    h += '<button class="pf-open" id="pf-open"' + (locked ? ' disabled' : '') + '>⚡ ' +
+      (d.kind === 'factored' ? 'Pay the factoring company faster' : 'Pay carrier faster') + '</button>';
+    if (locked) h += pfVideoLink();
+  }
+  var q = d.request;
+  if (pfIsStaff() && q && q.status === 'requested') {
+    var payer = q.payer === 'broker' ? 'broker' : 'carrier';
+    var pct = pfPctText(payer === 'broker' ? q.operfi_share_pct : q.qp_fee_pct);
+    h += '<div class="pf-staff"><div class="pf-staff-h">Pay faster request (OperFi staff)</div>' +
+      '<div class="pf-staff-sub">' + esc(q.terms_on_file || '') + ' → Quick Pay, ' + payer + ' pays' + (pct ? ' ' + esc(pct) + '%' : '') + '</div>' +
+      '<textarea id="pf-ops-note" maxlength="500" placeholder="Ops note (optional)"></textarea>' +
+      '<div class="pf-staff-btns"><button class="pf-apply" id="pf-apply">Mark applied</button>' +
+      '<button class="pf-decline" id="pf-decline">Decline</button></div>' +
+      '<div class="pf-inline-err" id="pf-staff-err"></div></div>';
+  }
+  return h;
+}
+
+function payFasterPanelClick(e) {
+  var t = e.target;
+  if (!t || !t.closest) return;
+  var link = t.closest('a.pf-video-link');
+  if (link) { e.preventDefault(); window.open(PF_HELP_URL, '_blank'); return; }
+  var open = t.closest('#pf-open');
+  if (open && !open.disabled) { pfOpenPopup(pfOpenRecord()); return; }
+  var ap = t.closest('#pf-apply'), dc = t.closest('#pf-decline');
+  if (ap || dc) pfResolve(pfOpenRecord(), ap ? 'applied' : 'declined');
+}
+
+function pfParseRate(r) { return parseMoney(r.Carrier_Rate); }
+
+function pfFactorName(terms) {
+  var pre = 'Factoring Company - ';
+  terms = String(terms || '').trim();
+  return terms.indexOf(pre) === 0 ? terms.slice(pre.length).trim() : '';
+}
+
+function pfOpenPopup(r) {
+  var d = pfCurrentElig(r);
+  if (!r || !d || !d.eligible || !pfOn()) return;
+  pfClosePopup();
+  _pfPop = { rec: r, elig: d, payer: null, sending: false };
+  var factored = d.kind === 'factored';
+  var m = document.createElement('div');
+  m.className = 'pf-modal-backdrop';
+  m.id = 'pf-modal';
+  m.innerHTML = '<div class="pf-modal" role="dialog" aria-modal="true">' +
+    '<div class="pf-modal-h">' + (factored ? 'Pay the factoring company faster' : 'Pay carrier faster') + '</div>' +
+    '<div class="pf-modal-sub">Load# ' + esc(r.Load_Rate_Confirmation_Number || 'n/a') + ' · ' + esc(displayCarrier(r)) +
+      ' · ' + fmtMoney(pfParseRate(r)) + ' · this load only</div>' +
+    '<div id="pf-opts"></div>' +
+    '<label class="pf-note-l" for="pf-note">Note for OperFi (optional)</label>' +
+    '<textarea id="pf-note" maxlength="500"></textarea>' +
+    '<div class="pf-modal-err" id="pf-error" style="display:none;"></div>' +
+    '<div class="pf-modal-f"><button class="pf-cancel" id="pf-cancel">Cancel</button>' +
+    '<button class="pf-send" id="pf-send" disabled>Send request</button></div></div>';
+  document.body.appendChild(m);
+  m.addEventListener('click', function(e) {
+    var t = e.target;
+    if (t === m || (t.closest && t.closest('#pf-cancel'))) { pfClosePopup(); return; }
+    if (t.closest && t.closest('#pf-send')) { pfSend(); return; }
+    var a = t.closest && t.closest('a.pf-video-link');
+    if (a) { e.preventDefault(); window.open(PF_HELP_URL, '_blank'); }
+  });
+  m.addEventListener('change', function(e) {
+    var t = e.target;
+    if (!t || t.name !== 'pf-payer' || !_pfPop) return;
+    _pfPop.payer = t.value === 'broker' ? 'broker' : 'carrier';
+    pfRenderOpts();
+    // Broker pays spends reserve: re-read the balance, then re-render against it.
+    if (_pfPop.payer === 'broker') payFasterLoadContext(true).then(pfRenderOpts);
+  });
+  pfRenderOpts();
+}
+
+function pfClosePopup() {
+  var m = document.getElementById('pf-modal');
+  if (m && m.parentNode) m.parentNode.removeChild(m);
+  _pfPop = null;
+}
+
+function pfShowError(msg) {
+  var el = document.getElementById('pf-error');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.display = msg ? '' : 'none';
+}
+
+function pfRenderOpts() {
+  var box = document.getElementById('pf-opts');
+  if (!box || !_pfPop || !pfOn()) return;
+  var PF = window.PayFaster, d = _pfPop.elig, rate = pfParseRate(_pfPop.rec);
+  // A reserve that cannot cover the 2% charge cannot be chosen; drop a stale broker pick.
+  if (_pfPop.payer === 'broker') {
+    var bf = PF.computeFees(rate, _pfCtx.qp_fee_pct, 'broker');
+    var rv = _pfCtx.reserve;
+    if (!bf.error && rv && rv.status === 'ok' && rv.cash != null && rv.cash < bf.reserveCharge) _pfPop.payer = null;
+  }
+  box.innerHTML = PF.optionsHtml({ kind: PF.kindForTerms(d.terms), payer: _pfPop.payer, rate: rate,
+    feePct: _pfCtx.qp_fee_pct, reserve: _pfCtx.reserve, factorName: pfFactorName(d.terms),
+    trained: _pfCtx.trained !== false, videoId: _pfCtx.training_video_id });
+  if (!_pfPop.payer) {
+    Array.prototype.forEach.call(box.querySelectorAll('input[name="pf-payer"]'), function(x) {
+      x.checked = false; if (x.parentNode) x.parentNode.classList.remove('pf-sel');
+    });
+  }
+  var send = document.getElementById('pf-send');
+  if (send) send.disabled = !_pfPop.payer || _pfPop.sending;
+}
+
+function pfApplyRequest(r, q) {
+  r.pay_change = { status: q.status, payer: q.payer, requested_at: q.requested_at, resolved_at: q.resolved_at || null };
+  var d = pfCurrentElig(r) || {};
+  _pfElig = { id: String(r.ID), state: 'done', data: { eligible: false, reason: 'already_requested',
+    kind: d.kind, terms: d.terms, request: q } };
+  renderList();
+  payFasterPanelUpdate();
+  var pr = document.querySelector('.panel-status-row');
+  if (pr && pfOpenRecord() === r) {
+    var old = pr.querySelector('.pf-rowpill');
+    if (old) old.parentNode.removeChild(old);
+    pr.insertAdjacentHTML('beforeend', payFasterPill(r));
+  }
+}
+
+function pfPostJson(url, payload) {
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    .then(function(res) {
+      return res.json().then(function(b) { return b; }, function() { return {}; })
+        .then(function(b) { return { status: res.status, ok: res.ok, body: b || {} }; });
+    });
+}
+
+function pfErrorCopy(res) {
+  var code = res.body && res.body.error;
+  if (res.status === 409) {
+    if (code === 'already_requested') return 'A pay-faster request is already open for this load.';
+    if (code === 'carrier_paid') return 'This carrier has already been paid.';
+    if (code === 'reserve_insufficient' && res.body.cash != null && res.body.charge != null) {
+      return "Your reserve balance (" + window.PayFaster.money(parseMoney(res.body.cash)) + ") doesn't cover the " +
+        window.PayFaster.money(parseMoney(res.body.charge)) + ' fee.';
+    }
+  }
+  return PF_GENERIC_ERR;
+}
+
+function pfSend() {
+  var pop = _pfPop;
+  if (!pop || !pop.payer || pop.sending) return;
+  var note = document.getElementById('pf-note');
+  pop.sending = true;
+  var send = document.getElementById('pf-send');
+  if (send) send.disabled = true;
+  pfShowError('');
+  pfPostJson(BROKER_API_BASE + '/pay-change/requests', {
+    email: brokerEmail, record_id: String(pop.rec.ID), payer: pop.payer,
+    broker_note: note ? note.value.trim().slice(0, 500) : ''
+  }).then(function(res) {
+    if (_pfPop !== pop) return;
+    if (res.ok && res.body && res.body.request) {
+      pfClosePopup();
+      pfApplyRequest(pop.rec, res.body.request);
+      return;
+    }
+    pop.sending = false;
+    pfShowError(pfErrorCopy(res));
+    var code = res.body && res.body.error;
+    if (res.status === 409 && (code === 'already_requested' || code === 'carrier_paid')) {
+      pfFetchElig(pop.rec);
+    } else if (res.status === 409 && code === 'reserve_insufficient') {
+      payFasterLoadContext(true).then(pfRenderOpts);
+    }
+    var b = document.getElementById('pf-send');
+    if (b) b.disabled = !pop.payer;
+  }).catch(function() {
+    if (_pfPop !== pop) return;
+    pop.sending = false;
+    pfShowError(PF_GENERIC_ERR);
+    var b = document.getElementById('pf-send'); if (b) b.disabled = false;
+  });
+}
+
+// Staff only. Identity comes from the portal session cookie; no impersonate param is added
+// here, and the email is the staffer's own, as with every other call on this page.
+function pfResolve(r, status) {
+  var d = pfCurrentElig(r);
+  var q = d && d.request;
+  if (!r || !q || q.status !== 'requested' || !pfIsStaff()) return;
+  var note = document.getElementById('pf-ops-note');
+  var err = document.getElementById('pf-staff-err');
+  var ap = document.getElementById('pf-apply'), dc = document.getElementById('pf-decline');
+  if (ap) ap.disabled = true;
+  if (dc) dc.disabled = true;
+  if (err) err.textContent = '';
+  function fail(msg) {
+    var e2 = document.getElementById('pf-staff-err');
+    if (e2) e2.textContent = msg;
+    var a2 = document.getElementById('pf-apply'), d2 = document.getElementById('pf-decline');
+    if (a2) a2.disabled = false;
+    if (d2) d2.disabled = false;
+  }
+  pfPostJson(BROKER_API_BASE + '/pay-change/requests/' + encodeURIComponent(q.id) + '/resolve?email=' +
+      encodeURIComponent(brokerEmail),
+    { status: status, ops_note: note ? note.value.trim().slice(0, 500) : '' })
+    .then(function(res) {
+      if (res.ok) {
+        var nq = Object.assign({}, q, res.body.request || {});
+        nq.status = (res.body.request && res.body.request.status) || status;
+        pfApplyRequest(r, nq);
+        return;
+      }
+      if (res.status === 403) return fail('Only OperFi staff can resolve pay-faster requests.');
+      if (res.status === 409) { fail('This request is no longer pending.'); pfFetchElig(r); return; }
+      fail("Couldn't save. Try again.");
+    })
+    .catch(function() { fail("Couldn't save. Try again."); });
+}
+
+window.payFasterPill = payFasterPill;
+window.__openForTest = function(rec) { allRecords = [rec]; applyFilters(); openPanel(0); };
 
 // ── Field accessors ───────────────────────────────────────────────────────
 // Customer_Name is a lookup. Zoho returns either a string display or { ID, display_value }.

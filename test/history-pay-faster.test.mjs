@@ -310,3 +310,22 @@ test('eligibility error does not stick on reopen', async () => {
   assert.equal(n, 2);
   assert.ok($(w, 'pf-open'));
 });
+
+test('j typed in the ops note does not navigate; Escape in search still closes the panel', async () => {
+  const rows = [Object.assign({}, ROW, { pay_change: { status: 'requested' } }), ROW2];
+  const w = makeDom({ rows, staff: true, elig: PENDING_ELIG });
+  await flush();
+  w.document.querySelector('.row').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  const before = $(w, 'panel').querySelector('.position').textContent;
+  const note = $(w, 'pf-ops-note');
+  assert.ok(note);
+  note.value = 'abc';
+  key(w, note, 'j'); key(w, note, 'k');
+  await flush();
+  assert.equal($(w, 'panel').querySelector('.position').textContent, before);
+  assert.equal($(w, 'pf-ops-note').value, 'abc');
+  assert.ok(!$(w, 'pf-modal'));
+  key(w, $(w, 'search-input'), 'Escape');
+  assert.ok(!$(w, 'panel').classList.contains('show'), 'Escape in search closes the panel');
+});

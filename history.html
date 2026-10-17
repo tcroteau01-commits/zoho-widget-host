@@ -847,7 +847,7 @@ function bindGlobalUI() {
   // Panel close + keyboard
   document.getElementById('scrim').addEventListener('click', closePanel);
   document.addEventListener('keydown', function(e) {
-    // Typing in a field (pay-faster note boxes) must never navigate or close anything.
+    // Typing j/k in a field (pay-faster note boxes) must never navigate.
     var _t = e.target, _tag = _t && _t.tagName;
     var _typing = _tag === 'INPUT' || _tag === 'TEXTAREA' || _tag === 'SELECT' || (_t && _t.isContentEditable);
     var _pm = document.getElementById('pf-modal');
@@ -855,7 +855,7 @@ function bindGlobalUI() {
       if (e.key === 'Escape') { e.preventDefault(); pfClosePopup(); }
       return;
     }
-    if (_typing) return;
+    if (_typing && (e.key === 'j' || e.key === 'k')) return;  // letters belong to the field; Escape falls through
     var _dv = document.querySelector('.opf-dv-backdrop');
     if (_dv && !_dv.classList.contains('hidden')) return; // doc viewer owns the keyboard while open
     if (!document.getElementById('panel').classList.contains('show')) return;

@@ -302,6 +302,8 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 
 .field-err { font-size: 11px; color: #c62828; margin-top: 2px; display: none; }
 .field-err.show { display: block; }
+.field-locked { font-size: 11px; color: #6b7280; margin-top: 2px; }
+#m-email[readonly] { background: #f3f4f6; color: #6b7280; cursor: not-allowed; }
 
 .perm-section {
   margin-top: 22px;
@@ -794,6 +796,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
           <label class="label">Email <span class="req">*</span></label>
           <input class="input" id="m-email" type="email" placeholder="jane@company.com" autocomplete="off">
           <div class="field-err" data-err-for="m-email">A valid email is required.</div>
+          <div class="field-locked" id="m-email-locked" hidden>To change a login email, remove this user and invite the new address.</div>
         </div>
         <div class="field full">
           <label class="label">Phone <span class="req">*</span></label>
@@ -1580,6 +1583,9 @@ function resetModal() {
     el.value = '';
     el.classList.remove('invalid');
   });
+  // ACCTCHG1 Phase 0: only openEditModal locks the email; Add always starts editable.
+  document.getElementById('m-email').readOnly = false;
+  document.getElementById('m-email-locked').hidden = true;
   document.querySelectorAll('.field-err.show').forEach(function(e) { e.classList.remove('show'); });
   document.querySelectorAll('.perm-card.selected').forEach(function(e) { e.classList.remove('selected'); });
   document.getElementById('full-warn').classList.remove('show');
@@ -1620,6 +1626,10 @@ function openEditModal(u) {
   document.getElementById('m-first').value = first;
   document.getElementById('m-last').value = last;
   document.getElementById('m-email').value = u.Email || '';
+  // ACCTCHG1 Phase 0: a login email is never changed in place. Changing it
+  // here never reached WorkOS and locked the user out; the API refuses it too.
+  document.getElementById('m-email').readOnly = true;
+  document.getElementById('m-email-locked').hidden = false;
   document.getElementById('m-phone').value = u.Phone_Number || '';
   // Pre-select permission cards from the contact's roles.
   var perms = u.User_Permissions;
@@ -2033,7 +2043,11 @@ function submitContact() {
       permissions: selectedRoles
     };
     var endpoint = '/broker-add-contact';
-    if (isEdit) { endpoint = '/broker-edit-contact'; payload.contact_id = editingContactId; }
+    if (isEdit) {
+      endpoint = '/broker-edit-contact';
+      payload.contact_id = editingContactId;
+      delete payload.contact_email;     // read-only on edit (ACCTCHG1 Phase 0)
+    }
     else if (templatesAvailable) { payload.template_id = templateId; }
 
     fetch(BROKER_API_BASE + endpoint, {
@@ -2871,6 +2885,9 @@ window.openEditModal = function() {
 };
 window.togglePermCard = function() {
   return togglePermCard.apply(this, arguments);
+};
+window.openModal = function() {
+  return openModal.apply(this, arguments);
 };
 window.openViewModal = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;

@@ -1024,16 +1024,25 @@ var _pf = { ctx: null, kind: null, toggled: false, payer: null, factor: '' };
 var _pfPending = null;     // payload captured at Submit, read by _finalizeFunding
 var _pfPayChange = null;   // pay_change object from the last finalize response
 
-function loadPayFasterContext() {
+var _pfSeq = 0;  // only the latest context request may apply its response
+function loadPayFasterContext(isRefetch) {
   if (!brokerEmail || !window.PayFaster) return Promise.resolve();
+  var seq = ++_pfSeq;
   return fetch(BROKER_API_BASE + '/pay-change/context?email=' + encodeURIComponent(brokerEmail))
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (j) {
+      if (seq !== _pfSeq) return;
       _pf.ctx = (j && j.enabled) ? j : null;
       if (_pf.ctx) window.PayFaster.injectStyles();
     })
-    .catch(function () { _pf.ctx = null; })
-    .then(function () { renderPayFaster(); refreshValidity(); });
+    .catch(function () {
+      if (seq !== _pfSeq) return;
+      if (isRefetch && _pf.ctx) {
+        // Keep the feature up; just mark the reserve as not checkable.
+        _pf.ctx = Object.assign({}, _pf.ctx, { reserve: { cash: null, status: 'unavailable' } });
+      } else { _pf.ctx = null; }
+    })
+    .then(function () { if (seq !== _pfSeq) return; renderPayFaster(); refreshValidity(); });
 }
 
 function _pfFactorName(terms) {
@@ -1132,12 +1141,15 @@ function renderPayFaster() {
 
 // Margin effect of the one-off, or null when none applies.
 function _pfMarginEffect() {
-  if (!window.PayFaster || !_pf.ctx || !_pf.toggled || !_pf.payer) return null;
+  if (!window.PayFaster || !_pf.ctx) return null;
+  var payer = _pf.payer;
+  if (_pf.kind === 'quickpay') payer = 'carrier';  // already on Quick Pay: split always applies
+  else if (!_pf.toggled || !payer) return null;
   var rate = _pfRate();
   if (!rate) return null;
-  var f = window.PayFaster.computeFees(rate, _pfPct(), _pf.payer);
+  var f = window.PayFaster.computeFees(rate, _pfPct(), payer);
   if (f.error) return null;
-  return { effect: window.PayFaster.marginEffect(f, _pf.payer), payer: _pf.payer };
+  return { effect: window.PayFaster.marginEffect(f, payer), payer: payer };
 }
 
 // True while the toggle is on but the request can't be sent yet (no payer, or no rate).
@@ -1173,7 +1185,7 @@ function _pfWire() {
       _pf.payer = t.value === 'broker' ? 'broker' : 'carrier';
       renderPayFaster(); updateMargin(); refreshValidity();
       // Broker pays spends reserve: re-read the balance, then re-render against it.
-      if (_pf.payer === 'broker') loadPayFasterContext().then(function () { updateMargin(); refreshValidity(); });
+      if (_pf.payer === 'broker') loadPayFasterContext(true).then(function () { updateMargin(); refreshValidity(); });
     });
     opts.addEventListener('click', function (e) {
       var a = e.target && e.target.closest ? e.target.closest('a.pf-video-link') : null;

@@ -294,3 +294,53 @@ test('no em or en dashes in new markup', () => {
   assert.ok(m);
   assert.doesNotMatch(m[0], /[–—]/);
 });
+
+test('quickpay carrier margin includes the QP share', async () => {
+  const w = await ready();
+  setVal(w, 'customer-rate', '2500');
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-qp');
+  assert.match($(w, 'sum-margin').textContent, /\$540\.00/);
+  assert.strictEqual($(w, 'sum-margin-note').textContent, '$500.00 load + $40.00 QP share');
+});
+
+test('quickpay carrier with fee below 2 or missing gets no margin adjustment', async () => {
+  for (const pct of [null, '1.5']) {
+    const w = await ready({ ctx: Object.assign({}, CTX, { qp_fee_pct: pct }) });
+    setVal(w, 'customer-rate', '2500');
+    setVal(w, 'carrier-rate', '2000');
+    pickCarrier(w, 'v-qp');
+    assert.match($(w, 'sum-margin').textContent, /\$500\.00/);
+    assert.strictEqual($(w, 'sum-margin-note').textContent, '');
+  }
+});
+
+test('failed context refetch keeps ctx and marks reserve unavailable', async () => {
+  const w = await ready();
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-net');
+  toggle(w, true);
+  w.fetch = (u) => String(u).indexOf('/pay-change/context') !== -1
+    ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+    : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+  pickPayer(w, 'broker');
+  await flush();
+  assert.ok(visible($(w, 'pay-faster')));
+  assert.strictEqual(w.payFasterPayload().payer, 'broker');
+  assert.match($(w, 'pf-options').textContent, /couldn't check your reserve/);
+});
+
+test('a stale context response is ignored', async () => {
+  const w = await ready();
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-net');
+  let first;
+  const mk = (ctx) => ({ ok: true, status: 200, json: () => Promise.resolve(ctx) });
+  w.fetch = () => new Promise((res) => { first = () => res(mk(Object.assign({}, CTX, { reserve: { cash: 5, status: 'ok' } }))); });
+  const p1 = w.loadPayFasterContext(true);
+  w.fetch = () => Promise.resolve(mk(Object.assign({}, CTX, { reserve: { cash: 900, status: 'ok' } })));
+  await w.loadPayFasterContext(true);
+  first();
+  await p1;
+  assert.strictEqual(w.eval('_pf.ctx.reserve.cash'), 900);
+});

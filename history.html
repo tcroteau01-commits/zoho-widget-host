@@ -847,6 +847,15 @@ function bindGlobalUI() {
   // Panel close + keyboard
   document.getElementById('scrim').addEventListener('click', closePanel);
   document.addEventListener('keydown', function(e) {
+    // Typing in a field (pay-faster note boxes) must never navigate or close anything.
+    var _t = e.target, _tag = _t && _t.tagName;
+    var _typing = _tag === 'INPUT' || _tag === 'TEXTAREA' || _tag === 'SELECT' || (_t && _t.isContentEditable);
+    var _pm = document.getElementById('pf-modal');
+    if (_pm) {  // pay-faster popup owns the keyboard: Escape closes it only
+      if (e.key === 'Escape') { e.preventDefault(); pfClosePopup(); }
+      return;
+    }
+    if (_typing) return;
     var _dv = document.querySelector('.opf-dv-backdrop');
     if (_dv && !_dv.classList.contains('hidden')) return; // doc viewer owns the keyboard while open
     if (!document.getElementById('panel').classList.contains('show')) return;
@@ -1534,7 +1543,7 @@ function pfOpenRecord() { return openIndex >= 0 ? filteredRecords[openIndex] : n
 var PF_PILL = { requested: 'Requested', applied: 'Applied', declined: 'Declined' };
 function payFasterPill(r) {
   var pc = r && r.pay_change;
-  if (!pc || !PF_PILL[pc.status]) return '';
+  if (!pc || !Object.prototype.hasOwnProperty.call(PF_PILL, pc.status)) return '';
   return '<span class="pf-rowpill ' + pc.status + '">⚡ Pay faster: ' + PF_PILL[pc.status] + '</span>';
 }
 
@@ -1576,7 +1585,9 @@ function pfFetchElig(r) {
 // Called at the end of renderPanel: starts the eligibility lookup once per record.
 function payFasterOnPanel(r) {
   if (!pfOn() || isDraft(r)) return;
-  if (_pfElig.id === String(r.ID)) return;
+  _pfStaffTries = 0;
+  pfWatchStaff(r);
+  if (_pfElig.id === String(r.ID) && _pfElig.state !== 'error') return;  // an error never sticks
   pfFetchElig(r);
 }
 // Repaint the two pay-faster regions of the open panel in place (no scroll jump).
@@ -1586,8 +1597,28 @@ function payFasterPanelUpdate() {
   if (pfOn() && !isDraft(r) && _pfElig.id !== String(r.ID)) { pfFetchElig(r); return; }
   var slot = document.getElementById('pf-slot');
   if (slot) slot.innerHTML = payFasterSlotHtml(r);
+  pfWatchStaff(r);
   var tl = document.getElementById('pf-timeline');
   if (tl) tl.innerHTML = timelineHtml(r);
+}
+
+// /whoami may land after the panel paints. Re-render the slot a few times so the staff
+// controls appear once the flag flips (operfi-impersonate.js exposes no event).
+var _pfStaffTimer = null, _pfStaffTries = 0;
+function pfWatchStaff(r) {
+  var d = pfCurrentElig(r);
+  var pending = d && d.request && d.request.status === 'requested';
+  if (!pending || pfIsStaff() || !window.OPERFI_IMP || _pfStaffTimer) return;
+  if (_pfStaffTries >= 10) return;
+  _pfStaffTimer = setTimeout(function() {
+    _pfStaffTimer = null; _pfStaffTries++;
+    var cur = pfOpenRecord();
+    if (!cur || String(cur.ID) !== String(r.ID)) return;
+    if (pfIsStaff()) {
+      var slot = document.getElementById('pf-slot');
+      if (slot) slot.innerHTML = payFasterSlotHtml(cur);
+    } else pfWatchStaff(cur);
+  }, 300);
 }
 
 function pfPctText(v) {
@@ -1846,8 +1877,6 @@ function pfResolve(r, status) {
     .catch(function() { fail("Couldn't save. Try again."); });
 }
 
-window.payFasterPill = payFasterPill;
-window.__openForTest = function(rec) { allRecords = [rec]; applyFilters(); openPanel(0); };
 
 // ── Field accessors ───────────────────────────────────────────────────────
 // Customer_Name is a lookup. Zoho returns either a string display or { ID, display_value }.

@@ -48,7 +48,7 @@ function makeDom(opts) {
           const r = opts.post || { status: 201, body: { ok: true, request: REQ } };
           status = r.status; body = r.body;
         } else if (u.indexOf('/broker-report') !== -1) {
-          body = { records: [] };
+          body = { records: opts.rows || [] };
         }
         return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
       };
@@ -63,9 +63,10 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 const flush = async () => { for (let i = 0; i < 10; i++) await tick(); };
 
 async function open(rowOpts, domOpts) {
-  const w = makeDom(domOpts);
+  const rows = [Object.assign({}, ROW, rowOpts || {})];
+  const w = makeDom(Object.assign({}, domOpts, { rows }));
   await flush();
-  w.__openForTest(Object.assign({}, ROW, rowOpts || {}));
+  w.document.querySelector('.row').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   await flush();
   return w;
 }
@@ -85,7 +86,7 @@ test('pill shows for requested row', () => {
 test('changed pill logic untouched', async () => {
   const diff = { Payment_Terms: 'Factoring Company - Example Capital', Broker_Pay_Term: 'Standard Net 30' };
   let w = await open(diff, { elig: { eligible: false, reason: 'carrier_paid', kind: null, terms: null, request: null } });
-  assert.doesNotMatch(w.rowHtml(Object.assign({}, ROW, diff), 0), /Pay faster/);
+  assert.doesNotMatch(w.document.querySelector('.row').innerHTML, /Pay faster/);
   assert.match($(w, 'panel').textContent, /Terms at submission/, 'BROKERTERMS2 treatment still shows');
   w = await open(Object.assign({}, diff, { pay_change: { status: 'requested' } }), { elig: PENDING_ELIG });
   assert.match($(w, 'panel').textContent, /Terms at submission/);
@@ -230,4 +231,82 @@ test('interpolated text is escaped', async () => {
   const w = await open({ pay_change: { status: 'requested' } }, {
     elig: Object.assign({}, PENDING_ELIG, { request: Object.assign({}, REQ, { terms_on_file: '<img src=x onerror=1>' }) }) });
   assert.equal($(w, 'panel').querySelector('.timeline img'), null);
+});
+
+const ROW2 = Object.assign({}, ROW, { ID: '4100000000000000002', Load_Rate_Confirmation_Number: 'L-200' });
+const key = (w, el, k) => el.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+
+test('typing j/k/Escape in the note box does not navigate or close', async () => {
+  const w = makeDom({ rows: [ROW, ROW2] });
+  await flush();
+  w.document.querySelector('.row').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  const before = $(w, 'panel').querySelector('.position').textContent;
+  click(w, $(w, 'pf-open')); await flush();
+  pick(w, 'carrier'); await flush();
+  const note = $(w, 'pf-note');
+  note.value = 'draft text';
+  key(w, note, 'j'); key(w, note, 'k');
+  await flush();
+  assert.equal($(w, 'panel').querySelector('.position').textContent, before);
+  assert.equal($(w, 'pf-note').value, 'draft text');
+  assert.ok($(w, 'pf-modal'));
+  key(w, note, 'Escape');
+  assert.ok(!$(w, 'pf-modal'), 'Escape closes the modal');
+  assert.ok($(w, 'panel').classList.contains('show'), 'panel stays open');
+  assert.equal($(w, 'panel').querySelector('.position').textContent, before);
+});
+
+test('j/k on body do nothing while the modal is open', async () => {
+  const w = makeDom({ rows: [ROW, ROW2] });
+  await flush();
+  w.document.querySelector('.row').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  const before = $(w, 'panel').querySelector('.position').textContent;
+  click(w, $(w, 'pf-open')); await flush();
+  key(w, w.document.body, 'j');
+  await flush();
+  assert.equal($(w, 'panel').querySelector('.position').textContent, before);
+  assert.ok($(w, 'pf-modal'));
+});
+
+test('staff controls appear when the staff flag flips after paint', async () => {
+  let staff = false;
+  const rows = [Object.assign({}, ROW, { pay_change: { status: 'requested' } })];
+  const w = makeDom({ rows, elig: PENDING_ELIG });
+  w.OPERFI_IMP = { isStaff: () => staff, hint: (t) => t };
+  await flush();
+  w.document.querySelector('.row').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  assert.ok(!$(w, 'pf-apply'));
+  staff = true;
+  await new Promise((r) => setTimeout(r, 450));
+  assert.ok($(w, 'pf-apply'));
+});
+
+test('unknown pay_change status gives no pill', () => {
+  const w = makeDom();
+  assert.equal(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'constructor' } }), 0).indexOf('Pay faster'), -1);
+});
+
+test('eligibility error does not stick on reopen', async () => {
+  let n = 0;
+  const w = makeDom({ rows: [ROW] });
+  const f = w.fetch;
+  w.fetch = (u, o) => {
+    if (String(u).indexOf('/pay-change/eligibility') !== -1 && ++n === 1) {
+      return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({ error: 'lookup_failed' }) });
+    }
+    return f(u, o);
+  };
+  await flush();
+  const row = () => w.document.querySelector('.row');
+  row().dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  assert.ok(!$(w, 'pf-open'));
+  click(w, $(w, 'p-close')); await flush();
+  row().dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  assert.equal(n, 2);
+  assert.ok($(w, 'pf-open'));
 });

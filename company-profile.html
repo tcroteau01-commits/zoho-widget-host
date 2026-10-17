@@ -647,6 +647,18 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   font-size: 14px; font-family: inherit; color: #272727;
 }
 #invite-template-field select:focus { outline: 0; border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.12); }
+/* ACCTCHG1 Phase 1 */
+.allows-box { margin-top: 12px; background: #F8F9FB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 16px; }
+.allows-box[hidden], .attest-wrap[hidden], .info-line[hidden] { display: none; }
+.allows-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.allows-box ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: #374151; }
+.attest-wrap { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.attest-box { background: #FEF3E8; border: 1px solid #F5C9A0; border-radius: 10px; padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
+.attest-box input { width: 20px; height: 20px; margin: 2px 0 0 0; accent-color: #C2410C; flex-shrink: 0; }
+.attest-box label { font-size: 13px; line-height: 1.55; color: #1d1d1f; }
+.info-line { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; color: #4b5563; }
+.info-line svg { flex-shrink: 0; margin-top: 1px; }
+#m-edit-note { margin-top: 12px; background: #F8F9FB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 12px 14px; }
 </style>
 </head>
 <body>
@@ -851,6 +863,21 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         <select id="invite-template" required></select>
         <div class="field-err" id="tpl-picker-note"></div>
       </label>
+
+      <div class="allows-box" id="m-allows" hidden>
+        <div class="allows-title" id="m-allows-title"></div>
+        <ul id="m-allows-list"></ul>
+      </div>
+
+      <div class="attest-wrap" id="m-attest-wrap">
+        <div class="attest-box">
+          <input type="checkbox" id="m-attest">
+          <label for="m-attest" id="m-attest-text"></label>
+        </div>
+        <div class="info-line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg><span id="m-attest-info"></span></div>
+      </div>
+
+      <div class="info-line" id="m-edit-note" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg><span>Saving a change to this user's access or contact details emails the account owner and your admin email.</span></div>
     </div>
 
     <div class="modal-foot">
@@ -1594,6 +1621,13 @@ function resetModal() {
   if (tplPicker) { tplPicker.value = ''; tplPicker.disabled = false; }
   var tplNote = document.getElementById('tpl-picker-note');
   if (tplNote) tplNote.textContent = '';
+  // ACCTCHG1 Phase 1: add mode shows the attestation (always unchecked), edit
+  // mode shows the notice note instead; openEditModal flips them after this.
+  document.getElementById('m-attest').checked = false;
+  document.getElementById('m-attest-wrap').hidden = false;
+  document.getElementById('m-edit-note').hidden = true;
+  refreshAttestation();
+  refreshAllows();
   // Cleared BEFORE syncModalSubmit() runs below, not after: this used to be
   // the other way around, and syncModalSubmit's lock check at the time read
   // editingContactId/editingUser directly, so calling it while they still
@@ -1694,6 +1728,8 @@ function openEditModal(u) {
       if (tplNote) { tplNote.textContent = lockReason; tplNote.classList.add('show'); }
     }
   }
+  document.getElementById('m-attest-wrap').hidden = true;
+  document.getElementById('m-edit-note').hidden = false;
   syncModalSubmit();
   document.getElementById('modal-submit').textContent = 'Save';
   var mt = document.querySelector('#modal-scrim .m-title');
@@ -1852,6 +1888,56 @@ function templatesGovern() {
 // whatever checkboxes were posted, so requiring them here blocks a submit on an
 // answer that is thrown away -- which is exactly what happened to Tom on
 // 2026-08-27 with a freshly created template.
+function attestChecked() {
+  var b = document.getElementById('m-attest');
+  return !!(b && b.checked);
+}
+
+// ACCTCHG1 Phase 1: attestation v1 copy (verbatim, names filled live). The
+// server stores the filled text it builds itself; this is what the admin reads.
+function refreshAttestation() {
+  var first = document.getElementById('m-first').value.trim();
+  var last = document.getElementById('m-last').value.trim();
+  var who = (first + ' ' + last).trim() || 'this user';
+  var co = (window.account && typeof window.account === 'object') ? window.account : account;
+  var company = (co && co.Account_Name) || 'your company';
+  document.getElementById('m-attest-text').textContent =
+    'I confirm ' + who + ' is an employee or authorized agent of ' + company +
+    ' and authorize them to act for ' + company + ' in the OperFi portal with the access selected. ' +
+    company + ' is responsible for all activity under this login.';
+  document.getElementById('m-attest-info').textContent =
+    'The account owner and your admin email will get an email about this new user. ' +
+    (first || 'This user') + ' will receive an invitation to set up their own login.';
+}
+
+// "What {template} access allows": the template's description first, then the
+// labels of its capabilities the catalog knows (the catalog is client-visible
+// only, so internal keys never render).
+function refreshAllows() {
+  var box = document.getElementById('m-allows');
+  var picker = document.getElementById('invite-template');
+  var t = null;
+  (inviteTemplates || []).forEach(function (x) { if (picker && x.template_id === picker.value) t = x; });
+  if (!t) { box.hidden = true; return; }
+  if (window.accessCatalog !== undefined) accessCatalog = window.accessCatalog;
+  var labels = {};
+  ((accessCatalog && accessCatalog.groups) || []).forEach(function (g) {
+    (g.capabilities || []).forEach(function (c) { labels[c.key] = c.label; });
+  });
+  var items = [];
+  if (t.description) items.push(t.description);
+  (t.capabilities || []).forEach(function (k) { if (labels[k]) items.push(labels[k]); });
+  document.getElementById('m-allows-title').textContent = 'What ' + t.name + ' access allows';
+  var ul = document.getElementById('m-allows-list');
+  ul.innerHTML = '';
+  items.forEach(function (txt) {
+    var li = document.createElement('li');
+    li.textContent = txt;
+    ul.appendChild(li);
+  });
+  box.hidden = false;
+}
+
 function syncModalSubmit() {
   var byTemplate = templatesGovern();
   var picker = document.getElementById('invite-template');
@@ -1865,9 +1951,12 @@ function syncModalSubmit() {
   // submitContact() never attempts a template write for any locked case, and
   // contact-field edits for these users must still reach the admin.
   var lockedEdit = byTemplate && !!(picker && picker.disabled);
-  document.getElementById('modal-submit').disabled = (byTemplate && !lockedEdit)
+  var submitOff = (byTemplate && !lockedEdit)
     ? !(picker && picker.value)
     : (byTemplate ? false : selectedRoles.length === 0);
+  // ACCTCHG1 Phase 1: adding a user also needs the attestation ticked.
+  if (!editingContactId && !attestChecked()) submitOff = true;
+  document.getElementById('modal-submit').disabled = submitOff;
   var block = document.getElementById('perm-section');
   if (block) { block.hidden = byTemplate; }
 }
@@ -1914,6 +2003,7 @@ function submitContact() {
   if (!templatesGovern() && !selectedRoles.length) return;
 
   var isEdit = !!editingContactId;
+  if (!isEdit && !attestChecked()) return;
 
   // A permission template is required on invite, with no default selection: a
   // blank default silently meaning Full Access is the exact defect this whole
@@ -2048,7 +2138,10 @@ function submitContact() {
       payload.contact_id = editingContactId;
       delete payload.contact_email;     // read-only on edit (ACCTCHG1 Phase 0)
     }
-    else if (templatesAvailable) { payload.template_id = templateId; }
+    else {
+      payload.attested = true;            // ACCTCHG1 Phase 1: API rejects an add without it
+      if (templatesAvailable) { payload.template_id = templateId; }
+    }
 
     fetch(BROKER_API_BASE + endpoint, {
       method: 'POST',
@@ -2254,6 +2347,7 @@ function esc(s) {
 // presentation: what an admin can see and understand about someone's access.
 var accessCatalog = null;
 var accessTemplates = [];
+var inviteTemplates = [];
 var currentDrawerTemplate = null;
 var currentDrawerUser = null;
 var adminCeiling = [];
@@ -2748,7 +2842,8 @@ function renderInviteTemplatePicker(templates) {
   blank.textContent = 'Choose a template';
   picker.appendChild(blank);
   // Choosing a template is now what enables Submit, so it has to re-evaluate.
-  picker.onchange = syncModalSubmit;
+  picker.onchange = function () { refreshAllows(); syncModalSubmit(); };
+  inviteTemplates = templates || [];
   (templates || []).forEach(function (t) {
     var o = document.createElement('option');
     o.value = t.template_id;
@@ -2757,6 +2852,7 @@ function renderInviteTemplatePicker(templates) {
   });
   picker.required = true;
   picker.value = '';
+  refreshAllows();
   // Templates arrive asynchronously, after resetModal has already run, so the
   // button state and the checkbox block have to settle once they land.
   syncModalSubmit();
@@ -2871,6 +2967,13 @@ function renderActivity(events) {
     list.appendChild(line);
   });
 }
+
+// ACCTCHG1 Phase 1: wired at load (not in bindGlobalUI) so the modal works the
+// moment it exists; the elements are static markup above this script.
+['m-first', 'm-last'].forEach(function(id) {
+  document.getElementById(id).addEventListener('input', refreshAttestation);
+});
+document.getElementById('m-attest').addEventListener('change', syncModalSubmit);
 
 // ── expose for tests (no-op in production; window overrides are unset live) ──
 window.submitContact = function() {

@@ -219,6 +219,63 @@ test('finalize pay_change failure shows message', async () => {
   assert.match(t, /Your load was submitted, but the pay-faster request didn't go through\. Request it from Submission History\./);
 });
 
+test('finalize pay_change already_requested is treated as success', async () => {
+  const w = await ready({ finalize: { ok: true, pay_change: { ok: false, error: 'already_requested' } } });
+  pickCarrier(w, 'v-net');
+  setVal(w, 'carrier-rate', '2000');
+  toggle(w, true);
+  pickPayer(w, 'carrier');
+  await fillAndSubmit(w);
+  await flush();
+  const b = $(w, 'post-submit-banner');
+  assert.doesNotMatch(b.textContent, /pay-faster request didn't go through/);
+  assert.match(b.className, /\bok\b/);
+});
+
+test('draft finalize with pay faster on says it was not requested', async () => {
+  const w = await ready({ finalize: { ok: true, record_id: '4100000000000000001', status: 'Draft' } });
+  pickCarrier(w, 'v-net');
+  setVal(w, 'carrier-rate', '2000');
+  toggle(w, true);
+  pickPayer(w, 'carrier');
+  w.eval('_uploadDocsSequential = function () { return Promise.resolve(1); };');
+  await fillAndSubmit(w);
+  await flush();
+  const t = $(w, 'post-submit-banner').textContent;
+  assert.match(t, /Draft Loads/);
+  assert.match(t, /Pay faster wasn't requested\. Re-select it when you resubmit\./);
+  assert.doesNotMatch(t, /didn't go through/);
+});
+
+test('draft finalize without pay faster has no pay faster line', async () => {
+  const w = await ready({ finalize: { ok: true, record_id: '4100000000000000001', status: 'Draft' } });
+  pickCarrier(w, 'v-net');
+  w.eval('_uploadDocsSequential = function () { return Promise.resolve(1); };');
+  await fillAndSubmit(w);
+  await flush();
+  const t = $(w, 'post-submit-banner').textContent;
+  assert.match(t, /Draft Loads/);
+  assert.doesNotMatch(t, /Pay faster/);
+});
+
+test('impersonating hides the toggle and sends no pay_faster', async () => {
+  const w = await ready();
+  w.OPERFI_IMP = { target: () => 'client@sample-brokerage.example', isStaff: () => true };
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-net');
+  assert.ok(!visible($(w, 'pay-faster')));
+  assert.strictEqual(w.payFasterPayload(), null);
+  await fillAndSubmit(w);
+  await flush();
+  assert.ok(finalizeBody(w));
+  assert.ok(!('pay_faster' in finalizeBody(w)));
+  // No target set (staff not impersonating, or a broker): toggle offered as usual.
+  const w2 = await ready();
+  w2.OPERFI_IMP = { target: () => '', isStaff: () => false };
+  pickCarrier(w2, 'v-net');
+  assert.ok(visible($(w2, 'pay-faster')));
+});
+
 test('margin caption for broker pays', async () => {
   const w = await ready();
   setVal(w, 'customer-rate', '2500');

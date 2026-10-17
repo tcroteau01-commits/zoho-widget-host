@@ -31,7 +31,9 @@ function makeDom(opts) {
       w.__opened = [];
       w.open = (u) => { w.__opened.push(u); };
       w.ZOHO = { CREATOR: { UTIL: { getInitParams: () => Promise.resolve({ loginUser: 'b@x.com' }) } } };
-      if (opts.staff) w.OPERFI_IMP = { isStaff: () => true, hint: (t) => t };
+      if (opts.staff || opts.imp) {
+        w.OPERFI_IMP = { isStaff: () => !!opts.staff, hint: (t) => t, target: () => opts.imp || '' };
+      }
       w.fetch = (url, o) => {
         const u = String(url);
         calls.push({ url: u, opts: o || {} });
@@ -282,6 +284,57 @@ test('staff controls appear when the staff flag flips after paint', async () => 
   staff = true;
   await new Promise((r) => setTimeout(r, 450));
   assert.ok($(w, 'pf-apply'));
+});
+
+test('staff flag flipping late is watched for about 10s', () => {
+  const m = HTML.match(/var PF_STAFF_POLL_MS = (\d+), PF_STAFF_MAX_TRIES = (\d+);/);
+  assert.ok(m);
+  const total = Number(m[1]) * Number(m[2]);
+  assert.ok(total >= 10000 && total <= 11000, String(total));
+});
+
+test('staff flag flipping late repaints timeline dates', async () => {
+  let staff = false;
+  const elig = Object.assign({}, PENDING_ELIG, { request: Object.assign({}, REQ, { status: 'applied', resolved_at: '2026-10-17T16:00:00Z' }) });
+  const rows = [Object.assign({}, ROW, { pay_change: { status: 'applied' } })];
+  const w = makeDom({ rows, elig });
+  w.OPERFI_IMP = { isStaff: () => staff, hint: (t) => t, target: () => '' };
+  await flush();
+  w.document.querySelector('.row').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  const times = () => [...$(w, 'panel').querySelectorAll('.timeline-item')]
+    .filter((i) => /Pay change/.test(i.textContent)).map((i) => i.querySelector('.timeline-time'));
+  assert.ok(times().every((t) => t === null));
+  staff = true;
+  await new Promise((r) => setTimeout(r, 450));
+  assert.ok(times().every((t) => t && / CT$/.test(t.textContent)));
+});
+
+test('staff always see timeline dates; brokers do not', async () => {
+  const elig = { eligible: false, reason: 'already_requested', kind: 'net30', terms: 'Standard Net 30',
+    request: Object.assign({}, REQ, { status: 'applied', resolved_at: '2026-10-17T16:00:00Z' }) };
+  const items = (w) => [...$(w, 'panel').querySelectorAll('.timeline-item')].filter((i) => /Pay change/.test(i.textContent));
+  let w = await open({ pay_change: { status: 'applied' } }, { staff: true, elig });
+  assert.match(HTML, /var PAYCHG_SHOW_DATES = false;/);
+  assert.equal(items(w).length, 2);
+  items(w).forEach((i) => {
+    const t = i.querySelector('.timeline-time');
+    assert.ok(t, 'staff sees a date');
+    assert.match(t.textContent, /Oct 17, 2026.* CT$/);
+  });
+  w = await open({ pay_change: { status: 'applied' } }, { elig });
+  items(w).forEach((i) => assert.equal(i.querySelector('.timeline-time'), null));
+});
+
+test('impersonating staff get no request button but keep resolve controls', async () => {
+  let w = await open({}, { staff: true, imp: 'client@sample-brokerage.example' });
+  assert.ok(!$(w, 'pf-open'), 'no broker request button while impersonating');
+  w = await open({ pay_change: { status: 'requested' } },
+    { staff: true, imp: 'client@sample-brokerage.example', elig: PENDING_ELIG });
+  assert.ok($(w, 'pf-apply'));
+  assert.ok($(w, 'pf-decline'));
+  w = await open({}, { staff: true });
+  assert.ok($(w, 'pf-open'), 'staff not impersonating: unchanged');
 });
 
 test('unknown pay_change status gives no pill', () => {

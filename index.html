@@ -1070,6 +1070,13 @@ function _pfFoundCarrier() {
   return (window._carriers || []).filter(function (c) { return c.vendor_id === vid; })[0] || null;
 }
 
+// Staff impersonating a client: the API refuses an impersonated request (read-only),
+// so the broker's request control is not offered at all.
+function _pfImpersonating() {
+  try { return !!(window.OPERFI_IMP && typeof OPERFI_IMP.target === 'function' && OPERFI_IMP.target()); }
+  catch (e) { return false; }
+}
+
 function renderPayFaster() {
   var blk = document.getElementById('pay-faster');
   var opts = document.getElementById('pf-options');
@@ -1080,8 +1087,10 @@ function renderPayFaster() {
   var kind = on ? _pf.kind : null;
   var rate = _pfRate();
   var factored = kind === 'factored';
+  var imp = _pfImpersonating();
+  if (imp) { _pf.toggled = false; _pf.payer = null; }
 
-  if (!on || (kind !== 'net30' && kind !== 'factored')) {
+  if (!on || imp || (kind !== 'net30' && kind !== 'factored')) {
     if (blk) blk.style.display = 'none';
     var tg0 = document.getElementById('pf-toggle'); if (tg0) tg0.checked = false;
     if (opts) opts.innerHTML = '';
@@ -2102,10 +2111,18 @@ function submitLoad() {
             var cleanSuccess = docsOk && finalizeOk;
             // Clear the form back to step 1 and confirm up top — prevents resubmitting
             // the same load now that the record exists.
-            var pcFailed = !!(_pfPayChange && _pfPayChange.ok === false);
+            // already_requested means a request for this load exists (a finalize retry
+            // after the first attempt created it), so it is not a failure.
+            var pcFailed = !!(_pfPayChange && _pfPayChange.ok === false &&
+              _pfPayChange.error !== 'already_requested');
+            var hadPf = !!_pfPending;
             _pfPending = null; _pfPayChange = null;
             resetFormAfterSubmit(recordId, !cleanSuccess);
-            if (pcFailed) {
+            if (!cleanSuccess && hadPf) {
+              // Draft (or never left Pending Docs): finalize never reached the request.
+              var db = document.getElementById('post-submit-banner');
+              if (db) db.appendChild(document.createTextNode(" Pay faster wasn't requested. Re-select it when you resubmit."));
+            } else if (pcFailed) {
               var pb = document.getElementById('post-submit-banner');
               if (pb) {
                 pb.className = 'post-submit-banner warn';

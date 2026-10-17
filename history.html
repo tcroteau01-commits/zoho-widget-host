@@ -1545,6 +1545,12 @@ function pfIsStaff() {
   try { return !!(window.OPERFI_IMP && typeof OPERFI_IMP.isStaff === 'function' && OPERFI_IMP.isStaff()); }
   catch (e) { return false; }
 }
+// Staff impersonating a client: an impersonated request is refused (read-only), so
+// the broker's request button is not offered. Staff resolve controls still show.
+function pfImpersonating() {
+  try { return !!(window.OPERFI_IMP && typeof OPERFI_IMP.target === 'function' && OPERFI_IMP.target()); }
+  catch (e) { return false; }
+}
 function pfOpenRecord() { return openIndex >= 0 ? filteredRecords[openIndex] : null; }
 
 var PF_PILL = { requested: 'Requested', applied: 'Applied', declined: 'Declined' };
@@ -1609,14 +1615,15 @@ function payFasterPanelUpdate() {
   if (tl) tl.innerHTML = timelineHtml(r);
 }
 
-// /whoami may land after the panel paints. Re-render the slot a few times so the staff
-// controls appear once the flag flips (operfi-impersonate.js exposes no event).
+// /whoami may land after the panel paints. Re-render the slot and timeline so the staff
+// controls and timeline dates appear once the flag flips (operfi-impersonate.js exposes
+// no event). Polls every 300ms for about 10s.
+var PF_STAFF_POLL_MS = 300, PF_STAFF_MAX_TRIES = 34;
 var _pfStaffTimer = null, _pfStaffTries = 0;
 function pfWatchStaff(r) {
   var d = pfCurrentElig(r);
-  var pending = d && d.request && d.request.status === 'requested';
-  if (!pending || pfIsStaff() || !window.OPERFI_IMP || _pfStaffTimer) return;
-  if (_pfStaffTries >= 10) return;
+  if (!(d && d.request) || pfIsStaff() || !window.OPERFI_IMP || _pfStaffTimer) return;
+  if (_pfStaffTries >= PF_STAFF_MAX_TRIES) return;
   _pfStaffTimer = setTimeout(function() {
     _pfStaffTimer = null; _pfStaffTries++;
     var cur = pfOpenRecord();
@@ -1624,8 +1631,10 @@ function pfWatchStaff(r) {
     if (pfIsStaff()) {
       var slot = document.getElementById('pf-slot');
       if (slot) slot.innerHTML = payFasterSlotHtml(cur);
+      var tl = document.getElementById('pf-timeline');
+      if (tl) tl.innerHTML = timelineHtml(cur);
     } else pfWatchStaff(cur);
-  }, 300);
+  }, PF_STAFF_POLL_MS);
 }
 
 function pfPctText(v) {
@@ -1639,7 +1648,8 @@ function pfFmtIso(iso) {
   return d.toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit' }) + ' CT';
 }
-function pfWhen(iso) { return (PAYCHG_SHOW_DATES && iso) ? pfFmtIso(iso) : ''; }
+// Spec section 8: staff always see the dates; brokers only once PAYCHG_SHOW_DATES flips.
+function pfWhen(iso) { return ((PAYCHG_SHOW_DATES || pfIsStaff()) && iso) ? pfFmtIso(iso) : ''; }
 
 function payFasterTimelineItems(r) {
   var d = pfCurrentElig(r);
@@ -1664,7 +1674,7 @@ function payFasterSlotHtml(r) {
   var d = pfCurrentElig(r);
   if (!d) return '';
   var h = '';
-  if (d.eligible) {
+  if (d.eligible && !pfImpersonating()) {
     var locked = _pfCtx.trained === false;
     h += '<button class="pf-open" id="pf-open"' + (locked ? ' disabled' : '') + '>⚡ ' +
       (d.kind === 'factored' ? 'Pay the factoring company faster' : 'Pay carrier faster') + '</button>';
@@ -1705,7 +1715,7 @@ function pfFactorName(terms) {
 
 function pfOpenPopup(r) {
   var d = pfCurrentElig(r);
-  if (!r || !d || !d.eligible || !pfOn()) return;
+  if (!r || !d || !d.eligible || !pfOn() || pfImpersonating()) return;
   pfClosePopup();
   _pfPop = { rec: r, elig: d, payer: null, sending: false };
   var factored = d.kind === 'factored';

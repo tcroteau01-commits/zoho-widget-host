@@ -226,7 +226,7 @@
     s.id = STYLE_ID;
     s.textContent =
       '.pf-sub{font-size:12px;color:#6b6862;margin:4px 0 8px}' +
-      '.pf-opt{display:flex;gap:10px;align-items:flex-start;border:1px solid #e3e0d6;border-radius:8px;padding:10px 12px;margin:6px 0;cursor:pointer}' +
+      '.pf-opt{display:flex;gap:10px;align-items:flex-start;border:1px solid #e3e0d6;border-radius:8px;padding:10px 12px;margin:6px 0;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:inherit}' +
       '.pf-opt.pf-sel{border-color:#e8a33c;background:#fffaf1}' +
       '.pf-opt.pf-dis{opacity:.55;cursor:not-allowed}' +
       '.pf-opt .pf-t{display:block;font-size:13px}.pf-opt .pf-d{display:block;font-size:12px;color:#6b6862;margin-top:2px}' +

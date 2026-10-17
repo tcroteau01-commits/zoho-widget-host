@@ -329,3 +329,18 @@ test('j typed in the ops note does not navigate; Escape in search still closes t
   key(w, $(w, 'search-input'), 'Escape');
   assert.ok(!$(w, 'panel').classList.contains('show'), 'Escape in search closes the panel');
 });
+
+test('arrow keys typed in the ops note do not navigate or wipe the note', async () => {
+  const rows = [Object.assign({}, ROW, { pay_change: { status: 'requested' } }), ROW2];
+  const w = makeDom({ rows, staff: true, elig: PENDING_ELIG });
+  await flush();
+  w.document.querySelector('.row').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  const before = $(w, 'panel').querySelector('.position').textContent;
+  const note = $(w, 'pf-ops-note');
+  note.value = 'keep me';
+  key(w, note, 'ArrowDown'); key(w, note, 'ArrowUp');
+  await flush();
+  assert.equal($(w, 'panel').querySelector('.position').textContent, before);
+  assert.equal($(w, 'pf-ops-note').value, 'keep me');
+});

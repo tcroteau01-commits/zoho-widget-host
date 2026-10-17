@@ -200,6 +200,15 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .usd-wrap input { padding-left: 23px; }
 
+/* Pay carrier faster (PAYCHG1). Option/summary styles live in pay-faster.js (.pf-*). */
+.pf-block { border: 1px solid #f0dca8; background: #fffaf1; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; }
+.pf-toggle-row { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #272727; cursor: pointer; margin: 0; }
+.pf-toggle-row input { width: auto; margin: 0; }
+.pf-note-wrap { margin-top: 8px; }
+.pf-note-wrap textarea { width: 100%; min-height: 48px; font-size: 13px; }
+.pf-lock-link { font-size: 12px; margin-top: 6px; }
+.pf-margin-note { font-size: 11px; color: #888; margin: -8px 0 10px; text-align: right; }
+
 /* Payment terms banner */
 .banner-terms {
   display: none;
@@ -384,6 +393,7 @@ textarea { resize: vertical; min-height: 90px; }
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <!-- Shared AV (carrier vetting + credit) component -->
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
+<script src="https://app.operfi.com/pay-faster.js"></script>
 <!-- Shared document viewer: previews a picked doc before submit -->
 <script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-docviewer.js?v=6"></script>
@@ -536,6 +546,15 @@ textarea { resize: vertical; min-height: 90px; }
           <div class="bw">⚠ Verify these match your agreement before submitting.</div>
         </div>
 
+        <!-- PAYCHG1: pay this carrier faster (this load only); hidden unless the feature is on -->
+        <div class="pf-block" id="pay-faster" style="display:none;">
+          <label class="pf-toggle-row"><input type="checkbox" id="pf-toggle"> <span id="pf-toggle-label">Pay this carrier faster (this load only)</span></label>
+          <div id="pf-options"></div>
+          <div class="pf-note-wrap" id="pf-note-wrap" style="display:none;">
+            <textarea id="pf-note" maxlength="500" placeholder="Note for OperFi (optional)"></textarea>
+          </div>
+        </div><!-- /pay-faster -->
+
         <div class="field row">
           <div>
             <label>Carrier Rate <span class="req">*</span></label>
@@ -612,7 +631,10 @@ textarea { resize: vertical; min-height: 90px; }
         <div class="srow"><span class="k">Carrier</span><span class="v empty" id="sum-carrier">—</span></div>
         <div class="srow"><span class="k">Carrier Rate</span><span class="v empty" id="sum-carrier-rate">—</span></div>
 
+        <div id="sum-pay-faster"></div>
+
         <div class="total"><span class="k">Margin</span><span class="v" id="sum-margin">—</span></div>
+        <div class="pf-margin-note" id="sum-margin-note"></div>
 
         <div class="submit-status" id="submit-status"></div>
         <button class="btn primary full" id="submit-btn" disabled>Submit Load for Funding</button>
@@ -883,6 +905,11 @@ function onCarrierChange() {
     if (terms) { banner.style.display = ''; } else { banner.style.display = 'none'; }
   }
 
+  // PAYCHG1: any carrier change resets the one-off and recomputes eligibility.
+  _pfReset();
+  _pf.kind = (window.PayFaster && terms) ? window.PayFaster.kindForTerms(terms) : null;
+  _pf.factor = _pfFactorName(terms);
+
   var warnFactor = document.getElementById('terms-warn-factor');
   if (warnFactor) {
     warnFactor.style.display = (found && factoringMissingFactor(terms)) ? 'block' : 'none';
@@ -988,6 +1015,180 @@ function loadCredit(customerId) {
   return Promise.resolve();
 }
 
+// ── PAYCHG1: pay carrier faster (this load only) ──────────────────────────────
+// All display math lives in pay-faster.js (window.PayFaster); the API recomputes
+// every figure at finalize and never trusts numbers from here. If the context
+// call fails or returns 404 the whole feature stays hidden and the page behaves
+// exactly as before.
+var _pf = { ctx: null, kind: null, toggled: false, payer: null, factor: '' };
+var _pfPending = null;     // payload captured at Submit, read by _finalizeFunding
+var _pfPayChange = null;   // pay_change object from the last finalize response
+
+function loadPayFasterContext() {
+  if (!brokerEmail || !window.PayFaster) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/pay-change/context?email=' + encodeURIComponent(brokerEmail))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) {
+      _pf.ctx = (j && j.enabled) ? j : null;
+      if (_pf.ctx) window.PayFaster.injectStyles();
+    })
+    .catch(function () { _pf.ctx = null; })
+    .then(function () { renderPayFaster(); refreshValidity(); });
+}
+
+function _pfFactorName(terms) {
+  var pre = 'Factoring Company - ';
+  terms = String(terms || '').trim();
+  return terms.indexOf(pre) === 0 ? terms.slice(pre.length).trim() : '';
+}
+
+function _pfRate() {
+  var el = document.getElementById('carrier-rate');
+  var n = el ? Number(el.value) : 0;
+  return (isFinite(n) && n > 0) ? n : 0;
+}
+
+function _pfPct() { return _pf.ctx ? _pf.ctx.qp_fee_pct : null; }
+
+function _pfVideoLink() {
+  return '<div class="pf-msg pf-info pf-lock"><a class="pf-video-link" href="#" data-video-id="' +
+    esc((_pf.ctx && _pf.ctx.training_video_id) || '') + '">Watch the 2-minute Pay Faster video to unlock</a></div>';
+}
+
+function _pfFoundCarrier() {
+  var sel = document.getElementById('carrier-select');
+  var vid = sel ? sel.value : '';
+  return (window._carriers || []).filter(function (c) { return c.vendor_id === vid; })[0] || null;
+}
+
+function renderPayFaster() {
+  var blk = document.getElementById('pay-faster');
+  var opts = document.getElementById('pf-options');
+  var sum = document.getElementById('sum-pay-faster');
+  var noteWrap = document.getElementById('pf-note-wrap');
+  var PF = window.PayFaster;
+  var on = !!(PF && _pf.ctx);
+  var kind = on ? _pf.kind : null;
+  var rate = _pfRate();
+  var factored = kind === 'factored';
+
+  if (!on || (kind !== 'net30' && kind !== 'factored')) {
+    if (blk) blk.style.display = 'none';
+    var tg0 = document.getElementById('pf-toggle'); if (tg0) tg0.checked = false;
+    if (opts) opts.innerHTML = '';
+    if (noteWrap) noteWrap.style.display = 'none';
+  } else {
+    if (blk) blk.style.display = '';
+    var lbl = document.getElementById('pf-toggle-label');
+    if (lbl) lbl.textContent = factored ? 'Pay the factoring company faster (this load only)' : 'Pay this carrier faster (this load only)';
+    var tg = document.getElementById('pf-toggle');
+    var trained = _pf.ctx.trained !== false;
+    if (tg) { tg.checked = !!_pf.toggled; tg.disabled = !trained; }
+    if (!trained) {
+      _pf.toggled = false; _pf.payer = null;
+      if (tg) tg.checked = false;
+      if (opts) opts.innerHTML = _pfVideoLink();
+      if (noteWrap) noteWrap.style.display = 'none';
+    } else if (!_pf.toggled) {
+      if (opts) opts.innerHTML = '';
+      if (noteWrap) noteWrap.style.display = 'none';
+    } else {
+      // A reserve that can't cover the 2% charge can't be chosen; drop a stale broker pick.
+      if (_pf.payer === 'broker' && rate) {
+        var bf = PF.computeFees(rate, _pfPct(), 'broker');
+        var rv = _pf.ctx.reserve;
+        if (!bf.error && rv && rv.status === 'ok' && rv.cash != null && rv.cash < bf.reserveCharge) _pf.payer = null;
+      }
+      if (noteWrap) noteWrap.style.display = '';
+      if (!rate) {
+        if (opts) opts.innerHTML = '<div class="pf-sub">Enter the carrier rate to see the fee.</div>';
+      } else if (opts) {
+        opts.innerHTML = PF.optionsHtml({ kind: kind, payer: _pf.payer, rate: rate, feePct: _pfPct(),
+          reserve: _pf.ctx.reserve, factorName: _pf.factor, trained: true, videoId: _pf.ctx.training_video_id });
+        if (!_pf.payer) {
+          Array.prototype.forEach.call(opts.querySelectorAll('input[name="pf-payer"]'), function (r) {
+            r.checked = false; if (r.parentNode) r.parentNode.classList.remove('pf-sel');
+          });
+        }
+      }
+    }
+  }
+
+  // Summary card: Carrier Payment line on every load, split for quick pay / toggled loads.
+  if (sum) {
+    if (!on) { sum.innerHTML = ''; }
+    else if (!kind) {
+      var found = _pfFoundCarrier();
+      sum.innerHTML = (found && found.payment_terms)
+        ? '<div class="pf-sl">Carrier Payment<b>' + esc(found.payment_terms) + '</b></div>' : '';
+    } else {
+      var payer = kind === 'quickpay' ? 'carrier' : _pf.payer;
+      var fees = (rate && payer) ? PF.computeFees(rate, _pfPct(), payer) : { error: 'no_split' };
+      sum.innerHTML = PF.summaryHtml({ kind: kind, toggled: _pf.toggled, payer: payer, fees: fees,
+        feePct: _pfPct(), factorName: _pf.factor });
+    }
+  }
+}
+
+// Margin effect of the one-off, or null when none applies.
+function _pfMarginEffect() {
+  if (!window.PayFaster || !_pf.ctx || !_pf.toggled || !_pf.payer) return null;
+  var rate = _pfRate();
+  if (!rate) return null;
+  var f = window.PayFaster.computeFees(rate, _pfPct(), _pf.payer);
+  if (f.error) return null;
+  return { effect: window.PayFaster.marginEffect(f, _pf.payer), payer: _pf.payer };
+}
+
+// True while the toggle is on but the request can't be sent yet (no payer, or no rate).
+function payFasterBlocksSubmit() {
+  if (!_pf.ctx || !_pf.toggled) return false;
+  return !_pf.payer || !_pfRate();
+}
+
+// The pay_faster object for /funding-finalize, or null. Never has a missing payer.
+function payFasterPayload() {
+  if (!_pf.ctx || !_pf.toggled || !_pf.payer || !_pfRate()) return null;
+  var n = document.getElementById('pf-note');
+  return { payer: _pf.payer, broker_note: n ? n.value.trim() : '' };
+}
+
+function _pfReset() {
+  _pf.toggled = false; _pf.payer = null;
+  var n = document.getElementById('pf-note'); if (n) n.value = '';
+}
+
+function _pfWire() {
+  var tg = document.getElementById('pf-toggle');
+  if (tg) tg.addEventListener('change', function () {
+    _pf.toggled = !!tg.checked;
+    if (!_pf.toggled) { _pf.payer = null; var n = document.getElementById('pf-note'); if (n) n.value = ''; }
+    renderPayFaster(); updateMargin(); refreshValidity();
+  });
+  var opts = document.getElementById('pf-options');
+  if (opts) {
+    opts.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || t.name !== 'pf-payer') return;
+      _pf.payer = t.value === 'broker' ? 'broker' : 'carrier';
+      renderPayFaster(); updateMargin(); refreshValidity();
+      // Broker pays spends reserve: re-read the balance, then re-render against it.
+      if (_pf.payer === 'broker') loadPayFasterContext().then(function () { updateMargin(); refreshValidity(); });
+    });
+    opts.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a.pf-video-link') : null;
+      if (!a) return;
+      e.preventDefault();
+      // No training player exists in this widget; the Help Center hosts the training links.
+      window.open('https://app.operfi.com/help-center.html', '_blank');
+    });
+  }
+}
+window.loadPayFasterContext = loadPayFasterContext;
+window.renderPayFaster = renderPayFaster;
+window.payFasterBlocksSubmit = payFasterBlocksSubmit;
+window.payFasterPayload = payFasterPayload;
+
 // ── Margin computation ────────────────────────────────────────────────────────
 function computeMargin(custRate, carrRate) {
   var c = Number(custRate) || 0, k = Number(carrRate) || 0;
@@ -1006,6 +1207,9 @@ function updateMargin() {
 
   var custVal = custRateEl ? custRateEl.value : '';
   var carrVal = carrRateEl ? carrRateEl.value : '';
+  var noteEl = document.getElementById('sum-margin-note');
+  if (noteEl) noteEl.textContent = '';
+  renderPayFaster();  // PAYCHG1: fee lines follow the carrier rate live
 
   // Update summary rate columns
   if (sumCustRate) {
@@ -1025,6 +1229,17 @@ function updateMargin() {
   }
 
   var m = computeMargin(custVal, carrVal);
+  var pfm = _pfMarginEffect();
+  if (pfm) {
+    var base = m.dollars, cu = Number(custVal) || 0;
+    m = { dollars: base + pfm.effect, percent: 0 };
+    m.percent = cu > 0 ? Math.round((m.dollars / cu) * 100) : 0;
+    if (noteEl) {
+      var amt = window.PayFaster.money(Math.abs(pfm.effect));
+      noteEl.textContent = window.PayFaster.money(base) + ' load ' +
+        (pfm.effect >= 0 ? '+ ' + amt + ' QP share' : '\u2212 ' + amt + ' QP fee');
+    }
+  }
   var label = (m.dollars >= 0 ? '+' : '') + '$' + m.dollars.toFixed(2) + ' (' + m.percent + '%)';
   if (badge) {
     badge.textContent = label;
@@ -1059,6 +1274,7 @@ function onReady() {
     // Note: #customer-rate input listener is wired in the boot block below
     // so it is always attached regardless of whether loadCustomers resolves.
   });
+  loadPayFasterContext();
   var carrLoad = loadCarriers();
 
   // Reopen an existing draft once both dropdowns have populated, so prefilling
@@ -1159,7 +1375,7 @@ window.markStepInvalid = markStepInvalid;
 // Enables/disables submit; updates .done classes on hstep indicators.
 function refreshValidity() {
   var submitBtn = document.getElementById('submit-btn');
-  var allValid = stepValid('customer') && stepValid('carrier');
+  var allValid = stepValid('customer') && stepValid('carrier') && !payFasterBlocksSubmit();
   if (submitBtn) submitBtn.disabled = !allValid;
 
   var custDone = stepValid('customer');
@@ -1188,7 +1404,8 @@ function refreshValidity() {
   // Update rail note
   var railNote = document.getElementById('rail-note');
   if (railNote) {
-    railNote.textContent = allValid ? 'Ready to submit' : 'Finish all 3 steps to enable submit';
+    railNote.textContent = allValid ? 'Ready to submit' : (payFasterBlocksSubmit() && stepValid('customer') && stepValid('carrier')
+      ? 'Choose who pays the quick pay fee' : 'Finish all 3 steps to enable submit');
   }
 
   _renderStepStatus(custDone, carrDone);
@@ -1635,6 +1852,8 @@ window.addEventListener('load', function () {
   var rateCon = document.getElementById('rate-con');
   if (rateCon) { rateCon.addEventListener('input', refreshValidity); }
 
+  _pfWire();
+
   // Submit button
   var submitBtn = document.getElementById('submit-btn');
   if (submitBtn) { submitBtn.addEventListener('click', function () { submitLoad(); }); }
@@ -1748,8 +1967,15 @@ function _finalizeFunding(recordId, docsOk, _attempt) {
   _attempt = _attempt || 1;
   return fetch(BROKER_API_BASE + '/funding-finalize', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: brokerEmail, record_id: recordId, docs_ok: !!docsOk }) })
-    .then(function (r) { return r.ok; }).catch(function () { return false; })
+      body: JSON.stringify(Object.assign({ email: brokerEmail, record_id: recordId, docs_ok: !!docsOk },
+        _pfPending ? { pay_faster: _pfPending } : {})) })
+    .then(function (r) {
+      if (!r.ok) return false;
+      // PAYCHG1: the response carries pay_change only when the flag is on.
+      if (typeof r.json !== 'function') return true;
+      return r.json().then(function (j) { if (j && j.pay_change) _pfPayChange = j.pay_change; return true; },
+        function () { return true; });
+    }).catch(function () { return false; })
     .then(function (ok) {
       if (ok || _attempt >= 3) return ok;
       var base = (typeof window !== 'undefined' && window._FINALIZE_RETRY_MS != null)
@@ -1821,6 +2047,8 @@ function submitLoad() {
   return _mergedPdfs().then(function (pdfs) {
     setStatus('Submitting load…');
     var payload = Object.assign({ email: brokerEmail }, _collectFields());
+    _pfPending = payFasterPayload();  // PAYCHG1: captured now, the form resets after finalize
+    _pfPayChange = null;
     // DRAFTDUP1: a reopened draft is submitted IN PLACE. Without this the backend
     // creates a second record and the draft (and any doc on it) is left behind.
     if (currentDraftId) payload.draft_id = String(currentDraftId);
@@ -1862,7 +2090,16 @@ function submitLoad() {
             var cleanSuccess = docsOk && finalizeOk;
             // Clear the form back to step 1 and confirm up top — prevents resubmitting
             // the same load now that the record exists.
+            var pcFailed = !!(_pfPayChange && _pfPayChange.ok === false);
+            _pfPending = null; _pfPayChange = null;
             resetFormAfterSubmit(recordId, !cleanSuccess);
+            if (pcFailed) {
+              var pb = document.getElementById('post-submit-banner');
+              if (pb) {
+                pb.className = 'post-submit-banner warn';
+                pb.appendChild(document.createTextNode(" Your load was submitted, but the pay-faster request didn't go through. Request it from Submission History."));
+              }
+            }
           });
         });
       });

@@ -309,14 +309,27 @@ function riskClass(score) {
 
 // Group snapshots by year-month. Average numeric fields across reports in the same month
 // so a broker with 2 reports in a single month doesn't double-count or distort the chart.
+// A monthly experience row (dated the 1st at midnight) is that month's figure, so when one
+// exists, same-month pull rows (headline rating at pull time) are left out of the average.
+function isMonthlyRow(s) {
+  return /^\d{4}-\d{2}-01T00:00:00/.test(String(s.date));
+}
 function aggregateByMonth(snapshots) {
   var groups = {};
+  var hasMonthly = {};
+  var rows = [];
   for (var i = 0; i < snapshots.length; i++) {
     var s = snapshots[i];
     if (!s.date) continue;
     var d = new Date(s.date);
     if (isNaN(d.getTime())) continue;
     var key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+    if (isMonthlyRow(s)) hasMonthly[key] = true;
+    rows.push({ s: s, d: d, key: key });
+  }
+  for (var j = 0; j < rows.length; j++) {
+    var s = rows[j].s, d = rows[j].d, key = rows[j].key;
+    if (hasMonthly[key] && !isMonthlyRow(s)) continue;
     if (!groups[key]) {
       groups[key] = {
         monthKey: key,
@@ -450,6 +463,13 @@ function renderKPIs(client, debtors) {
     if (monthly.length) allMonthly.push({ debtor: d.name, last: monthly[monthly.length - 1] });
   });
 
+  var latestMonthKey = allMonthly.reduce(function(a, x) {
+    return !a || x.last.monthKey > a ? x.last.monthKey : a;
+  }, null);
+  // Only names reporting in the latest month count: an old Ansonia name whose
+  // last row is from a prior month would otherwise add stale AR to the total.
+  allMonthly = allMonthly.filter(function(x) { return x.last.monthKey === latestMonthKey; });
+
   var sumAr = allMonthly.reduce(function(a, x) { return a + (x.last.arMonthlyBalance || 0); }, 0);
 
   var riskVals = allMonthly.filter(function(x) { return typeof x.last.riskScore === 'number'; }).map(function(x) { return x.last.riskScore; });
@@ -458,9 +478,6 @@ function renderKPIs(client, debtors) {
   var dtpVals = allMonthly.filter(function(x) { return typeof x.last.daysToPay === 'number'; }).map(function(x) { return x.last.daysToPay; });
   var latestDtp = dtpVals.length ? Math.round(dtpVals.reduce(function(a, b) { return a + b; }, 0) / dtpVals.length) : null;
 
-  var latestMonthKey = allMonthly.reduce(function(a, x) {
-    return !a || x.last.monthKey > a ? x.last.monthKey : a;
-  }, null);
   var monthLabel = latestMonthKey ? formatMonthLabel(latestMonthKey) : null;
 
   document.getElementById('kpi-risk').textContent = latestRisk === null ? '—' : latestRisk;

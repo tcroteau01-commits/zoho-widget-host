@@ -186,6 +186,16 @@ select {
 input.invalid, select.invalid { border-color: #e53935; }
 textarea { resize: vertical; min-height: 90px; }
 .field-hint { font-size: 11px; color: #aaa; margin-top: 5px; }
+.cust-help { position: relative; font-size: 12px; margin-top: 6px; color: #888; }
+.cust-help-link { background: none; border: 0; padding: 0; font: inherit; color: #888; cursor: pointer; text-decoration: none; }
+.cust-help-link:hover, .cust-help-link:focus-visible { color: #c47f0e; text-decoration: underline; }
+.cust-help-sep { margin: 0 8px; color: #ccc; }
+.info-i { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-left: 3px; border: 1px solid currentColor; border-radius: 50%; font-size: 9px; font-weight: 700; font-style: italic; font-family: Georgia, serif; vertical-align: 1px; }
+.info-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: min(360px, 100%); background: #fff; border: 1px solid #e6e2d6; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 12px 14px; color: #444; font-size: 12px; line-height: 1.45; }
+.info-pop[hidden] { display: none; }
+.info-pop-row { margin-bottom: 8px; }
+.info-pop-btn { display: inline-block; margin-top: 2px; font-weight: 600; color: #c47f0e; text-decoration: none; }
+.info-pop-btn:hover { text-decoration: underline; }
 .draft-warning { font-size: 12px; color: #8a5a00; background: #fff6e0; border: 1px solid #f0d28a; border-radius: 8px; padding: 8px 10px; margin-top: 8px; line-height: 1.4; }
 .field-err { font-size: 11px; color: #e53935; margin-top: 5px; display: none; }
 .field-err.show { display: block; }
@@ -469,9 +479,17 @@ textarea { resize: vertical; min-height: 90px; }
           <select id="customer-select">
             <option value="">Select a customer…</option>
           </select>
-          <div class="field-hint">Only approved customers are shown. If you don't see your customer, add them in your <strong>Customer Submission</strong> section first.</div>
-          <div class="field-hint" id="customer-billing-hint" style="display:none;">Customers marked <strong>Billing contact required</strong> need a billing point of contact, phone, and email on file before a load can be submitted. Add it under <strong>Customer Credit → Customer Approvals</strong>.</div>
-          <div class="field-hint" id="customer-cobroker-hint" style="display:none;">Customers marked <strong>Co-broker agreement required</strong> are freight brokers. Loads can be funded once OperFi approves the signed co-broker agreement. Upload it with <strong>Add Documents</strong> under <strong>Customer Credit → Customer Approvals</strong>.</div>
+          <!-- CUSTHINT1: one line of help; the blocked-customer rules live behind the
+               "grayed out" popover, which only shows when the list has a blocked row. -->
+          <div class="cust-help">
+            <a href="#" class="cust-help-link" id="customer-add-link">Don't see a customer? Add one →</a>
+            <span id="customer-blocked-help" style="display:none;"><span class="cust-help-sep">·</span><button type="button" class="cust-help-link" id="customer-blocked-btn" aria-expanded="false" aria-controls="customer-blocked-pop">Why are some grayed out? <span class="info-i" aria-hidden="true">i</span></button></span>
+            <div class="info-pop" id="customer-blocked-pop" role="dialog" aria-label="Why some customers are grayed out" hidden>
+              <div class="info-pop-row" id="customer-billing-hint" style="display:none;"><strong>Billing contact required:</strong> add a billing contact, phone, and email for that customer.</div>
+              <div class="info-pop-row" id="customer-cobroker-hint" style="display:none;"><strong>Co-broker agreement required:</strong> the customer is a freight broker. Upload the signed co-broker agreement for OperFi to approve.</div>
+              <a href="#" class="info-pop-btn" id="customer-approvals-link">Go to Customer Approvals →</a>
+            </div>
+          </div>
           <div class="draft-warning" id="draft-customer-warning" style="display:none;"></div>
         </div>
 
@@ -791,6 +809,26 @@ function customerBlockLabel(c) {
 }
 window.customerBlockLabel = customerBlockLabel;
 
+// CUSTHINT1: open/close the "Why are some grayed out?" popover. Click-driven, not
+// hover-only, so it works on touch screens.
+function setCustomerBlockedPop(open) {
+  var pop = document.getElementById('customer-blocked-pop');
+  var btn = document.getElementById('customer-blocked-btn');
+  if (pop) pop.hidden = !open;
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+window.setCustomerBlockedPop = setCustomerBlockedPop;
+
+// Same "#Page:<Name>" convention the other widgets use; the shell router resolves it.
+function navigateParent(hash) {
+  var sp = new URLSearchParams(window.location.search);
+  var origin = sp.get('serviceOrigin') || 'https://brokerhub.operfi.com';
+  var url = origin.replace(/\/$/, '') + '/' + hash;
+  try { window.top.location.href = url; return; } catch (e) {}
+  try { window.parent.location.href = url; return; } catch (e) {}
+  try { window.open(url, '_top'); } catch (e) {}
+}
+
 function loadCustomers() {
   var err = document.getElementById('customer-error');
   if (err) err.textContent = '';
@@ -816,6 +854,11 @@ function loadCustomers() {
       if (cbHint) cbHint.style.display = approved.some(function (c) {
         return !customerBillingIncomplete(c) && customerCoBrokerBlocked(c);
       }) ? '' : 'none';
+      // CUSTHINT1: the "grayed out?" trigger exists only to explain blocked rows.
+      var blockedHelp = document.getElementById('customer-blocked-help');
+      var anyBlocked = approved.some(function (c) { return !!customerBlockLabel(c); });
+      if (blockedHelp) blockedHelp.style.display = anyBlocked ? '' : 'none';
+      if (!anyBlocked) setCustomerBlockedPop(false);
     })
     .catch(function () {
       var e = document.getElementById('customer-error');
@@ -1850,6 +1893,32 @@ window.addEventListener('load', function () {
   document.addEventListener('click', function (e) {
     var combo = document.getElementById('carrier-combo');
     if (combo && !combo.contains(e.target) && carrierList) carrierList.hidden = true;
+  });
+
+  // CUSTHINT1: customer help line. "Add one" starts a new credit check, which is
+  // how a customer gets onto the approved list.
+  var custAddLink = document.getElementById('customer-add-link');
+  if (custAddLink) custAddLink.addEventListener('click', function (e) {
+    e.preventDefault();
+    navigateParent('#Page:Credit_Check');
+  });
+  var custApprovalsLink = document.getElementById('customer-approvals-link');
+  if (custApprovalsLink) custApprovalsLink.addEventListener('click', function (e) {
+    e.preventDefault();
+    navigateParent('#Page:Customer_Approvals');
+  });
+  var custBlockedBtn = document.getElementById('customer-blocked-btn');
+  if (custBlockedBtn) custBlockedBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var pop = document.getElementById('customer-blocked-pop');
+    setCustomerBlockedPop(!!(pop && pop.hidden));
+  });
+  document.addEventListener('click', function (e) {
+    var pop = document.getElementById('customer-blocked-pop');
+    if (pop && !pop.hidden && !pop.contains(e.target)) setCustomerBlockedPop(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') setCustomerBlockedPop(false);
   });
 
   // ── Consolidated rate + text field listeners (updateMargin + refreshValidity) ──

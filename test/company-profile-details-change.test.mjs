@@ -74,6 +74,19 @@ test('opens the in-portal flow when can_change, without opening the form', async
   t.w.close();
 });
 
+test('new address inputs get their own full-width row, not the narrow NEW column', async () => {
+  const t = await start({});
+  click(t.w, $(t.doc, 'btn-request-update'));
+  const span = t.doc.querySelector('.dc-addr-span');
+  assert.ok(span, 'address inputs wrapped in a spanning row');
+  for (const k of ['street', 'city', 'state', 'zip']) {
+    assert.ok(span.contains($(t.doc, 'dc-addr-' + k)), k + ' input is in the spanning row');
+  }
+  assert.strictEqual($(t.doc, 'dc-addr-street').getAttribute('placeholder'), 'Street address');
+  assert.ok(/fill in all four boxes/.test($(t.doc, 'dc-body').textContent));
+  t.w.close();
+});
+
 const TARGETS = [
   { key: 'sms_current', channel: 'sms', masked: '(***) ***-2703', sent: true },
   { key: 'accounting_new', channel: 'email', masked: 'a***@example.com', sent: true },

@@ -82,8 +82,45 @@ test('the billing hint appears only when at least one customer is blocked', asyn
   await w2.loadCustomers();
   const hint2 = w2.document.getElementById('customer-billing-hint');
   assert.notStrictEqual(hint2.style.display, 'none', 'shown when one is blocked');
-  assert.match(hint2.textContent, /Customer Approvals/,
-    'hint must say where to go fix it');
+  // CUSTHINT1: the hint lives in the "grayed out?" popover, whose button says where to fix it.
+  assert.match(w2.document.getElementById('customer-blocked-pop').textContent, /Customer Approvals/,
+    'popover must say where to go fix it');
+});
+
+// CUSTHINT1 -- the blocked-customer rules sit behind one "grayed out?" trigger
+// instead of paragraphs under the picker.
+test('the "grayed out?" trigger shows only when a customer is blocked', async () => {
+  const w1 = boot(customersFetch([APPROVED_COMPLETE]));
+  await w1.loadCustomers();
+  assert.strictEqual(w1.document.getElementById('customer-blocked-help').style.display, 'none');
+
+  const w2 = boot(customersFetch([APPROVED_COMPLETE,
+    { customer_id: 'c9', customer_name: 'BROKERCO', credit_decision: 'Approved',
+      billing_complete: true, co_broker_required: true }]));
+  await w2.loadCustomers();
+  assert.notStrictEqual(w2.document.getElementById('customer-blocked-help').style.display, 'none',
+    'a co-broker block alone must show the trigger');
+  assert.notStrictEqual(w2.document.getElementById('customer-cobroker-hint').style.display, 'none');
+  assert.strictEqual(w2.document.getElementById('customer-billing-hint').style.display, 'none');
+});
+
+test('the popover starts closed, toggles on click, and closes on Escape', async () => {
+  const w = boot(customersFetch([APPROVED_COMPLETE, APPROVED_MISSING]));
+  await w.loadCustomers();
+  const pop = w.document.getElementById('customer-blocked-pop');
+  const btn = w.document.getElementById('customer-blocked-btn');
+  assert.strictEqual(pop.hidden, true, 'closed until asked');
+  w.setCustomerBlockedPop(true);
+  assert.strictEqual(pop.hidden, false);
+  assert.strictEqual(btn.getAttribute('aria-expanded'), 'true');
+  w.setCustomerBlockedPop(false);
+  assert.strictEqual(pop.hidden, true);
+  assert.strictEqual(btn.getAttribute('aria-expanded'), 'false');
+});
+
+test('the old paragraphs under the picker are gone', () => {
+  assert.doesNotMatch(HTML, /Only approved customers are shown/);
+  assert.doesNotMatch(HTML, /Customers marked <strong>/);
 });
 
 test('a non-fundable customer is still filtered out entirely, billing or not', async () => {

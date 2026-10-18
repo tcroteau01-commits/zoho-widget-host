@@ -427,7 +427,10 @@ function renderAttention(p) {
       '<div class="cp-attn-title">Needs Attention</div>' +
       list.map(function (ev) {
         return '<div class="cp-attn-event">' +
-          '<div class="cp-attn-summary">' + esc(ev.summary || '') + '</div>' +
+          // One line each, cut with an ellipsis (Tom, 10-18: four of these with
+          // long company names should not fill the header). Full text on hover.
+          '<div class="cp-attn-summary" title="' + esc(ev.summary || '') + '">' +
+            esc(ev.summary || '') + '</div>' +
           (ev.when ? '<div class="cp-attn-time">' + esc(ev.when) + '</div>' : '') +
         '</div>';
       }).join('') +
@@ -1486,11 +1489,11 @@ var CP_CSS = '' +
   '.cp-decision-row{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}' +
   '.cp-act-row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;}' +
   '.cp-act-main{flex:1 1 420px;min-width:0;}' +
-  '.cp-attn{flex:0 1 340px;margin-top:16px;display:flex;flex-direction:column;gap:8px;}' +
+  '.cp-attn{flex:0 1 340px;min-width:0;margin-top:16px;display:flex;flex-direction:column;gap:6px;}' +
   '.cp-attn-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,0.55);}' +
-  '.cp-attn-event{background:#eaf3fc;border:1px solid #b8d4f0;border-radius:8px;padding:10px 12px;}' +
-  '.cp-attn-summary{font-size:13px;font-weight:600;color:#272727;}' +
-  '.cp-attn-time{font-size:11px;color:#888;margin-top:2px;}' +
+  '.cp-attn-event{background:#eaf3fc;border:1px solid #b8d4f0;border-radius:6px;padding:6px 10px;min-width:0;}' +
+  '.cp-attn-summary{font-size:12px;font-weight:600;color:#272727;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+  '.cp-attn-time{font-size:11px;color:#888;margin-top:1px;}' +
   '.cp-attn-row{display:flex;justify-content:flex-end;align-items:center;gap:10px;}' +
   '.cp-attn-msg{font-size:12px;color:#fecaca;}' +
   '.cp-limit-input{max-width:160px;}' +

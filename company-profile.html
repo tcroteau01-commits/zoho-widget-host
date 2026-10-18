@@ -1035,8 +1035,8 @@ function bootApp() {
       return;
     }
     console.log('[CompanyProfile] Booted as', brokerEmail);
-    loadAccount();
-    loadDetailsMeta();
+    // Details meta waits for the account: it sends the page's account id (item 8).
+    loadAccount().then(function () { if (account) return loadDetailsMeta(); });
     loadUsers();
     initAccessTabs();
     loadAccess();
@@ -1136,7 +1136,7 @@ function showCardError(msg) {
 // ── Data load: Account ────────────────────────────────────────────────────
 function loadAccount() {
   var url = BROKER_API_BASE + '/broker-account?email=' + encodeURIComponent(brokerEmail);
-  fetch(url).then(function(res) {
+  return fetch(url).then(function(res) {
     if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
     return res.json();
   }).then(function(payload) {
@@ -1216,6 +1216,9 @@ function renderAccount() {
 // GET /account/details says whether this user may use the flow. When it fails
 // or can_change is false, Request Update opens the Zoho Form exactly as before.
 var dcMeta = null;
+var dcMismatch = null;  // the API's account_mismatch message: this page is not the signed-in account
+var DC_MISMATCH_MSG = "You are signed in to a different OperFi account than the one on this page. " +
+  "Sign in as this account's owner to change its details.";
 var dcState = null;   // {id, targets, verified:{}, labels, busy}
 var dcTimers = [];
 
@@ -1264,8 +1267,15 @@ function dcJson(res) {
     return { status: res.status, data: d || {} };
   });
 }
+// The account this page shows. Every details call carries it; the API refuses when it is not the
+// signed-in session's account (staff "Acting as", or an owner of another account viewing this one).
+function dcAcct() { return (account && account.ID) ? String(account.ID) : ''; }
+function dcQs() {
+  return '?email=' + encodeURIComponent(brokerEmail) + (dcAcct() ? '&account_id=' + encodeURIComponent(dcAcct()) : '');
+}
 function dcPost(path, body) {
   body.email = brokerEmail;
+  if (dcAcct()) body.account_id = dcAcct();
   return fetch(BROKER_API_BASE + path, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   }).then(dcJson);
@@ -1285,7 +1295,7 @@ function dcFmtAddress(a) {
 function dcSyncHelper() {
   var h = document.getElementById('dc-helper');
   if (!h) return;
-  h.textContent = !dcCanUse()
+  h.textContent = dcMismatch ? dcMismatch : !dcCanUse()
     ? 'Updates require Admin approval and email verification. Opens a secure update form in a new tab.'
     : dcIsRequester()
       ? 'Changes you request are sent to the account owner to approve.'
@@ -1294,15 +1304,19 @@ function dcSyncHelper() {
 
 function loadDetailsMeta() {
   dcMeta = null;
+  dcMismatch = null;
   if (!brokerEmail) return Promise.resolve();
-  return fetch(BROKER_API_BASE + '/account/details?email=' + encodeURIComponent(brokerEmail))
+  return fetch(BROKER_API_BASE + '/account/details' + dcQs())
     .then(dcJson).then(function (r) {
+      if (r.status === 200 && r.data && r.data.account_mismatch) dcMismatch = DC_MISMATCH_MSG;
       dcMeta = (r.status === 200 && r.data && (r.data.can_change || r.data.can_request) && r.data.current) ? r.data : null;
       dcSyncHelper();
     }).catch(function () { dcMeta = null; dcSyncHelper(); });
 }
 
 function onRequestUpdateClick() {
+  // Wrong account for this page: neither the in-portal flow nor the form (the helper says why).
+  if (dcMismatch) { dcSyncHelper(); return; }
   if (dcCanUse()) { openDetailsFlow(); return; }
   window.open(REQUEST_UPDATE_FORM_URL, '_blank', 'noopener,noreferrer');
 }
@@ -1367,7 +1381,7 @@ function dcResume(id) {
     dcForgetOpen();
     renderDetailsStep1();
   }
-  fetch(BROKER_API_BASE + '/account/details/change/' + encodeURIComponent(id) + '?email=' + encodeURIComponent(brokerEmail))
+  fetch(BROKER_API_BASE + '/account/details/change/' + encodeURIComponent(id) + dcQs())
     .then(dcJson).then(function (r) {
       if (dcResumeToken !== token) return;
       var d = r.data || {};
@@ -1394,7 +1408,8 @@ function renderDetailsStep1(errText) {
   var cur = dcMeta.current || {};
   var body = document.getElementById('dc-body');
   body.textContent = '';
-  document.getElementById('dc-sub').textContent = (account && account.Account_Name) || '';
+  // The API's (session) account name, never the page's: they differ when the page shows another account.
+  document.getElementById('dc-sub').textContent = (dcMeta && dcMeta.company) || '';
   document.getElementById('dc-note').textContent = '';
   dcMsg(errText || '', 'error');
 
@@ -1615,7 +1630,7 @@ function dcPollOnce() {
   var st = dcState;
   if (!st || dcPollBusy || st.busy) return;
   dcPollBusy = true;
-  fetch(BROKER_API_BASE + '/account/details/change/' + encodeURIComponent(st.id) + '?email=' + encodeURIComponent(brokerEmail))
+  fetch(BROKER_API_BASE + '/account/details/change/' + encodeURIComponent(st.id) + dcQs())
     .then(dcJson).then(function (r) {
       dcPollBusy = false;
       if (dcState !== st || st.busy) return;
@@ -1880,7 +1895,7 @@ function confirmDetailsChange() {
     }
     if (r.status === 200 && r.data && r.data.status === 'held') { renderDetailsHeld(r.data.message); return; }
     if (r.status === 409 && r.data && r.data.code === 'email_in_use') { renderDetailsDone(false, st.labels, r.data.message); return; }
-    if (r.status === 409 && r.data && r.data.code === 'anchor_cooldown') {
+    if (r.status === 409 && r.data && (r.data.code === 'anchor_cooldown' || r.data.code === 'account_mismatch')) {
       renderDetailsDone(false, st.labels, r.data.message || "For your security, this change can't be made yet. Call OperFi at 888-673-7349.");
       return;
     }
@@ -1906,7 +1921,7 @@ function dcChangesApplied(changes, cur) {
   });
 }
 function dcConfirmUnsure(st, expired) {
-  fetch(BROKER_API_BASE + '/account/details?email=' + encodeURIComponent(brokerEmail))
+  fetch(BROKER_API_BASE + '/account/details' + dcQs())
     .then(dcJson).then(function (r) { return (r.status === 200 && r.data && r.data.current) ? r.data : null; })
     .catch(function () { return null; })
     .then(function (meta) {

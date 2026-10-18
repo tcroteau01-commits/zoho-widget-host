@@ -940,3 +940,66 @@ test('owners never resume (open_request is for requesters)', async () => {
   assert.ok(!t.calls.some(c => c.path === '/account/details/change/r1'));
   t.w.close();
 });
+
+// ── item 8: the page's account must be the signed-in session's account ──
+
+const PAGE = Object.assign({}, ACCOUNT, { ID: '3773785000000370043' });
+async function startOn(acct, routes) {
+  const t = boot(Object.assign({ 'GET /account/details': META, 'GET /broker-account': { account: acct } }, routes));
+  await t.w.dcTestInit(acct);
+  return t;
+}
+const qs = (url) => new URL(url).searchParams;
+
+test('every details call carries the page account id', async () => {
+  const t = await startOn(PAGE, { 'GET /account/details': REQ_META, 'POST /account/details/change': REQ_CREATE,
+    'GET /account/details/change/r1': statusReply('awaiting_owner', false, false),
+    'POST /account/details/change/ID/cancel': { ok: true, status: 'cancelled' } });
+  t.w.DC_POLL_MS = 20;
+  click(t.w, $(t.doc, 'btn-request-update'));
+  setVal(t.doc, 'dc-accounting_email', 'ap@example.com');
+  click(t.w, $(t.doc, 'dc-continue'));
+  await tick(50);
+  const btn = Array.from($(t.doc, 'dc-foot').querySelectorAll('button')).find(b => b.textContent === 'Cancel request');
+  click(t.w, btn);
+  await tick(5);
+  const meta = t.calls.find(c => c.path === '/account/details');
+  assert.strictEqual(qs(meta.url).get('account_id'), PAGE.ID);
+  const posts = t.calls.filter(c => c.method === 'POST' && c.path.startsWith('/account/details'));
+  assert.ok(posts.length >= 2);
+  for (const p of posts) assert.strictEqual(p.body.account_id, PAGE.ID, p.path);
+  const poll = t.calls.find(c => c.path === '/account/details/change/r1');
+  assert.strictEqual(qs(poll.url).get('account_id'), PAGE.ID);
+  t.w.close();
+});
+
+test('account mismatch: no in-portal flow, no Zoho form, the message replaces the helper', async () => {
+  const MSG = "You are signed in to a different OperFi account than the one on this page. Sign in as this account's owner to change its details.";
+  const t = await startOn(PAGE, { 'GET /account/details': { enabled: false, can_change: false, can_request: false,
+    current: null, open_request: null, account_mismatch: true, account_id: '3773785000015969055', company: null } });
+  assert.ok($(t.doc, 'company-body').textContent.includes(MSG));
+  assert.ok(!/Opens a secure update form/.test($(t.doc, 'company-body').textContent));
+  click(t.w, $(t.doc, 'btn-request-update'));
+  assert.strictEqual(t.w.__opened.length, 0, 'no Zoho form');
+  assert.ok(!$(t.doc, 'dc-scrim').classList.contains('show'), 'no in-portal flow');
+  t.w.close();
+});
+
+test('the panel header is the API company, never the page name', async () => {
+  const t = await startOn(PAGE, { 'GET /account/details': Object.assign({}, META, { company: 'API <b>Co</b>', account_id: PAGE.ID }) });
+  click(t.w, $(t.doc, 'btn-request-update'));
+  assert.strictEqual($(t.doc, 'dc-sub').textContent, 'API <b>Co</b>');
+  t.w.close();
+  const u = await startOn(PAGE, {});
+  click(u.w, $(u.doc, 'btn-request-update'));
+  assert.ok(!$(u.doc, 'dc-sub').textContent.includes('Example Freight'));
+  u.w.close();
+});
+
+test('confirm 409 account_mismatch shows the API message, not "expired"', async () => {
+  const MSG = "You are signed in to a different OperFi account than the one on this page. Sign in as this account's owner to change its details.";
+  const t = await toConfirm(() => reply(409, { ok: false, code: 'account_mismatch', message: MSG }), NOT_APPLIED);
+  const all = $(t.doc, 'dc-body').textContent + $(t.doc, 'dc-msg').textContent;
+  assert.ok(all.includes(MSG) && !/expired/i.test(all));
+  t.w.close();
+});

@@ -223,6 +223,34 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .foot-actions .modal-btn { flex: 1; }
 }
 
+/* ===== ACCTCHG1 Phase 2: Update company details flow ===== */
+.dc-step { font-size: 12px; font-weight: 700; color: #C2410C; letter-spacing: 0.04em; }
+.dc-h { margin: 4px 0 0; font-size: 20px; font-weight: 700; color: #272727; }
+.dc-p { margin: 6px 0 0; font-size: 14px; color: #4b5563; line-height: 1.5; }
+.dc-sec { margin-top: 20px; }
+.dc-sec-title { font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 8px; }
+.dc-grid { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; font-size: 13px; }
+.dc-grid .dc-colhead { color: #4b5563; font-size: 12px; font-weight: 600; }
+.dc-grid .dc-lbl { font-weight: 600; }
+.dc-addr { display: grid; grid-template-columns: 2fr 1.2fr 0.6fr 0.8fr; gap: 6px; }
+.dc-notice { margin-top: 20px; background: #FEF3E8; border: 1px solid #F5C9A0; border-radius: 10px; padding: 14px 16px; font-size: 13px; line-height: 1.55; }
+.dc-card { border: 1px solid #e0ddd2; border-radius: 10px; padding: 16px; margin-top: 14px; }
+.dc-card.done { border-color: #A7F3D0; background: #ECFDF5; }
+.dc-card-title { font-size: 14px; font-weight: 700; }
+.dc-card-sub { font-size: 13px; color: #374151; margin-top: 2px; }
+.dc-code-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.dc-code { font-size: 22px; letter-spacing: 0.3em; width: 200px; padding: 10px 12px; border: 1.5px solid #e0ddd2; border-radius: 8px; font-family: inherit; }
+.dc-link { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #C2410C; cursor: pointer; text-decoration: underline; }
+.dc-link:disabled { color: #888; cursor: default; text-decoration: none; }
+.dc-err { color: #c62828; font-size: 12px; margin-top: 6px; }
+.dc-fine { margin-top: 14px; font-size: 12px; color: #4b5563; line-height: 1.6; }
+.dc-result { border-top: 4px solid #059669; border-radius: 10px; padding: 8px 0 0; }
+.dc-result.bad { border-top-color: #c62828; }
+@media (max-width: 640px) {
+  .dc-grid { grid-template-columns: 1fr; }
+  .dc-addr { grid-template-columns: 1fr 1fr; }
+}
+
 /* ===== Add Trusted Contact modal ===== */
 .modal-scrim {
   position: fixed; inset: 0;
@@ -937,6 +965,22 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 </div>
 
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<!-- ACCTCHG1 Phase 2: Update company details (owners). Filled by JS; text via textContent only. -->
+<div class="modal-scrim" id="dc-scrim">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="m-title">Update company details</div>
+        <div class="m-sub" id="dc-sub"></div>
+      </div>
+      <button class="modal-close" id="dc-close" aria-label="Close">×</button>
+    </div>
+    <div id="dc-msg" class="modal-msg"></div>
+    <div class="modal-body" id="dc-body"></div>
+    <div class="modal-foot"><div class="foot-note" id="dc-note"></div><div class="foot-actions" id="dc-foot"></div></div>
+  </div>
+</div>
+
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script>
 (function() {
@@ -980,6 +1024,7 @@ function bootApp() {
     }
     console.log('[CompanyProfile] Booted as', brokerEmail);
     loadAccount();
+    loadDetailsMeta();
     loadUsers();
     initAccessTabs();
     loadAccess();
@@ -1151,9 +1196,389 @@ function renderAccount() {
     '</div>';
 
   document.getElementById('company-body').innerHTML = html;
-  document.getElementById('btn-request-update').addEventListener('click', function() {
-    window.open(REQUEST_UPDATE_FORM_URL, '_blank', 'noopener,noreferrer');
+  document.getElementById('btn-request-update').addEventListener('click', onRequestUpdateClick);
+}
+
+// ── ACCTCHG1 Phase 2: in-portal "Update company details" (account owners) ──
+// GET /account/details says whether this user may use the flow. When it fails
+// or can_change is false, Request Update opens the Zoho Form exactly as before.
+var dcMeta = null;
+var dcState = null;   // {id, targets, verified:{}, labels, busy}
+var dcTimers = [];
+
+var DC_FIELDS = [
+  { key: 'admin_email', label: 'Admin', long: 'Admin email', kind: 'email', group: 'emails' },
+  { key: 'operations_email', label: 'Operations', long: 'Operations email', kind: 'email', group: 'emails' },
+  { key: 'accounting_email', label: 'Accounting', long: 'Accounting email', kind: 'email', group: 'emails' },
+  { key: 'sms_phone', label: 'SMS admin phone', long: 'SMS admin phone', kind: 'phone', group: 'phones' },
+  { key: 'main_phone', label: 'Main business phone', long: 'Main business phone', kind: 'phone', group: 'phones' }
+];
+var DC_TARGET_LABELS = {
+  sms_current: "Owner's phone (the SMS admin phone on file)",
+  admin_current: 'Current Admin email',
+  admin_new: 'New Admin email',
+  operations_new: 'New Operations email',
+  accounting_new: 'New Accounting email',
+  sms_new: 'New SMS admin phone'
+};
+
+function dcEl(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = text;
+  return e;
+}
+function dcJson(res) {
+  return res.text().then(function (t) {
+    var d = {};
+    try { d = t ? JSON.parse(t) : {}; } catch (e) { d = {}; }
+    return { status: res.status, data: d || {} };
   });
+}
+function dcPost(path, body) {
+  body.email = brokerEmail;
+  return fetch(BROKER_API_BASE + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  }).then(dcJson);
+}
+function dcNormEmail(v) { return String(v || '').trim().toLowerCase(); }
+function dcNormPhone(v) {
+  var d = String(v || '').replace(/\D/g, '');
+  return (d.length === 11 && d[0] === '1') ? d.slice(1) : d;
+}
+function dcNormText(v) { return String(v || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+function dcFmtAddress(a) {
+  if (!a) return '';
+  var parts = [a.street, a.city, [a.state, a.zip].filter(Boolean).join(' ')].filter(function (p) { return p && String(p).trim(); });
+  return parts.join(', ');
+}
+
+function loadDetailsMeta() {
+  dcMeta = null;
+  if (!brokerEmail) return Promise.resolve();
+  return fetch(BROKER_API_BASE + '/account/details?email=' + encodeURIComponent(brokerEmail))
+    .then(dcJson).then(function (r) {
+      dcMeta = (r.status === 200 && r.data && r.data.can_change && r.data.current) ? r.data : null;
+    }).catch(function () { dcMeta = null; });
+}
+
+function onRequestUpdateClick() {
+  if (dcMeta && dcMeta.can_change && dcMeta.current) { openDetailsFlow(); return; }
+  window.open(REQUEST_UPDATE_FORM_URL, '_blank', 'noopener,noreferrer');
+}
+
+function dcClearTimers() { dcTimers.forEach(function (t) { clearInterval(t); }); dcTimers = []; }
+function dcMsg(text, type) {
+  var m = document.getElementById('dc-msg');
+  m.textContent = text || '';
+  m.className = text ? 'modal-msg show ' + (type || 'error') : 'modal-msg';
+}
+function dcButton(text, cls, onClick) {
+  var b = dcEl('button', 'modal-btn ' + cls, text);
+  b.type = 'button';
+  if (onClick) b.addEventListener('click', onClick);
+  return b;
+}
+function dcSetFoot(buttons) {
+  var f = document.getElementById('dc-foot');
+  f.textContent = '';
+  buttons.forEach(function (b) { f.appendChild(b); });
+}
+function closeDetailsFlow() {
+  dcClearTimers();
+  dcState = null;
+  document.getElementById('dc-scrim').classList.remove('show');
+}
+function openDetailsFlow() {
+  dcClearTimers();
+  dcState = null;
+  document.getElementById('dc-scrim').classList.add('show');
+  renderDetailsStep1();
+}
+
+function dcInput(id, placeholder) {
+  var i = dcEl('input', 'input');
+  i.id = id; i.type = 'text'; i.placeholder = placeholder || 'No change'; i.autocomplete = 'off';
+  return i;
+}
+
+function renderDetailsStep1(errText) {
+  var cur = dcMeta.current || {};
+  var body = document.getElementById('dc-body');
+  body.textContent = '';
+  document.getElementById('dc-sub').textContent = (account && account.Account_Name) || '';
+  document.getElementById('dc-note').textContent = '';
+  dcMsg(errText || '', 'error');
+
+  body.appendChild(dcEl('div', 'dc-step', 'STEP 1 OF 2'));
+  body.appendChild(dcEl('h2', 'dc-h', 'Update company details'));
+  body.appendChild(dcEl('p', 'dc-p', 'Change only what you need; everything else stays as it is.'));
+
+  function section(title, rows) {
+    var sec = dcEl('div', 'dc-sec');
+    sec.appendChild(dcEl('div', 'dc-sec-title', title));
+    var g = dcEl('div', 'dc-grid');
+    g.appendChild(dcEl('div'));
+    g.appendChild(dcEl('div', 'dc-colhead', 'ON FILE'));
+    g.appendChild(dcEl('div', 'dc-colhead', 'NEW'));
+    rows.forEach(function (f) {
+      g.appendChild(dcEl('div', 'dc-lbl', f.label));
+      g.appendChild(dcEl('div', '', f.onFile || '(none)'));
+      g.appendChild(f.node || dcInput('dc-' + f.key));
+    });
+    sec.appendChild(g);
+    return sec;
+  }
+  function rowsFor(group) {
+    return DC_FIELDS.filter(function (f) { return f.group === group; }).map(function (f) {
+      return { key: f.key, label: f.label, onFile: f.kind === 'phone' ? formatPhone(cur[f.key]) : cur[f.key] };
+    });
+  }
+  body.appendChild(section('Notification emails', rowsFor('emails')));
+  body.appendChild(section('Phones', rowsFor('phones')));
+
+  var addrWrap = dcEl('div', 'dc-addr');
+  [['street', 'Street'], ['city', 'City'], ['state', 'State'], ['zip', 'ZIP']].forEach(function (p) {
+    addrWrap.appendChild(dcInput('dc-addr-' + p[0], p[1]));
+  });
+  body.appendChild(section('Business address', [{ label: 'Address', onFile: dcFmtAddress(cur.address), node: addrWrap }]));
+
+  body.appendChild(dcEl('div', 'dc-notice',
+    'Next, prove you are the owner. We text a code to the SMS admin phone on file and email a code to each new address. ' +
+    'No change is saved until every code is entered. OperFi will never call or email you asking for these codes.'));
+
+  var cont = dcButton('Continue to verification', 'primary', submitDetailsChange);
+  cont.id = 'dc-continue';
+  dcSetFoot([dcButton('Cancel', 'ghost', closeDetailsFlow), cont]);
+}
+
+// Only fields the user changed (normalised compare). Address: all four parts
+// when any part changes.
+function collectDetailsChanges() {
+  var cur = dcMeta.current || {};
+  var changes = {};
+  var labels = [];
+  DC_FIELDS.forEach(function (f) {
+    var raw = document.getElementById('dc-' + f.key).value;
+    if (!String(raw).trim()) return;
+    var norm = f.kind === 'phone' ? dcNormPhone : dcNormEmail;
+    if (norm(raw) !== norm(cur[f.key])) { changes[f.key] = String(raw).trim(); labels.push(f.long); }
+  });
+  var ca = cur.address || {};
+  var entered = false, next = {}, differs = false;
+  ['street', 'city', 'state', 'zip'].forEach(function (p) {
+    var v = String(document.getElementById('dc-addr-' + p).value || '').trim();
+    if (v) entered = true;
+    next[p] = v ? v : String(ca[p] || '');
+    if (dcNormText(next[p]) !== dcNormText(ca[p])) differs = true;
+  });
+  if (entered && differs) { changes.address = next; labels.push('Business address'); }
+  return { changes: changes, labels: labels };
+}
+
+function submitDetailsChange() {
+  var c = collectDetailsChanges();
+  if (!Object.keys(c.changes).length) { dcMsg('Nothing to change.', 'error'); return; }
+  var btn = document.getElementById('dc-continue');
+  btn.disabled = true;
+  dcMsg('Sending verification codes...', 'loading');
+  dcPost('/account/details/change', { changes: c.changes }).then(function (r) {
+    if (r.status === 200 && r.data.request_id) {
+      dcState = { id: r.data.request_id, targets: r.data.targets || [], verified: {}, labels: c.labels, busy: false };
+      renderDetailsStep2();
+      return;
+    }
+    btn.disabled = false;
+    var m = r.data && r.data.message;
+    if (r.status === 403) m = m || 'You do not have permission to change these details.';
+    dcMsg(m || 'We could not start this change. Please try again.', 'error');
+  }).catch(function () {
+    btn.disabled = false;
+    dcMsg('Network error. Please try again.', 'error');
+  });
+}
+
+function dcAllVerified() {
+  return !!dcState && dcState.targets.length > 0 && dcState.targets.every(function (t) { return dcState.verified[t.key]; });
+}
+function dcSyncConfirm() {
+  var b = document.getElementById('dc-confirm');
+  if (b) b.disabled = !dcAllVerified() || dcState.busy;
+}
+
+function renderDetailsStep2() {
+  dcClearTimers();
+  var body = document.getElementById('dc-body');
+  body.textContent = '';
+  dcMsg('', 'error');
+  document.getElementById('dc-note').textContent = '';
+  body.appendChild(dcEl('div', 'dc-step', 'STEP 2 OF 2'));
+  body.appendChild(dcEl('h2', 'dc-h', "Confirm it's you"));
+  body.appendChild(dcEl('p', 'dc-p', 'Enter each code below. Codes expire in 10 minutes. You are changing: ' + dcState.labels.join(', ') + '.'));
+
+  dcState.targets.forEach(function (t) { body.appendChild(dcTargetCard(t)); });
+
+  body.appendChild(dcEl('div', 'dc-fine',
+    'Changing the Admin email also sends a code to the current Admin email. Changing the SMS admin phone sends codes to the current phone, the current Admin email and the new phone. ' +
+    'OperFi will never call or email you asking for these codes.'));
+
+  var confirm = dcButton('Confirm changes', 'primary', confirmDetailsChange);
+  confirm.id = 'dc-confirm';
+  confirm.disabled = true;
+  dcSetFoot([dcButton('Back', 'ghost', function () { dcClearTimers(); dcState = null; renderDetailsStep1(); }), confirm]);
+  dcSyncConfirm();
+}
+
+function dcTargetCard(t) {
+  var card = dcEl('div', 'dc-card');
+  card.setAttribute('data-key', t.key);
+  var label = DC_TARGET_LABELS[t.key] || t.key;
+  var isPhone = /^sms_/.test(t.key);
+  function paint() {
+    card.textContent = '';
+    var done = !!dcState.verified[t.key];
+    card.className = 'dc-card' + (done ? ' done' : '');
+    card.appendChild(dcEl('div', 'dc-card-title', done ? label + ' verified' : label));
+    card.appendChild(dcEl('div', 'dc-card-sub', (isPhone ? 'Code texted to ' : 'Code emailed to ') + (t.masked || '')));
+    if (done) return;
+    var row = dcEl('div', 'dc-code-row');
+    var input = dcEl('input', 'dc-code');
+    input.type = 'text'; input.inputMode = 'numeric'; input.maxLength = 6; input.autocomplete = 'one-time-code';
+    input.setAttribute('aria-label', 'Code sent to ' + (t.masked || label));
+    input.setAttribute('data-code-for', t.key);
+    var err = dcEl('div', 'dc-err');
+    err.setAttribute('data-err-for', t.key);
+    var verify = dcButton('Verify', 'primary', function () { verifyTarget(t, input, verify, err); });
+    verify.setAttribute('data-verify-for', t.key);
+    var resend = dcEl('button', 'dc-link');
+    resend.type = 'button';
+    resend.setAttribute('data-resend-for', t.key);
+    row.appendChild(input); row.appendChild(verify); row.appendChild(resend);
+    card.appendChild(row);
+    if (t.sent === false) err.textContent = 'We could not send this code. Use Resend code.';
+    card.appendChild(err);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') verify.click(); });
+    resend.addEventListener('click', function () { resendTarget(t, resend, err); });
+    dcCooldown(resend, t.sent === false ? 0 : 60);
+  }
+  paint();
+  card._repaint = paint;
+  return card;
+}
+
+function dcCooldown(btn, seconds) {
+  var left = seconds;
+  function tick() {
+    if (left > 0) { btn.disabled = true; btn.textContent = 'Resend code in ' + left + 's'; }
+    else { btn.disabled = false; btn.textContent = 'Resend code'; }
+  }
+  tick();
+  if (left <= 0) return;
+  var timer = setInterval(function () {
+    left -= 1; tick();
+    if (left <= 0) clearInterval(timer);
+  }, 1000);
+  dcTimers.push(timer);
+}
+
+function dcExpired(extra) {
+  dcClearTimers();
+  document.getElementById('dc-body').textContent = '';
+  document.getElementById('dc-note').textContent = '';
+  dcMsg('This request expired. Start again.', 'error');
+  dcState = null;
+  dcSetFoot([dcButton('Start again', 'primary', function () { renderDetailsStep1(); })]);
+}
+
+function verifyTarget(t, input, verifyBtn, errEl) {
+  var code = String(input.value || '').trim();
+  if (!code) { errEl.textContent = 'Enter the code.'; return; }
+  verifyBtn.disabled = true;
+  errEl.textContent = '';
+  var st = dcState;
+  dcPost('/account/details/change/' + encodeURIComponent(st.id) + '/verify', { key: t.key, code: code }).then(function (r) {
+    if (dcState !== st) return;
+    if (r.status === 409) { dcExpired(); return; }
+    if (r.status === 200 && r.data.verified) {
+      st.verified[t.key] = true;
+      var card = document.querySelector('#dc-body .dc-card[data-key="' + t.key + '"]');
+      if (card && card._repaint) card._repaint();
+      dcSyncConfirm();
+      return;
+    }
+    verifyBtn.disabled = false;
+    if (r.status === 200) {
+      var n = r.data.attempts_left;
+      errEl.textContent = 'That code is not right.' + (typeof n === 'number' ? ' ' + n + ' attempt' + (n === 1 ? '' : 's') + ' left.' : '');
+    } else {
+      errEl.textContent = (r.data && r.data.message) || 'We could not check that code. Please try again.';
+    }
+  }).catch(function () {
+    verifyBtn.disabled = false;
+    errEl.textContent = 'Network error. Please try again.';
+  });
+}
+
+function resendTarget(t, btn, errEl) {
+  btn.disabled = true;
+  errEl.textContent = '';
+  var st = dcState;
+  dcPost('/account/details/change/' + encodeURIComponent(st.id) + '/resend', { key: t.key }).then(function (r) {
+    if (dcState !== st) return;
+    if (r.status === 409) { dcExpired(); return; }
+    if (r.status === 200 && r.data.sent) { dcCooldown(btn, 60); return; }
+    var wait = (r.data && Number(r.data.retry_after)) || 0;
+    if (wait > 0) { dcCooldown(btn, wait); return; }
+    btn.disabled = false; btn.textContent = 'Resend code';
+    errEl.textContent = (r.data && r.data.message) || 'We could not send a new code. Please try again.';
+  }).catch(function () {
+    btn.disabled = false; btn.textContent = 'Resend code';
+    errEl.textContent = 'Network error. Please try again.';
+  });
+}
+
+function confirmDetailsChange() {
+  if (!dcAllVerified()) return;
+  var st = dcState;
+  st.busy = true; dcSyncConfirm();
+  dcMsg('Saving your changes...', 'loading');
+  dcPost('/account/details/change/' + encodeURIComponent(st.id) + '/confirm', {}).then(function (r) {
+    if (dcState !== st) return;
+    st.busy = false;
+    if (r.status === 200 && (r.data.status === 'applied' || r.data.status === 'applied_partial')) {
+      renderDetailsDone(true, st.labels, '');
+      loadAccount();
+      loadDetailsMeta();
+      return;
+    }
+    if (r.status === 409) { dcExpired(); return; }
+    renderDetailsDone(false, st.labels, (r.data && r.data.message) ||
+      'We could not save your changes. Nothing was changed. Please try again or call 888-673-7349.');
+  }).catch(function () {
+    st.busy = false; dcSyncConfirm();
+    dcMsg('Network error. Your changes were not confirmed. Please try again.', 'error');
+  });
+}
+
+function renderDetailsDone(ok, labels, failText) {
+  dcClearTimers();
+  var body = document.getElementById('dc-body');
+  body.textContent = '';
+  dcMsg('', 'error');
+  document.getElementById('dc-note').textContent = '';
+  var box = dcEl('div', 'dc-result' + (ok ? '' : ' bad'));
+  if (ok) {
+    box.appendChild(dcEl('h2', 'dc-h', 'Changes saved'));
+    box.appendChild(dcEl('p', 'dc-p', 'Your ' + labels.join(', ') + ' ' + (labels.length === 1 ? 'is' : 'are') +
+      ' updated across your OperFi account and factoring records.'));
+    box.appendChild(dcEl('p', 'dc-p', 'We sent a notice to the previous details and a confirmation to the new ones. If anything here looks wrong, call us at 888-673-7349.'));
+  } else {
+    box.appendChild(dcEl('h2', 'dc-h', 'We could not save your changes'));
+    box.appendChild(dcEl('p', 'dc-p', failText));
+  }
+  body.appendChild(box);
+  dcState = null;
+  dcSetFoot([dcButton(ok ? 'Done' : 'Close', 'primary', closeDetailsFlow)]);
 }
 
 function statusClassFor(raw) {
@@ -2975,7 +3400,16 @@ function renderActivity(events) {
 });
 document.getElementById('m-attest').addEventListener('change', syncModalSubmit);
 
+document.getElementById('dc-close').addEventListener('click', closeDetailsFlow);
+
 // ── expose for tests (no-op in production; window overrides are unset live) ──
+window.dcTestInit = function(acct) {
+  if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
+  if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;
+  account = acct || null;
+  renderAccount();
+  return loadDetailsMeta();
+};
 window.submitContact = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;

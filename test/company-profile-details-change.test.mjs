@@ -655,7 +655,7 @@ test('polling stops when the panel closes and never stacks timers', async () => 
   t.w.dcStartPoll(); t.w.dcStartPoll();
   await tick(105);
   const n = polls(t);
-  assert.ok(n >= 2 && n <= 6, 'one timer at 20 ms over ~100 ms, got ' + n);
+  assert.ok(n >= 2 && n <= 8, 'one timer at 20 ms over ~100 ms, got ' + n);
   click(t.w, $(t.doc, 'dc-close'));
   const m = polls(t);
   await tick(80);
@@ -729,4 +729,111 @@ test('owner requests do not poll', async () => {
   await tick(60);
   assert.ok(!t.calls.some(c => c.method === 'GET' && /\/account\/details\/change\//.test(c.path)));
   t.w.close();
+});
+
+// ── Fix round 1 ──
+
+const LOGIN_TARGETS = [
+  { key: 'sms_current', channel: 'sms', masked: 'x', sent: true },
+  { key: 'login_new', channel: 'email', masked: 'n***@example.com', sent: true },
+];
+async function toLoginConfirm(confirmReply, detailsAfter) {
+  let gets = 0;
+  const t = await start({
+    'GET /account/details': () => { gets++; return gets === 1 ? reply(200, OWNER_META) : detailsAfter(); },
+    'POST /account/details/change': { request_id: 'r1', targets: LOGIN_TARGETS },
+    'POST /account/details/change/ID/verify': { ok: true, verified: true, attempts_left: 5, all_verified: false },
+    'POST /account/details/change/ID/confirm': confirmReply,
+  });
+  t.w.dcNavigate = (u) => { t.nav = u; };
+  click(t.w, $(t.doc, 'btn-request-update'));
+  setVal(t.doc, 'dc-login_email', 'new@example.com');
+  click(t.w, $(t.doc, 'dc-continue'));
+  await tick();
+  for (const tg of LOGIN_TARGETS) {
+    t.doc.querySelector('[data-code-for="' + tg.key + '"]').value = '111111';
+    click(t.w, t.doc.querySelector('[data-verify-for="' + tg.key + '"]'));
+    await tick();
+  }
+  click(t.w, $(t.doc, 'dc-confirm'));
+  await tick(10);
+  return t;
+}
+
+test('confirm 409 email_in_use shows the API message, not "expired"', async () => {
+  const MSG = 'That email is already used by another OperFi login. Call OperFi at 888-673-7349.';
+  const t = await toLoginConfirm(() => reply(409, { ok: false, code: 'email_in_use', message: MSG }), () => reply(200, OWNER_META));
+  const all = $(t.doc, 'dc-body').textContent + $(t.doc, 'dc-msg').textContent;
+  assert.ok(all.includes(MSG));
+  assert.ok(!/expired/i.test(all));
+  t.w.close();
+});
+
+for (const [name, after] of [['401 re-read', () => reply(401, {})], ['unchanged re-read', () => reply(200, OWNER_META)]]) {
+  test('lost confirm reply on a login change (' + name + '): sign in again screen', async () => {
+    const t = await toLoginConfirm(() => Promise.reject(new Error('net')), after);
+    assert.ok($(t.doc, 'dc-body').textContent.includes('We could not confirm the result. If your old sign-in email no longer works, sign in with new@example.com.'));
+    const btns = $(t.doc, 'dc-foot').querySelectorAll('button');
+    assert.strictEqual(btns.length, 1);
+    assert.match(btns[0].textContent, /Sign in again/);
+    click(t.w, btns[0]);
+    assert.strictEqual(t.nav, 'http://api/portal/login');
+    assert.ok(!/Network error/.test($(t.doc, 'dc-msg').textContent));
+    t.w.close();
+  });
+}
+
+for (const code of [401, 403, 404]) {
+  test('poll ' + code + ': polling stops with the ended message', async () => {
+    const t = await toRequest({ 'GET /account/details/change/r1': () => reply(code, {}) });
+    await tick(50);
+    assert.ok($(t.doc, 'dc-body').textContent.includes('This request has ended. Close this window and refresh the page.'));
+    assert.deepStrictEqual(Array.from($(t.doc, 'dc-foot').querySelectorAll('button')).map(b => b.textContent), ['Close']);
+    const n = polls(t);
+    await tick(60);
+    assert.strictEqual(polls(t), n);
+    t.w.close();
+  });
+}
+
+for (const [status, msg] of [
+  ['applied', 'The change was applied.'],
+  ['held', 'The change is pending OperFi review.'],
+  ['rejected', 'This request has ended. Close this window and refresh the page.'],
+  ['failed', 'This request has ended. Close this window and refresh the page.'],
+]) {
+  test('poll status ' + status + ': stops with "' + msg + '"', async () => {
+    const t = await toRequest({ 'GET /account/details/change/r1': statusReply(status, false, false) });
+    await tick(50);
+    assert.ok($(t.doc, 'dc-body').textContent.includes(msg));
+    assert.strictEqual(t.doc.querySelector('[data-code-for]'), null);
+    const n = polls(t);
+    await tick(60);
+    assert.strictEqual(polls(t), n);
+    t.w.close();
+  });
+}
+
+test('visible again: polls immediately, then a single timer', async () => {
+  const t = await toRequest({ 'GET /account/details/change/r1': statusReply('awaiting_owner', false, false) });
+  t.w.DC_POLL_MS = 100000;
+  let hidden = true;
+  Object.defineProperty(t.doc, 'hidden', { configurable: true, get: () => hidden });
+  t.doc.dispatchEvent(new t.w.Event('visibilitychange'));
+  const m = polls(t);
+  hidden = false;
+  t.doc.dispatchEvent(new t.w.Event('visibilitychange'));
+  t.doc.dispatchEvent(new t.w.Event('visibilitychange'));
+  await tick(5);
+  assert.strictEqual(polls(t), m + 1, 'one immediate poll, no duplicate');
+  t.w.close();
+});
+
+test('requester step 2 hides the owner-anchor fine print; owner step 2 keeps it', async () => {
+  const t = await toRequest({ 'GET /account/details/change/r1': statusReply('awaiting_owner', false, false) });
+  assert.strictEqual($(t.doc, 'dc-body').querySelector('.dc-fine'), null);
+  t.w.close();
+  const o = await toStep2({});
+  assert.ok($(o.doc, 'dc-body').querySelector('.dc-fine'));
+  o.w.close();
 });

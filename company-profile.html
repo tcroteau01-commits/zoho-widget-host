@@ -1516,9 +1516,11 @@ function renderDetailsStep2() {
 
   dcState.targets.forEach(function (t) { body.appendChild(dcTargetCard(t)); });
 
-  body.appendChild(dcEl('div', 'dc-fine',
-    'Changing the Admin email also sends a code to the current Admin email. Changing the SMS admin phone sends codes to the current phone, the current Admin email and the new phone. ' +
-    'OperFi will never call or email you asking for these codes.'));
+  if (!dcState.needsOwner) {
+    body.appendChild(dcEl('div', 'dc-fine',
+      'Changing the Admin email also sends a code to the current Admin email. Changing the SMS admin phone sends codes to the current phone, the current Admin email and the new phone. ' +
+      'OperFi will never call or email you asking for these codes.'));
+  }
 
   var confirm = dcButton('Confirm changes', 'primary', confirmDetailsChange);
   confirm.id = 'dc-confirm';
@@ -1568,20 +1570,31 @@ function dcPollOnce() {
   fetch(BROKER_API_BASE + '/account/details/change/' + encodeURIComponent(st.id) + '?email=' + encodeURIComponent(brokerEmail))
     .then(dcJson).then(function (r) {
       dcPollBusy = false;
-      if (dcState !== st || st.busy || r.status !== 200 || !r.data) return;
+      if (dcState !== st || st.busy) return;
+      if (r.status === 401 || r.status === 403 || r.status === 404) {
+        dcStopPoll();
+        renderDetailsEnded(DC_ENDED_GENERIC);
+        return;
+      }
+      if (r.status !== 200 || !r.data) return;
       dcApplyStatus(st, r.data);
     }).catch(function () { dcPollBusy = false; });
 }
 var DC_ENDED_MSG = {
   declined: 'The account owner declined this request.',
   expired: 'This request expired. Nothing was changed.',
-  cancelled: 'This request was cancelled. Nothing was changed.'
+  cancelled: 'This request was cancelled. Nothing was changed.',
+  applied: 'The change was applied.',
+  applied_partial: 'The change was applied.',
+  held: 'The change is pending OperFi review.'
 };
+var DC_ENDED_GENERIC = 'This request has ended. Close this window and refresh the page.';
 function dcApplyStatus(st, d) {
   var status = d.status;
+  if (status === 'confirming') return;   // transient; the next poll sees the outcome
   if (status !== 'awaiting_owner' && status !== 'pending') {
     dcStopPoll();
-    if (DC_ENDED_MSG[status]) renderDetailsEnded(DC_ENDED_MSG[status]);
+    renderDetailsEnded(DC_ENDED_MSG[status] || DC_ENDED_GENERIC);
     return;
   }
   if (status !== st.status) { st.status = status; dcPaintWait(); }
@@ -1599,7 +1612,11 @@ function dcApplyStatus(st, d) {
   dcSyncConfirm();
 }
 document.addEventListener('visibilitychange', function () {
-  if (document.hidden) dcStopPoll(); else dcStartPoll();
+  if (document.hidden) { dcStopPoll(); return; }
+  // Back on the tab: check right away (the owner may have acted meanwhile), then resume the timer.
+  if (dcPollTimer) return;
+  dcStartPoll();
+  if (dcPollTimer) dcPollOnce();
 });
 
 function cancelDetailsRequest() {
@@ -1633,19 +1650,24 @@ function renderDetailsEnded(text) {
 }
 
 // After a sign-in email change the API has cleared the session: the only way on is to sign in again.
-function renderDetailsRelogin(newEmail) {
+function renderDetailsRelogin(newEmail, unsure) {
   dcClearTimers();
   var body = document.getElementById('dc-body');
   body.textContent = '';
   dcMsg('', 'error');
   document.getElementById('dc-note').textContent = '';
   var box = dcEl('div', 'dc-result');
-  box.appendChild(dcEl('h2', 'dc-h', 'Changes saved'));
-  box.appendChild(dcEl('p', 'dc-p', 'Your sign-in email is now ' + (newEmail || '') + '. Sign in again with your new email.'));
+  if (unsure) {
+    box.appendChild(dcEl('h2', 'dc-h', 'Sign in again'));
+    box.appendChild(dcEl('p', 'dc-p', 'We could not confirm the result. If your old sign-in email no longer works, sign in with ' + (newEmail || '') + '.'));
+  } else {
+    box.appendChild(dcEl('h2', 'dc-h', 'Changes saved'));
+    box.appendChild(dcEl('p', 'dc-p', 'Your sign-in email is now ' + (newEmail || '') + '. Sign in again with your new email.'));
+  }
   body.appendChild(box);
   dcState = null;
   var x = document.getElementById('dc-close');
-  if (x) x.style.display = 'none';
+  if (x && !unsure) x.style.display = 'none';
   dcSetFoot([dcButton('Sign in again', 'primary', function () { window.dcNavigate(BROKER_API_BASE + '/portal/login'); })]);
 }
 
@@ -1806,6 +1828,7 @@ function confirmDetailsChange() {
       return;
     }
     if (r.status === 200 && r.data && r.data.status === 'held') { renderDetailsHeld(r.data.message); return; }
+    if (r.status === 409 && r.data && r.data.code === 'email_in_use') { renderDetailsDone(false, st.labels, r.data.message); return; }
     if (r.status === 409) { dcConfirmUnsure(st, true); return; }
     renderDetailsDone(false, st.labels, (r.data && r.data.message) ||
       'We could not save your changes. Nothing was changed. Please try again or call 888-673-7349.');
@@ -1829,11 +1852,25 @@ function dcChangesApplied(changes, cur) {
 }
 function dcConfirmUnsure(st, expired) {
   fetch(BROKER_API_BASE + '/account/details?email=' + encodeURIComponent(brokerEmail))
-    .then(dcJson).then(function (r) { return (r.status === 200 && r.data && r.data.current) ? r.data.current : null; })
+    .then(dcJson).then(function (r) { return (r.status === 200 && r.data && r.data.current) ? r.data : null; })
     .catch(function () { return null; })
-    .then(function (cur) {
+    .then(function (meta) {
       if (dcState !== st) return;
       st.busy = false;
+      var cur = meta && meta.current;
+      var login = st.changes && st.changes.login_email;
+      if (login) {
+        // A login change revokes every session, so a lost reply usually means it landed and the re-read
+        // gets a 401. Unless the re-read shows the new login and every other field, send them to sign in.
+        var rest = {};
+        Object.keys(st.changes).forEach(function (k) { if (k !== 'login_email') rest[k] = st.changes[k]; });
+        if (cur && dcNormEmail(meta.login_email) === dcNormEmail(login) && dcChangesApplied(rest, cur)) {
+          renderDetailsRelogin(login);
+        } else {
+          renderDetailsRelogin(login, true);
+        }
+        return;
+      }
       if (cur && st.changes && dcChangesApplied(st.changes, cur)) {
         renderDetailsDone(true, st.labels, '');
         loadAccount();

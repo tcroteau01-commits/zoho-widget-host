@@ -265,3 +265,130 @@ test('escapes server text (no HTML injection)', async () => {
   assert.ok($(t.doc, 'dc-body').textContent.includes('<img src=x'));
   t.w.close();
 });
+
+// ── final review fixes ──────────────────────────────────────────────────────
+
+test('helper text: code confirmation copy when can_change, form copy otherwise', async () => {
+  const t = await start({});
+  const txt = () => $(t.doc, 'company-body').textContent;
+  assert.ok(txt().includes("Changes are confirmed with codes sent to the owner's phone and email on file."));
+  assert.ok(!/secure update form/.test(txt()));
+  t.w.close();
+  const f = await start({ 'GET /account/details': { enabled: true, can_change: false, current: null } });
+  assert.ok(f.doc.getElementById('company-body').textContent.includes('Opens a secure update form in a new tab.'));
+  assert.ok(!/Changes are confirmed with codes/.test(f.doc.getElementById('company-body').textContent));
+  f.w.close();
+});
+
+const DEFERRED = [
+  { key: 'sms_current', channel: 'sms', masked: '(***) ***-2703', sent: true },
+  { key: 'accounting_new', channel: 'email', masked: 'a***@example.com', sent: false },
+];
+async function toDeferred(verifyReply) {
+  const t = await start({
+    'POST /account/details/change': { request_id: 'r1', targets: DEFERRED },
+    'POST /account/details/change/ID/verify': verifyReply,
+  });
+  click(t.w, $(t.doc, 'btn-request-update'));
+  setVal(t.doc, 'dc-accounting_email', 'ap@example.com');
+  click(t.w, $(t.doc, 'dc-continue'));
+  await tick();
+  return t;
+}
+const card = (t, k) => t.doc.querySelector('.dc-card[data-key="' + k + '"]');
+
+test('new-destination card waits for the owner phone, then opens when sent_now lists it', async () => {
+  const t = await toDeferred({ ok: true, verified: true, attempts_left: 5, all_verified: false, sent_now: [{ key: 'accounting_new', sent: true }] });
+  assert.ok(card(t, 'accounting_new').textContent.includes("We'll send this code after you confirm the owner's phone."));
+  assert.strictEqual(t.doc.querySelector('[data-code-for="accounting_new"]').disabled, true);
+  assert.strictEqual(t.doc.querySelector('[data-verify-for="accounting_new"]').disabled, true);
+  assert.ok(!/could not send/.test(card(t, 'accounting_new').textContent));
+  t.doc.querySelector('[data-code-for="sms_current"]').value = '111111';
+  click(t.w, t.doc.querySelector('[data-verify-for="sms_current"]'));
+  await tick();
+  assert.ok(!card(t, 'accounting_new').textContent.includes("We'll send this code after"));
+  assert.strictEqual(t.doc.querySelector('[data-code-for="accounting_new"]').disabled, false);
+  assert.strictEqual(t.doc.querySelector('[data-verify-for="accounting_new"]').disabled, false);
+  assert.match(t.doc.querySelector('[data-resend-for="accounting_new"]').textContent, /Resend code in 60s/);
+  t.w.close();
+});
+
+test('sent_now with sent:false opens the card with a resend prompt', async () => {
+  const t = await toDeferred({ ok: true, verified: true, attempts_left: 5, all_verified: false, sent_now: [{ key: 'accounting_new', sent: false }] });
+  t.doc.querySelector('[data-code-for="sms_current"]').value = '111111';
+  click(t.w, t.doc.querySelector('[data-verify-for="sms_current"]'));
+  await tick();
+  assert.strictEqual(t.doc.querySelector('[data-code-for="accounting_new"]').disabled, false);
+  assert.match(t.doc.querySelector('[data-err-for="accounting_new"]').textContent, /Use Resend code/);
+  assert.strictEqual(t.doc.querySelector('[data-resend-for="accounting_new"]').disabled, false);
+  t.w.close();
+});
+
+test('merged target shows one card labelled with the others it covers', async () => {
+  const t = await start({ 'POST /account/details/change': { request_id: 'r1', targets: [
+    { key: 'sms_current', channel: 'sms', masked: 'x', sent: true },
+    { key: 'operations_new', channel: 'email', masked: 'n***@example.com', sent: true, covers: ['operations_new', 'accounting_new'] }] } });
+  click(t.w, $(t.doc, 'btn-request-update'));
+  setVal(t.doc, 'dc-accounting_email', 'n@example.com');
+  click(t.w, $(t.doc, 'dc-continue'));
+  await tick();
+  assert.strictEqual(t.doc.querySelectorAll('.dc-card').length, 2);
+  assert.ok(card(t, 'operations_new').textContent.includes('New Operations email (also used for New Accounting email)'));
+  t.w.close();
+});
+
+async function toConfirm(confirmReply, detailsAfter) {
+  let gets = 0;
+  const t = await toStep2(Object.assign({
+    'GET /account/details': () => reply(200, ++gets === 1 ? META : detailsAfter(gets)),
+    'POST /account/details/change/ID/confirm': confirmReply,
+  }, VERIFY_OK));
+  await verifyAll(t);
+  click(t.w, $(t.doc, 'dc-confirm'));
+  await tick(10);
+  return t;
+}
+const APPLIED = () => ({ enabled: true, can_change: true, current: Object.assign({}, CURRENT, { accounting_email: 'AP@example.com' }) });
+const NOT_APPLIED = () => META;
+
+test('confirm network error but the change is already applied: success outcome', async () => {
+  const t = await toConfirm(() => Promise.reject(new Error('net')), APPLIED);
+  assert.match($(t.doc, 'dc-body').textContent, /Changes saved/);
+  t.w.close();
+});
+
+test('confirm 409 but the change is already applied: success outcome', async () => {
+  const t = await toConfirm(() => reply(409, { message: 'x' }), APPLIED);
+  assert.match($(t.doc, 'dc-body').textContent, /Changes saved/);
+  t.w.close();
+});
+
+test('confirm 409 and not applied: expired; network error and not applied: retry message', async () => {
+  const a = await toConfirm(() => reply(409, { message: 'x' }), NOT_APPLIED);
+  assert.strictEqual($(a.doc, 'dc-msg').textContent, 'This request expired. Start again.');
+  a.w.close();
+  const b = await toConfirm(() => Promise.reject(new Error('net')), NOT_APPLIED);
+  assert.match($(b.doc, 'dc-msg').textContent, /Network error/);
+  assert.ok(!/Changes saved/.test($(b.doc, 'dc-body').textContent));
+  b.w.close();
+});
+
+test('step 1 shows the API message for 429 and 400', async () => {
+  for (const [status, msg] of [[429, 'Too many update attempts. Try again in an hour or call 888-673-7349.'], [400, 'Enter a US phone number.']]) {
+    const t = await start({ 'POST /account/details/change': () => reply(status, { ok: false, message: msg }) });
+    click(t.w, $(t.doc, 'btn-request-update'));
+    setVal(t.doc, 'dc-main_phone', '5551112222');
+    click(t.w, $(t.doc, 'dc-continue'));
+    await tick();
+    assert.strictEqual($(t.doc, 'dc-msg').textContent, msg);
+    assert.strictEqual($(t.doc, 'dc-continue').disabled, false);
+    t.w.close();
+  }
+  const t = await start({ 'POST /account/details/change': () => reply(429, {}) });
+  click(t.w, $(t.doc, 'btn-request-update'));
+  setVal(t.doc, 'dc-main_phone', '5551112222');
+  click(t.w, $(t.doc, 'dc-continue'));
+  await tick();
+  assert.match($(t.doc, 'dc-msg').textContent, /Too many update attempts/);
+  t.w.close();
+});

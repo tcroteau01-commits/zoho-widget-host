@@ -1191,12 +1191,13 @@ function renderAccount() {
     '<div style="display: flex; gap: 8px; margin-top: 22px;">' +
       '<button class="btn primary" style="flex: 1;" id="btn-request-update">Request Update</button>' +
     '</div>' +
-    '<div style="font-size: 11px; color: #888; margin-top: 10px; line-height: 1.5;">' +
+    '<div id="dc-helper" style="font-size: 11px; color: #888; margin-top: 10px; line-height: 1.5;">' +
       'Updates require Admin approval and email verification. Opens a secure update form in a new tab.' +
     '</div>';
 
   document.getElementById('company-body').innerHTML = html;
   document.getElementById('btn-request-update').addEventListener('click', onRequestUpdateClick);
+  dcSyncHelper();
 }
 
 // ── ACCTCHG1 Phase 2: in-portal "Update company details" (account owners) ──
@@ -1253,13 +1254,22 @@ function dcFmtAddress(a) {
   return parts.join(', ');
 }
 
+function dcSyncHelper() {
+  var h = document.getElementById('dc-helper');
+  if (!h) return;
+  h.textContent = (dcMeta && dcMeta.can_change && dcMeta.current)
+    ? "Changes are confirmed with codes sent to the owner's phone and email on file."
+    : 'Updates require Admin approval and email verification. Opens a secure update form in a new tab.';
+}
+
 function loadDetailsMeta() {
   dcMeta = null;
   if (!brokerEmail) return Promise.resolve();
   return fetch(BROKER_API_BASE + '/account/details?email=' + encodeURIComponent(brokerEmail))
     .then(dcJson).then(function (r) {
       dcMeta = (r.status === 200 && r.data && r.data.can_change && r.data.current) ? r.data : null;
-    }).catch(function () { dcMeta = null; });
+      dcSyncHelper();
+    }).catch(function () { dcMeta = null; dcSyncHelper(); });
 }
 
 function onRequestUpdateClick() {
@@ -1344,7 +1354,7 @@ function renderDetailsStep1(errText) {
   body.appendChild(section('Business address', [{ label: 'Address', onFile: dcFmtAddress(cur.address), node: addrWrap }]));
 
   body.appendChild(dcEl('div', 'dc-notice',
-    'Next, prove you are the owner. We text a code to the SMS admin phone on file and email a code to each new address. ' +
+    'Next, prove you are the owner. We text a code to the SMS admin phone on file first; once you enter it, we send a code to each new address. ' +
     'No change is saved until every code is entered. OperFi will never call or email you asking for these codes.'));
 
   var cont = dcButton('Continue to verification', 'primary', submitDetailsChange);
@@ -1384,13 +1394,15 @@ function submitDetailsChange() {
   dcMsg('Sending verification codes...', 'loading');
   dcPost('/account/details/change', { changes: c.changes }).then(function (r) {
     if (r.status === 200 && r.data.request_id) {
-      dcState = { id: r.data.request_id, targets: r.data.targets || [], verified: {}, labels: c.labels, busy: false };
+      dcState = { id: r.data.request_id, targets: r.data.targets || [], verified: {}, labels: c.labels, busy: false,
+                  changes: c.changes, released: {} };
       renderDetailsStep2();
       return;
     }
     btn.disabled = false;
     var m = r.data && r.data.message;
     if (r.status === 403) m = m || 'You do not have permission to change these details.';
+    if (r.status === 429) m = m || 'Too many update attempts. Try again in an hour or call 888-673-7349.';
     dcMsg(m || 'We could not start this change. Please try again.', 'error');
   }).catch(function () {
     btn.disabled = false;
@@ -1429,18 +1441,31 @@ function renderDetailsStep2() {
   dcSyncConfirm();
 }
 
+// New-destination codes are held back until the owner's phone is verified; the API lists them in
+// the verify response's sent_now. Until then (sent false, not an anchor, not released) the card is parked.
+function dcDeferred(t) {
+  return !t.sent && t.key !== 'sms_current' && t.key !== 'admin_current' && !(dcState && dcState.released[t.key]);
+}
+function dcTargetLabel(t) {
+  var label = DC_TARGET_LABELS[t.key] || t.key;
+  var others = (t.covers || []).filter(function (k) { return k !== t.key; })
+    .map(function (k) { return DC_TARGET_LABELS[k] || k; });
+  return others.length ? label + ' (also used for ' + others.join(', ') + ')' : label;
+}
+
 function dcTargetCard(t) {
   var card = dcEl('div', 'dc-card');
   card.setAttribute('data-key', t.key);
-  var label = DC_TARGET_LABELS[t.key] || t.key;
+  var label = dcTargetLabel(t);
   var isPhone = /^sms_/.test(t.key);
   function paint() {
     card.textContent = '';
     var done = !!dcState.verified[t.key];
     card.className = 'dc-card' + (done ? ' done' : '');
     card.appendChild(dcEl('div', 'dc-card-title', done ? label + ' verified' : label));
-    card.appendChild(dcEl('div', 'dc-card-sub', (isPhone ? 'Code texted to ' : 'Code emailed to ') + (t.masked || '')));
+    card.appendChild(dcEl('div', 'dc-card-sub', (dcDeferred(t) ? (isPhone ? 'Code will be texted to ' : 'Code will be emailed to ') : (isPhone ? 'Code texted to ' : 'Code emailed to ')) + (t.masked || '')));
     if (done) return;
+    var parked = dcDeferred(t);
     var row = dcEl('div', 'dc-code-row');
     var input = dcEl('input', 'dc-code');
     input.type = 'text'; input.inputMode = 'numeric'; input.maxLength = 6; input.autocomplete = 'one-time-code';
@@ -1455,11 +1480,14 @@ function dcTargetCard(t) {
     resend.setAttribute('data-resend-for', t.key);
     row.appendChild(input); row.appendChild(verify); row.appendChild(resend);
     card.appendChild(row);
-    if (t.sent === false) err.textContent = 'We could not send this code. Use Resend code.';
+    if (parked) {
+      err.textContent = "We'll send this code after you confirm the owner's phone.";
+      input.disabled = true; verify.disabled = true; resend.disabled = true; resend.textContent = 'Resend code';
+    } else if (t.sent === false) err.textContent = 'We could not send this code. Use Resend code.';
     card.appendChild(err);
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') verify.click(); });
     resend.addEventListener('click', function () { resendTarget(t, resend, err); });
-    dcCooldown(resend, t.sent === false ? 0 : 60);
+    if (!parked) dcCooldown(resend, t.sent === false ? 0 : 60);
   }
   paint();
   card._repaint = paint;
@@ -1503,6 +1531,14 @@ function verifyTarget(t, input, verifyBtn, errEl) {
       st.verified[t.key] = true;
       var card = document.querySelector('#dc-body .dc-card[data-key="' + t.key + '"]');
       if (card && card._repaint) card._repaint();
+      (r.data.sent_now || []).forEach(function (n) {
+        var tg = st.targets.filter(function (x) { return x.key === n.key; })[0];
+        if (!tg) return;
+        tg.sent = !!n.sent;
+        st.released[n.key] = true;
+        var c2 = document.querySelector('#dc-body .dc-card[data-key="' + n.key + '"]');
+        if (c2 && c2._repaint) c2._repaint();
+      });
       dcSyncConfirm();
       return;
     }
@@ -1551,13 +1587,44 @@ function confirmDetailsChange() {
       loadDetailsMeta();
       return;
     }
-    if (r.status === 409) { dcExpired(); return; }
+    if (r.status === 409) { dcConfirmUnsure(st, true); return; }
     renderDetailsDone(false, st.labels, (r.data && r.data.message) ||
       'We could not save your changes. Nothing was changed. Please try again or call 888-673-7349.');
   }).catch(function () {
-    st.busy = false; dcSyncConfirm();
-    dcMsg('Network error. Your changes were not confirmed. Please try again.', 'error');
+    dcConfirmUnsure(st, false);
   });
+}
+
+// A confirm that errored or came back 409 may still have been applied (the first attempt can land
+// after the reply is lost). Re-read the live values before telling the owner it expired or failed.
+function dcChangesApplied(changes, cur) {
+  return Object.keys(changes).every(function (k) {
+    var want = changes[k], have = cur[k];
+    if (k === 'address') {
+      return ['street', 'city', 'state', 'zip'].every(function (p) { return dcNormText(want[p]) === dcNormText((have || {})[p]); });
+    }
+    var f = DC_FIELDS.filter(function (x) { return x.key === k; })[0];
+    var norm = (f && f.kind === 'phone') ? dcNormPhone : dcNormEmail;
+    return norm(want) === norm(have);
+  });
+}
+function dcConfirmUnsure(st, expired) {
+  fetch(BROKER_API_BASE + '/account/details?email=' + encodeURIComponent(brokerEmail))
+    .then(dcJson).then(function (r) { return (r.status === 200 && r.data && r.data.current) ? r.data.current : null; })
+    .catch(function () { return null; })
+    .then(function (cur) {
+      if (dcState !== st) return;
+      st.busy = false;
+      if (cur && st.changes && dcChangesApplied(st.changes, cur)) {
+        renderDetailsDone(true, st.labels, '');
+        loadAccount();
+        loadDetailsMeta();
+        return;
+      }
+      if (expired) { dcExpired(); return; }
+      dcSyncConfirm();
+      dcMsg('Network error. Your changes were not confirmed. Please try again.', 'error');
+    });
 }
 
 function renderDetailsDone(ok, labels, failText) {

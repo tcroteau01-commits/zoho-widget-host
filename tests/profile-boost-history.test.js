@@ -89,6 +89,7 @@ function host(resp) {
   w.dropCustomerEventKinds = function () {};
   w.DECISION_CLEARED_KINDS = []; w.BOOST_CLEARED_KINDS = [];
   w.esc = P.esc;
+  w.profileAttention = function () { return []; };
   w.parseMoney = function (v) { return Number(String(v || '').replace(/[$,]/g, '')) || 0; };
   w.fmtMoney = P.money;
   w.submitDecision = function () { throw new Error('generic route must not be used'); };

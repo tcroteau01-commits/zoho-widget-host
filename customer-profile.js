@@ -411,8 +411,38 @@ function renderHeader(p) {
       renderBoosts(p) +
       contactsHtml +
       renderBoostDecide(p) +
-      decisionHtml +
+      renderActRow(decisionHtml, renderAttention(p)) +
     '</div>';
+}
+
+// ATTNPROF1 (John, 2026-10-18): the unread Needs Attention items, with Mark
+// reviewed, on the profile too -- not only in the detail pane. The page passes
+// p.attention from the list's one bulk fetch (each item already carries its
+// formatted time), so this stays pure and opening the profile clears nothing.
+function renderAttention(p) {
+  var list = p.attention || [];
+  if (!list.length) { return ''; }
+  return '' +
+    '<div class="cp-attn" id="cp-attn">' +
+      '<div class="cp-attn-title">Needs Attention</div>' +
+      list.map(function (ev) {
+        return '<div class="cp-attn-event">' +
+          '<div class="cp-attn-summary">' + esc(ev.summary || '') + '</div>' +
+          (ev.when ? '<div class="cp-attn-time">' + esc(ev.when) + '</div>' : '') +
+        '</div>';
+      }).join('') +
+      '<div class="cp-attn-row">' +
+        '<span class="cp-attn-msg" id="cp-attn-msg"></span>' +
+        '<button type="button" class="btn cp-decide" data-attn-clear="1">Mark reviewed</button>' +
+      '</div>' +
+    '</div>';
+}
+
+// The decision controls on the left, Needs Attention in the column beside them.
+function renderActRow(decisionHtml, attnHtml) {
+  if (!attnHtml) { return decisionHtml; }
+  return '<div class="cp-act-row"><div class="cp-act-main">' + decisionHtml + '</div>' +
+    attnHtml + '</div>';
 }
 
 // ---- what the engine decided, and why ----
@@ -1454,6 +1484,15 @@ var CP_CSS = '' +
   '.cp-header-contacts .field-label{color:rgba(255,255,255,0.55);}' +
   '.cp-header-contacts .field-val{color:#fff;}' +
   '.cp-decision-row{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}' +
+  '.cp-act-row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;}' +
+  '.cp-act-main{flex:1 1 420px;min-width:0;}' +
+  '.cp-attn{flex:0 1 340px;margin-top:16px;display:flex;flex-direction:column;gap:8px;}' +
+  '.cp-attn-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,0.55);}' +
+  '.cp-attn-event{background:#eaf3fc;border:1px solid #b8d4f0;border-radius:8px;padding:10px 12px;}' +
+  '.cp-attn-summary{font-size:13px;font-weight:600;color:#272727;}' +
+  '.cp-attn-time{font-size:11px;color:#888;margin-top:2px;}' +
+  '.cp-attn-row{display:flex;justify-content:flex-end;align-items:center;gap:10px;}' +
+  '.cp-attn-msg{font-size:12px;color:#fecaca;}' +
   '.cp-limit-input{max-width:160px;}' +
   '.cp-decision-notes{display:block;width:100%;max-width:640px;margin-top:10px;box-sizing:border-box;resize:vertical;}' +
   '.cp-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:6px;}' +

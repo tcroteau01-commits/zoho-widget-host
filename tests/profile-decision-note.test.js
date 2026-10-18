@@ -37,6 +37,7 @@ function host() {
   w.dropCustomerEventKinds = function () {};
   w.DECISION_CLEARED_KINDS = [];
   w.esc = P.esc;
+  w.profileAttention = function () { return []; };
   w.submitDecision = function (rec, vals) { sent.push(vals); return Promise.resolve({ ok: true }); };
   w.eval(page.match(/var PROFILE_ACTIONS =[\s\S]*?\n}\n/)[0]);
   w.eval(page.match(/function renderProfile\(rec, payload\) \{[\s\S]*?\n}\n/)[0]);

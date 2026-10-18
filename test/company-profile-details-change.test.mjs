@@ -405,3 +405,35 @@ test('step 1 shows the API message for 429 and 400', async () => {
   assert.match($(t.doc, 'dc-msg').textContent, /Too many update attempts/);
   t.w.close();
 });
+
+// ACCTCHG1 Phase 4: held confirm and anchor_cooldown.
+test('confirm held: "Pending OperFi review" with the API message, no "Changes saved", panel not refreshed', async () => {
+  const MSG = 'For your security, our team reviews this change before it takes effect. Your current details stay in place until then.';
+  const t = await toStep2(Object.assign({ 'POST /account/details/change/ID/confirm': { status: 'held', message: MSG } }, VERIFY_OK));
+  await verifyAll(t);
+  const before = t.calls.filter(c => c.path === '/broker-account' || c.path === '/account/details').length;
+  click(t.w, $(t.doc, 'dc-confirm'));
+  await tick(5);
+  const body = $(t.doc, 'dc-body').textContent;
+  assert.match(body, /Pending OperFi review/);
+  assert.ok(body.includes(MSG));
+  assert.ok(!/Changes saved/.test(body));
+  assert.ok(!/expired/i.test(body + $(t.doc, 'dc-msg').textContent));
+  assert.strictEqual(t.calls.filter(c => c.path === '/broker-account' || c.path === '/account/details').length, before, 'panel not refreshed');
+  const foot = $(t.doc, 'dc-foot') ? $(t.doc, 'dc-foot').textContent : t.doc.body.textContent;
+  assert.match(foot, /Close/);
+  t.w.close();
+});
+
+test('create 409 anchor_cooldown: shows the API message on step 1, not "expired"', async () => {
+  const MSG = "For your security, this change can't be made yet. Call OperFi at 888-673-7349.";
+  const t = await start({ 'POST /account/details/change': () => reply(409, { ok: false, code: 'anchor_cooldown', message: MSG }) });
+  click(t.w, $(t.doc, 'btn-request-update'));
+  setVal(t.doc, 'dc-main_phone', '5551112222');
+  click(t.w, $(t.doc, 'dc-continue'));
+  await tick();
+  assert.strictEqual($(t.doc, 'dc-msg').textContent, MSG);
+  assert.ok(!/expired/i.test($(t.doc, 'dc-msg').textContent + $(t.doc, 'dc-body').textContent));
+  assert.ok(/STEP 1 OF 2/.test($(t.doc, 'dc-body').textContent));
+  t.w.close();
+});

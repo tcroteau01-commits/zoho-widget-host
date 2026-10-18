@@ -1603,6 +1603,7 @@ function confirmDetailsChange() {
       loadDetailsMeta();
       return;
     }
+    if (r.status === 200 && r.data && r.data.status === 'held') { renderDetailsHeld(r.data.message); return; }
     if (r.status === 409) { dcConfirmUnsure(st, true); return; }
     renderDetailsDone(false, st.labels, (r.data && r.data.message) ||
       'We could not save your changes. Nothing was changed. Please try again or call 888-673-7349.');
@@ -1662,6 +1663,22 @@ function renderDetailsDone(ok, labels, failText) {
   body.appendChild(box);
   dcState = null;
   dcSetFoot([dcButton(ok ? 'Done' : 'Close', 'primary', closeDetailsFlow)]);
+}
+
+// ACCTCHG1 Phase 4: a safety check held the change for OperFi review. Nothing changed yet, so no panel refresh.
+function renderDetailsHeld(message) {
+  dcClearTimers();
+  var body = document.getElementById('dc-body');
+  body.textContent = '';
+  dcMsg('', 'error');
+  document.getElementById('dc-note').textContent = '';
+  var box = dcEl('div', 'dc-result');
+  box.appendChild(dcEl('h2', 'dc-h', 'Pending OperFi review'));
+  box.appendChild(dcEl('p', 'dc-p', message ||
+    'For your security, our team reviews this change before it takes effect. Your current details stay in place until then.'));
+  body.appendChild(box);
+  dcState = null;
+  dcSetFoot([dcButton('Close', 'primary', closeDetailsFlow)]);
 }
 
 function statusClassFor(raw) {

@@ -249,6 +249,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .dc-fine { margin-top: 14px; font-size: 12px; color: #4b5563; line-height: 1.6; }
 .dc-result { border-top: 4px solid #059669; border-radius: 10px; padding: 8px 0 0; }
 .dc-result.bad { border-top-color: #c62828; }
+/* ACCTCHG1 Phase 3: owner sign-in email row, non-owner waiting box */
+.dc-sec.dc-login { border-top: 1px solid #E5E7EB; padding-top: 16px; }
+.dc-sec-note { font-weight: 400; color: #4b5563; }
+.dc-check { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 13px; color: #374151; }
+.dc-check input { width: 18px; height: 18px; accent-color: #C2410C; }
+.dc-wait { margin-top: 14px; border: 1px solid #e6e3da; border-top: 4px solid #D97706; border-radius: 10px; padding: 14px 16px; }
+.dc-wait .dc-h { font-size: 17px; }
 @media (max-width: 640px) {
   .dc-grid { grid-template-columns: 1fr; }
   .dc-addr { grid-template-columns: 1fr 1fr; }
@@ -1028,8 +1035,8 @@ function bootApp() {
       return;
     }
     console.log('[CompanyProfile] Booted as', brokerEmail);
-    loadAccount();
-    loadDetailsMeta();
+    // Details meta waits for the account: it sends the page's account id (item 8).
+    loadAccount().then(function () { if (account) return loadDetailsMeta(); });
     loadUsers();
     initAccessTabs();
     loadAccess();
@@ -1129,7 +1136,7 @@ function showCardError(msg) {
 // ── Data load: Account ────────────────────────────────────────────────────
 function loadAccount() {
   var url = BROKER_API_BASE + '/broker-account?email=' + encodeURIComponent(brokerEmail);
-  fetch(url).then(function(res) {
+  return fetch(url).then(function(res) {
     if (!res.ok) return res.text().then(function(b) { throw new Error('HTTP ' + res.status + ' ' + b); });
     return res.json();
   }).then(function(payload) {
@@ -1209,6 +1216,9 @@ function renderAccount() {
 // GET /account/details says whether this user may use the flow. When it fails
 // or can_change is false, Request Update opens the Zoho Form exactly as before.
 var dcMeta = null;
+var dcMismatch = null;  // the API's account_mismatch message: this page is not the signed-in account
+var DC_MISMATCH_MSG = "You are signed in to a different OperFi account than the one on this page. " +
+  "Sign in as this account's owner to change its details.";
 var dcState = null;   // {id, targets, verified:{}, labels, busy}
 var dcTimers = [];
 
@@ -1225,8 +1235,24 @@ var DC_TARGET_LABELS = {
   admin_new: 'New Admin email',
   operations_new: 'New Operations email',
   accounting_new: 'New Accounting email',
-  sms_new: 'New SMS admin phone'
+  sms_new: 'New SMS admin phone',
+  login_new: 'New sign-in email'
 };
+
+// ACCTCHG1 Phase 3. A non-owner's request (needs_owner) waits for the account owner; its screen polls
+// the request status. window.DC_POLL_MS and window.dcNavigate are seams for tests.
+if (typeof window.DC_POLL_MS !== 'number') window.DC_POLL_MS = 15000;
+window.dcNavigate = function (url) {
+  try { window.top.location.href = url; return; } catch (e) {}
+  window.location.href = url;
+};
+var dcPollTimer = null;
+var dcPollBusy = false;
+
+function dcCanUse() {
+  return !!(dcMeta && (dcMeta.can_change || dcMeta.can_request) && dcMeta.current);
+}
+function dcIsRequester() { return !!(dcMeta && !dcMeta.can_change && dcMeta.can_request); }
 
 function dcEl(tag, cls, text) {
   var e = document.createElement(tag);
@@ -1241,8 +1267,15 @@ function dcJson(res) {
     return { status: res.status, data: d || {} };
   });
 }
+// The account this page shows. Every details call carries it; the API refuses when it is not the
+// signed-in session's account (staff "Acting as", or an owner of another account viewing this one).
+function dcAcct() { return (account && account.ID) ? String(account.ID) : ''; }
+function dcQs() {
+  return '?email=' + encodeURIComponent(brokerEmail) + (dcAcct() ? '&account_id=' + encodeURIComponent(dcAcct()) : '');
+}
 function dcPost(path, body) {
   body.email = brokerEmail;
+  if (dcAcct()) body.account_id = dcAcct();
   return fetch(BROKER_API_BASE + path, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   }).then(dcJson);
@@ -1262,27 +1295,33 @@ function dcFmtAddress(a) {
 function dcSyncHelper() {
   var h = document.getElementById('dc-helper');
   if (!h) return;
-  h.textContent = (dcMeta && dcMeta.can_change && dcMeta.current)
-    ? "Changes are confirmed with codes sent to the owner's phone and email on file."
-    : 'Updates require Admin approval and email verification. Opens a secure update form in a new tab.';
+  h.textContent = dcMismatch ? dcMismatch : !dcCanUse()
+    ? 'Updates require Admin approval and email verification. Opens a secure update form in a new tab.'
+    : dcIsRequester()
+      ? 'Changes you request are sent to the account owner to approve.'
+      : "Changes are confirmed with codes sent to the owner's phone and email on file.";
 }
 
 function loadDetailsMeta() {
   dcMeta = null;
+  dcMismatch = null;
   if (!brokerEmail) return Promise.resolve();
-  return fetch(BROKER_API_BASE + '/account/details?email=' + encodeURIComponent(brokerEmail))
+  return fetch(BROKER_API_BASE + '/account/details' + dcQs())
     .then(dcJson).then(function (r) {
-      dcMeta = (r.status === 200 && r.data && r.data.can_change && r.data.current) ? r.data : null;
+      if (r.status === 200 && r.data && r.data.account_mismatch) dcMismatch = DC_MISMATCH_MSG;
+      dcMeta = (r.status === 200 && r.data && (r.data.can_change || r.data.can_request) && r.data.current) ? r.data : null;
       dcSyncHelper();
     }).catch(function () { dcMeta = null; dcSyncHelper(); });
 }
 
 function onRequestUpdateClick() {
-  if (dcMeta && dcMeta.can_change && dcMeta.current) { openDetailsFlow(); return; }
+  // Wrong account for this page: neither the in-portal flow nor the form (the helper says why).
+  if (dcMismatch) { dcSyncHelper(); return; }
+  if (dcCanUse()) { openDetailsFlow(); return; }
   window.open(REQUEST_UPDATE_FORM_URL, '_blank', 'noopener,noreferrer');
 }
 
-function dcClearTimers() { dcTimers.forEach(function (t) { clearInterval(t); }); dcTimers = []; }
+function dcClearTimers() { dcTimers.forEach(function (t) { clearInterval(t); }); dcTimers = []; dcStopPoll(); }
 function dcMsg(text, type) {
   var m = document.getElementById('dc-msg');
   m.textContent = text || '';
@@ -1302,13 +1341,61 @@ function dcSetFoot(buttons) {
 function closeDetailsFlow() {
   dcClearTimers();
   dcState = null;
+  dcResumeToken = null;
   document.getElementById('dc-scrim').classList.remove('show');
 }
 function openDetailsFlow() {
   dcClearTimers();
   dcState = null;
+  document.getElementById('dc-close').style.display = '';
   document.getElementById('dc-scrim').classList.add('show');
+  // A requester's open request (the API allows one per account) is resumed, not started again.
+  var open = dcIsRequester() && dcMeta.open_request;
+  if (open && open.request_id) { dcResume(open.request_id); return; }
   renderDetailsStep1();
+}
+
+// ACCTCHG1 Phase 3: the request lives on the API, not only in dcState. Remember it while it is open
+// (so closing the panel does not lose it) and forget it once it ends.
+var dcResumeToken = null;
+function dcRememberOpen(id, status) { if (dcMeta) dcMeta.open_request = { request_id: id, status: status }; }
+function dcForgetOpen() { if (dcMeta) dcMeta.open_request = null; }
+var DC_FIELD_LABELS = { admin_email: 'Admin email', operations_email: 'Operations email', accounting_email: 'Accounting email',
+  sms_phone: 'SMS admin phone', main_phone: 'Main business phone', address: 'Business address', login_email: 'Sign-in email' };
+function dcFieldLabels(fields) {
+  var have = fields || [];
+  var out = Object.keys(DC_FIELD_LABELS).filter(function (k) { return have.indexOf(k) !== -1; })
+    .map(function (k) { return DC_FIELD_LABELS[k]; });
+  return out.length ? out : ['your company details'];
+}
+function dcResume(id) {
+  var token = {};
+  dcResumeToken = token;
+  document.getElementById('dc-body').textContent = '';
+  document.getElementById('dc-note').textContent = '';
+  dcSetFoot([dcButton('Cancel', 'ghost', closeDetailsFlow)]);
+  dcMsg('Loading your request...', 'loading');
+  function fresh() {
+    if (dcResumeToken !== token) return;
+    dcResumeToken = null;
+    dcForgetOpen();
+    renderDetailsStep1();
+  }
+  fetch(BROKER_API_BASE + '/account/details/change/' + encodeURIComponent(id) + dcQs())
+    .then(dcJson).then(function (r) {
+      if (dcResumeToken !== token) return;
+      var d = r.data || {};
+      if (r.status !== 200 || (d.status !== 'awaiting_owner' && d.status !== 'pending')) { fresh(); return; }
+      dcResumeToken = null;
+      var targets = d.targets || [], verified = {}, released = {};
+      targets.forEach(function (t) {
+        if (t.verified) verified[t.key] = true;
+        if (!t.owner_only && t.sent) released[t.key] = true;
+      });
+      dcState = { id: d.request_id || id, targets: targets, verified: verified, labels: dcFieldLabels(d.fields), busy: false,
+                  changes: null, released: released, needsOwner: true, status: d.status, ownerName: '' };
+      renderDetailsStep2();
+    }).catch(fresh);
 }
 
 function dcInput(id, placeholder) {
@@ -1321,7 +1408,8 @@ function renderDetailsStep1(errText) {
   var cur = dcMeta.current || {};
   var body = document.getElementById('dc-body');
   body.textContent = '';
-  document.getElementById('dc-sub').textContent = (account && account.Account_Name) || '';
+  // The API's (session) account name, never the page's: they differ when the page shows another account.
+  document.getElementById('dc-sub').textContent = (dcMeta && dcMeta.company) || '';
   document.getElementById('dc-note').textContent = '';
   dcMsg(errText || '', 'error');
 
@@ -1369,11 +1457,29 @@ function renderDetailsStep1(errText) {
   body.appendChild(section('Business address', [{ label: 'Address', onFile: dcFmtAddress(cur.address), node: addrWrap,
     wide: true, hint: 'To change it, fill in all four boxes below.' }]));
 
-  body.appendChild(dcEl('div', 'dc-notice',
-    'Next, prove you are the owner. We text a code to the SMS admin phone on file first; once you enter it, we send a code to each new address. ' +
-    'No change is saved until every code is entered. OperFi will never call or email you asking for these codes.'));
+  // ACCTCHG1 Phase 3: owners may change their own sign-in email (mockup frame 3).
+  if (dcMeta.can_change && dcMeta.login_email) {
+    var login = section('', [{ key: 'login_email', label: 'Sign-in email', onFile: dcMeta.login_email }]);
+    login.className = 'dc-sec dc-login';
+    var lt = login.querySelector('.dc-sec-title');
+    lt.textContent = 'Your sign-in email ';
+    lt.appendChild(dcEl('span', 'dc-sec-note', '(account owner only)'));
+    var chk = dcEl('label', 'dc-check');
+    var box = dcEl('input');
+    box.type = 'checkbox'; box.id = 'dc-login-admin';
+    chk.appendChild(box);
+    chk.appendChild(document.createTextNode("Also make my new sign-in email the account's Admin email"));
+    login.appendChild(chk);
+    body.appendChild(login);
+  }
 
-  var cont = dcButton('Continue to verification', 'primary', submitDetailsChange);
+  body.appendChild(dcEl('div', 'dc-notice', dcIsRequester()
+    ? 'Next, the account owner approves. We send the owner a link by text and email; once they enter their codes, we send a code to each new address for you to enter. ' +
+      'No change is saved until every code is entered. OperFi will never call or email you asking for these codes.'
+    : 'Next, prove you are the owner. We text a code to the SMS admin phone on file first; once you enter it, we send a code to each new address. ' +
+      'No change is saved until every code is entered. OperFi will never call or email you asking for these codes.'));
+
+  var cont = dcButton(dcIsRequester() ? 'Send to the account owner' : 'Continue to verification', 'primary', submitDetailsChange);
   cont.id = 'dc-continue';
   dcSetFoot([dcButton('Cancel', 'ghost', closeDetailsFlow), cont]);
 }
@@ -1399,11 +1505,26 @@ function collectDetailsChanges() {
     if (dcNormText(next[p]) !== dcNormText(ca[p])) differs = true;
   });
   if (entered && differs) { changes.address = next; labels.push('Business address'); }
+  // ACCTCHG1 Phase 3: the owner's sign-in email; the checkbox sends the same address as admin_email.
+  var li = document.getElementById('dc-login_email');
+  if (li && String(li.value).trim() && dcNormEmail(li.value) !== dcNormEmail(dcMeta.login_email)) {
+    var nl = String(li.value).trim();
+    if (document.getElementById('dc-login-admin').checked) {
+      if (changes.admin_email && dcNormEmail(changes.admin_email) !== dcNormEmail(nl)) {
+        return { changes: {}, labels: [], error: 'The new Admin email must match the new sign-in email when the box is checked.' };
+      }
+      if (!changes.admin_email && dcNormEmail(nl) !== dcNormEmail(cur.admin_email)) labels.push('Admin email');
+      if (dcNormEmail(nl) !== dcNormEmail(cur.admin_email)) changes.admin_email = nl;
+    }
+    changes.login_email = nl;
+    labels.push('Sign-in email');
+  }
   return { changes: changes, labels: labels };
 }
 
 function submitDetailsChange() {
   var c = collectDetailsChanges();
+  if (c.error) { dcMsg(c.error, 'error'); return; }
   if (!Object.keys(c.changes).length) { dcMsg('Nothing to change.', 'error'); return; }
   var btn = document.getElementById('dc-continue');
   btn.disabled = true;
@@ -1411,7 +1532,9 @@ function submitDetailsChange() {
   dcPost('/account/details/change', { changes: c.changes }).then(function (r) {
     if (r.status === 200 && r.data.request_id) {
       dcState = { id: r.data.request_id, targets: r.data.targets || [], verified: {}, labels: c.labels, busy: false,
-                  changes: c.changes, released: {} };
+                  changes: c.changes, released: {}, needsOwner: !!r.data.needs_owner,
+                  status: r.data.status || 'pending', ownerName: r.data.owner_name || '' };
+      if (dcState.needsOwner) dcRememberOpen(dcState.id, dcState.status);
       renderDetailsStep2();
       return;
     }
@@ -1441,25 +1564,182 @@ function renderDetailsStep2() {
   dcMsg('', 'error');
   document.getElementById('dc-note').textContent = '';
   body.appendChild(dcEl('div', 'dc-step', 'STEP 2 OF 2'));
-  body.appendChild(dcEl('h2', 'dc-h', "Confirm it's you"));
-  body.appendChild(dcEl('p', 'dc-p', 'Enter each code below. Codes expire in 10 minutes. You are changing: ' + dcState.labels.join(', ') + '.'));
+  if (dcState.needsOwner) {
+    body.appendChild(dcEl('h2', 'dc-h', 'Owner approval'));
+    body.appendChild(dcEl('p', 'dc-p', 'You are changing: ' + dcState.labels.join(', ') +
+      '. The account owner enters the codes sent to their phone and email; you enter the code sent to each new address.'));
+    var wait = dcEl('div', 'dc-wait');
+    wait.id = 'dc-wait';
+    body.appendChild(wait);
+    dcPaintWait();
+  } else {
+    body.appendChild(dcEl('h2', 'dc-h', "Confirm it's you"));
+    body.appendChild(dcEl('p', 'dc-p', 'Enter each code below. Codes expire in 10 minutes. You are changing: ' + dcState.labels.join(', ') + '.'));
+  }
 
   dcState.targets.forEach(function (t) { body.appendChild(dcTargetCard(t)); });
 
-  body.appendChild(dcEl('div', 'dc-fine',
-    'Changing the Admin email also sends a code to the current Admin email. Changing the SMS admin phone sends codes to the current phone, the current Admin email and the new phone. ' +
-    'OperFi will never call or email you asking for these codes.'));
+  if (!dcState.needsOwner) {
+    body.appendChild(dcEl('div', 'dc-fine',
+      'Changing the Admin email also sends a code to the current Admin email. Changing the SMS admin phone sends codes to the current phone, the current Admin email and the new phone. ' +
+      'OperFi will never call or email you asking for these codes.'));
+  }
 
   var confirm = dcButton('Confirm changes', 'primary', confirmDetailsChange);
   confirm.id = 'dc-confirm';
   confirm.disabled = true;
+  if (dcState.needsOwner) {
+    dcSetFoot([dcButton('Cancel request', 'ghost', cancelDetailsRequest), confirm]);
+    dcSyncConfirm();
+    dcStartPoll();
+    return;
+  }
   dcSetFoot([dcButton('Back', 'ghost', function () { dcClearTimers(); dcState = null; renderDetailsStep1(); }), confirm]);
   dcSyncConfirm();
+}
+
+// ── ACCTCHG1 Phase 3: a non-owner's request, waiting on the account owner ──
+// Outcome B while the owner has not approved; once they have, a short note to enter the new codes.
+function dcPaintWait() {
+  var w = document.getElementById('dc-wait');
+  if (!w || !dcState) return;
+  w.textContent = '';
+  if (dcState.status === 'awaiting_owner') {
+    w.appendChild(dcEl('h2', 'dc-h', 'Waiting for the account owner'));
+    w.appendChild(dcEl('p', 'dc-p', 'We sent ' + (String(dcState.ownerName || '').trim() || 'the account owner') +
+      ' a link by text and email to review and approve this change. Nothing changes until they do. The request expires in 24 hours.'));
+  } else {
+    w.appendChild(dcEl('h2', 'dc-h', 'The account owner approved'));
+    w.appendChild(dcEl('p', 'dc-p', 'Enter the code sent to each new address below, then confirm.'));
+  }
+}
+
+// Poll every DC_POLL_MS only while the panel is open, the request is awaiting_owner or pending, and the
+// tab is visible. dcClearTimers (close, outcome, Back) stops it; one timer at most.
+function dcStopPoll() {
+  if (dcPollTimer) { clearInterval(dcPollTimer); dcPollTimer = null; }
+}
+function dcStartPoll() {
+  if (dcPollTimer || document.hidden) return;
+  if (!dcState || !dcState.needsOwner) return;
+  if (dcState.status !== 'awaiting_owner' && dcState.status !== 'pending') return;
+  if (!document.getElementById('dc-scrim').classList.contains('show')) return;
+  dcPollTimer = setInterval(dcPollOnce, window.DC_POLL_MS);
+}
+function dcPollOnce() {
+  var st = dcState;
+  if (!st || dcPollBusy || st.busy) return;
+  dcPollBusy = true;
+  fetch(BROKER_API_BASE + '/account/details/change/' + encodeURIComponent(st.id) + dcQs())
+    .then(dcJson).then(function (r) {
+      dcPollBusy = false;
+      if (dcState !== st || st.busy) return;
+      if (r.status === 401 || r.status === 403 || r.status === 404) {
+        dcStopPoll();
+        renderDetailsEnded(DC_ENDED_GENERIC);
+        return;
+      }
+      if (r.status !== 200 || !r.data) return;
+      dcApplyStatus(st, r.data);
+    }).catch(function () { dcPollBusy = false; });
+}
+var DC_ENDED_MSG = {
+  declined: 'The account owner declined this request.',
+  expired: 'This request expired. Nothing was changed.',
+  cancelled: 'This request was cancelled. Nothing was changed.',
+  applied: 'The change was applied.',
+  applied_partial: 'The change was applied.',
+  held: 'The change is pending OperFi review.'
+};
+var DC_ENDED_GENERIC = 'This request has ended. Close this window and refresh the page.';
+function dcApplyStatus(st, d) {
+  var status = d.status;
+  if (status === 'confirming') return;   // transient; the next poll sees the outcome
+  if (status !== 'awaiting_owner' && status !== 'pending') {
+    dcStopPoll();
+    renderDetailsEnded(DC_ENDED_MSG[status] || DC_ENDED_GENERIC);
+    return;
+  }
+  if (status !== st.status) { st.status = status; dcPaintWait(); }
+  (d.targets || []).forEach(function (n) {
+    var tg = st.targets.filter(function (x) { return x.key === n.key; })[0];
+    if (!tg) return;
+    var repaint = false;
+    if (n.verified && !st.verified[n.key]) { st.verified[n.key] = true; repaint = true; }
+    if (!tg.owner_only && n.sent && !st.released[n.key]) { tg.sent = true; st.released[n.key] = true; repaint = true; }
+    if (repaint) {
+      var c = document.querySelector('#dc-body .dc-card[data-key="' + n.key + '"]');
+      if (c && c._repaint) c._repaint();
+    }
+  });
+  dcSyncConfirm();
+}
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden) { dcStopPoll(); return; }
+  // Back on the tab: check right away (the owner may have acted meanwhile), then resume the timer.
+  if (dcPollTimer) return;
+  dcStartPoll();
+  if (dcPollTimer) dcPollOnce();
+});
+
+function cancelDetailsRequest() {
+  var st = dcState;
+  if (!st) return;
+  this.disabled = true;
+  var btn = this;
+  dcMsg('', 'error');
+  dcPost('/account/details/change/' + encodeURIComponent(st.id) + '/cancel', {}).then(function (r) {
+    if (dcState !== st) return;
+    if (r.status === 200) { renderDetailsEnded(DC_ENDED_MSG.cancelled); return; }
+    btn.disabled = false;
+    dcMsg((r.data && r.data.message) || 'We could not cancel this request. Please try again.', 'error');
+  }).catch(function () {
+    btn.disabled = false;
+    dcMsg('Network error. Please try again.', 'error');
+  });
+}
+
+function renderDetailsEnded(text) {
+  dcClearTimers();
+  var body = document.getElementById('dc-body');
+  body.textContent = '';
+  dcMsg('', 'error');
+  document.getElementById('dc-note').textContent = '';
+  var box = dcEl('div', 'dc-result bad');
+  box.appendChild(dcEl('p', 'dc-p', text));
+  body.appendChild(box);
+  dcState = null;
+  dcForgetOpen();
+  dcSetFoot([dcButton('Close', 'primary', closeDetailsFlow)]);
+}
+
+// After a sign-in email change the API has cleared the session: the only way on is to sign in again.
+function renderDetailsRelogin(newEmail, unsure) {
+  dcClearTimers();
+  var body = document.getElementById('dc-body');
+  body.textContent = '';
+  dcMsg('', 'error');
+  document.getElementById('dc-note').textContent = '';
+  var box = dcEl('div', 'dc-result');
+  if (unsure) {
+    box.appendChild(dcEl('h2', 'dc-h', 'Sign in again'));
+    box.appendChild(dcEl('p', 'dc-p', 'We could not confirm the result. If your old sign-in email no longer works, sign in with ' + (newEmail || '') + '.'));
+  } else {
+    box.appendChild(dcEl('h2', 'dc-h', 'Changes saved'));
+    box.appendChild(dcEl('p', 'dc-p', 'Your sign-in email is now ' + (newEmail || '') + '. Sign in again with your new email.'));
+  }
+  body.appendChild(box);
+  dcState = null;
+  dcForgetOpen();
+  var x = document.getElementById('dc-close');
+  if (x && !unsure) x.style.display = 'none';
+  dcSetFoot([dcButton('Sign in again', 'primary', function () { window.dcNavigate(BROKER_API_BASE + '/portal/login'); })]);
 }
 
 // New-destination codes are held back until the owner's phone is verified; the API lists them in
 // the verify response's sent_now. Until then (sent false, not an anchor, not released) the card is parked.
 function dcDeferred(t) {
+  if (t.owner_only) return false;
   return !t.sent && t.key !== 'sms_current' && t.key !== 'admin_current' && !(dcState && dcState.released[t.key]);
 }
 function dcTargetLabel(t) {
@@ -1478,6 +1758,13 @@ function dcTargetCard(t) {
     card.textContent = '';
     var done = !!dcState.verified[t.key];
     card.className = 'dc-card' + (done ? ' done' : '');
+    if (t.owner_only) {
+      // ACCTCHG1 Phase 3: the owner enters this code on their approval page; no input, no resend here.
+      card.appendChild(dcEl('div', 'dc-card-title', done ? '✓ ' + label + ' verified' : label));
+      card.appendChild(dcEl('div', 'dc-card-sub', (isPhone ? 'Code texted to ' : 'Code emailed to ') + (t.masked || '')));
+      if (!done) card.appendChild(dcEl('div', 'dc-hint', 'The account owner enters this code.'));
+      return;
+    }
     card.appendChild(dcEl('div', 'dc-card-title', done ? label + ' verified' : label));
     card.appendChild(dcEl('div', 'dc-card-sub', (dcDeferred(t) ? (isPhone ? 'Code will be texted to ' : 'Code will be emailed to ') : (isPhone ? 'Code texted to ' : 'Code emailed to ')) + (t.masked || '')));
     if (done) return;
@@ -1497,7 +1784,8 @@ function dcTargetCard(t) {
     row.appendChild(input); row.appendChild(verify); row.appendChild(resend);
     card.appendChild(row);
     if (parked) {
-      err.textContent = "We'll send this code after you confirm the owner's phone.";
+      err.textContent = dcState.needsOwner ? "We'll send this code after the account owner approves."
+                                           : "We'll send this code after you confirm the owner's phone.";
       input.disabled = true; verify.disabled = true; resend.disabled = true; resend.textContent = 'Resend code';
     } else if (t.sent === false) err.textContent = 'We could not send this code. Use Resend code.';
     card.appendChild(err);
@@ -1531,6 +1819,7 @@ function dcExpired(extra) {
   document.getElementById('dc-note').textContent = '';
   dcMsg('This request expired. Start again.', 'error');
   dcState = null;
+  dcForgetOpen();
   dcSetFoot([dcButton('Start again', 'primary', function () { renderDetailsStep1(); })]);
 }
 
@@ -1597,6 +1886,7 @@ function confirmDetailsChange() {
   dcPost('/account/details/change/' + encodeURIComponent(st.id) + '/confirm', {}).then(function (r) {
     if (dcState !== st) return;
     st.busy = false;
+    if (r.status === 200 && r.data.relogin) { renderDetailsRelogin(r.data.login_email); return; }
     if (r.status === 200 && (r.data.status === 'applied' || r.data.status === 'applied_partial')) {
       renderDetailsDone(true, st.labels, '');
       loadAccount();
@@ -1604,6 +1894,11 @@ function confirmDetailsChange() {
       return;
     }
     if (r.status === 200 && r.data && r.data.status === 'held') { renderDetailsHeld(r.data.message); return; }
+    if (r.status === 409 && r.data && r.data.code === 'email_in_use') { renderDetailsDone(false, st.labels, r.data.message); return; }
+    if (r.status === 409 && r.data && (r.data.code === 'anchor_cooldown' || r.data.code === 'account_mismatch')) {
+      renderDetailsDone(false, st.labels, r.data.message || "For your security, this change can't be made yet. Call OperFi at 888-673-7349.");
+      return;
+    }
     if (r.status === 409) { dcConfirmUnsure(st, true); return; }
     renderDetailsDone(false, st.labels, (r.data && r.data.message) ||
       'We could not save your changes. Nothing was changed. Please try again or call 888-673-7349.');
@@ -1626,12 +1921,26 @@ function dcChangesApplied(changes, cur) {
   });
 }
 function dcConfirmUnsure(st, expired) {
-  fetch(BROKER_API_BASE + '/account/details?email=' + encodeURIComponent(brokerEmail))
-    .then(dcJson).then(function (r) { return (r.status === 200 && r.data && r.data.current) ? r.data.current : null; })
+  fetch(BROKER_API_BASE + '/account/details' + dcQs())
+    .then(dcJson).then(function (r) { return (r.status === 200 && r.data && r.data.current) ? r.data : null; })
     .catch(function () { return null; })
-    .then(function (cur) {
+    .then(function (meta) {
       if (dcState !== st) return;
       st.busy = false;
+      var cur = meta && meta.current;
+      var login = st.changes && st.changes.login_email;
+      if (login) {
+        // A login change revokes every session, so a lost reply usually means it landed and the re-read
+        // gets a 401. Unless the re-read shows the new login and every other field, send them to sign in.
+        var rest = {};
+        Object.keys(st.changes).forEach(function (k) { if (k !== 'login_email') rest[k] = st.changes[k]; });
+        if (cur && dcNormEmail(meta.login_email) === dcNormEmail(login) && dcChangesApplied(rest, cur)) {
+          renderDetailsRelogin(login);
+        } else {
+          renderDetailsRelogin(login, true);
+        }
+        return;
+      }
       if (cur && st.changes && dcChangesApplied(st.changes, cur)) {
         renderDetailsDone(true, st.labels, '');
         loadAccount();
@@ -1662,6 +1971,7 @@ function renderDetailsDone(ok, labels, failText) {
   }
   body.appendChild(box);
   dcState = null;
+  dcForgetOpen();
   dcSetFoot([dcButton(ok ? 'Done' : 'Close', 'primary', closeDetailsFlow)]);
 }
 
@@ -1678,6 +1988,7 @@ function renderDetailsHeld(message) {
     'For your security, our team reviews this change before it takes effect. Your current details stay in place until then.'));
   body.appendChild(box);
   dcState = null;
+  dcForgetOpen();
   dcSetFoot([dcButton('Close', 'primary', closeDetailsFlow)]);
 }
 
@@ -3510,6 +3821,8 @@ window.dcTestInit = function(acct) {
   renderAccount();
   return loadDetailsMeta();
 };
+window.dcStartPoll = function() { return dcStartPoll(); };
+window.dcRequestUpdate = function() { return onRequestUpdateClick(); };
 window.submitContact = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;

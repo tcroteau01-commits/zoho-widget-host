@@ -837,3 +837,106 @@ test('requester step 2 hides the owner-anchor fine print; owner step 2 keeps it'
   assert.ok($(o.doc, 'dc-body').querySelector('.dc-fine'));
   o.w.close();
 });
+
+// ── ACCTCHG1 Phase 3 final fixes: confirm-time 72-hour rule, one open request, resume ──
+
+test('confirm 409 anchor_cooldown shows the API message, not "expired"', async () => {
+  const MSG = "For your security, this change can't be made yet. Call OperFi at 888-673-7349.";
+  const t = await toConfirm(() => reply(409, { ok: false, code: 'anchor_cooldown', message: MSG }), NOT_APPLIED);
+  const all = $(t.doc, 'dc-body').textContent + $(t.doc, 'dc-msg').textContent;
+  assert.ok(all.includes(MSG));
+  assert.ok(!/expired/i.test(all));
+  assert.ok(!/Changes saved/.test(all));
+  t.w.close();
+});
+
+test('create 409 request_open shows the API message on step 1', async () => {
+  const MSG = 'A change request for this account is already waiting for the owner.';
+  const t = await start({ 'GET /account/details': REQ_META,
+    'POST /account/details/change': () => reply(409, { ok: false, code: 'request_open', message: MSG }) });
+  click(t.w, $(t.doc, 'btn-request-update'));
+  setVal(t.doc, 'dc-accounting_email', 'ap@example.com');
+  click(t.w, $(t.doc, 'dc-continue'));
+  await tick();
+  assert.strictEqual($(t.doc, 'dc-msg').textContent, MSG);
+  t.w.close();
+});
+
+const REQ_META_OPEN = Object.assign({}, REQ_META, { open_request: { request_id: 'r1', status: 'awaiting_owner' } });
+const resumeStatus = (status, verifiedAnchors, newSent) =>
+  Object.assign(statusReply(status, verifiedAnchors, newSent), { fields: ['accounting_email'] });
+
+test('requester with an open request: Request Update resumes step 2 and polls', async () => {
+  let approved = false;
+  const t = await start({ 'GET /account/details': REQ_META_OPEN,
+    'GET /account/details/change/r1': () => reply(200, approved ? resumeStatus('pending', true, true) : resumeStatus('awaiting_owner', false, false)) });
+  t.w.DC_POLL_MS = 20;
+  click(t.w, $(t.doc, 'btn-request-update'));
+  await tick(5);
+  const body = $(t.doc, 'dc-body').textContent;
+  assert.ok(/STEP 2 OF 2/.test(body), 'resumed at step 2');
+  assert.ok(body.includes('Waiting for the account owner'));
+  assert.ok(body.includes('You are changing: Accounting email'));
+  assert.ok(!t.calls.some(c => c.method === 'POST'), 'no new request');
+  assert.ok(card(t, 'sms_current').textContent.includes('The account owner enters this code.'));
+  assert.strictEqual(t.doc.querySelector('[data-code-for="accounting_new"]').disabled, true);
+  const foot = Array.from($(t.doc, 'dc-foot').querySelectorAll('button')).map(b => b.textContent);
+  assert.ok(foot.includes('Cancel request'));
+  approved = true;
+  await tick(60);
+  assert.ok(card(t, 'sms_current').classList.contains('done'));
+  assert.strictEqual(t.doc.querySelector('[data-code-for="accounting_new"]').disabled, false);
+  t.w.close();
+});
+
+test('resume after the owner approved: new code card is open at once', async () => {
+  const t = await start({ 'GET /account/details': Object.assign({}, REQ_META, { open_request: { request_id: 'r1', status: 'pending' } }),
+    'GET /account/details/change/r1': resumeStatus('pending', true, true) });
+  click(t.w, $(t.doc, 'btn-request-update'));
+  await tick(5);
+  assert.ok($(t.doc, 'dc-body').textContent.includes('The account owner approved'));
+  assert.strictEqual(t.doc.querySelector('[data-code-for="accounting_new"]').disabled, false);
+  t.w.close();
+});
+
+for (const [name, h] of [['ended', () => reply(200, resumeStatus('declined', false, false))], ['404', () => reply(404, {})],
+                         ['network', () => Promise.reject(new Error('net'))]]) {
+  test('resume when the request is gone (' + name + '): fresh step 1', async () => {
+    const t = await start({ 'GET /account/details': REQ_META_OPEN, 'GET /account/details/change/r1': h });
+    click(t.w, $(t.doc, 'btn-request-update'));
+    await tick(5);
+    assert.ok(/STEP 1 OF 2/.test($(t.doc, 'dc-body').textContent));
+    t.w.close();
+  });
+}
+
+test('closing the waiting panel and reopening resumes the same request', async () => {
+  const t = await toRequest({ 'GET /account/details/change/r1': resumeStatus('awaiting_owner', false, false) });
+  click(t.w, $(t.doc, 'dc-close'));
+  // The page re-renders its body after the SDK timeout; call the button's handler directly.
+  t.w.dcRequestUpdate();
+  await tick(5);
+  assert.ok(/STEP 2 OF 2/.test($(t.doc, 'dc-body').textContent));
+  assert.strictEqual(t.calls.filter(c => c.method === 'POST' && c.path === '/account/details/change').length, 1);
+  t.w.close();
+});
+
+test('after the request ends, reopening starts fresh at step 1', async () => {
+  const t = await toRequest({ 'GET /account/details/change/r1': statusReply('declined', false, false) });
+  await tick(50);
+  assert.ok($(t.doc, 'dc-body').textContent.includes('The account owner declined this request.'));
+  click(t.w, $(t.doc, 'dc-close'));
+  t.w.dcRequestUpdate();
+  await tick(5);
+  assert.ok(/STEP 1 OF 2/.test($(t.doc, 'dc-body').textContent));
+  t.w.close();
+});
+
+test('owners never resume (open_request is for requesters)', async () => {
+  const t = await start({ 'GET /account/details': Object.assign({}, OWNER_META, { open_request: { request_id: 'r1', status: 'pending' } }) });
+  click(t.w, $(t.doc, 'btn-request-update'));
+  await tick(5);
+  assert.ok(/STEP 1 OF 2/.test($(t.doc, 'dc-body').textContent));
+  assert.ok(!t.calls.some(c => c.path === '/account/details/change/r1'));
+  t.w.close();
+});

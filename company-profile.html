@@ -1327,6 +1327,7 @@ function dcSetFoot(buttons) {
 function closeDetailsFlow() {
   dcClearTimers();
   dcState = null;
+  dcResumeToken = null;
   document.getElementById('dc-scrim').classList.remove('show');
 }
 function openDetailsFlow() {
@@ -1334,7 +1335,53 @@ function openDetailsFlow() {
   dcState = null;
   document.getElementById('dc-close').style.display = '';
   document.getElementById('dc-scrim').classList.add('show');
+  // A requester's open request (the API allows one per account) is resumed, not started again.
+  var open = dcIsRequester() && dcMeta.open_request;
+  if (open && open.request_id) { dcResume(open.request_id); return; }
   renderDetailsStep1();
+}
+
+// ACCTCHG1 Phase 3: the request lives on the API, not only in dcState. Remember it while it is open
+// (so closing the panel does not lose it) and forget it once it ends.
+var dcResumeToken = null;
+function dcRememberOpen(id, status) { if (dcMeta) dcMeta.open_request = { request_id: id, status: status }; }
+function dcForgetOpen() { if (dcMeta) dcMeta.open_request = null; }
+var DC_FIELD_LABELS = { admin_email: 'Admin email', operations_email: 'Operations email', accounting_email: 'Accounting email',
+  sms_phone: 'SMS admin phone', main_phone: 'Main business phone', address: 'Business address', login_email: 'Sign-in email' };
+function dcFieldLabels(fields) {
+  var have = fields || [];
+  var out = Object.keys(DC_FIELD_LABELS).filter(function (k) { return have.indexOf(k) !== -1; })
+    .map(function (k) { return DC_FIELD_LABELS[k]; });
+  return out.length ? out : ['your company details'];
+}
+function dcResume(id) {
+  var token = {};
+  dcResumeToken = token;
+  document.getElementById('dc-body').textContent = '';
+  document.getElementById('dc-note').textContent = '';
+  dcSetFoot([dcButton('Cancel', 'ghost', closeDetailsFlow)]);
+  dcMsg('Loading your request...', 'loading');
+  function fresh() {
+    if (dcResumeToken !== token) return;
+    dcResumeToken = null;
+    dcForgetOpen();
+    renderDetailsStep1();
+  }
+  fetch(BROKER_API_BASE + '/account/details/change/' + encodeURIComponent(id) + '?email=' + encodeURIComponent(brokerEmail))
+    .then(dcJson).then(function (r) {
+      if (dcResumeToken !== token) return;
+      var d = r.data || {};
+      if (r.status !== 200 || (d.status !== 'awaiting_owner' && d.status !== 'pending')) { fresh(); return; }
+      dcResumeToken = null;
+      var targets = d.targets || [], verified = {}, released = {};
+      targets.forEach(function (t) {
+        if (t.verified) verified[t.key] = true;
+        if (!t.owner_only && t.sent) released[t.key] = true;
+      });
+      dcState = { id: d.request_id || id, targets: targets, verified: verified, labels: dcFieldLabels(d.fields), busy: false,
+                  changes: null, released: released, needsOwner: true, status: d.status, ownerName: '' };
+      renderDetailsStep2();
+    }).catch(fresh);
 }
 
 function dcInput(id, placeholder) {
@@ -1472,6 +1519,7 @@ function submitDetailsChange() {
       dcState = { id: r.data.request_id, targets: r.data.targets || [], verified: {}, labels: c.labels, busy: false,
                   changes: c.changes, released: {}, needsOwner: !!r.data.needs_owner,
                   status: r.data.status || 'pending', ownerName: r.data.owner_name || '' };
+      if (dcState.needsOwner) dcRememberOpen(dcState.id, dcState.status);
       renderDetailsStep2();
       return;
     }
@@ -1646,6 +1694,7 @@ function renderDetailsEnded(text) {
   box.appendChild(dcEl('p', 'dc-p', text));
   body.appendChild(box);
   dcState = null;
+  dcForgetOpen();
   dcSetFoot([dcButton('Close', 'primary', closeDetailsFlow)]);
 }
 
@@ -1666,6 +1715,7 @@ function renderDetailsRelogin(newEmail, unsure) {
   }
   body.appendChild(box);
   dcState = null;
+  dcForgetOpen();
   var x = document.getElementById('dc-close');
   if (x && !unsure) x.style.display = 'none';
   dcSetFoot([dcButton('Sign in again', 'primary', function () { window.dcNavigate(BROKER_API_BASE + '/portal/login'); })]);
@@ -1754,6 +1804,7 @@ function dcExpired(extra) {
   document.getElementById('dc-note').textContent = '';
   dcMsg('This request expired. Start again.', 'error');
   dcState = null;
+  dcForgetOpen();
   dcSetFoot([dcButton('Start again', 'primary', function () { renderDetailsStep1(); })]);
 }
 
@@ -1829,6 +1880,10 @@ function confirmDetailsChange() {
     }
     if (r.status === 200 && r.data && r.data.status === 'held') { renderDetailsHeld(r.data.message); return; }
     if (r.status === 409 && r.data && r.data.code === 'email_in_use') { renderDetailsDone(false, st.labels, r.data.message); return; }
+    if (r.status === 409 && r.data && r.data.code === 'anchor_cooldown') {
+      renderDetailsDone(false, st.labels, r.data.message || "For your security, this change can't be made yet. Call OperFi at 888-673-7349.");
+      return;
+    }
     if (r.status === 409) { dcConfirmUnsure(st, true); return; }
     renderDetailsDone(false, st.labels, (r.data && r.data.message) ||
       'We could not save your changes. Nothing was changed. Please try again or call 888-673-7349.');
@@ -1901,6 +1956,7 @@ function renderDetailsDone(ok, labels, failText) {
   }
   body.appendChild(box);
   dcState = null;
+  dcForgetOpen();
   dcSetFoot([dcButton(ok ? 'Done' : 'Close', 'primary', closeDetailsFlow)]);
 }
 
@@ -1917,6 +1973,7 @@ function renderDetailsHeld(message) {
     'For your security, our team reviews this change before it takes effect. Your current details stay in place until then.'));
   body.appendChild(box);
   dcState = null;
+  dcForgetOpen();
   dcSetFoot([dcButton('Close', 'primary', closeDetailsFlow)]);
 }
 
@@ -3750,6 +3807,7 @@ window.dcTestInit = function(acct) {
   return loadDetailsMeta();
 };
 window.dcStartPoll = function() { return dcStartPoll(); };
+window.dcRequestUpdate = function() { return onRequestUpdateClick(); };
 window.submitContact = function() {
   if (typeof window.brokerEmail === 'string') brokerEmail = window.brokerEmail;
   if (typeof window.BROKER_API_BASE === 'string') BROKER_API_BASE = window.BROKER_API_BASE;

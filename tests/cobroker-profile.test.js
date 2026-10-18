@@ -93,6 +93,7 @@ function host(payload) {
   w.fetchCoBrokerStatusBulk = function () { calls.bulk++; };
   w.dropCustomerEventKinds = function (id, kinds) { calls.dropped.push([id, kinds]); };
   w.esc = P.esc;
+  w.profileAttention = function () { return []; };
   w.confirm = function () { return true; };
   w.fetch = function (url, init) {
     calls.fetch.push({ url: url, init: init });

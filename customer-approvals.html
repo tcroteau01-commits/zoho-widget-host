@@ -1821,9 +1821,23 @@ function renderProfile(rec, payload) {
                                            // (cp-* classes) only reaches the browser here.
   root.innerHTML =
     '<button type="button" class="btn" id="ca-profile-back" style="margin-bottom:14px;">‹ Back to customers</button>' +
-    OperFiCustomerProfile.render(Object.assign({ api_base: BROKER_API_BASE }, payload));
+    OperFiCustomerProfile.render(Object.assign({ api_base: BROKER_API_BASE }, payload,
+                                               { attention: profileAttention(rec) }));
 
   document.getElementById('ca-profile-back').addEventListener('click', closeProfile);
+
+  // ATTNPROF1: Mark reviewed on the profile. Same team-wide clear as the pane's
+  // button; on success the box goes and the bell/list update, and the profile
+  // stays open (the pane's repositioning would reopen a drawer behind it).
+  var attnBtn = root.querySelector('[data-attn-clear]');
+  if (attnBtn) {
+    attnBtn.addEventListener('click', function() {
+      clearCustomerEvents(rec, attnBtn, document.getElementById('cp-attn-msg'), function() {
+        var box = document.getElementById('cp-attn');
+        if (box) box.remove();
+      });
+    });
+  }
 
   // CUSTDOC2: a profile file opens in the shared viewer, like every other
   // document on this page, rather than downloading. Wired once on the root,
@@ -3294,7 +3308,21 @@ if (typeof window !== 'undefined') { window.renderCustomerEventsSection = render
 // Clearing is explicit and team-wide: POST /customer-events/clear clears every
 // unread event for this customer for the whole desk. Only a 200 updates local
 // state, mirroring submitDecision's own error handling above.
-function clearCustomerEvents(r, btn, msg) {
+// ATTNPROF1: what the full profile shows under Needs Attention. Staff only, from
+// the same bulk fetch the pane reads; the time is formatted here so the renderer
+// stays pure.
+function profileAttention(rec) {
+  if (!allClients) return [];
+  var list = rec && rec.ID ? customerEventsBySubject[rec.ID] : null;
+  return (list || []).map(function(ev) {
+    return { summary: ev.summary || '', when: ev.at ? fmtDateTime(parseUtcAsCentral(ev.at)) : '' };
+  });
+}
+if (typeof window !== 'undefined') { window.profileAttention = profileAttention; }
+
+// onCleared (optional): replaces the panel repositioning after a successful clear,
+// for a caller that is not the panel (the full profile).
+function clearCustomerEvents(r, btn, msg, onCleared) {
   if (!r || !r.ID) return;
   var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
   btn.disabled = true;
@@ -3311,7 +3339,8 @@ function clearCustomerEvents(r, btn, msg) {
     });
   }).then(function(rr) {
     if (rr.status === 200) {
-      applyCustomerEventsClear(r.ID);
+      applyCustomerEventsClear(r.ID, !!onCleared);
+      if (onCleared) onCleared();
       showToast('Marked reviewed');
     } else {
       btn.disabled = false;
@@ -3381,7 +3410,7 @@ if (typeof window !== 'undefined') { window.dropCustomerEventKinds = dropCustome
 // list, and reposition the panel exactly like applyDecisionResult does above --
 // stay open on the same record if it still matches the active filters, close it if
 // the active bell filter just excluded it.
-function applyCustomerEventsClear(subjectId) {
+function applyCustomerEventsClear(subjectId, skipPanel) {
   if (customerEventsBySubject[subjectId]) {
     delete customerEventsBySubject[subjectId];
     delete customerEventsCounts[subjectId];
@@ -3390,6 +3419,7 @@ function applyCustomerEventsClear(subjectId) {
   if (customerEventsTotal <= 0) attentionFilterActive = false;  // last one cleared -- the bell itself goes quiet
   buildChips();
   applyFilters();
+  if (skipPanel) return;
 
   var target = null;
   for (var i = 0; i < allRecords.length; i++) {

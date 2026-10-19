@@ -8,7 +8,8 @@ const HTML = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const PF_SRC = readFileSync(new URL('../pay-faster.js', import.meta.url), 'utf8');
 
 const CTX = { enabled: true, trained: true, training_video_id: 'vid-1', qp_fee_pct: '4',
-  operfi_share_pct: '2', reserve: { cash: 1250, status: 'ok' } };
+  operfi_share_pct: '2', reserve: { cash: 1250, status: 'ok' },
+  access: { pay_faster: true, fee_adjust: true } };
 
 const CARRIERS = [
   { vendor_id: 'v-net', carrier_name: 'Sample Hauling LLC', payment_terms: 'Standard Net 30' },
@@ -620,4 +621,57 @@ test('flag off keeps PAYCHG1 radios', async () => {
   assert.ok(!$(w, 'pf-fee'));
   pickCarrier(w, 'v-qp');
   assert.strictEqual($(w, 'pf-toggle-label').textContent, 'Waive the quick pay fee (this load only)');
+});
+
+// PAYCHGACCESS1: per-client access.
+test('hidden without access', async () => {
+  const w = await ready({ ctx: Object.assign({}, CTX, { access: { pay_faster: false, fee_adjust: false } }) });
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-net');
+  assert.ok(!visible($(w, 'pay-faster')));
+  assert.strictEqual(w.payFasterPayload(), null);
+  assert.strictEqual(w.payFasterBlocksSubmit(), false);
+  await fillAndSubmit(w);
+  await flush();
+  assert.ok(!('pay_faster' in finalizeBody(w)));
+});
+
+test('hidden when access key missing', async () => {
+  const c = Object.assign({}, CTX); delete c.access;
+  const w = await ready({ ctx: c });
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-qp');
+  assert.ok(!visible($(w, 'pay-faster')));
+  assert.strictEqual(w.payFasterPayload(), null);
+});
+
+test('no access keeps the plain Carrier Payment line only', async () => {
+  const w = await ready({ ctx: Object.assign({}, WCTX, { access: { pay_faster: false, fee_adjust: false } }) });
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-qp');
+  assert.ok(!visible($(w, 'pay-faster')));
+  assert.match($(w, 'sum-pay-faster').textContent, /Carrier Payment/);
+  assert.doesNotMatch($(w, 'sum-pay-faster').textContent, /\$/);
+});
+
+test('pay faster without fee_adjust uses radios', async () => {
+  const w = await ready({ ctx: Object.assign({}, PCTX, { access: { pay_faster: true, fee_adjust: false } }) });
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-net');
+  toggle(w, true);
+  assert.ok($(w, 'pf-payer-broker'));
+  assert.ok(!$(w, 'pf-fee'));
+});
+
+test('quickpay without fee_adjust shows waive only when waive_enabled', async () => {
+  const acc = { pay_faster: true, fee_adjust: false };
+  const w = await ready({ ctx: Object.assign({}, PCTX, { access: acc, waive_enabled: true }) });
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-qp');
+  assert.ok(visible($(w, 'pay-faster')));
+  assert.strictEqual($(w, 'pf-toggle-label').textContent, 'Waive the quick pay fee (this load only)');
+  const w2 = await ready({ ctx: Object.assign({}, PCTX, { access: acc, waive_enabled: false }) });
+  setVal(w2, 'carrier-rate', '2000');
+  pickCarrier(w2, 'v-qp');
+  assert.ok(!visible($(w2, 'pay-faster')));
 });

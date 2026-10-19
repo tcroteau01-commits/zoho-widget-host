@@ -763,9 +763,9 @@ test('quickpay without fee_adjust shows waive only when waive_enabled', async ()
 test('finalize refusal codes show plain copy on the banner', async () => {
   const cases = [
     ['not_enabled_for_account', "Pay Faster isn't turned on for your account. Contact OperFi."],
-    ['fee_adjust_not_enabled', "Changing the quick pay fee isn't turned on for your account. Pick 'I'll cover the fee' or your standard fee."],
-    ['bad_fee_pct', 'Pick a fee of 0% to 5%.'],
-    ['no_change', "That's already this carrier's quick pay fee. Nothing to change."],
+    ['fee_adjust_not_enabled', "Changing the quick pay fee isn't turned on for your account. Pick 'I'll cover the fee' or your standard fee. Request it from Submission History."],
+    ['bad_fee_pct', 'Pick a fee of 0% to 5%. Request it from Submission History.'],
+    ['no_change', "That's already this carrier's quick pay fee. Nothing to change. Request it from Submission History."],
     ['terms_not_eligible', "This carrier's payment terms can't be changed here."],
     ['carrier_paid', 'This carrier has already been paid.']
   ];
@@ -781,5 +781,6 @@ test('finalize refusal codes show plain copy on the banner', async () => {
     assert.match(b.className, /\bwarn\b/, code);
     assert.ok(b.textContent.indexOf("Your load was submitted, but the pay change request didn't go through. " + copy) !== -1, code + ': ' + b.textContent);
     assert.doesNotMatch(b.textContent, /[–—]/);
+    if (!/Request it from Submission History/.test(copy)) assert.doesNotMatch(b.textContent, /Request it from Submission History/, code);
   }
 });

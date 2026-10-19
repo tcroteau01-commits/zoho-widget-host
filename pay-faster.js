@@ -276,7 +276,7 @@
           }
           if (factored) {
             var fp = a.factorName ? esc(a.factorName) : 'The factoring company';
-            d += msg('warn', '⚠ ' + fp + ' will receive ' + money(f.carrierFee) + ' less than its invoice. Factors often treat this as a short pay, leave the invoice open, and come back to the carrier or to you for the ' + money(f.carrierFee) + '.');
+            d += msg('warn', '⚠ ' + fp + ' will receive ' + money(f.carrierFee) + ' less than its invoice. Factors often treat this as a short pay, leave the invoice open, and come back to the carrier or to you for the ' + money(f.carrierFee) + '. Paying faster still carries a fee.');
           } else if (kind === 'net30') {
             d += msg('info', 'Let the carrier know this load pays early with a ' + money(f.carrierFee) + ' fee deducted.');
           }

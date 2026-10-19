@@ -2257,6 +2257,8 @@ function submitLoad() {
                 pb.className = 'post-submit-banner warn';
                 // PAYCHGPICK2: say why when the API gave a known refusal code.
                 var why = window.PayFaster ? window.PayFaster.refusalMessage(pcError) : null;
+                // A fee the broker can fix still needs the retry pointer: the load is already submitted.
+                if (why && (pcError === 'bad_fee_pct' || pcError === 'fee_adjust_not_enabled' || pcError === 'no_change')) why += ' Request it from Submission History.';
                 pb.appendChild(document.createTextNode(" Your load was submitted, but the pay change request didn't go through. " +
                   (why || 'Request it from Submission History.')));
               }

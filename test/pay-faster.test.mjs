@@ -161,7 +161,7 @@ test('whoPaysState factored wording and short pay warning', () => {
   assert.match(c.html, /Payment still goes to RTS Financial, just sooner\. Who pays the quick pay fee\?/);
   assert.match(c.html, /\$80\.00 deducted from the factor's payment/);
   assert.match(c.html, /RTS Financial receives \$1,920\.00/);
-  assert.match(c.html, /RTS Financial will receive \$80\.00 less than its invoice/);
+  assert.match(c.html, /RTS Financial will receive \$80\.00 less than its invoice\. Factors often treat this as a short pay, leave the invoice open, and come back to the carrier or to you for the \$80\.00\. Paying faster still carries a fee\./);
   const b = wp({ kind: 'factored', factorName: 'RTS Financial', payer: 'broker' });
   assert.match(b.html, /RTS Financial receives the full \$2,000\.00/);
   assert.doesNotMatch(b.html, /less than its invoice/);

@@ -72,27 +72,20 @@
 
   function dollars(c) { return Math.round(c) / 100; }
 
-  // computeFees results keep their original enumerable shape (existing callers and tests
-  // deepEqual it); carrierFee rides along as a non-enumerable property.
-  function withCarrierFee(o, cf) {
-    Object.defineProperty(o, 'carrierFee', { value: cf, enumerable: false });
-    return o;
-  }
-
   function computeFees(rate, pct, payer) {
     if (payer !== 'carrier' && payer !== 'broker') return { error: 'bad_payer' };
     var rc = toCents(rate);
     if (rc === null) return { error: 'bad_rate' };
     var op = shareCents(rc, OPERFI_SHARE_PCT * 100);
     if (payer === 'broker') {
-      return withCarrierFee({ feeTotal: dollars(op), brokerShare: dollars(-op) + 0, operfiShare: dollars(op), reserveCharge: dollars(op), payeeReceives: dollars(rc) }, 0);
+      return { carrierFee: 0, feeTotal: dollars(op), brokerShare: dollars(-op) + 0, operfiShare: dollars(op), reserveCharge: dollars(op), payeeReceives: dollars(rc) };
     }
     var p = parseFeePct(pct);
     if (p === null || p < OPERFI_SHARE_PCT) return { error: 'carrier_fee_unavailable' };
     var bp = Math.round((p - OPERFI_SHARE_PCT) * 100);
     var br = shareCents(rc, bp);
     var total = br + op;
-    return withCarrierFee({ feeTotal: dollars(total), brokerShare: dollars(br), operfiShare: dollars(op), reserveCharge: 0, payeeReceives: dollars(rc - total) }, dollars(total));
+    return { carrierFee: dollars(total), feeTotal: dollars(total), brokerShare: dollars(br), operfiShare: dollars(op), reserveCharge: 0, payeeReceives: dollars(rc - total) };
   }
 
   // Fee at an arbitrary carrier fee X (percent). X >= 2: carrier pays X, broker keeps X-2.

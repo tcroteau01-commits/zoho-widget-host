@@ -45,12 +45,12 @@ test('parseFeePct variants', () => {
 
 test('carrier pays sample', () => {
   assert.deepEqual(PF.computeFees(2000, 4, 'carrier'),
-    { feeTotal: 80, brokerShare: 40, operfiShare: 40, reserveCharge: 0, payeeReceives: 1920 });
+    { carrierFee: 80, feeTotal: 80, brokerShare: 40, operfiShare: 40, reserveCharge: 0, payeeReceives: 1920 });
 });
 
 test('broker pays sample', () => {
   assert.deepEqual(PF.computeFees(2000, 4, 'broker'),
-    { feeTotal: 40, brokerShare: -40, operfiShare: 40, reserveCharge: 40, payeeReceives: 2000 });
+    { carrierFee: 0, feeTotal: 40, brokerShare: -40, operfiShare: 40, reserveCharge: 40, payeeReceives: 2000 });
 });
 
 test('parity vector 1234.57 @ 3.5', () => {

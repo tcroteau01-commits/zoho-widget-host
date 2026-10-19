@@ -152,7 +152,7 @@ test('409 already_requested message', async () => {
   const w = await openPopup({}, { post: { status: 409, body: { error: 'already_requested' } } });
   pick(w, 'carrier'); await flush();
   click(w, $(w, 'pf-send')); await flush();
-  assert.match($(w, 'pf-error').textContent, /A pay-faster request is already open for this load\./);
+  assert.match($(w, 'pf-error').textContent, /A pay change request is already open for this load\./);
 });
 
 test('other errors map to copy', async () => {
@@ -409,4 +409,219 @@ test('pay change timeline entries follow Purchased when requested after purchase
   w = await open({ Purchase_Date: '25-Oct-2026', pay_change: { status: 'applied' } }, { elig });
   t = titles(w);
   assert.ok(t.findIndex((x) => /Pay change requested/.test(x)) < t.indexOf('Purchased'), 'requested before purchase');
+});
+
+// ---- PAYCHG2 Task 5: waive the QP fee ----
+const QP_ROW = { Payment_Terms: 'Quick Pay', Broker_Pay_Term: 'Quick Pay' };
+const QP_ELIG = { eligible: true, reason: null, kind: 'quickpay', terms: 'Quick Pay', request: null };
+const WAIVE_REQ = Object.assign({}, REQ, { payer: 'broker', terms_on_file: 'Quick Pay', qp_fee_pct: '4',
+  request_type: 'qp_fee', carrier_fee_pct: '0', carrier_fee: '0.00' });
+
+test('quickpay eligible shows Waive QP fee', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG });
+  assert.match($(w, 'pf-open').textContent, /Waive QP fee/);
+  assert.doesNotMatch($(w, 'pf-open').textContent, /Pay carrier faster/);
+});
+
+test('waive popup sends payer broker', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG });
+  w.__calls.length = 0;
+  click(w, $(w, 'pf-open'));
+  await flush();
+  assert.ok(w.__calls.some((c) => /\/pay-change\/context/.test(c.url)), 'context refetched on open');
+  assert.match($(w, 'pf-modal').textContent, /Waive the quick pay fee on this load/);
+  assert.match($(w, 'pf-modal').textContent, /\$40\.00/);
+  assert.equal($(w, 'pf-send').disabled, false);
+  $(w, 'pf-note').value = 'Good carrier';
+  w.__calls.length = 0;
+  click(w, $(w, 'pf-send'));
+  await flush();
+  const c = w.__calls.find((x) => /\/pay-change\/requests$/.test(x.url));
+  assert.deepEqual(JSON.parse(c.opts.body), { email: 'b@x.com', record_id: '4100000000000000001', payer: 'broker', broker_note: 'Good carrier' });
+});
+
+test('waive short reserve disables send', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG, ctx: Object.assign({}, CTX, { reserve: { cash: 5, status: 'ok' } }) });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  assert.equal($(w, 'pf-send').disabled, true);
+  assert.match($(w, 'pf-modal').textContent, /Your reserve balance \(\$5\.00\) doesn't cover the \$40\.00 fee\./);
+});
+
+test('waive resolved timeline titles', async () => {
+  const titles = (w) => [...$(w, 'panel').querySelectorAll('.timeline-title')].map((e) => e.textContent);
+  const el = (req) => ({ eligible: false, reason: 'already_requested', kind: 'quickpay', terms: 'Quick Pay', request: req });
+  let w = await open(QP_ROW, { elig: el(Object.assign({}, WAIVE_REQ, { status: 'applied', resolved_at: '2026-10-17T16:00:00Z' })) });
+  assert.ok(titles(w).includes('QP fee waiver applied'), titles(w).join('|'));
+  w = await open(QP_ROW, { elig: el(Object.assign({}, WAIVE_REQ, { status: 'declined', resolved_at: '2026-10-17T16:00:00Z' })) });
+  assert.ok(titles(w).includes('QP fee waiver declined'));
+  w = await open(QP_ROW, { elig: el(Object.assign({}, WAIVE_REQ, { carrier_fee_pct: '3.5', status: 'applied' })) });
+  assert.ok(titles(w).includes('QP fee change applied'));
+});
+
+test('waive pill and timeline', async () => {
+  const w = await open(Object.assign({}, QP_ROW, { pay_change: { status: 'requested', payer: 'broker', request_type: 'qp_fee', carrier_fee_pct: '0' } }), {
+    elig: { eligible: false, reason: 'already_requested', kind: 'quickpay', terms: 'Quick Pay', request: WAIVE_REQ } });
+  assert.match(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'requested', payer: 'broker', request_type: 'qp_fee', carrier_fee_pct: '0' } }), 0), /⚡ QP fee waived: Requested/);
+  assert.match($(w, 'panel').querySelector('.timeline').textContent, /QP fee waived: broker covers 2% from reserve/);
+});
+
+test('waive request label, changed fee and staff slot', async () => {
+  const w = await open(Object.assign({}, QP_ROW, { pay_change: { status: 'requested' } }), { staff: true,
+    elig: { eligible: false, reason: 'already_requested', kind: 'quickpay', terms: 'Quick Pay', request: WAIVE_REQ } });
+  assert.match($(w, 'pf-slot').textContent, /QP fee waived request \(OperFi staff\)/);
+  assert.match(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'applied', request_type: 'qp_fee', carrier_fee_pct: '3.5' } }), 0), /⚡ QP fee changed to 3\.5%: Applied/);
+});
+
+test('waive via POST response paints the pill', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG, post: { status: 201, body: { ok: true, request: WAIVE_REQ } } });
+  click(w, $(w, 'pf-open')); await flush();
+  click(w, $(w, 'pf-send')); await flush();
+  assert.match(w.document.body.textContent, /QP fee waived: Requested/);
+});
+
+test('old request renders as before', async () => {
+  const w = await open({ pay_change: { status: 'requested', payer: 'carrier', request_type: null, carrier_fee_pct: null } }, { elig: PENDING_ELIG, staff: true });
+  assert.match(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'requested', payer: 'carrier', request_type: null, carrier_fee_pct: null } }), 0), /⚡ Pay faster: Requested/);
+  assert.match($(w, 'panel').querySelector('.timeline').textContent, /Pay change requested: Standard Net 30 → Quick Pay, carrier pays 4%/);
+  assert.match($(w, 'pf-slot').textContent, /Pay faster request \(OperFi staff\)/);
+  assert.match($(w, 'pf-slot').textContent, /Standard Net 30 → Quick Pay, carrier pays 4%/);
+});
+
+// ---- PAYCHG3 Task 8: fee picker on Submission History ----
+const PICK_CTX = Object.assign({}, CTX, { fee_pick_enabled: true, waive_enabled: true });
+const posts = (w) => w.__calls.filter((c) => /\/pay-change\/requests$/.test(c.url) && c.opts.method === 'POST');
+function setFee(w, v) {
+  const f = $(w, 'pf-fee');
+  f.value = v;
+  f.dispatchEvent(new w.Event('input', { bubbles: true }));
+}
+
+test('quickpay Change QP fee label', async () => {
+  let w = await open(QP_ROW, { elig: QP_ELIG, ctx: PICK_CTX });
+  assert.match($(w, 'pf-open').textContent, /Change QP fee/);
+  assert.doesNotMatch($(w, 'pf-open').textContent, /Waive/);
+  w = await open(QP_ROW, { elig: QP_ELIG });
+  assert.match($(w, 'pf-open').textContent, /Waive QP fee/, 'flag off: unchanged');
+  w = await open({}, { ctx: PICK_CTX });
+  assert.match($(w, 'pf-open').textContent, /Pay carrier faster/);
+});
+
+test('popup picker sends carrier_fee_pct', async () => {
+  const w = await open({}, { ctx: PICK_CTX });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  assert.ok($(w, 'pf-fee'), 'picker shown');
+  assert.ok(!w.document.querySelector('input[name="pf-payer"]'), 'no payer radios');
+  assert.equal($(w, 'pf-fee').value, '4', 'defaults to the saved fee');
+  assert.equal($(w, 'pf-send').disabled, false);
+  setFee(w, '3');
+  await flush();
+  assert.equal($(w, 'pf-fee'), w.document.getElementById('pf-fee'));
+  $(w, 'pf-note').value = 'Hi';
+  w.__calls.length = 0;
+  click(w, $(w, 'pf-send'));
+  await flush();
+  const c = posts(w);
+  assert.equal(c.length, 1);
+  assert.deepEqual(JSON.parse(c[0].opts.body), { email: 'b@x.com', record_id: '4100000000000000001', carrier_fee_pct: '3', broker_note: 'Hi' });
+});
+
+test('popup picker keeps the input element while typing', async () => {
+  const w = await open({}, { ctx: PICK_CTX });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  const el = $(w, 'pf-fee');
+  setFee(w, '2.5');
+  assert.strictEqual($(w, 'pf-fee'), el);
+  assert.match($(w, 'pf-modal').textContent, /Carrier pays 2\.5%/);
+});
+
+test('popup picker validity', async () => {
+  const w = await open({}, { ctx: PICK_CTX });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  w.__calls.length = 0;
+  for (const v of ['', 'abc', '5.1', '-1']) {
+    setFee(w, v);
+    await flush();
+    assert.equal($(w, 'pf-send').disabled, true, 'send disabled for "' + v + '"');
+    $(w, 'pf-send').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await flush();
+  }
+  assert.equal(posts(w).length, 0, 'nothing was POSTed');
+  setFee(w, '5');
+  await flush();
+  assert.equal($(w, 'pf-send').disabled, false);
+});
+
+test('popup picker quickpay at the saved fee is blocked, 0 is allowed', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG, ctx: PICK_CTX });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  assert.match($(w, 'pf-modal').textContent, /Change the QP fee/);
+  assert.equal($(w, 'pf-fee').value, '4');
+  assert.equal($(w, 'pf-send').disabled, true, 'saved fee on quickpay is no_change');
+  setFee(w, '0');
+  await flush();
+  assert.equal($(w, 'pf-send').disabled, false);
+  w.__calls.length = 0;
+  click(w, $(w, 'pf-send'));
+  await flush();
+  assert.equal(JSON.parse(posts(w)[0].opts.body).carrier_fee_pct, '0');
+});
+
+test('popup picker refetches the reserve once when the value spends it', async () => {
+  const w = await open({}, { ctx: PICK_CTX });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  w.__calls.length = 0;
+  setFee(w, '1'); await flush();
+  setFee(w, '0.5'); await flush();
+  assert.equal(w.__calls.filter((c) => /\/pay-change\/context/.test(c.url)).length, 1);
+});
+
+test('popup picker short reserve disables send', async () => {
+  const w = await open({}, { ctx: Object.assign({}, PICK_CTX, { reserve: { cash: 5, status: 'ok' } }) });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  setFee(w, '0');
+  await flush();
+  assert.equal($(w, 'pf-send').disabled, true);
+  assert.match($(w, 'pf-modal').textContent, /Your reserve balance \(\$5\.00\) doesn't cover the \$40\.00 fee\./);
+});
+
+test('split request timeline wording', async () => {
+  const SPLIT = Object.assign({}, REQ, { payer: 'split', carrier_fee_pct: '1.25', request_type: 'pay_faster' });
+  const el = (req, kind, terms) => ({ eligible: false, reason: 'already_requested', kind, terms, request: req });
+  let w = await open({}, { elig: el(SPLIT, 'net30', 'Standard Net 30') });
+  const tl = $(w, 'panel').querySelector('.timeline').textContent;
+  assert.match(tl, /Standard Net 30 → Quick Pay, carrier pays 1\.25% · broker covers 0\.75%/);
+  assert.equal((tl.match(/1\.25%/g) || []).length, 1, 'percent not repeated');
+  const QSPLIT = Object.assign({}, WAIVE_REQ, { payer: 'split', carrier_fee_pct: '1.25' });
+  w = await open(QP_ROW, { staff: true, elig: el(QSPLIT, 'quickpay', 'Quick Pay') });
+  assert.match($(w, 'panel').querySelector('.timeline').textContent, /QP fee change: carrier pays 1\.25% · broker covers 0\.75%/);
+  assert.match($(w, 'pf-slot').textContent, /carrier pays 1\.25% · broker covers 0\.75%/);
+});
+
+test('fee change pill wording', async () => {
+  const w = makeDom();
+  assert.match(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'requested', request_type: 'qp_fee', payer: 'carrier', carrier_fee_pct: '3.25' } }), 0), /⚡ QP fee changed to 3\.25%: Requested/);
+  assert.match(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'requested', request_type: 'qp_fee', payer: 'split', carrier_fee_pct: '1' } }), 0), /⚡ QP fee changed to 1%: Requested/);
+  const el = { eligible: false, reason: 'already_requested', kind: 'quickpay', terms: 'Quick Pay',
+    request: Object.assign({}, WAIVE_REQ, { payer: 'carrier', carrier_fee_pct: '3.25', status: 'applied' }) };
+  const w2 = await open(QP_ROW, { elig: el });
+  const tl = $(w2, 'panel').querySelector('.timeline').textContent;
+  assert.match(tl, /QP fee changed to 3\.25%/);
+  assert.equal((tl.match(/3\.25%/g) || []).length, 1);
+});
+
+test('legacy carrier row at 1.5% reads as PAYCHG1 (no split wording)', async () => {
+  const LEG = Object.assign({}, REQ, { payer: 'carrier', qp_fee_pct: '1.5', request_type: null, carrier_fee_pct: null });
+  const w = await open({ pay_change: { status: 'requested' } }, { staff: true, elig: { eligible: false, reason: 'already_requested', kind: 'net30', terms: 'Standard Net 30', request: LEG } });
+  const tl = $(w, 'panel').querySelector('.timeline').textContent;
+  assert.match(tl, /Pay change requested: Standard Net 30 → Quick Pay, carrier pays 1\.5%/);
+  assert.doesNotMatch(tl, /broker covers/);
+  assert.match($(w, 'pf-slot').textContent, /Standard Net 30 → Quick Pay, carrier pays 1\.5%/);
+  assert.doesNotMatch($(w, 'pf-slot').textContent, /broker covers/);
 });

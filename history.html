@@ -408,6 +408,10 @@ html, body {
 .pf-math .pf-sl { gap:12px; }
 .pf-math .pf-sl b { text-align:right; }
 .pf-math .pf-msg { margin:6px 0; }
+.pf-math .pf-qph { margin:2px 0 4px; }
+.pf-math .pf-hint { font-style:normal; color:#8a8780; font-size:11px; margin-left:4px; }
+.pf-math .pf-box b { background:#fffaf1; border:1px solid #e8d7b0; border-radius:4px; padding:1px 6px; }
+.pf-math .pf-net { border-top:1px solid #eee; margin-top:2px; padding-top:5px; }
 .pf-staff textarea, .pf-modal textarea { width:100%; box-sizing:border-box; border:1px solid #d9d6cc; border-radius:6px; padding:8px; font:inherit; font-size:13px; resize:vertical; min-height:56px; }
 .pf-staff-btns { display:flex; gap:8px; margin-top:8px; }
 .pf-apply { background:#2e7d32; color:#fff; border:none; border-radius:6px; padding:7px 12px; font-weight:600; cursor:pointer; }
@@ -1817,35 +1821,37 @@ function pfStaffMathHtml(q) {
   var factored = !!q.factor_name || /^Factoring Company - (?!Quick Pay)/.test(String(q.terms_on_file || ''));
   var carrierFee = q.carrier_fee != null && q.carrier_fee !== '' ? pfNum(q.carrier_fee)
     : (q.payer === 'carrier' ? pfNum(q.fee_total) : 0);
-  var reserve = pfNum(q.reserve_charge), brokerShare = pfNum(q.broker_share);
-  var cp = pfCarrierPct(q), share = pfPctText(q.operfi_share_pct) || '2';
-  var feeLine;
-  if (carrierFee <= 0) feeLine = share + '% · ' + pfMoney(q.operfi_share) + ' · broker covers from reserve';
-  else if (reserve > 0) feeLine = (cp || '?') + '% · ' + pfMoney(carrierFee) + ' · carrier pays, broker covers the other ' +
-    pfPctText(Number(share) - Number(cp)) + '% (' + pfMoney(reserve) + ')';
-  else feeLine = (cp || '?') + '% · ' + pfMoney(carrierFee) + ' · carrier pays';
+  var reserve = pfNum(q.reserve_charge);
+  // FactorView Vendor Fundings: the four boxes ops types into when the invoice is
+  // selected (the % columns are system-driven). Factor split = OperFi's part of the
+  // fee the carrier pays; Client split = the broker's part (anything above 2%).
+  var clientSplit = Math.max(pfNum(q.broker_share), 0);
+  var factorSplit = Math.max(Math.round((carrierFee - clientSplit) * 100) / 100, 0);
   var payee = q.factor_name || q.vendor_name || (factored ? 'Factor' : 'Carrier');
-  function row(label, value) {
-    return '<div class="pf-sl pf-ind"><span>' + esc(label) + '</span><b>' + esc(value) + '</b></div>';
+  function box(label, value, hint) {
+    return '<div class="pf-sl pf-ind pf-box"><span>' + esc(label) +
+      (hint ? ' <i class="pf-hint">' + esc(hint) + '</i>' : '') + '</span><b>' + esc(value) + '</b></div>';
   }
   var h = '<div class="pf-math">';
-  h += row('Carrier rate', pfMoney(q.carrier_rate));
-  h += row('Quick pay fee', feeLine);
-  if (carrierFee > 0) h += row('Deduct from ' + (factored ? 'factor' : 'carrier') + ' payment', pfMoney(carrierFee));
-  h += row(payee + ' receives', pfMoney(q.payee_receives));
-  if (brokerShare > 0) {
-    h += row('Credit to broker (' + pfPctText(Number(cp) - Number(share)) + '%)', pfMoney(brokerShare));
-  }
+  h += '<div class="pf-qph">Enter on FactorView · Vendor Fundings</div>';
+  h += box('Payment Amt', pfMoney(q.carrier_rate));
+  h += box('Fee Amt', pfMoney(carrierFee), carrierFee > 0 ? 'charged to the ' + (factored ? 'factor' : 'carrier') : 'no fee to the ' + (factored ? 'factor' : 'carrier'));
+  h += box('Factor split', pfMoney(factorSplit), 'OperFi');
+  h += box('Client split', pfMoney(clientSplit), 'broker');
+  h += '<div class="pf-sl pf-ind pf-net"><span>Net Due <i class="pf-hint">' + esc(payee) + ' receives</i></span><b>' +
+    esc(pfMoney(q.payee_receives)) + '</b></div>';
   if (reserve > 0) {
-    h += row('Charge broker reserve', pfMoney(reserve));
+    h += '<div class="pf-qph">Then charge the broker</div>';
+    h += box('Broker reserve charge', pfMoney(reserve), "OperFi's fee the carrier did not pay");
     var bal = q.reserve_balance_at_request;
     if (q.reserve_status === 'unverified' || bal == null || bal === '') {
       h += '<div class="pf-msg pf-info">Reserve UNVERIFIED (FactorView balance could not be read at request time)</div>';
     } else {
       h += '<div class="pf-msg pf-info">Reserve ' + pfMoney(bal) + ' → ' + pfMoney(pfNum(bal) - reserve) + '</div>';
     }
+  } else {
+    h += '<div class="pf-staff-sub">No broker reserve charge.</div>';
   }
-  h += row('OperFi earns (' + share + '%)', pfMoney(q.operfi_share));
   if (q.short_pay) h += '<div class="pf-msg pf-warn">⚠ Short pay to factor</div>';
   if (q.fv_client_id) {
     var url = PF_FV_BASE + '?section=vendor-payables&run=1&duedays=0&client=' + encodeURIComponent(q.fv_client_id) +

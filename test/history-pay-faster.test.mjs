@@ -501,16 +501,17 @@ const MATH_REQ = Object.assign({}, REQ, { carrier_rate: '2000.00', carrier_fee: 
   broker_note: 'rush please', entered_by: 'client' });
 const mathOf = (w) => $(w, 'pf-slot').querySelector('.pf-math');
 
-test('staff box: carrier pays shows deduction, both shares and FV link', async () => {
+test('staff box: carrier pays 5% fills the four FactorView boxes', async () => {
   const w = await open({}, { staff: true, elig: Object.assign({}, PENDING_ELIG, { request: MATH_REQ }) });
   const t = mathOf(w).textContent;
-  assert.match(t, /Carrier rate\$2,000\.00/);
-  assert.match(t, /Quick pay fee5% · \$100\.00 · carrier pays/);
-  assert.match(t, /Deduct from carrier payment\$100\.00/);
-  assert.match(t, /TESTING ZOHO CARRIER receives\$1,900\.00/);
-  assert.match(t, /Credit to broker \(3%\)\$60\.00/);
-  assert.match(t, /OperFi earns \(2%\)\$40\.00/);
-  assert.doesNotMatch(t, /Charge broker reserve/);
+  assert.match(t, /Enter on FactorView · Vendor Fundings/);
+  assert.match(t, /Payment Amt\$2,000\.00/);
+  assert.match(t, /Fee Amt charged to the carrier\$100\.00/);
+  assert.match(t, /Factor split OperFi\$40\.00/);
+  assert.match(t, /Client split broker\$60\.00/);
+  assert.match(t, /Net Due TESTING ZOHO CARRIER receives\$1,900\.00/);
+  assert.match(t, /No broker reserve charge\./);
+  assert.doesNotMatch(t, /%/, 'amounts only: the % columns are system driven');
   assert.match(t, /Broker note: rush please/);
   const a = mathOf(w).querySelector('a.pf-fv');
   assert.equal(a.getAttribute('href'),
@@ -518,43 +519,47 @@ test('staff box: carrier pays shows deduction, both shares and FV link', async (
   assert.doesNotMatch(t, /[–—]/);
 });
 
-test('staff box: broker covers shows reserve charge and UNVERIFIED, no deduction', async () => {
+test('staff box: broker covers means zero fee boxes and a reserve charge', async () => {
   const req = Object.assign({}, MATH_REQ, { payer: 'broker', carrier_fee: '0.00', carrier_fee_pct: '0', fee_total: '40.00',
     broker_share: '-40.00', reserve_charge: '40.00', payee_receives: '2000.00', reserve_status: 'unverified',
     reserve_balance_at_request: null });
   const w = await open({}, { staff: true, elig: Object.assign({}, PENDING_ELIG, { request: req }) });
   const t = mathOf(w).textContent;
-  assert.match(t, /Quick pay fee2% · \$40\.00 · broker covers from reserve/);
-  assert.doesNotMatch(t, /Deduct from/);
-  assert.doesNotMatch(t, /Credit to broker/);
-  assert.match(t, /Charge broker reserve\$40\.00/);
+  assert.match(t, /Fee Amt no fee to the carrier\$0\.00/);
+  assert.match(t, /Factor split OperFi\$0\.00/);
+  assert.match(t, /Client split broker\$0\.00/);
+  assert.match(t, /Net Due TESTING ZOHO CARRIER receives\$2,000\.00/);
+  assert.match(t, /Then charge the broker/);
+  assert.match(t, /Broker reserve charge OperFi's fee the carrier did not pay\$40\.00/);
   assert.match(t, /Reserve UNVERIFIED/);
-  assert.match(t, /TESTING ZOHO CARRIER receives\$2,000\.00/);
 });
 
-test('staff box: split, factored short pay, reserve balance, entered by staff', async () => {
+test('staff box: split 1% factored, short pay, reserve balance, entered by staff', async () => {
   const req = Object.assign({}, MATH_REQ, { payer: 'split', carrier_fee: '20.00', carrier_fee_pct: '1', fee_total: '40.00',
     broker_share: '-20.00', reserve_charge: '20.00', payee_receives: '1980.00', factor_name: 'Example Capital',
     short_pay: true, reserve_status: 'covered', reserve_balance_at_request: '1250.00', entered_by: 'staff',
     entered_by_email: 'pat@operfi.com', terms_on_file: 'Factoring Company - Example Capital' });
   const w = await open({}, { staff: true, elig: Object.assign({}, PENDING_ELIG, { kind: 'factored', request: req }) });
   const t = mathOf(w).textContent;
-  assert.match(t, /Quick pay fee1% · \$20\.00 · carrier pays, broker covers the other 1% \(\$20\.00\)/);
-  assert.match(t, /Deduct from factor payment\$20\.00/);
-  assert.match(t, /Example Capital receives\$1,980\.00/);
-  assert.match(t, /Charge broker reserve\$20\.00/);
+  assert.match(t, /Fee Amt charged to the factor\$20\.00/);
+  assert.match(t, /Factor split OperFi\$20\.00/);
+  assert.match(t, /Client split broker\$0\.00/);
+  assert.match(t, /Net Due Example Capital receives\$1,980\.00/);
+  assert.match(t, /Broker reserve charge OperFi's fee the carrier did not pay\$20\.00/);
   assert.match(t, /Reserve \$1,250\.00 → \$1,230\.00/);
   assert.match(t, /Short pay to factor/);
   assert.match(t, /Entered by pat@operfi\.com for the client/);
 });
 
-test('staff box: legacy doc without carrier_fee still shows the deduction', async () => {
+test('staff box: legacy doc without carrier_fee still fills Fee Amt', async () => {
   const req = Object.assign({}, REQ, { carrier_rate: '2000.00', fee_total: '80.00', broker_share: '40.00',
     operfi_share: '40.00', reserve_charge: '0.00', payee_receives: '1920.00' });
   const w = await open({}, { staff: true, elig: Object.assign({}, PENDING_ELIG, { request: req }) });
   const t = mathOf(w).textContent;
-  assert.match(t, /Deduct from carrier payment\$80\.00/);
-  assert.match(t, /Carrier receives\$1,920\.00/);
+  assert.match(t, /Fee Amt charged to the carrier\$80\.00/);
+  assert.match(t, /Factor split OperFi\$40\.00/);
+  assert.match(t, /Client split broker\$40\.00/);
+  assert.match(t, /Net Due Carrier receives\$1,920\.00/);
   assert.equal(mathOf(w).querySelector('a.pf-fv'), null);
 });
 

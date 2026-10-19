@@ -222,3 +222,83 @@ test('summaryHtml quickpay broker-paid shows fee waived', () => {
   const c = PF.summaryHtml({ kind: 'quickpay', payer: 'carrier', carrierRate: 2000, feePct: '4' });
   assert.doesNotMatch(c, /fee waived/);
 });
+
+// PAYCHG3: per-load fee picker.
+test('feeValid table', () => {
+  const v = PF.feeValid;
+  for (const x of ['0', '0.25', '5', '1.5', '4.75', 2]) assert.equal(v(x, '4'), true, String(x));
+  for (const x of ['5.1', '-1', '', 'abc', '0.3', '5.25', null, undefined]) assert.equal(v(x, '4'), false, String(x));
+  assert.equal(v('3.3', '4'), false);
+  assert.equal(v('3.3', '3.3'), true);
+  assert.equal(v('6', '6'), true);
+  assert.equal(v('3.3', null), false);
+});
+
+const PICK = { kind: 'net30', rate: 2000, savedPct: '4', reserve: RES_OK, factorName: '', trained: true };
+
+test('feePickerHtml live line for 2000 at 1', () => {
+  const r = PF.feePickerHtml(Object.assign({}, PICK, { pct: '1' }));
+  assert.match(r.html, /<input[^>]*type="number"[^>]*id="pf-fee"[^>]*min="0"[^>]*max="5"[^>]*step="0\.25"[^>]*value="1"/);
+  assert.match(r.html, /Carrier pays 1% \(\$20\.00\) · you cover 1% \(\$20\.00\) from reserve · you earn \$0\.00/);
+  assert.match(r.html, /Your reserve balance \$1,250\.00 covers this fee\. Balance after: \$1,230\.00\./);
+  assert.match(r.html, /Let the carrier know this load pays with a \$20\.00 fee deducted\./);
+  assert.equal(r.blocked, false);
+  assert.doesNotMatch(r.html, DASH);
+});
+
+test('feePickerHtml carrier above 2 and zero', () => {
+  const r = PF.feePickerHtml(Object.assign({}, PICK, { pct: '4' }));
+  assert.match(r.html, /Carrier pays 4% \(\$80\.00\) · you earn \$40\.00/);
+  assert.doesNotMatch(r.html, /from reserve/);
+  assert.doesNotMatch(r.html, /reserve balance/);
+  const z = PF.feePickerHtml(Object.assign({}, PICK, { pct: '0' }));
+  assert.match(z.html, /Carrier pays 0% \(\$0\.00\) · you cover 2% \(\$40\.00\) from reserve · you earn \$0\.00/);
+  assert.doesNotMatch(z.html, /Let the carrier know/);
+  assert.equal(z.blocked, false);
+});
+
+test('feePickerHtml blocked cases', () => {
+  for (const pct of ['', 'abc', '5.1', '-1', '0.3'])
+    assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { pct })).blocked, true, pct);
+  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { pct: '1', reserve: { cash: 5, status: 'ok' } })).blocked, true);
+  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { pct: '1', reserve: { status: 'unavailable' } })).blocked, false);
+  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { kind: 'quickpay', pct: '4' })).blocked, true);
+  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { kind: 'quickpay', pct: '3' })).blocked, false);
+  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { kind: 'net30', pct: '4' })).blocked, false);
+  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { pct: '1', rate: 0 })).blocked, true);
+});
+
+test('feePickerHtml factored short pay and saved fee not set up', () => {
+  const f = PF.feePickerHtml(Object.assign({}, PICK, { kind: 'factored', factorName: 'Example Capital', pct: '1' }));
+  assert.match(f.html, /Example Capital will receive \$20\.00 less than its invoice/);
+  assert.doesNotMatch(f.html, /Let the carrier know/);
+  const f0 = PF.feePickerHtml(Object.assign({}, PICK, { kind: 'factored', factorName: 'Example Capital', pct: '0' }));
+  assert.doesNotMatch(f0.html, /less than its invoice/);
+  for (const savedPct of [null, '1.5']) {
+    const u = PF.feePickerHtml(Object.assign({}, PICK, { savedPct, pct: '0' }));
+    assert.match(u.html, /Your saved quick pay fee isn't set up\. Contact OperFi\./);
+    assert.equal(u.blocked, false);
+  }
+  assert.doesNotMatch(PF.feePickerHtml(Object.assign({}, PICK, { pct: '1' })).html, /isn't set up/);
+});
+
+test('summaryHtml split shows carrier part, reserve part and OperFi 2%', () => {
+  const h = PF.summaryHtml({ kind: 'net30', toggled: true, pickPct: '1', carrierRate: 2000 });
+  assert.match(h, /carrier pays 1%/);
+  assert.match(h, /Carrier is charged \(1%\)<b>\$20\.00/);
+  assert.match(h, /Charged to your reserve \(1%\)<b>-\$20\.00/);
+  assert.match(h, /OperFi earns \(2%\)<b>\$40\.00/);
+  assert.match(h, /Carrier receives<b>\$1,980\.00/);
+  assert.doesNotMatch(h, DASH);
+  const c = PF.summaryHtml({ kind: 'net30', toggled: true, pickPct: '3', carrierRate: 2000 });
+  assert.match(c, /You earn \(1%\)<b>\+\$20\.00/);
+  assert.match(c, /Carrier is charged<b>\$60\.00/);
+  const z = PF.summaryHtml({ kind: 'quickpay', toggled: true, pickPct: '0', carrierRate: 2000 });
+  assert.match(z, /fee waived/);
+  assert.match(z, /Charged to your reserve<b>-\$40\.00/);
+  const q = PF.summaryHtml({ kind: 'quickpay', toggled: true, pickPct: '3', carrierRate: 2000 });
+  assert.match(q, /fee changed to 3%/);
+  const fs = PF.summaryHtml({ kind: 'factored', toggled: true, pickPct: '1', carrierRate: 2000, factorName: 'Example Capital' });
+  assert.match(fs, /Short pay to factor/);
+  assert.match(fs, /Deducted from factor payment \(1%\)/);
+});

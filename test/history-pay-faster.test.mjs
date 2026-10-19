@@ -48,11 +48,15 @@ function makeDom(opts) {
         } else if (u.indexOf('/resolve') !== -1) {
           const r = opts.resolve || { status: 200, body: { ok: true, request: Object.assign({}, REQ, { status: JSON.parse(o.body).status, resolved_at: '2026-10-17T16:00:00Z' }) } };
           status = r.status; body = r.body;
+        } else if (u.indexOf('/pay-change/requests/open') !== -1) {
+          if (opts.open === 403) { status = 403; body = { error: 'forbidden' }; }
+          else body = { requests: opts.open || [] };
         } else if (u.indexOf('/pay-change/requests') !== -1) {
           const r = opts.post || { status: 201, body: { ok: true, request: REQ } };
           status = r.status; body = r.body;
         } else if (u.indexOf('/broker-report') !== -1) {
           body = { records: opts.rows || [] };
+          if (opts.allClients) body.all_clients = true;
         }
         return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
       };
@@ -808,4 +812,72 @@ test('quickpay without fee_adjust and without waive_enabled shows no button', as
   assert.ok(!$(w, 'pf-open'), 'no picker, no waive: nothing to offer');
   w = await open(QP_ROW, { ctx: Object.assign({}, PICK_CTX, { waive_enabled: false }), elig: QP_ELIG });
   assert.match($(w, 'pf-open').textContent, /Change QP fee/, 'picker alone still covers quick pay for fee_adjust');
+});
+
+
+// ---- PAYCHGQUEUE1: "needs decision" chip in the All clients view ----
+const QROWS = [
+  Object.assign({}, ROW, { ID: 'a1', Load_Rate_Confirmation_Number: 'Q-1', pay_change: { status: 'requested', payer: 'carrier' } }),
+  Object.assign({}, ROW, { ID: 'a2', Load_Rate_Confirmation_Number: 'Q-2', pay_change: { status: 'applied', payer: 'carrier' } }),
+  Object.assign({}, ROW, { ID: 'a3', Load_Rate_Confirmation_Number: 'Q-3' }),
+  Object.assign({}, ROW, { ID: 'a4', Load_Rate_Confirmation_Number: 'Q-4', pay_change: { status: 'requested', payer: 'broker' } })
+];
+const queueChip = (w) => w.document.querySelector('#chips .chip[data-key="pf-decision"]');
+const listedLoads = (w) => Array.from(w.document.querySelectorAll('.row')).map((r) => r.textContent).join(' ');
+
+test('all clients view shows the needs-decision chip with the open count', async () => {
+  const w = makeDom({ rows: QROWS, allClients: true, staff: true });
+  await flush();
+  const chip = queueChip(w);
+  assert.ok(chip, 'chip present');
+  assert.match(chip.textContent, /Pay faster: needs decision\s*2/);
+  assert.doesNotMatch(chip.textContent, /[–—]/);
+});
+
+test('the chip filters to requests awaiting a decision only', async () => {
+  const w = makeDom({ rows: QROWS, allClients: true, staff: true });
+  await flush();
+  queueChip(w).dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  const t = listedLoads(w);
+  assert.match(t, /Q-1/); assert.match(t, /Q-4/);
+  assert.doesNotMatch(t, /Q-2/); assert.doesNotMatch(t, /Q-3/);
+});
+
+test('a broker (not all clients) never sees the chip or calls the queue', async () => {
+  const w = makeDom({ rows: QROWS });
+  await flush();
+  assert.equal(queueChip(w), null);
+  assert.ok(!w.__calls.some((c) => c.url.indexOf('/pay-change/requests/open') !== -1));
+});
+
+test('open requests outside the date range are listed in a note', async () => {
+  const w = makeDom({ rows: QROWS, allClients: true, staff: true,
+    open: [{ funding_record_id: 'a1', load_ref: 'Q-1', broker_name: 'In Range Co' },
+           { funding_record_id: 'zz9', load_ref: 'OLD-7', broker_name: 'Sample Brokerage' }] });
+  await flush();
+  const note = $(w, 'pf-queue-note');
+  assert.ok(note);
+  assert.match(note.textContent, /1 more Pay Faster request needs a decision on loads outside this date range: Load# OLD-7 \(Sample Brokerage\)/);
+  assert.doesNotMatch(note.textContent, /Q-1/);
+});
+
+test('queue list refused (non-admin see-all) shows no note and keeps the chip', async () => {
+  const w = makeDom({ rows: QROWS, allClients: true, open: 403 });
+  await flush();
+  assert.equal($(w, 'pf-queue-note'), null);
+  assert.ok(queueChip(w));
+});
+
+test('deciding from the queue drops the chip count in place', async () => {
+  const req = Object.assign({}, MATH_REQ, { id: 'req1' });
+  const w = makeDom({ rows: QROWS, allClients: true, staff: true,
+    elig: { eligible: false, reason: 'staff_view', kind: null, terms: null, request: req } });
+  await flush();
+  w.document.querySelector('.row').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await flush();
+  assert.ok($(w, 'pf-apply'), 'staff resolve controls render from the staff_view request');
+  assert.ok($(w, 'pf-slot').querySelector('.pf-math'), 'math box renders');
+  click(w, $(w, 'pf-apply')); await flush();
+  assert.match(queueChip(w).textContent, /needs decision\s*1/);
 });

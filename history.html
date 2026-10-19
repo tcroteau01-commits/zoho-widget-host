@@ -1014,6 +1014,7 @@ function onRecordsLoaded(records, truncated) {
   allRecords = records;
   buildChips();
   applyFilters(truncated);
+  pfLoadQueue();
 }
 
 // ── Filters & rendering ───────────────────────────────────────────────────
@@ -1055,11 +1056,16 @@ function buildChips() {
   // broker was filtered to one and then narrowed the dates past it, the chip goes
   // away but currentStatus would still point at it -- an empty list with nothing
   // highlighted and no way to tell why. Fall back to All.
+  // PAYCHGQUEUE1: in the All clients view, a chip for Pay Faster requests that are
+  // still waiting for an ops decision (Mark applied / Decline).
+  if (pfQueueOn()) def.push({ key: PF_QUEUE_KEY, label: '⚡ Pay faster: needs decision' });
+
   if (!def.some(function(c) { return c.key === currentStatus; })) currentStatus = 'all';
 
   chips.innerHTML = '';
   def.forEach(function(c) {
-    var n = c.key === 'all' ? allRecords.length : (counts[c.key] || 0);
+    var n = c.key === 'all' ? allRecords.length
+      : c.key === PF_QUEUE_KEY ? allRecords.filter(pfNeedsDecision).length : (counts[c.key] || 0);
     var el = document.createElement('span');
     el.className = 'chip' + (c.key === currentStatus ? ' active' : '');
     el.dataset.key = c.key;
@@ -1085,7 +1091,9 @@ function countByStatus(records) {
 function applyFilters(truncated) {
   // Date is already filtered server-side. Only status + search to apply here.
   filteredRecords = allRecords.filter(function(r) {
-    if (currentStatus !== 'all') {
+    if (currentStatus === PF_QUEUE_KEY) {
+      if (!pfNeedsDecision(r)) return false;
+    } else if (currentStatus !== 'all') {
       if (statusMeta(r).key !== currentStatus) return false;
     }
     if (currentSearch) {
@@ -1572,6 +1580,61 @@ function pfCanEnter(d) {
 }
 
 var PF_PILL = { requested: 'Requested', applied: 'Applied', declined: 'Declined' };
+
+// PAYCHGQUEUE1: the ops queue chip (All clients view only) and its note for open
+// requests on loads outside the loaded date range.
+var PF_QUEUE_KEY = 'pf-decision';
+var _pfQueue = null;  // /pay-change/requests/open rows, null until loaded or when refused
+// The chip appears only once the staff-only queue list answered 200: that one call
+// proves an OperFi admin session (it fails for a broker, a non-admin, or the
+// Creator-hosted page with no session), so the chip never shows where a decision
+// could not be made.
+function pfQueueOn() { return !!(allClients && _pfQueue !== null); }
+function pfNeedsDecision(r) { return !!(r && r.pay_change && r.pay_change.status === 'requested'); }
+var _pfQueueSeq = 0;
+function pfLoadQueue() {
+  var seq = ++_pfQueueSeq;
+  if (!allClients) { _pfQueue = null; pfRenderQueueNote(); return; }
+  fetch(BROKER_API_BASE + '/pay-change/requests/open')
+    .then(function(res) { if (!res.ok) throw new Error(res.status); return res.json(); })
+    .then(function(j) { if (seq === _pfQueueSeq) _pfQueue = (j && j.requests) || []; })
+    .catch(function() { if (seq === _pfQueueSeq) _pfQueue = null; })
+    .then(function() {
+      if (seq !== _pfQueueSeq) return;
+      var wasQueue = currentStatus === PF_QUEUE_KEY;
+      buildChips();          // adds (or drops) the chip now that the answer is known
+      if (wasQueue && currentStatus !== PF_QUEUE_KEY) applyFilters();  // chip gone: un-filter
+      pfRenderQueueNote();
+    });
+}
+// After a decision, the chip count drops in place. The list is not re-filtered, so
+// the row the staffer just decided stays open in front of them.
+function pfRefreshQueueCount() {
+  if (!pfQueueOn()) return;
+  var chip = document.querySelector('#chips .chip[data-key="' + PF_QUEUE_KEY + '"] .count');
+  if (chip) chip.textContent = String(allRecords.filter(pfNeedsDecision).length);
+}
+function pfRenderQueueNote() {
+  var chips = document.getElementById('chips');
+  if (!chips) return;
+  var note = document.getElementById('pf-queue-note');
+  var loaded = {};
+  allRecords.forEach(function(r) { loaded[String(r.ID)] = true; });
+  var outside = (pfQueueOn() && _pfQueue ? _pfQueue : []).filter(function(q) {
+    return !loaded[String(q.funding_record_id)];
+  });
+  if (!outside.length) { if (note) note.parentNode.removeChild(note); return; }
+  if (!note) {
+    note = document.createElement('div');
+    note.id = 'pf-queue-note';
+    note.className = 'pf-msg pf-info';
+    chips.parentNode.insertBefore(note, chips.nextSibling);
+  }
+  note.textContent = outside.length + ' more Pay Faster ' + (outside.length === 1 ? 'request needs' : 'requests need') +
+    ' a decision on loads outside this date range: ' + outside.map(function(q) {
+      return 'Load# ' + (q.load_ref || 'n/a') + ' (' + (q.broker_name || 'client') + ')';
+    }).join(', ') + '. Widen the date range to open them.';
+}
 // Carrier pct for a request (same rule as the API): carrier_fee_pct, else qp_fee_pct when the
 // carrier pays, else 0. Returns '' when it cannot be known.
 function pfCarrierPct(q) {
@@ -1985,6 +2048,7 @@ function pfApplyRequest(r, q) {
   _pfElig = { id: String(r.ID), state: 'done', data: { eligible: false, reason: 'already_requested',
     kind: d.kind, terms: d.terms, request: q } };
   renderList();
+  pfRefreshQueueCount();
   payFasterPanelUpdate();
   var pr = document.querySelector('.panel-status-row');
   if (pr && pfOpenRecord() === r) {

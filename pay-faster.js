@@ -4,8 +4,15 @@
  *
  *   PayFaster.kindForTerms(terms)            -> "net30" | "factored" | "quickpay" | null
  *   PayFaster.parseFeePct(v)                 -> number | null
- *   PayFaster.computeFees(rate, pct, payer)  -> {feeTotal, brokerShare, operfiShare, reserveCharge, payeeReceives} | {error}
- *   PayFaster.marginEffect(fees, payer)      -> number
+ *   PayFaster.computeFeesAt(rate, pct)       -> {payer, carrierFee, feeTotal, brokerShare, operfiShare, reserveCharge, payeeReceives} | {error}
+ *       pct is the fee the carrier pays on this load (PAYCHG2/3). payer is 'carrier' (pct >= 2),
+ *       'broker' (pct 0, fee waived) or 'split'. Error 'bad_fee_pct' for null or negative pct.
+ *   PayFaster.computeFees(rate, pct, payer)  -> {carrierFee, feeTotal, brokerShare, operfiShare, reserveCharge, payeeReceives} | {error}
+ *   PayFaster.marginEffect(fees)             -> number (fees.brokerShare; a second arg is ignored)
+ *   PayFaster.factorNameForTerms(terms)      -> "Example Capital" | "factor on file" | ""
+ *   PayFaster.waiveState({rate, reserve, factorName, kind, trained, videoId}) -> {html, short}
+ *       short is true when the reserve can't cover OperFi's 2%; pages disable Send/Submit on it.
+ *   PayFaster.waiveHtml(a)                   -> string (waiveState(a).html)
  *   PayFaster.money(n)                       -> "$1,920.00"
  *   PayFaster.optionsHtml({kind, payer, rate, feePct, reserve, factorName, trained, videoId})
  *       rate is the carrier rate. fees may instead be passed as {carrier, broker} computeFees results.
@@ -65,25 +72,61 @@
 
   function dollars(c) { return Math.round(c) / 100; }
 
+  // computeFees results keep their original enumerable shape (existing callers and tests
+  // deepEqual it); carrierFee rides along as a non-enumerable property.
+  function withCarrierFee(o, cf) {
+    Object.defineProperty(o, 'carrierFee', { value: cf, enumerable: false });
+    return o;
+  }
+
   function computeFees(rate, pct, payer) {
     if (payer !== 'carrier' && payer !== 'broker') return { error: 'bad_payer' };
     var rc = toCents(rate);
     if (rc === null) return { error: 'bad_rate' };
     var op = shareCents(rc, OPERFI_SHARE_PCT * 100);
     if (payer === 'broker') {
-      return { feeTotal: dollars(op), brokerShare: dollars(-op) + 0, operfiShare: dollars(op), reserveCharge: dollars(op), payeeReceives: dollars(rc) };
+      return withCarrierFee({ feeTotal: dollars(op), brokerShare: dollars(-op) + 0, operfiShare: dollars(op), reserveCharge: dollars(op), payeeReceives: dollars(rc) }, 0);
     }
     var p = parseFeePct(pct);
     if (p === null || p < OPERFI_SHARE_PCT) return { error: 'carrier_fee_unavailable' };
     var bp = Math.round((p - OPERFI_SHARE_PCT) * 100);
     var br = shareCents(rc, bp);
     var total = br + op;
-    return { feeTotal: dollars(total), brokerShare: dollars(br), operfiShare: dollars(op), reserveCharge: 0, payeeReceives: dollars(rc - total) };
+    return withCarrierFee({ feeTotal: dollars(total), brokerShare: dollars(br), operfiShare: dollars(op), reserveCharge: 0, payeeReceives: dollars(rc - total) }, dollars(total));
   }
 
-  function marginEffect(fees, payer) {
+  // Fee at an arbitrary carrier fee X (percent). X >= 2: carrier pays X, broker keeps X-2.
+  // X < 2: carrier pays X, reserve covers the rest of OperFi's 2%.
+  function computeFeesAt(rate, pct) {
+    var p = parseFeePct(pct);
+    if (p === null || p < 0) return { error: 'bad_fee_pct' };
+    var rc = toCents(rate);
+    if (rc === null) return { error: 'bad_rate' };
+    var op = shareCents(rc, OPERFI_SHARE_PCT * 100);
+    if (p >= OPERFI_SHARE_PCT) {
+      var br = shareCents(rc, Math.round((p - OPERFI_SHARE_PCT) * 100));
+      var total = br + op;
+      return { payer: 'carrier', carrierFee: dollars(total), feeTotal: dollars(total), brokerShare: dollars(br), operfiShare: dollars(op), reserveCharge: 0, payeeReceives: dollars(rc - total) };
+    }
+    var cf = shareCents(rc, Math.round(p * 100));
+    var rsv = op - cf;
+    return { payer: p === 0 ? 'broker' : 'split', carrierFee: dollars(cf), feeTotal: dollars(op), brokerShare: dollars(-rsv) + 0, operfiShare: dollars(op), reserveCharge: dollars(rsv), payeeReceives: dollars(rc - cf) };
+  }
+
+  function marginEffect(fees) {
     if (!fees || fees.error) return 0;
-    return payer === 'carrier' ? fees.brokerShare : -fees.operfiShare;
+    return fees.brokerShare;
+  }
+
+  // Same rules as the API's _factor_from_terms.
+  function factorNameForTerms(terms) {
+    if (terms == null) return '';
+    var t = String(terms).trim();
+    if (t === 'Factoring Company - Quick Pay') return 'factor on file';
+    var rest = '';
+    if (t.indexOf(QP_SUFFIX_PREFIX) === 0) rest = t.slice(QP_SUFFIX_PREFIX.length).trim();
+    else if (t.indexOf(FACTORING_PREFIX) === 0) rest = t.slice(FACTORING_PREFIX.length).trim();
+    return rest === 'Quick Pay' ? '' : rest;
   }
 
   function money(n) {
@@ -177,6 +220,18 @@
     return h + '</div>';
   }
 
+  function waiveState(a) {
+    var f = computeFeesAt(a.rate, 0);
+    if (f.error) return { html: '', short: false };
+    var who = a.factorName ? (a.factorName === 'factor on file' ? 'The factor on file' : esc(a.factorName)) : 'Carrier';
+    var rsv = reserveMsg(a.reserve, f.reserveCharge);
+    var html = msg('info', 'Waive the quick pay fee on this load. ' + who + ' receives the full ' + money(f.payeeReceives) +
+      '. You cover OperFi\'s ' + OPERFI_SHARE_PCT + '% (' + money(f.reserveCharge) + ') from your reserve.') + rsv.html;
+    return { html: html, short: rsv.short };
+  }
+
+  function waiveHtml(a) { return waiveState(a).html; }
+
   function sl(label, value, cls) {
     return '<div class="pf-sl' + (cls ? ' ' + cls : '') + '">' + label + '<b>' + value + '</b></div>';
   }
@@ -187,10 +242,10 @@
     var factored = kind === 'factored';
     var quick = kind === 'quickpay';
     var showSplit = quick || a.toggled;
-    var payer = quick ? 'carrier' : (a.payer === 'broker' ? 'broker' : 'carrier');
+    var payer = quick ? (a.payer === 'broker' ? 'broker' : 'carrier') : (a.payer === 'broker' ? 'broker' : 'carrier');
     var h = '';
     var pill;
-    if (quick) pill = '<span class="pf-pill pf-gr">Quick Pay</span>';
+    if (quick) pill = '<span class="pf-pill pf-gr">Quick Pay' + (payer === 'broker' ? ' · fee waived' : '') + '</span>';
     else if (a.toggled) pill = '<span class="pf-pill pf-or">Quick Pay · one-off</span>';
     else pill = factored ? 'Factoring Company' : 'Net 30';
     h += sl('Carrier Payment', pill);
@@ -248,6 +303,10 @@
     kindForTerms: kindForTerms,
     parseFeePct: parseFeePct,
     computeFees: computeFees,
+    computeFeesAt: computeFeesAt,
+    factorNameForTerms: factorNameForTerms,
+    waiveState: waiveState,
+    waiveHtml: waiveHtml,
     marginEffect: marginEffect,
     money: money,
     optionsHtml: optionsHtml,

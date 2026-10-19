@@ -162,3 +162,63 @@ test('no em or en dashes in any html', () => {
   for (const h of all) assert.doesNotMatch(h, DASH);
   assert.doesNotMatch(src, DASH);
 });
+
+test('computeFeesAt vectors', () => {
+  const f = PF.computeFeesAt;
+  let r = f(2000, 0);
+  assert.deepEqual([r.payer, r.carrierFee, r.feeTotal, r.brokerShare, r.operfiShare, r.reserveCharge, r.payeeReceives], ['broker', 0, 40, -40, 40, 40, 2000]);
+  r = f(2000, 1);
+  assert.deepEqual([r.payer, r.carrierFee, r.feeTotal, r.brokerShare, r.reserveCharge, r.payeeReceives], ['split', 20, 40, -20, 20, 1980]);
+  r = f(1234.57, 1.75);
+  assert.deepEqual([r.payer, r.carrierFee, r.operfiShare, r.reserveCharge, r.payeeReceives], ['split', 21.6, 24.69, 3.09, 1212.97]);
+  r = f(2000, 5);
+  assert.deepEqual([r.payer, r.carrierFee, r.feeTotal, r.brokerShare, r.reserveCharge, r.payeeReceives], ['carrier', 100, 100, 60, 0, 1900]);
+  r = f(2000, 2);
+  assert.deepEqual([r.payer, r.carrierFee, r.brokerShare, r.reserveCharge], ['carrier', 40, 0, 0]);
+  assert.equal(f(2000, null).error, 'bad_fee_pct');
+  assert.equal(f(2000, -1).error, 'bad_fee_pct');
+  assert.equal(f('abc', 1).error, 'bad_rate');
+});
+
+test('computeFees keeps old results and adds carrierFee', () => {
+  const c = PF.computeFees(2000, 4, 'carrier');
+  assert.equal(c.feeTotal, 80); assert.equal(c.brokerShare, 40); assert.equal(c.carrierFee, 80); assert.equal(c.payeeReceives, 1920);
+  const b = PF.computeFees(2000, 4, 'broker');
+  assert.equal(b.carrierFee, 0); assert.equal(b.reserveCharge, 40); assert.equal(b.payeeReceives, 2000);
+  assert.equal(PF.marginEffect(b, 'carrier'), -40);
+  assert.equal(PF.marginEffect({ error: 'x' }), 0);
+});
+
+test('factorNameForTerms table', () => {
+  const n = PF.factorNameForTerms;
+  assert.equal(n('Factoring Company - Quick Pay - Example Capital'), 'Example Capital');
+  assert.equal(n('Factoring Company - Quick Pay'), 'factor on file');
+  assert.equal(n('Factoring Company - Example Capital'), 'Example Capital');
+  assert.equal(n('Factoring Company'), '');
+  assert.equal(n('Quick Pay'), '');
+  assert.equal(n(null), '');
+});
+
+test('waiveState and waiveHtml', () => {
+  const a = { rate: 2000, reserve: { cash: 1250, status: 'ok' }, factorName: '', kind: 'quickpay', trained: true };
+  const ok = PF.waiveState(a);
+  assert.equal(ok.short, false);
+  assert.match(ok.html, /Waive the quick pay fee on this load\. Carrier receives the full \$2,000\.00\. You cover OperFi's 2% \(\$40\.00\) from your reserve\./);
+  assert.equal(PF.waiveHtml(a), ok.html);
+  assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { cash: 39.99, status: 'ok' } })).short, true);
+  assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { cash: 40, status: 'ok' } })).short, false);
+  assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { status: 'unavailable' } })).short, false);
+  const f = PF.waiveHtml(Object.assign({}, a, { factorName: 'Example <Capital>' }));
+  assert.match(f, /Example &lt;Capital&gt; receives the full/);
+  assert.doesNotMatch(ok.html, DASH);
+});
+
+test('summaryHtml quickpay broker-paid shows fee waived', () => {
+  const h = PF.summaryHtml({ kind: 'quickpay', payer: 'broker', carrierRate: 2000, feePct: '4' });
+  assert.match(h, /fee waived/);
+  assert.match(h, /\$40\.00/);
+  assert.match(h, /you pay 2%/);
+  assert.doesNotMatch(h, DASH);
+  const c = PF.summaryHtml({ kind: 'quickpay', payer: 'carrier', carrierRate: 2000, feePct: '4' });
+  assert.doesNotMatch(c, /fee waived/);
+});

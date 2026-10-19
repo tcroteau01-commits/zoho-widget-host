@@ -1560,8 +1560,18 @@ function pfCarrierPct(q) {
   if (!q) return '';
   if (q.carrier_fee_pct != null && q.carrier_fee_pct !== '') return pfPctText(q.carrier_fee_pct);
   if (q.payer === 'carrier') return pfPctText(q.qp_fee_pct);
+  if (q.payer === 'split') return '';
   return '0';
 }
+// PAYCHG3: carrier pays 0 < X < 2, the broker covers the rest of OperFi's 2%. Returns {x, y} text or null.
+function pfSplit(q) {
+  var cp = pfCarrierPct(q);
+  if (cp === '') return null;
+  var n = Number(cp), share = Number(pfPctText(q.operfi_share_pct) || 2);
+  if (!(n > 0 && n < share)) return null;
+  return { x: cp, y: pfPctText(share - n) };
+}
+function pfSplitText(sp) { return 'carrier pays ' + sp.x + '% · broker covers ' + sp.y + '%'; }
 // PAYCHG1-era requests have no request_type and keep the label "Pay faster".
 function pfRequestLabel(q) {
   if (!q || q.request_type !== 'qp_fee') return 'Pay faster';
@@ -1666,21 +1676,35 @@ function pfFmtIso(iso) {
 // Spec section 8: staff always see the dates; brokers only once PAYCHG_SHOW_DATES flips.
 function pfWhen(iso) { return ((PAYCHG_SHOW_DATES || pfIsStaff()) && iso) ? pfFmtIso(iso) : ''; }
 
+// Detail after the request label. The label already carries the fee percent, so it is not repeated here.
 function pfQpFeeDetail(q) {
   var cp = pfCarrierPct(q);
   if (cp === '0') return 'broker covers ' + (pfPctText(q.operfi_share_pct) || '2') + '% from reserve';
-  return cp ? 'carrier pays ' + cp + '%' : 'fee changed';
+  var sp = pfSplit(q);
+  if (sp) return pfSplitText(sp);
+  return cp ? 'carrier pays the fee on this load' : 'fee changed';
+}
+// Timeline/staff wording for a request without the label's percent repeated.
+function pfQpFeeLine(q) {
+  var sp = pfSplit(q);
+  if (sp) return 'QP fee change: ' + pfSplitText(sp);
+  var cp = pfCarrierPct(q);
+  return cp === '0' ? pfRequestLabel(q) + ': ' + pfQpFeeDetail(q) : pfRequestLabel(q);
+}
+function pfPayFasterLine(q) {
+  var payer = q.payer === 'broker' ? 'broker' : 'carrier';
+  var sp = pfSplit(q);
+  if (sp) return (q.terms_on_file || 'Current terms') + ' → Quick Pay, ' + pfSplitText(sp);
+  var pct = pfPctText(payer === 'broker' ? q.operfi_share_pct : (q.carrier_fee_pct != null && q.carrier_fee_pct !== '' ? q.carrier_fee_pct : q.qp_fee_pct));
+  return (q.terms_on_file || 'Current terms') + ' → Quick Pay, ' + payer + ' pays' + (pct ? ' ' + pct + '%' : '');
 }
 
 function payFasterTimelineItems(r) {
   var d = pfCurrentElig(r);
   var q = d && d.request;
   if (!q) return [];
-  var payer = q.payer === 'broker' ? 'broker' : 'carrier';
-  var pct = pfPctText(payer === 'broker' ? q.operfi_share_pct : q.qp_fee_pct);
   var qpFee = q.request_type === 'qp_fee';
-  var title = qpFee ? pfRequestLabel(q) + ': ' + pfQpFeeDetail(q)
-    : 'Pay change requested: ' + (q.terms_on_file || 'Current terms') + ' → Quick Pay, ' + payer + ' pays' + (pct ? ' ' + pct + '%' : '');
+  var title = qpFee ? pfQpFeeLine(q) : 'Pay change requested: ' + pfPayFasterLine(q);
   var out = [{ state: 'done', time: pfWhen(q.requested_at), title: title }];
   var noun = !qpFee ? 'Pay change' : (pfCarrierPct(q) === '0' ? 'QP fee waiver' : 'QP fee change');
   if (q.status === 'applied') out.push({ state: 'done', title: noun + ' applied', time: pfWhen(q.resolved_at) });
@@ -1701,17 +1725,14 @@ function payFasterSlotHtml(r) {
   if (d.eligible && !pfImpersonating()) {
     var locked = _pfCtx.trained === false;
     h += '<button class="pf-open" id="pf-open"' + (locked ? ' disabled' : '') + '>⚡ ' +
-      (d.kind === 'factored' ? 'Pay the factoring company faster' : d.kind === 'quickpay' ? 'Waive QP fee' : 'Pay carrier faster') + '</button>';
+      (d.kind === 'factored' ? 'Pay the factoring company faster' : d.kind === 'quickpay' ? (pfPickMode(d.kind) ? 'Change QP fee' : 'Waive QP fee') : 'Pay carrier faster') + '</button>';
     if (locked) h += pfVideoLink();
   }
   var q = d.request;
   if (pfIsStaff() && q && q.status === 'requested') {
-    var payer = q.payer === 'broker' ? 'broker' : 'carrier';
-    var pct = pfPctText(payer === 'broker' ? q.operfi_share_pct : q.qp_fee_pct);
     var qpFee = q.request_type === 'qp_fee';
     h += '<div class="pf-staff"><div class="pf-staff-h">' + esc(qpFee ? pfRequestLabel(q) : 'Pay faster') + ' request (OperFi staff)</div>' +
-      '<div class="pf-staff-sub">' + (qpFee ? esc(pfQpFeeDetail(q))
-        : esc(q.terms_on_file || '') + ' → Quick Pay, ' + payer + ' pays' + (pct ? ' ' + esc(pct) + '%' : '')) + '</div>' +
+      '<div class="pf-staff-sub">' + (qpFee ? esc(pfQpFeeDetail(q)) : esc(pfPayFasterLine(q))) + '</div>' +
       '<textarea id="pf-ops-note" maxlength="500" placeholder="Ops note (optional)"></textarea>' +
       '<div class="pf-staff-btns"><button class="pf-apply" id="pf-apply">Mark applied</button>' +
       '<button class="pf-decline" id="pf-decline">Decline</button></div>' +
@@ -1733,18 +1754,46 @@ function payFasterPanelClick(e) {
 
 function pfParseRate(r) { return parseMoney(r.Carrier_Rate); }
 
+// PAYCHG3: the broker picks the carrier's fee on this load (flag from the API context).
+// On a quick pay record the picker supersedes the waive (0 is the waive).
+function pfPickMode(kind) {
+  return !!(_pfCtx && _pfCtx.fee_pick_enabled && (kind === 'net30' || kind === 'factored' || kind === 'quickpay'));
+}
+function pfDefaultFee() {
+  var p = window.PayFaster.parseFeePct(_pfCtx.qp_fee_pct);
+  return (p !== null && p >= window.PayFaster.OPERFI_SHARE_PCT) ? String(p) : '0';
+}
+function pfPickArgs(pop, rate) {
+  return { kind: pop.elig.kind, rate: rate, pct: pop.fee, savedPct: _pfCtx.qp_fee_pct, reserve: _pfCtx.reserve,
+    factorName: window.PayFaster.factorNameForTerms(pop.elig.terms), trained: _pfCtx.trained !== false,
+    videoId: _pfCtx.training_video_id };
+}
+// The picked value spends reserve: re-read the balance once, then re-render against it.
+function pfMaybeRefetchFee() {
+  var pop = _pfPop, PF = window.PayFaster;
+  if (!pop || !pop.pick || pop.feeRefetched || !PF.feeValid(pop.fee, _pfCtx.qp_fee_pct)) return;
+  var rate = pfParseRate(pop.rec);
+  if (!(rate > 0)) return;
+  var f = PF.computeFeesAt(rate, pop.fee);
+  if (f.error || !(f.reserveCharge > 0)) return;
+  pop.feeRefetched = true;
+  payFasterLoadContext(true).then(function() { if (_pfPop === pop) pfRenderOpts(); });
+}
+
 function pfOpenPopup(r) {
   var d = pfCurrentElig(r);
   if (!r || !d || !d.eligible || !pfOn() || pfImpersonating()) return;
   pfClosePopup();
-  var waive = d.kind === 'quickpay';
-  _pfPop = { rec: r, elig: d, payer: waive ? 'broker' : null, sending: false, waive: waive };
+  var pick = pfPickMode(d.kind);
+  var waive = d.kind === 'quickpay' && !pick;
+  _pfPop = { rec: r, elig: d, payer: waive ? 'broker' : null, sending: false, waive: waive, pick: pick,
+    fee: pick ? pfDefaultFee() : null, feeRefetched: false };
   var factored = d.kind === 'factored';
   var m = document.createElement('div');
   m.className = 'pf-modal-backdrop';
   m.id = 'pf-modal';
   m.innerHTML = '<div class="pf-modal" role="dialog" aria-modal="true">' +
-    '<div class="pf-modal-h">' + (factored ? 'Pay the factoring company faster' : waive ? 'Waive the QP fee' : 'Pay carrier faster') + '</div>' +
+    '<div class="pf-modal-h">' + (factored ? 'Pay the factoring company faster' : pick && d.kind === 'quickpay' ? 'Change the QP fee' : waive ? 'Waive the QP fee' : 'Pay carrier faster') + '</div>' +
     '<div class="pf-modal-sub">Load# ' + esc(r.Load_Rate_Confirmation_Number || 'n/a') + ' · ' + esc(displayCarrier(r)) +
       ' · ' + fmtMoney(pfParseRate(r)) + ' · this load only</div>' +
     '<div id="pf-opts"></div>' +
@@ -1761,6 +1810,13 @@ function pfOpenPopup(r) {
     var a = t.closest && t.closest('a.pf-video-link');
     if (a) { e.preventDefault(); window.open(PF_HELP_URL, '_blank'); }
   });
+  m.addEventListener('input', function(e) {
+    var t = e.target;
+    if (!t || t.id !== 'pf-fee' || !_pfPop || !_pfPop.pick) return;
+    _pfPop.fee = t.value;
+    pfRenderOpts();
+    pfMaybeRefetchFee();
+  });
   m.addEventListener('change', function(e) {
     var t = e.target;
     if (!t || t.name !== 'pf-payer' || !_pfPop) return;
@@ -1770,6 +1826,7 @@ function pfOpenPopup(r) {
     if (_pfPop.payer === 'broker') payFasterLoadContext(true).then(pfRenderOpts);
   });
   pfRenderOpts();
+  if (pick) pfMaybeRefetchFee();
   // The waive spends reserve: re-read the balance now so the check below is fresh.
   if (waive) payFasterLoadContext(true).then(pfRenderOpts);
 }
@@ -1791,6 +1848,22 @@ function pfRenderOpts() {
   var box = document.getElementById('pf-opts');
   if (!box || !_pfPop || !pfOn()) return;
   var PF = window.PayFaster, d = _pfPop.elig, rate = pfParseRate(_pfPop.rec);
+  if (_pfPop.pick) {
+    var ps = PF.feePickerHtml(pfPickArgs(_pfPop, rate));
+    var curOut = box.querySelector('.pf-fee-out');
+    if (curOut && box.querySelector('#pf-fee')) {
+      // Keep the input element (focus, caret) while the broker types; refresh only the lines under it.
+      var tmp = document.createElement('div');
+      tmp.innerHTML = ps.html;
+      var nextOut = tmp.querySelector('.pf-fee-out');
+      curOut.innerHTML = nextOut ? nextOut.innerHTML : '';
+    } else {
+      box.innerHTML = ps.html;
+    }
+    var psend = document.getElementById('pf-send');
+    if (psend) psend.disabled = ps.blocked || _pfPop.sending;
+    return;
+  }
   if (_pfPop.waive) {
     var ws = PF.waiveState({ rate: rate, reserve: _pfCtx.reserve, factorName: PF.factorNameForTerms(d.terms), kind: 'quickpay',
       trained: _pfCtx.trained !== false, videoId: _pfCtx.training_video_id });
@@ -1857,16 +1930,22 @@ function pfErrorCopy(res) {
 
 function pfSend() {
   var pop = _pfPop;
-  if (!pop || !pop.payer || pop.sending) return;
+  if (!pop || pop.sending) return;
+  if (pop.pick) {
+    var rate = pfParseRate(pop.rec);
+    if (window.PayFaster.feePickerHtml(pfPickArgs(pop, rate)).blocked) return;
+  } else if (!pop.payer) return;
   var note = document.getElementById('pf-note');
   pop.sending = true;
   var send = document.getElementById('pf-send');
   if (send) send.disabled = true;
   pfShowError('');
-  pfPostJson(BROKER_API_BASE + '/pay-change/requests', {
-    email: brokerEmail, record_id: String(pop.rec.ID), payer: pop.payer,
-    broker_note: note ? note.value.trim().slice(0, 500) : ''
-  }).then(function(res) {
+  var body = pop.pick
+    ? { email: brokerEmail, record_id: String(pop.rec.ID), carrier_fee_pct: String(pop.fee).trim(),
+        broker_note: note ? note.value.trim().slice(0, 500) : '' }
+    : { email: brokerEmail, record_id: String(pop.rec.ID), payer: pop.payer,
+        broker_note: note ? note.value.trim().slice(0, 500) : '' };
+  pfPostJson(BROKER_API_BASE + '/pay-change/requests', body).then(function(res) {
     if (_pfPop !== pop) return;
     if (res.ok && res.body && res.body.request) {
       pfClosePopup();
@@ -1882,14 +1961,14 @@ function pfSend() {
       payFasterLoadContext(true).then(pfRenderOpts);
     }
     var b = document.getElementById('pf-send');
-    if (b) b.disabled = !pop.payer;
-    if (pop.waive) pfRenderOpts();
+    if (b) b.disabled = !pop.pick && !pop.payer;
+    if (pop.waive || pop.pick) pfRenderOpts();
   }).catch(function() {
     if (_pfPop !== pop) return;
     pop.sending = false;
     pfShowError(PF_GENERIC_ERR);
     var b = document.getElementById('pf-send'); if (b) b.disabled = false;
-    if (pop.waive) pfRenderOpts();
+    if (pop.waive || pop.pick) pfRenderOpts();
   });
 }
 

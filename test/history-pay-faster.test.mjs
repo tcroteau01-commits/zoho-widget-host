@@ -7,8 +7,10 @@ import { JSDOM } from 'jsdom';
 const HTML = readFileSync(new URL('../history.html', import.meta.url), 'utf8');
 const PF_SRC = readFileSync(new URL('../pay-faster.js', import.meta.url), 'utf8');
 
+// PAYCHGACCESS1: an approved client with both boxes. The real context always reports waive_enabled.
 const CTX = { enabled: true, trained: true, training_video_id: 'vid-1', qp_fee_pct: '4',
-  operfi_share_pct: '2', reserve: { cash: 1250, status: 'ok' } };
+  operfi_share_pct: '2', reserve: { cash: 1250, status: 'ok' }, waive_enabled: true,
+  access: { pay_faster: true, fee_adjust: true }, staff: false };
 const REQ = { id: 'req1', status: 'requested', payer: 'carrier', terms_on_file: 'Standard Net 30',
   qp_fee_pct: '4', operfi_share_pct: '2', requested_at: '2026-10-17T15:04:05Z', resolved_at: null, ops_note: '' };
 const ELIG = { eligible: true, reason: null, kind: 'net30', terms: 'Standard Net 30', request: null };
@@ -624,4 +626,117 @@ test('legacy carrier row at 1.5% reads as PAYCHG1 (no split wording)', async () 
   assert.doesNotMatch(tl, /broker covers/);
   assert.match($(w, 'pf-slot').textContent, /Standard Net 30 → Quick Pay, carrier pays 1\.5%/);
   assert.doesNotMatch($(w, 'pf-slot').textContent, /broker covers/);
+});
+
+// ---- PAYCHGACCESS1 Task 5: per-client access + staff entry ----
+const NO_ACCESS_CTX = Object.assign({}, CTX, { access: { pay_faster: false, fee_adjust: false } });
+const STAFF_CTX = Object.assign({}, CTX, { access: { pay_faster: false, fee_adjust: false }, staff: true, trained: false });
+const IMP = 'client@sample-brokerage.example';
+const ACCT_ROW = { 'Contact.Account_Name': { ID: '1', display_value: 'Sample Brokerage LLC' } };
+
+test('client without access sees no button', async () => {
+  let w = await open({}, { ctx: NO_ACCESS_CTX });
+  assert.ok(!$(w, 'pf-open'));
+  assert.ok(!w.document.querySelector('#pf-slot .pf-video-link'), 'no training hint either');
+  assert.equal($(w, 'pf-slot').textContent.trim(), '');
+  w = await open({}, { ctx: Object.assign({}, CTX, { access: undefined }) });
+  assert.ok(!$(w, 'pf-open'), 'missing access key fails closed');
+  w = await open({}, { ctx: Object.assign({}, CTX, { access: { pay_faster: 'true', fee_adjust: true } }) });
+  assert.ok(!$(w, 'pf-open'), 'only a real true counts');
+});
+
+test('access removed keeps pill', async () => {
+  const pc = { pay_change: { status: 'requested', payer: 'carrier' } };
+  const w = await open(pc, { ctx: NO_ACCESS_CTX,
+    elig: { eligible: false, reason: 'not_enabled_for_account', kind: 'net30', terms: 'Standard Net 30', request: REQ } });
+  assert.match(w.document.querySelector('.row').innerHTML, /⚡ Pay faster: Requested/);
+  assert.match($(w, 'panel').querySelector('.timeline').textContent, /Pay change requested: Standard Net 30 → Quick Pay, carrier pays 4%/);
+  assert.ok(!$(w, 'pf-open'));
+});
+
+test('staff impersonating sees for-client button and banner', async () => {
+  let w = await open(ACCT_ROW, { staff: true, imp: IMP, ctx: STAFF_CTX });
+  const b = $(w, 'pf-open');
+  assert.ok(b, 'staff get the button while impersonating');
+  assert.equal(b.textContent, '⚡ Pay carrier faster (for client)');
+  assert.equal(b.disabled, false, 'training gate does not apply to staff');
+  assert.ok(!w.document.querySelector('#pf-slot .pf-video-link'));
+  click(w, b); await flush();
+  const m = $(w, 'pf-modal');
+  assert.ok(m);
+  const first = m.querySelector('.pf-modal').firstElementChild;
+  assert.equal(first.textContent, "You're entering this for Sample Brokerage LLC. The client will see it on the load.");
+  assert.ok(w.document.querySelector('input[name="pf-payer"]'), 'radios when the picker flag is off');
+  assert.equal($(w, 'pf-payer-carrier').disabled, false);
+
+  w = await open(QP_ROW, { staff: true, imp: IMP, ctx: STAFF_CTX, elig: QP_ELIG });
+  assert.equal($(w, 'pf-open').textContent, '⚡ Waive QP fee (for client)');
+  click(w, $(w, 'pf-open')); await flush();
+  assert.match($(w, 'pf-modal').textContent, /You're entering this for this client\. The client will see it on the load\./);
+
+  w = await open(QP_ROW, { staff: true, imp: IMP, ctx: Object.assign({}, STAFF_CTX, { fee_pick_enabled: true }), elig: QP_ELIG });
+  assert.equal($(w, 'pf-open').textContent, '⚡ Change QP fee (for client)');
+  click(w, $(w, 'pf-open')); await flush();
+  assert.ok($(w, 'pf-fee'), 'staff get the picker when the flag is on, whatever the boxes');
+
+  w = await open({}, { staff: true, imp: IMP, ctx: Object.assign({}, CTX, { staff: false }) });
+  assert.ok(!$(w, 'pf-open'), 'impersonating without server staff: hidden as today');
+  w = await open({}, { ctx: Object.assign({}, CTX, { staff: false }) });
+  assert.doesNotMatch($(w, 'pf-open').textContent, /for client/);
+  click(w, $(w, 'pf-open')); await flush();
+  assert.doesNotMatch($(w, 'pf-modal').textContent, /entering this for/);
+});
+
+test('staff popup posts once', async () => {
+  const w = await open(ACCT_ROW, { staff: true, imp: IMP, ctx: STAFF_CTX,
+    post: { status: 201, body: { ok: true, request: Object.assign({}, REQ, { entered_by: 'staff' }) } } });
+  click(w, $(w, 'pf-open')); await flush();
+  pick(w, 'carrier'); await flush();
+  $(w, 'pf-note').value = 'Client called';
+  w.__calls.length = 0;
+  click(w, $(w, 'pf-send'));
+  click(w, $(w, 'pf-send'));
+  await flush();
+  const c = w.__calls.filter((x) => /\/pay-change\/requests$/.test(x.url) && x.opts.method === 'POST');
+  assert.equal(c.length, 1);
+  assert.deepEqual(JSON.parse(c[0].opts.body), { email: 'b@x.com', record_id: '4100000000000000001', payer: 'carrier', broker_note: 'Client called' });
+  assert.ok(!$(w, 'pf-modal'));
+  assert.match($(w, 'panel').querySelector('.timeline').textContent, /Requested by OperFi/);
+});
+
+test('staff entered timeline reads Requested by OperFi', async () => {
+  const titles = (w) => [...$(w, 'panel').querySelectorAll('.timeline-title')].map((e) => e.textContent);
+  const el = (req) => ({ eligible: false, reason: 'already_requested', kind: req.request_type === 'qp_fee' ? 'quickpay' : 'net30', terms: req.terms_on_file, request: req });
+  let w = await open({ pay_change: { status: 'requested' } }, { elig: el(Object.assign({}, REQ, { entered_by: 'staff' })) });
+  assert.ok(titles(w).includes('Requested by OperFi · Standard Net 30 → Quick Pay, carrier pays 4%'), titles(w).join('|'));
+  assert.ok(!titles(w).some((t) => /^Pay change requested/.test(t)));
+  w = await open(QP_ROW, { elig: el(Object.assign({}, WAIVE_REQ, { entered_by: 'staff', status: 'applied', resolved_at: '2026-10-17T16:00:00Z' })) });
+  assert.ok(titles(w).includes('Requested by OperFi · QP fee waived: broker covers 2% from reserve'), titles(w).join('|'));
+  assert.ok(titles(w).includes('QP fee waiver applied'), 'resolved entry unchanged');
+  w = await open({ pay_change: { status: 'requested' } }, { elig: el(Object.assign({}, REQ, { entered_by: 'client' })) });
+  assert.ok(titles(w).includes('Pay change requested: Standard Net 30 → Quick Pay, carrier pays 4%'), 'client entries unchanged');
+});
+
+test('client without fee_adjust gets radios not picker', async () => {
+  const ctx = Object.assign({}, PICK_CTX, { access: { pay_faster: true, fee_adjust: false } });
+  let w = await open({}, { ctx });
+  assert.equal($(w, 'pf-open').textContent, '⚡ Pay carrier faster');
+  click(w, $(w, 'pf-open')); await flush();
+  assert.ok(!$(w, 'pf-fee'), 'no picker');
+  assert.ok(w.document.querySelector('input[name="pf-payer"]'), 'payer radios');
+  w = await open(QP_ROW, { ctx, elig: QP_ELIG });
+  assert.equal($(w, 'pf-open').textContent, '⚡ Waive QP fee');
+  click(w, $(w, 'pf-open')); await flush();
+  assert.ok(!$(w, 'pf-fee'));
+  assert.match($(w, 'pf-modal').textContent, /Waive the quick pay fee on this load/);
+});
+
+test('quickpay without fee_adjust and without waive_enabled shows no button', async () => {
+  const ctx = Object.assign({}, PICK_CTX, { waive_enabled: false, access: { pay_faster: true, fee_adjust: false } });
+  let w = await open(QP_ROW, { ctx, elig: QP_ELIG });
+  assert.ok(!$(w, 'pf-open'));
+  w = await open(QP_ROW, { ctx: Object.assign({}, CTX, { waive_enabled: false }), elig: QP_ELIG });
+  assert.ok(!$(w, 'pf-open'), 'no picker, no waive: nothing to offer');
+  w = await open(QP_ROW, { ctx: Object.assign({}, PICK_CTX, { waive_enabled: false }), elig: QP_ELIG });
+  assert.match($(w, 'pf-open').textContent, /Change QP fee/, 'picker alone still covers quick pay for fee_adjust');
 });

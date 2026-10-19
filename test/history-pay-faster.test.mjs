@@ -410,3 +410,68 @@ test('pay change timeline entries follow Purchased when requested after purchase
   t = titles(w);
   assert.ok(t.findIndex((x) => /Pay change requested/.test(x)) < t.indexOf('Purchased'), 'requested before purchase');
 });
+
+// ---- PAYCHG2 Task 5: waive the QP fee ----
+const QP_ROW = { Payment_Terms: 'Quick Pay', Broker_Pay_Term: 'Quick Pay' };
+const QP_ELIG = { eligible: true, reason: null, kind: 'quickpay', terms: 'Quick Pay', request: null };
+const WAIVE_REQ = Object.assign({}, REQ, { payer: 'broker', terms_on_file: 'Quick Pay', qp_fee_pct: '4',
+  request_type: 'qp_fee', carrier_fee_pct: '0', carrier_fee: '0.00' });
+
+test('quickpay eligible shows Waive QP fee', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG });
+  assert.match($(w, 'pf-open').textContent, /Waive QP fee/);
+  assert.doesNotMatch($(w, 'pf-open').textContent, /Pay carrier faster/);
+});
+
+test('waive popup sends payer broker', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG });
+  w.__calls.length = 0;
+  click(w, $(w, 'pf-open'));
+  await flush();
+  assert.ok(w.__calls.some((c) => /\/pay-change\/context/.test(c.url)), 'context refetched on open');
+  assert.match($(w, 'pf-modal').textContent, /Waive the quick pay fee on this load/);
+  assert.match($(w, 'pf-modal').textContent, /\$40\.00/);
+  assert.equal($(w, 'pf-send').disabled, false);
+  $(w, 'pf-note').value = 'Good carrier';
+  w.__calls.length = 0;
+  click(w, $(w, 'pf-send'));
+  await flush();
+  const c = w.__calls.find((x) => /\/pay-change\/requests$/.test(x.url));
+  assert.deepEqual(JSON.parse(c.opts.body), { email: 'b@x.com', record_id: '4100000000000000001', payer: 'broker', broker_note: 'Good carrier' });
+});
+
+test('waive short reserve disables send', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG, ctx: Object.assign({}, CTX, { reserve: { cash: 5, status: 'ok' } }) });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  assert.equal($(w, 'pf-send').disabled, true);
+});
+
+test('waive pill and timeline', async () => {
+  const w = await open(Object.assign({}, QP_ROW, { pay_change: { status: 'requested', payer: 'broker', request_type: 'qp_fee', carrier_fee_pct: '0' } }), {
+    elig: { eligible: false, reason: 'already_requested', kind: 'quickpay', terms: 'Quick Pay', request: WAIVE_REQ } });
+  assert.match(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'requested', payer: 'broker', request_type: 'qp_fee', carrier_fee_pct: '0' } }), 0), /⚡ QP fee waived: Requested/);
+  assert.match($(w, 'panel').querySelector('.timeline').textContent, /QP fee waived: broker covers 2% from reserve/);
+});
+
+test('waive request label, changed fee and staff slot', async () => {
+  const w = await open(Object.assign({}, QP_ROW, { pay_change: { status: 'requested' } }), { staff: true,
+    elig: { eligible: false, reason: 'already_requested', kind: 'quickpay', terms: 'Quick Pay', request: WAIVE_REQ } });
+  assert.match($(w, 'pf-slot').textContent, /QP fee waived request \(OperFi staff\)/);
+  assert.match(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'applied', request_type: 'qp_fee', carrier_fee_pct: '3.5' } }), 0), /⚡ QP fee changed to 3\.5%: Applied/);
+});
+
+test('waive via POST response paints the pill', async () => {
+  const w = await open(QP_ROW, { elig: QP_ELIG, post: { status: 201, body: { ok: true, request: WAIVE_REQ } } });
+  click(w, $(w, 'pf-open')); await flush();
+  click(w, $(w, 'pf-send')); await flush();
+  assert.match(w.document.body.textContent, /QP fee waived: Requested/);
+});
+
+test('old request renders as before', async () => {
+  const w = await open({ pay_change: { status: 'requested', payer: 'carrier', request_type: null, carrier_fee_pct: null } }, { elig: PENDING_ELIG, staff: true });
+  assert.match(w.rowHtml(Object.assign({}, ROW, { pay_change: { status: 'requested', payer: 'carrier', request_type: null, carrier_fee_pct: null } }), 0), /⚡ Pay faster: Requested/);
+  assert.match($(w, 'panel').querySelector('.timeline').textContent, /Pay change requested: Standard Net 30 → Quick Pay, carrier pays 4%/);
+  assert.match($(w, 'pf-slot').textContent, /Pay faster request \(OperFi staff\)/);
+  assert.match($(w, 'pf-slot').textContent, /Standard Net 30 → Quick Pay, carrier pays 4%/);
+});

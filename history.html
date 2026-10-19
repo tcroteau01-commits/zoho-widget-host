@@ -1682,7 +1682,7 @@ function payFasterTimelineItems(r) {
   var title = qpFee ? pfRequestLabel(q) + ': ' + pfQpFeeDetail(q)
     : 'Pay change requested: ' + (q.terms_on_file || 'Current terms') + ' → Quick Pay, ' + payer + ' pays' + (pct ? ' ' + pct + '%' : '');
   var out = [{ state: 'done', time: pfWhen(q.requested_at), title: title }];
-  var noun = qpFee ? pfRequestLabel(q) : 'Pay change';
+  var noun = !qpFee ? 'Pay change' : (pfCarrierPct(q) === '0' ? 'QP fee waiver' : 'QP fee change');
   if (q.status === 'applied') out.push({ state: 'done', title: noun + ' applied', time: pfWhen(q.resolved_at) });
   else if (q.status === 'declined') out.push({ state: 'problem', title: noun + ' declined', time: pfWhen(q.resolved_at) });
   return out;

@@ -445,6 +445,18 @@ test('waive short reserve disables send', async () => {
   click(w, $(w, 'pf-open'));
   await flush();
   assert.equal($(w, 'pf-send').disabled, true);
+  assert.match($(w, 'pf-modal').textContent, /Your reserve balance \(\$5\.00\) doesn't cover the \$40\.00 fee\./);
+});
+
+test('waive resolved timeline titles', async () => {
+  const titles = (w) => [...$(w, 'panel').querySelectorAll('.timeline-title')].map((e) => e.textContent);
+  const el = (req) => ({ eligible: false, reason: 'already_requested', kind: 'quickpay', terms: 'Quick Pay', request: req });
+  let w = await open(QP_ROW, { elig: el(Object.assign({}, WAIVE_REQ, { status: 'applied', resolved_at: '2026-10-17T16:00:00Z' })) });
+  assert.ok(titles(w).includes('QP fee waiver applied'), titles(w).join('|'));
+  w = await open(QP_ROW, { elig: el(Object.assign({}, WAIVE_REQ, { status: 'declined', resolved_at: '2026-10-17T16:00:00Z' })) });
+  assert.ok(titles(w).includes('QP fee waiver declined'));
+  w = await open(QP_ROW, { elig: el(Object.assign({}, WAIVE_REQ, { carrier_fee_pct: '3.5', status: 'applied' })) });
+  assert.ok(titles(w).includes('QP fee change applied'));
 });
 
 test('waive pill and timeline', async () => {

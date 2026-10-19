@@ -1601,7 +1601,9 @@ function pfLoadQueue() {
     .catch(function() { if (seq === _pfQueueSeq) _pfQueue = null; })
     .then(function() {
       if (seq !== _pfQueueSeq) return;
+      var wasQueue = currentStatus === PF_QUEUE_KEY;
       buildChips();          // adds (or drops) the chip now that the answer is known
+      if (wasQueue && currentStatus !== PF_QUEUE_KEY) applyFilters();  // chip gone: un-filter
       pfRenderQueueNote();
     });
 }

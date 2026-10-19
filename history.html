@@ -1552,6 +1552,20 @@ function pfImpersonating() {
   catch (e) { return false; }
 }
 function pfOpenRecord() { return openIndex >= 0 ? filteredRecords[openIndex] : null; }
+// PAYCHGACCESS1: per-client access from the context. Only a real true counts (missing = no access).
+function pfAccess() { return !!(_pfCtx && _pfCtx.access && _pfCtx.access.pay_faster === true); }
+function pfFeeAccess() { return pfAccess() && _pfCtx.access.fee_adjust === true; }
+// Server truth: an OperFi admin session that is impersonating. Staff entry skips the boxes and training.
+function pfStaffEntry() { return !!(_pfCtx && _pfCtx.staff === true); }
+function pfTrained() { return pfStaffEntry() || _pfCtx.trained !== false; }
+// Who may open the request popup for this eligibility. Staff: any eligible load. Client: the
+// Pay Faster box, not impersonating. A quick pay load needs the picker or the waive flag.
+function pfCanEnter(d) {
+  if (!pfOn() || !d || !d.eligible) return false;
+  if (!pfStaffEntry() && (!pfAccess() || pfImpersonating())) return false;
+  if (d.kind === 'quickpay' && !pfPickMode(d.kind) && _pfCtx.waive_enabled !== true) return false;
+  return true;
+}
 
 var PF_PILL = { requested: 'Requested', applied: 'Applied', declined: 'Declined' };
 // Carrier pct for a request (same rule as the API): carrier_fee_pct, else qp_fee_pct when the
@@ -1705,7 +1719,9 @@ function payFasterTimelineItems(r) {
   var q = d && d.request;
   if (!q) return [];
   var qpFee = q.request_type === 'qp_fee';
-  var title = qpFee ? pfQpFeeLine(q) : 'Pay change requested: ' + pfPayFasterLine(q);
+  var title = q.entered_by === 'staff'
+    ? 'Requested by OperFi · ' + (qpFee ? pfQpFeeLine(q) : pfPayFasterLine(q))
+    : qpFee ? pfQpFeeLine(q) : 'Pay change requested: ' + pfPayFasterLine(q);
   var out = [{ state: 'done', time: pfWhen(q.requested_at), title: title }];
   var noun = !qpFee ? 'Pay change' : (pfCarrierPct(q) === '0' ? 'QP fee waiver' : 'QP fee change');
   if (q.status === 'applied') out.push({ state: 'done', title: noun + ' applied', time: pfWhen(q.resolved_at) });
@@ -1723,10 +1739,11 @@ function payFasterSlotHtml(r) {
   var d = pfCurrentElig(r);
   if (!d) return '';
   var h = '';
-  if (d.eligible && !pfImpersonating()) {
-    var locked = _pfCtx.trained === false;
+  if (pfCanEnter(d)) {
+    var locked = !pfTrained();
     h += '<button class="pf-open" id="pf-open"' + (locked ? ' disabled' : '') + '>⚡ ' +
-      (d.kind === 'factored' ? 'Pay the factoring company faster' : d.kind === 'quickpay' ? (pfPickMode(d.kind) ? 'Change QP fee' : 'Waive QP fee') : 'Pay carrier faster') + '</button>';
+      (d.kind === 'factored' ? 'Pay the factoring company faster' : d.kind === 'quickpay' ? (pfPickMode(d.kind) ? 'Change QP fee' : 'Waive QP fee') : 'Pay carrier faster') +
+      (pfStaffEntry() ? ' (for client)' : '') + '</button>';
     if (locked) h += pfVideoLink();
   }
   var q = d.request;
@@ -1757,8 +1774,10 @@ function pfParseRate(r) { return parseMoney(r.Carrier_Rate); }
 
 // PAYCHG3: the broker picks the carrier's fee on this load (flag from the API context).
 // On a quick pay record the picker supersedes the waive (0 is the waive).
+// PAYCHGACCESS1: a client also needs QP Fee Adjust Access; staff get it whenever the flag is on.
 function pfPickMode(kind) {
-  return !!(_pfCtx && _pfCtx.fee_pick_enabled && (kind === 'net30' || kind === 'factored' || kind === 'quickpay'));
+  return !!(_pfCtx && _pfCtx.fee_pick_enabled && (pfStaffEntry() || pfFeeAccess()) &&
+    (kind === 'net30' || kind === 'factored' || kind === 'quickpay'));
 }
 function pfDefaultFee() {
   var p = window.PayFaster.parseFeePct(_pfCtx.qp_fee_pct);
@@ -1766,7 +1785,7 @@ function pfDefaultFee() {
 }
 function pfPickArgs(pop, rate) {
   return { kind: pop.elig.kind, rate: rate, pct: pop.fee, savedPct: _pfCtx.qp_fee_pct, reserve: _pfCtx.reserve,
-    factorName: window.PayFaster.factorNameForTerms(pop.elig.terms), trained: _pfCtx.trained !== false,
+    factorName: window.PayFaster.factorNameForTerms(pop.elig.terms), trained: pfTrained(),
     videoId: _pfCtx.training_video_id };
 }
 // The picked value spends reserve: re-read the balance once, then re-render against it.
@@ -1783,7 +1802,7 @@ function pfMaybeRefetchFee() {
 
 function pfOpenPopup(r) {
   var d = pfCurrentElig(r);
-  if (!r || !d || !d.eligible || !pfOn() || pfImpersonating()) return;
+  if (!r || !pfCanEnter(d)) return;
   pfClosePopup();
   var pick = pfPickMode(d.kind);
   var waive = d.kind === 'quickpay' && !pick;
@@ -1793,7 +1812,10 @@ function pfOpenPopup(r) {
   var m = document.createElement('div');
   m.className = 'pf-modal-backdrop';
   m.id = 'pf-modal';
+  var who = pfStaffEntry() ? (brokerName(r) || 'this client') : '';
   m.innerHTML = '<div class="pf-modal" role="dialog" aria-modal="true">' +
+    (who ? '<div class="pf-msg pf-info pf-staff-for">You\'re entering this for ' + esc(who) +
+      '. The client will see it on the load.</div>' : '') +
     '<div class="pf-modal-h">' + (factored ? 'Pay the factoring company faster' : pick && d.kind === 'quickpay' ? 'Change the QP fee' : waive ? 'Waive the QP fee' : 'Pay carrier faster') + '</div>' +
     '<div class="pf-modal-sub">Load# ' + esc(r.Load_Rate_Confirmation_Number || 'n/a') + ' · ' + esc(displayCarrier(r)) +
       ' · ' + fmtMoney(pfParseRate(r)) + ' · this load only</div>' +
@@ -1867,7 +1889,7 @@ function pfRenderOpts() {
   }
   if (_pfPop.waive) {
     var ws = PF.waiveState({ rate: rate, reserve: _pfCtx.reserve, factorName: PF.factorNameForTerms(d.terms), kind: 'quickpay',
-      trained: _pfCtx.trained !== false, videoId: _pfCtx.training_video_id });
+      trained: pfTrained(), videoId: _pfCtx.training_video_id });
     box.innerHTML = ws.html;
     var wsend = document.getElementById('pf-send');
     if (wsend) wsend.disabled = ws.short || _pfPop.sending;
@@ -1881,7 +1903,7 @@ function pfRenderOpts() {
   }
   box.innerHTML = PF.optionsHtml({ kind: PF.kindForTerms(d.terms), payer: _pfPop.payer, rate: rate,
     feePct: _pfCtx.qp_fee_pct, reserve: _pfCtx.reserve, factorName: PF.factorNameForTerms(d.terms),
-    trained: _pfCtx.trained !== false, videoId: _pfCtx.training_video_id });
+    trained: pfTrained(), videoId: _pfCtx.training_video_id });
   if (!_pfPop.payer) {
     Array.prototype.forEach.call(box.querySelectorAll('input[name="pf-payer"]'), function(x) {
       x.checked = false; if (x.parentNode) x.parentNode.classList.remove('pf-sel');

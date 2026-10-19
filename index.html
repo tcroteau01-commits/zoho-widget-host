@@ -1094,12 +1094,16 @@ function _pfRate() {
   return (isFinite(n) && n > 0) ? n : 0;
 }
 
+// PAYCHGACCESS1: per-client access from the API context. Missing key = no access (fail closed).
+function _pfAccess() { return !!(_pf.ctx && _pf.ctx.access && _pf.ctx.access.pay_faster === true); }
+function _pfFeeAccess() { return _pfAccess() && _pf.ctx.access.fee_adjust === true; }
+
 function _pfPct() { return _pf.ctx ? _pf.ctx.qp_fee_pct : null; }
 
 // PAYCHG3: the broker picks the carrier's fee on this load (flag from the API context).
 // The picker replaces the payer radios and takes precedence over the waive (the waive is the 0 value).
 function _pfPickMode() {
-  return !!(_pf.ctx && _pf.ctx.fee_pick_enabled &&
+  return !!(_pf.ctx && _pf.ctx.fee_pick_enabled && _pfFeeAccess() &&
     (_pf.kind === 'net30' || _pf.kind === 'factored' || _pf.kind === 'quickpay'));
 }
 function _pfDefaultFee() {
@@ -1129,7 +1133,7 @@ function _pfMaybeRefetchFee() {
 
 // PAYCHG2: a Quick Pay carrier can have the fee waived on this load (flag from the API context).
 function _pfWaiveMode() {
-  return !!(_pf.ctx && _pf.ctx.waive_enabled && _pf.kind === 'quickpay') && !_pfPickMode();
+  return !!(_pfAccess() && _pf.ctx.waive_enabled && _pf.kind === 'quickpay') && !_pfPickMode();
 }
 function _pfWaiveArgs(rate) {
   return { rate: rate, reserve: _pf.ctx.reserve, factorName: _pf.factor, kind: 'quickpay',
@@ -1160,7 +1164,7 @@ function renderPayFaster() {
   var sum = document.getElementById('sum-pay-faster');
   var noteWrap = document.getElementById('pf-note-wrap');
   var PF = window.PayFaster;
-  var on = !!(PF && _pf.ctx);
+  var on = !!(PF && _pfAccess());
   var kind = on ? _pf.kind : null;
   var rate = _pfRate();
   var factored = kind === 'factored';
@@ -1235,8 +1239,8 @@ function renderPayFaster() {
 
   // Summary card: Carrier Payment line on every load, split for quick pay / toggled loads.
   if (sum) {
-    if (!on) { sum.innerHTML = ''; }
-    else if (!kind) {
+    if (!PF || !_pf.ctx) { sum.innerHTML = ''; }
+    else if (!on || !kind) {
       var found = _pfFoundCarrier();
       sum.innerHTML = (found && found.payment_terms)
         ? '<div class="pf-sl">Carrier Payment<b>' + esc(found.payment_terms) + '</b></div>' : '';
@@ -1257,7 +1261,7 @@ function renderPayFaster() {
 
 // Margin effect of the one-off, or null when none applies.
 function _pfMarginEffect() {
-  if (!window.PayFaster || !_pf.ctx) return null;
+  if (!window.PayFaster || !_pfAccess()) return null;
   if (_pfPickApplies()) {
     var pr = _pfRate();
     var pf = pr ? window.PayFaster.computeFeesAt(pr, _pf.fee) : { error: 'bad_rate' };
@@ -1277,7 +1281,7 @@ function _pfMarginEffect() {
 
 // True while the toggle is on but the request can't be sent yet (no payer, or no rate).
 function payFasterBlocksSubmit() {
-  if (!_pf.ctx || !_pf.toggled) return false;
+  if (!_pfAccess() || !_pf.toggled) return false;
   if (_pfPickMode()) return !_pfRate() || window.PayFaster.feePickerHtml(_pfPickArgs(_pfRate())).blocked;
   if (!_pf.payer || !_pfRate()) return true;
   if (_pfWaiveMode()) return window.PayFaster.waiveState(_pfWaiveArgs(_pfRate())).short;
@@ -1286,12 +1290,12 @@ function payFasterBlocksSubmit() {
 
 // The pay_faster object for /funding-finalize, or null. Never has a missing payer.
 function payFasterPayload() {
-  if (_pf.ctx && _pf.toggled && _pfPickMode()) {
+  if (_pfAccess() && _pf.toggled && _pfPickMode()) {
     if (payFasterBlocksSubmit()) return null;
     var pn = document.getElementById('pf-note');
     return { carrier_fee_pct: String(_pf.fee).trim(), broker_note: pn ? pn.value.trim() : '' };
   }
-  if (!_pf.ctx || !_pf.toggled || !_pf.payer || !_pfRate()) return null;
+  if (!_pfAccess() || !_pf.toggled || !_pf.payer || !_pfRate()) return null;
   var n = document.getElementById('pf-note');
   return { payer: _pf.payer, broker_note: n ? n.value.trim() : '' };
 }

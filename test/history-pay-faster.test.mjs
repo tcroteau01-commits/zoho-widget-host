@@ -173,6 +173,23 @@ test('other errors map to copy', async () => {
   assert.match($(w, 'pf-error').textContent, /We couldn't send the request\. Try again or contact OperFi\./);
 });
 
+// PAYCHGPICK2: clear refusal messages instead of the generic error.
+test('refusal codes map to plain copy in the popup', async () => {
+  const cases = [
+    [403, 'not_enabled_for_account', "Pay Faster isn't turned on for your account. Contact OperFi."],
+    [403, 'fee_adjust_not_enabled', "Changing the quick pay fee isn't turned on for your account. Pick 'I'll cover the fee' or your standard fee."],
+    [400, 'bad_fee_pct', 'Pick a fee of 0% to 5%.'],
+    [400, 'no_change', "That's already this carrier's quick pay fee. Nothing to change."],
+    [409, 'terms_not_eligible', "This carrier's payment terms can't be changed here."],
+    [409, 'carrier_paid', 'This carrier has already been paid.']
+  ];
+  for (const [status, code, copy] of cases) {
+    const w = await openPopup({}, { post: { status, body: { error: code } } });
+    pick(w, 'carrier'); await flush(); click(w, $(w, 'pf-send')); await flush();
+    assert.equal($(w, 'pf-error').textContent, copy, code);
+  }
+});
+
 test('broker radio disabled when reserve is short', async () => {
   const w = await openPopup({}, { ctx: Object.assign({}, CTX, { reserve: { cash: 5, status: 'ok' } }) });
   assert.equal($(w, 'pf-payer-broker').disabled, true);
@@ -180,8 +197,10 @@ test('broker radio disabled when reserve is short', async () => {
 
 test('popup amounts use the formatted carrier rate', async () => {
   const w = await openPopup();
-  assert.match($(w, 'pf-modal').textContent, /\$80\.00/);
-  assert.match($(w, 'pf-modal').textContent, /\$1,920\.00/);
+  assert.match($(w, 'pf-modal').textContent, /Who pays the quick pay fee\?/);
+  pick(w, 'carrier'); await flush();
+  assert.match($(w, 'pf-modal').textContent, /\$80\.00 deducted from the carrier's payment/);
+  assert.match($(w, 'pf-modal').textContent, /Carrier receives \$1,920\.00/);
 });
 
 test('timeline entries have no dates when flag false', async () => {
@@ -435,8 +454,14 @@ test('waive popup sends payer broker', async () => {
   click(w, $(w, 'pf-open'));
   await flush();
   assert.ok(w.__calls.some((c) => /\/pay-change\/context/.test(c.url)), 'context refetched on open');
-  assert.match($(w, 'pf-modal').textContent, /Waive the quick pay fee on this load/);
-  assert.match($(w, 'pf-modal').textContent, /\$40\.00/);
+  // PAYCHGPICK2: only "I'll cover the fee" is offered, nothing pre-selected.
+  assert.ok($(w, 'pf-payer-broker'));
+  assert.ok(!$(w, 'pf-payer-carrier'));
+  assert.equal($(w, 'pf-payer-broker').checked, false);
+  assert.equal($(w, 'pf-send').disabled, true);
+  pick(w, 'broker'); await flush();
+  assert.match($(w, 'pf-modal').textContent, /Carrier receives the full \$2,000\.00/);
+  assert.match($(w, 'pf-modal').textContent, /\$40\.00 \(OperFi's 2%\) is charged to your reserve/);
   assert.equal($(w, 'pf-send').disabled, false);
   $(w, 'pf-note').value = 'Good carrier';
   w.__calls.length = 0;
@@ -451,6 +476,7 @@ test('waive short reserve disables send', async () => {
   click(w, $(w, 'pf-open'));
   await flush();
   assert.equal($(w, 'pf-send').disabled, true);
+  assert.equal($(w, 'pf-payer-broker').disabled, true);
   assert.match($(w, 'pf-modal').textContent, /Your reserve balance \(\$5\.00\) doesn't cover the \$40\.00 fee\./);
 });
 
@@ -482,6 +508,7 @@ test('waive request label, changed fee and staff slot', async () => {
 test('waive via POST response paints the pill', async () => {
   const w = await open(QP_ROW, { elig: QP_ELIG, post: { status: 201, body: { ok: true, request: WAIVE_REQ } } });
   click(w, $(w, 'pf-open')); await flush();
+  pick(w, 'broker'); await flush();
   click(w, $(w, 'pf-send')); await flush();
   assert.match(w.document.body.textContent, /QP fee waived: Requested/);
 });
@@ -571,10 +598,11 @@ test('broker (non-staff) never sees the math box', async () => {
 // ---- PAYCHG3 Task 8: fee picker on Submission History ----
 const PICK_CTX = Object.assign({}, CTX, { fee_pick_enabled: true, waive_enabled: true });
 const posts = (w) => w.__calls.filter((c) => /\/pay-change\/requests$/.test(c.url) && c.opts.method === 'POST');
+// PAYCHGPICK2: the fee is a <select> under "The carrier pays"; a pick fires change.
 function setFee(w, v) {
   const f = $(w, 'pf-fee');
   f.value = v;
-  f.dispatchEvent(new w.Event('input', { bubbles: true }));
+  f.dispatchEvent(new w.Event('change', { bubbles: true }));
 }
 
 test('quickpay Change QP fee label', async () => {
@@ -591,13 +619,17 @@ test('popup picker sends carrier_fee_pct', async () => {
   const w = await open({}, { ctx: PICK_CTX });
   click(w, $(w, 'pf-open'));
   await flush();
-  assert.ok($(w, 'pf-fee'), 'picker shown');
-  assert.ok(!w.document.querySelector('input[name="pf-payer"]'), 'no payer radios');
+  assert.ok(w.document.querySelector('input[name="pf-payer"]'), 'who pays radios');
+  assert.ok(!$(w, 'pf-fee'), 'no select until The carrier pays is picked');
+  assert.equal($(w, 'pf-send').disabled, true, 'nothing pre-selected');
+  pick(w, 'carrier'); await flush();
+  assert.equal($(w, 'pf-fee').tagName, 'SELECT');
   assert.equal($(w, 'pf-fee').value, '4', 'defaults to the saved fee');
   assert.equal($(w, 'pf-send').disabled, false);
   setFee(w, '3');
   await flush();
-  assert.equal($(w, 'pf-fee'), w.document.getElementById('pf-fee'));
+  assert.equal($(w, 'pf-fee').value, '3');
+  assert.match($(w, 'pf-modal').textContent, /\$60\.00 deducted from the carrier's payment/);
   $(w, 'pf-note').value = 'Hi';
   w.__calls.length = 0;
   click(w, $(w, 'pf-send'));
@@ -607,22 +639,41 @@ test('popup picker sends carrier_fee_pct', async () => {
   assert.deepEqual(JSON.parse(c[0].opts.body), { email: 'b@x.com', record_id: '4100000000000000001', carrier_fee_pct: '3', broker_note: 'Hi' });
 });
 
-test('popup picker keeps the input element while typing', async () => {
+test('popup I will cover the fee sends carrier_fee_pct 0 with fee adjust', async () => {
   const w = await open({}, { ctx: PICK_CTX });
   click(w, $(w, 'pf-open'));
   await flush();
-  const el = $(w, 'pf-fee');
-  setFee(w, '2.5');
-  assert.strictEqual($(w, 'pf-fee'), el);
-  assert.match($(w, 'pf-modal').textContent, /Carrier pays 2\.5%/);
+  pick(w, 'broker'); await flush();
+  assert.ok(!$(w, 'pf-fee'));
+  assert.equal($(w, 'pf-send').disabled, false);
+  w.__calls.length = 0;
+  click(w, $(w, 'pf-send'));
+  await flush();
+  assert.deepEqual(JSON.parse(posts(w)[0].opts.body), { email: 'b@x.com', record_id: '4100000000000000001', carrier_fee_pct: '0', broker_note: '' });
+});
+
+test('popup fee select offers whole numbers and the saved fee', async () => {
+  const w = await open({}, { ctx: Object.assign({}, PICK_CTX, { qp_fee_pct: '3.5' }) });
+  click(w, $(w, 'pf-open'));
+  await flush();
+  pick(w, 'carrier'); await flush();
+  const opts = [...$(w, 'pf-fee').options].map((o) => o.value + '|' + o.textContent);
+  assert.deepEqual(opts, ['5|5%', '4|4%', '3.5|3.5% (your standard)', '3|3%', '2|2%', '1|1%']);
+  assert.equal($(w, 'pf-fee').value, '3.5');
+  setFee(w, '1'); await flush();
+  assert.match($(w, 'pf-modal').textContent, /You cover the other 1% \(\$20\.00\) from your reserve/);
 });
 
 test('popup picker validity', async () => {
   const w = await open({}, { ctx: PICK_CTX });
   click(w, $(w, 'pf-open'));
   await flush();
+  pick(w, 'carrier'); await flush();
   w.__calls.length = 0;
-  for (const v of ['', 'abc', '5.1', '-1']) {
+  for (const v of ['', 'abc', '5.1', '-1', '1.25', '0']) {
+    // A value the select never offers (tampered DOM): add it, pick it.
+    const o = w.document.createElement('option'); o.value = v; o.textContent = v;
+    $(w, 'pf-fee').appendChild(o);
     setFee(w, v);
     await flush();
     assert.equal($(w, 'pf-send').disabled, true, 'send disabled for "' + v + '"');
@@ -640,24 +691,30 @@ test('popup picker quickpay at the saved fee is blocked, 0 is allowed', async ()
   click(w, $(w, 'pf-open'));
   await flush();
   assert.match($(w, 'pf-modal').textContent, /Change the QP fee/);
+  pick(w, 'carrier'); await flush();
   assert.equal($(w, 'pf-fee').value, '4');
   assert.equal($(w, 'pf-send').disabled, true, 'saved fee on quickpay is no_change');
-  setFee(w, '0');
-  await flush();
+  assert.match($(w, 'pf-modal').textContent, /That's your saved quick pay fee/);
+  setFee(w, '3'); await flush();
+  assert.equal($(w, 'pf-send').disabled, false);
+  pick(w, 'broker'); await flush();
   assert.equal($(w, 'pf-send').disabled, false);
   w.__calls.length = 0;
   click(w, $(w, 'pf-send'));
   await flush();
   assert.equal(JSON.parse(posts(w)[0].opts.body).carrier_fee_pct, '0');
+  assert.ok(!('payer' in JSON.parse(posts(w)[0].opts.body)));
 });
 
 test('popup picker refetches the reserve once when the value spends it', async () => {
   const w = await open({}, { ctx: PICK_CTX });
   click(w, $(w, 'pf-open'));
   await flush();
+  pick(w, 'carrier'); await flush();
   w.__calls.length = 0;
   setFee(w, '1'); await flush();
-  setFee(w, '0.5'); await flush();
+  setFee(w, '2'); await flush();
+  setFee(w, '1'); await flush();
   assert.equal(w.__calls.filter((c) => /\/pay-change\/context/.test(c.url)).length, 1);
 });
 
@@ -665,10 +722,12 @@ test('popup picker short reserve disables send', async () => {
   const w = await open({}, { ctx: Object.assign({}, PICK_CTX, { reserve: { cash: 5, status: 'ok' } }) });
   click(w, $(w, 'pf-open'));
   await flush();
-  setFee(w, '0');
-  await flush();
-  assert.equal($(w, 'pf-send').disabled, true);
+  assert.equal($(w, 'pf-payer-broker').disabled, true);
   assert.match($(w, 'pf-modal').textContent, /Your reserve balance \(\$5\.00\) doesn't cover the \$40\.00 fee\./);
+  pick(w, 'carrier'); await flush();
+  setFee(w, '1'); await flush();
+  assert.equal($(w, 'pf-send').disabled, true);
+  assert.match($(w, 'pf-modal').textContent, /Your reserve balance \(\$5\.00\) doesn't cover the \$20\.00 fee\./);
 });
 
 test('split request timeline wording', async () => {
@@ -755,6 +814,7 @@ test('staff impersonating sees for-client button and banner', async () => {
   w = await open(QP_ROW, { staff: true, imp: IMP, ctx: Object.assign({}, STAFF_CTX, { fee_pick_enabled: true }), elig: QP_ELIG });
   assert.equal($(w, 'pf-open').textContent, '⚡ Change QP fee (for client)');
   click(w, $(w, 'pf-open')); await flush();
+  pick(w, 'carrier'); await flush();
   assert.ok($(w, 'pf-fee'), 'staff get the picker when the flag is on, whatever the boxes');
 
   w = await open({}, { staff: true, imp: IMP, ctx: Object.assign({}, CTX, { staff: false }) });
@@ -802,11 +862,14 @@ test('client without fee_adjust gets radios not picker', async () => {
   click(w, $(w, 'pf-open')); await flush();
   assert.ok(!$(w, 'pf-fee'), 'no picker');
   assert.ok(w.document.querySelector('input[name="pf-payer"]'), 'payer radios');
+  pick(w, 'carrier'); await flush();
+  assert.ok(!$(w, 'pf-fee'), 'no picker under The carrier pays either');
   w = await open(QP_ROW, { ctx, elig: QP_ELIG });
   assert.equal($(w, 'pf-open').textContent, '⚡ Waive QP fee');
   click(w, $(w, 'pf-open')); await flush();
   assert.ok(!$(w, 'pf-fee'));
-  assert.match($(w, 'pf-modal').textContent, /Waive the quick pay fee on this load/);
+  assert.ok(!$(w, 'pf-payer-carrier'), 'quick pay without fee adjust: only I will cover the fee');
+  assert.ok($(w, 'pf-payer-broker'));
 });
 
 test('quickpay without fee_adjust and without waive_enabled shows no button', async () => {

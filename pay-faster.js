@@ -10,20 +10,21 @@
  *   PayFaster.computeFees(rate, pct, payer)  -> {carrierFee, feeTotal, brokerShare, operfiShare, reserveCharge, payeeReceives} | {error}
  *   PayFaster.marginEffect(fees)             -> number (fees.brokerShare; a second arg is ignored)
  *   PayFaster.factorNameForTerms(terms)      -> "Example Capital" | "factor on file" | ""
- *   PayFaster.waiveState({rate, reserve, factorName, kind, trained, videoId}) -> {html, short}
- *       short is true when the reserve can't cover OperFi's 2%; pages disable Send/Submit on it.
- *   PayFaster.waiveHtml(a)                   -> string (waiveState(a).html)
  *   PayFaster.money(n)                       -> "$1,920.00"
- *   PayFaster.optionsHtml({kind, payer, rate, feePct, reserve, factorName, trained, videoId})
- *       rate is the carrier rate. fees may instead be passed as {carrier, broker} computeFees results.
- *       Radios: name="pf-payer", values "carrier" / "broker".
+ *   PayFaster.whoPaysState({kind, rate, payer, feeAdjust, pct, savedPct, reserve, factorName, trained, videoId})
+ *       -> {html, blocked, payer}. PAYCHGPICK2: the explicit "Who pays the quick pay fee?" choice.
+ *       Radios name="pf-payer", values "carrier" / "broker" (nothing pre-selected). Under "The carrier pays",
+ *       with feeAdjust a <select id="pf-fee"> of feeChoices(savedPct); without it the saved fee applies.
+ *       A quick pay carrier without feeAdjust offers only "I'll cover the fee" (the waive).
+ *       payer comes back null when the pick is not available (reserve short, option not offered).
+ *       blocked: no payer, no rate, invalid fee, reserve short, or quickpay at the saved fee.
  *   PayFaster.summaryHtml({kind, toggled, payer, fees, feePct, factorName, carrierRate, pickPct})
  *       pickPct (PAYCHG3): the picked carrier fee. When set, fees come from computeFeesAt and
  *       payer from its result, so a split value shows the carrier part, the reserve part and OperFi's 2%.
- *   PayFaster.feeValid(v, savedPct)          -> boolean: v equals the saved fee, or 0..5 in 0.25 steps
- *   PayFaster.feePickerHtml({kind, rate, pct, savedPct, reserve, factorName, trained, videoId}) -> {html, blocked}
- *       Input id="pf-fee"; the live lines sit in .pf-fee-out so a page can refresh them without
- *       replacing the input. blocked: invalid value, reserve short, no rate, or quickpay at the saved fee.
+ *   PayFaster.feeValid(v, savedPct)          -> boolean: v equals the saved fee, or a whole number 0..5
+ *   PayFaster.feeChoices(savedPct)           -> [{value, label}] 5..1 plus the saved fee ("4% (your standard)")
+ *   PayFaster.defaultFee(savedPct)           -> the saved fee when >= 2, else "2"
+ *   PayFaster.refusalMessage(code)           -> plain copy for an API refusal code, or null (use the generic)
  *   PayFaster.injectStyles()                 -> adds the .pf-* styles once
  *
  * Mirrors pay_change_math.py in operfi-broker-api. Money is integer cents, half-up per line.
@@ -141,16 +142,6 @@
     return String(Math.round(p * 100) / 100);
   }
 
-  function pairFor(a) {
-    var fp = a.fees || {};
-    var carrier = fp.carrier, broker = fp.broker;
-    if (a.rate != null) {
-      if (!carrier) carrier = computeFees(a.rate, a.feePct, 'carrier');
-      if (!broker) broker = computeFees(a.rate, a.feePct, 'broker');
-    }
-    return { carrier: carrier || { error: 'bad_rate' }, broker: broker || { error: 'bad_rate' } };
-  }
-
   function msg(cls, text) { return '<div class="pf-msg pf-' + cls + '">' + text + '</div>'; }
 
   function reserveMsg(reserve, charge) {
@@ -163,133 +154,147 @@
     return { html: msg('bad', "Your reserve balance (" + money(reserve.cash) + ") doesn't cover the " + money(charge) + ' fee.'), short: true };
   }
 
-  function optionsHtml(a) {
-    var kind = a.kind;
-    if (kind !== 'net30' && kind !== 'factored') return '';
-    var factored = kind === 'factored';
-    var locked = a.trained === false;
-    var fees = pairFor(a);
-    var cf = fees.carrier, bf = fees.broker;
-    var payee = factored ? (a.factorName ? esc(a.factorName) : 'The factoring company') : 'Carrier';
-    var payeeRecv = factored ? (a.factorName ? esc(a.factorName) + ' receives' : 'The factor receives') : 'Carrier receives';
-    var feeOk = !cf.error;
-    var rsv = bf.error ? { html: '', short: false } : reserveMsg(a.reserve, bf.reserveCharge);
-    var payer = a.payer === 'broker' ? 'broker' : 'carrier';
-    var pctLabel = parseFeePct(a.feePct);
-
-    var carrierDisabled = locked || !feeOk;
-    var brokerDisabled = locked || bf.error || rsv.short;
-
-    function opt(value, disabled, title, desc) {
-      return '<label class="pf-opt' + (payer === value ? ' pf-sel' : '') + (disabled ? ' pf-dis' : '') + '">' +
-        '<input type="radio" name="pf-payer" id="pf-payer-' + value + '" value="' + value + '"' +
-        (payer === value ? ' checked' : '') + (disabled ? ' disabled' : '') + '>' +
-        '<span class="pf-t"><b>' + title + '</b>' + (desc ? '<span class="pf-d">' + desc + '</span>' : '') + '</span></label>';
-    }
-
-    var carrierTitle = 'Carrier pays your standard ' + (pctLabel == null ? '' : pctText(pctLabel) + '% ') + 'QP fee';
-    var carrierDesc = feeOk
-      ? money(cf.feeTotal) + " comes out of the " + (factored ? 'factor' : "carrier") + "'s payment. " + payeeRecv + ' <b>' + money(cf.payeeReceives) + '</b>. ' +
-        'You keep ' + money(cf.brokerShare) + ' of the fee and OperFi keeps ' + money(cf.operfiShare) + '.'
-      : '';
-    var brokerDesc = bf.error ? '' :
-      payeeRecv + ' the full <b>' + money(bf.payeeReceives) + '</b>. <b>' + money(bf.reserveCharge) + '</b> is charged to your reserve. ' +
-      'You pay only OperFi\'s ' + OPERFI_SHARE_PCT + '%, not your ' + (pctLabel == null ? 'standard' : pctText(pctLabel) + '%') + '.';
-
-    var h = '<div class="pf-body' + (locked ? ' pf-locked' : '') + '">';
-    h += '<div class="pf-sub">' + (factored
-      ? 'Payment still goes to ' + (a.factorName ? esc(a.factorName) : 'the factoring company') + ', just sooner. Who pays the quick pay fee?'
-      : 'Who pays the quick pay fee?') + '</div>';
-    h += opt('carrier', carrierDisabled, carrierTitle, carrierDesc);
-    h += opt('broker', brokerDisabled, "I'll pay " + OPERFI_SHARE_PCT + '% from my reserve', brokerDesc);
-    if (!feeOk) h += msg('bad', "Your quick pay fee isn't set up. Contact OperFi.");
-    h += rsv.html;
-    if (factored) {
-      if (payer === 'carrier' && feeOk) {
-        h += msg('warn', '⚠ ' + payee + ' will receive ' + money(cf.feeTotal) + ' less than its invoice. Factors often treat this as a short pay, leave the invoice open, and come back to the carrier or to you for the ' + money(cf.feeTotal) + '. Paying faster still carries a fee.');
-      } else if (payer === 'broker') {
-        h += msg('info', "This only pays the factor sooner. It doesn't change who gets paid, and the " + OPERFI_SHARE_PCT + '% fee still applies.');
-      }
-    } else if (payer === 'carrier' && feeOk) {
-      h += msg('info', 'Let the carrier know this load pays early with a ' + money(cf.feeTotal) + ' fee deducted.');
-    }
-    if (locked) {
-      h += '<div class="pf-msg pf-info pf-lock"><a class="pf-video-link" href="#" data-video-id="' + esc(a.videoId || '') + '">Watch the 2-minute Pay Faster video to unlock</a></div>';
-    }
-    return h + '</div>';
+  function lockHtml(videoId) {
+    return '<div class="pf-msg pf-info pf-lock"><a class="pf-video-link" href="#" data-video-id="' + esc(videoId || '') + '">Watch the 2-minute Pay Faster video to unlock</a></div>';
   }
 
-  function waiveState(a) {
-    var f = computeFeesAt(a.rate, 0);
-    if (f.error || !(Number(a.rate) > 0)) return { html: msg('info', 'Enter the carrier rate to see the fee.'), short: true };
-    var who = a.factorName ? (a.factorName === 'factor on file' ? 'The factor on file' : esc(a.factorName)) : 'Carrier';
-    var rsv = reserveMsg(a.reserve, f.reserveCharge);
-    var html = msg('info', 'Waive the quick pay fee on this load. ' + who + ' receives the full ' + money(f.payeeReceives) +
-      '. You cover OperFi\'s ' + OPERFI_SHARE_PCT + '% (' + money(f.reserveCharge) + ') from your reserve.') + rsv.html;
-    return { html: html, short: rsv.short };
-  }
-
-  function waiveHtml(a) { return waiveState(a).html; }
-
-  // PAYCHG3. Mirrors the API: the saved fee is accepted as is, anything else 0..5 in 0.25 steps.
+  // PAYCHGPICK2. Mirrors the API: the saved fee is accepted as is, anything else a whole number 0..5.
   function feeValid(v, savedPct) {
     var p = parseFeePct(v);
     if (p === null || p < 0) return false;
     var saved = parseFeePct(savedPct);
     if (saved !== null && p === saved) return true;
-    if (!/^[+-]?(\d+\.?\d{0,2}|\.\d{1,2})$/.test(String(v).trim().replace(/%\s*$/, '').trim())) return false;
-    return p <= 5 && Math.abs(p * 4 - Math.round(p * 4)) < 1e-9;
+    return p <= 5 && p === Math.floor(p);
   }
 
-  function feePickerHtml(a) {
+  // The carrier-pays choices: 5..1 plus the saved fee when it is not one of them. 0 is "I'll cover the fee".
+  function feeChoices(savedPct) {
+    var saved = parseFeePct(savedPct);
+    var vals = [5, 4, 3, 2, 1];
+    if (saved !== null && saved > 0 && vals.indexOf(saved) === -1) vals.push(saved);
+    vals.sort(function (x, y) { return y - x; });
+    return vals.map(function (v) {
+      return { value: pctText(v), label: pctText(v) + '%' + (v === saved ? ' (your standard)' : '') };
+    });
+  }
+
+  // Saved fee when it is at least OperFi's 2%, else 2.
+  function defaultFee(savedPct) {
+    var saved = parseFeePct(savedPct);
+    return (saved !== null && saved >= OPERFI_SHARE_PCT) ? pctText(saved) : String(OPERFI_SHARE_PCT);
+  }
+
+  var REFUSALS = {
+    not_enabled_for_account: "Pay Faster isn't turned on for your account. Contact OperFi.",
+    fee_adjust_not_enabled: "Changing the quick pay fee isn't turned on for your account. Pick 'I'll cover the fee' or your standard fee.",
+    bad_fee_pct: 'Pick a fee of 0% to 5%.',
+    no_change: "That's already this carrier's quick pay fee. Nothing to change.",
+    terms_not_eligible: "This carrier's payment terms can't be changed here.",
+    carrier_paid: 'This carrier has already been paid.'
+  };
+  function refusalMessage(code) {
+    return Object.prototype.hasOwnProperty.call(REFUSALS, code) ? REFUSALS[code] : null;
+  }
+
+  // PAYCHGPICK2: one explicit "Who pays the quick pay fee?" choice for every open block.
+  function whoPaysState(a) {
     var kind = a.kind;
     var factored = kind === 'factored';
-    var locked = a.trained === false;
+    var quick = kind === 'quickpay';
+    var feeAdjust = !!a.feeAdjust;
     var saved = parseFeePct(a.savedPct);
-    var raw = a.pct == null ? '' : String(a.pct);
-    var input = '<label class="pf-fee-row">Quick pay fee the carrier pays on this load ' +
-      '<input type="number" id="pf-fee" min="0" max="5" step="0.25" value="' + esc(raw) + '"' + (locked ? ' disabled' : '') + '> %</label>';
-    var out = '';
-    var blocked = false;
-    if (saved === null || saved < OPERFI_SHARE_PCT) out += msg('info', "Your saved quick pay fee isn't set up. Contact OperFi.");
-    if (locked) {
-      out += '<div class="pf-msg pf-info pf-lock"><a class="pf-video-link" href="#" data-video-id="' + esc(a.videoId || '') + '">Watch the 2-minute Pay Faster video to unlock</a></div>';
-      blocked = true;
-    } else if (!feeValid(raw, a.savedPct)) {
-      out += msg('bad', 'Enter a fee from 0% to 5% in 0.25% steps.');
-      blocked = true;
-    } else {
-      var p = parseFeePct(raw);
-      var f = computeFeesAt(a.rate, p);
-      if (f.error || !(Number(a.rate) > 0)) {
-        out += '<div class="pf-sub">Enter the carrier rate to see the fee.</div>';
-        blocked = true;
-      } else {
-        var line = 'Carrier pays ' + esc(pctText(p)) + '% (' + money(f.carrierFee) + ')';
-        if (f.reserveCharge > 0) line += ' · you cover ' + esc(pctText(OPERFI_SHARE_PCT - p)) + '% (' + money(f.reserveCharge) + ') from reserve';
-        line += ' · you earn ' + money(Math.max(f.brokerShare, 0));
-        out += '<div class="pf-fee-live">' + line + '</div>';
-        if (f.reserveCharge > 0) {
-          var rsv = reserveMsg(a.reserve, f.reserveCharge);
-          out += rsv.html;
-          if (rsv.short) blocked = true;
+    var rate = Number(a.rate);
+    var hasRate = a.rate != null && a.rate !== '' && isFinite(rate) && rate > 0;
+    var fname = a.factorName ? (a.factorName === 'factor on file' ? 'The factor on file' : esc(a.factorName)) : '';
+    var payee = fname || (factored ? 'The factoring company' : 'Carrier');
+    var fromWhom = (factored || (quick && fname)) ? "factor's" : "carrier's";
+    var offerCarrier = !(quick && !feeAdjust);
+    var payer = a.payer === 'broker' ? 'broker' : (a.payer === 'carrier' && offerCarrier ? 'carrier' : null);
+
+    var sub = '<div class="pf-sub">' + (factored
+      ? 'Payment still goes to ' + (a.factorName ? esc(a.factorName) : 'the factoring company') + ', just sooner. Who pays the quick pay fee?'
+      : 'Who pays the quick pay fee?') + '</div>';
+    if (a.trained === false) {
+      return { html: '<div class="pf-body pf-locked">' + sub + lockHtml(a.videoId) + '</div>', blocked: true, payer: payer };
+    }
+    if (!hasRate) {
+      return { html: '<div class="pf-body">' + sub + msg('info', 'Enter the carrier rate to see the fee.') + '</div>', blocked: true, payer: payer };
+    }
+
+    // "I'll cover the fee": the payee gets the full rate, OperFi's 2% comes from the reserve.
+    var bf = computeFeesAt(rate, 0);
+    var brsv = reserveMsg(a.reserve, bf.reserveCharge);
+    if (brsv.short && payer === 'broker') payer = null;
+
+    // "The carrier pays": the picked fee with fee adjust, else the saved fee.
+    var carrierOk = feeAdjust || (saved !== null && saved >= OPERFI_SHARE_PCT);
+    if (payer === 'carrier' && !carrierOk) payer = null;
+    var cpct = feeAdjust ? a.pct : a.savedPct;
+
+    function opt(value, title, disabled) {
+      var on = payer === value;
+      return '<label class="pf-opt' + (on ? ' pf-sel' : '') + (disabled ? ' pf-dis' : '') + '">' +
+        '<input type="radio" name="pf-payer" id="pf-payer-' + value + '" value="' + value + '"' +
+        (on ? ' checked' : '') + (disabled ? ' disabled' : '') + '>' +
+        '<span class="pf-t"><b>' + title + '</b></span></label>';
+    }
+    function line(t) { return '<div class="pf-fee-live">' + t + '</div>'; }
+
+    var blocked = !payer;
+    var h = '<div class="pf-body">' + sub;
+    if (offerCarrier) {
+      h += opt('carrier', 'The carrier pays', !carrierOk);
+      if (!carrierOk) h += msg('bad', "Your quick pay fee isn't set up. Contact OperFi.");
+      if (payer === 'carrier' && carrierOk) {
+        var d = '';
+        if (feeAdjust) {
+          if (saved === null || saved < OPERFI_SHARE_PCT) d += msg('info', "Your saved quick pay fee isn't set up. Contact OperFi.");
+          var cur = parseFeePct(a.pct);
+          d += '<label class="pf-fee-row">Quick pay fee the carrier pays <select id="pf-fee">' +
+            feeChoices(a.savedPct).map(function (c) {
+              return '<option value="' + esc(c.value) + '"' + (cur !== null && parseFeePct(c.value) === cur ? ' selected' : '') + '>' + esc(c.label) + '</option>';
+            }).join('') + '</select></label>';
         }
-        if (kind === 'quickpay' && saved !== null && p === saved) {
-          out += msg('info', "That's your saved quick pay fee. Pick a different fee to change it on this load.");
+        var p = parseFeePct(cpct);
+        if (!feeValid(cpct, a.savedPct) || p === 0) {
+          d += msg('bad', 'Pick a fee of 1% to 5%.');
           blocked = true;
-        }
-        if (f.carrierFee > 0) {
+        } else {
+          var f = computeFeesAt(rate, p);
+          d += line(money(f.carrierFee) + ' deducted from the ' + fromWhom + ' payment');
+          d += line('You earn ' + money(Math.max(f.brokerShare, 0)) + ' · OperFi earns ' + money(f.operfiShare));
+          d += line(payee + ' receives ' + money(f.payeeReceives));
+          if (f.reserveCharge > 0) {
+            d += line('You cover the other ' + esc(pctText(OPERFI_SHARE_PCT - p)) + '% (' + money(f.reserveCharge) + ') from your reserve');
+            var rsv = reserveMsg(a.reserve, f.reserveCharge);
+            d += rsv.html;
+            if (rsv.short) blocked = true;
+          }
+          if (quick && feeAdjust && saved !== null && p === saved) {
+            d += msg('info', "That's your saved quick pay fee. Pick a different fee to change it on this load.");
+            blocked = true;
+          }
           if (factored) {
-            var payee = a.factorName ? esc(a.factorName) : 'The factoring company';
-            out += msg('warn', '⚠ ' + payee + ' will receive ' + money(f.carrierFee) + ' less than its invoice. Factors often treat this as a short pay, leave the invoice open, and come back to the carrier or to you for the ' + money(f.carrierFee) + '.');
-          } else {
-            out += msg('info', 'Let the carrier know this load pays with a ' + money(f.carrierFee) + ' fee deducted.');
+            var fp = a.factorName ? esc(a.factorName) : 'The factoring company';
+            d += msg('warn', '⚠ ' + fp + ' will receive ' + money(f.carrierFee) + ' less than its invoice. Factors often treat this as a short pay, leave the invoice open, and come back to the carrier or to you for the ' + money(f.carrierFee) + '. Paying faster still carries a fee.');
+          } else if (kind === 'net30') {
+            d += msg('info', 'Let the carrier know this load pays early with a ' + money(f.carrierFee) + ' fee deducted.');
           }
         }
+        h += '<div class="pf-detail">' + d + '</div>';
       }
     }
-    var html = '<div class="pf-body' + (locked ? ' pf-locked' : '') + '">' + input + '<div class="pf-fee-out">' + out + '</div></div>';
-    return { html: html, blocked: blocked };
+    h += opt('broker', "I'll cover the fee", brsv.short);
+    if (payer === 'broker') {
+      var bd = line(payee + ' receives the full ' + money(bf.payeeReceives));
+      bd += line(money(bf.reserveCharge) + " (OperFi's " + OPERFI_SHARE_PCT + '%) is charged to your reserve');
+      bd += brsv.html;
+      if (factored) bd += msg('info', "This only pays the factor sooner. It doesn't change who gets paid, and the " + OPERFI_SHARE_PCT + '% fee still applies.');
+      h += '<div class="pf-detail">' + bd + '</div>';
+    } else if (brsv.short) {
+      h += brsv.html;
+    }
+    return { html: h + '</div>', blocked: blocked, payer: payer };
   }
 
   function sl(label, value, cls) {
@@ -363,7 +368,7 @@
       '.pf-sl.pf-ind{padding-left:14px;font-size:12px}.pf-pos b{color:#1d6b37}.pf-neg b{color:#9b2a1c}' +
       '.pf-qph{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#6b6862;margin-top:6px}' +
       '.pf-fee-row{display:flex;align-items:center;gap:6px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;color:inherit;margin:6px 0}' +
-      '.pf-fee-row input{width:80px}.pf-fee-live{font-size:13px;margin:6px 0}' +
+      '.pf-fee-row select{width:auto}.pf-fee-live{font-size:13px;margin:4px 0}.pf-detail{margin:0 0 6px 30px}' +
       '.pf-pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px}' +
       '.pf-pill.pf-or{background:#fdf1dc;color:#9a5c00}.pf-pill.pf-gr{background:#f3f4f6;color:#374151}';
     d.head.appendChild(s);
@@ -376,13 +381,13 @@
     computeFees: computeFees,
     computeFeesAt: computeFeesAt,
     factorNameForTerms: factorNameForTerms,
-    waiveState: waiveState,
-    waiveHtml: waiveHtml,
     feeValid: feeValid,
-    feePickerHtml: feePickerHtml,
+    feeChoices: feeChoices,
+    defaultFee: defaultFee,
+    refusalMessage: refusalMessage,
+    whoPaysState: whoPaysState,
     marginEffect: marginEffect,
     money: money,
-    optionsHtml: optionsHtml,
     summaryHtml: summaryHtml,
     injectStyles: injectStyles
   };

@@ -73,6 +73,11 @@ function pickPayer(w, p) {
   const r = $(w, 'pf-payer-' + p); r.checked = true;
   r.dispatchEvent(new w.Event('change', { bubbles: true }));
 }
+// PAYCHGPICK2: the fee is a <select>; a pick fires change.
+function pickFee(w, v) {
+  const el = $(w, 'pf-fee'); el.value = v;
+  el.dispatchEvent(new w.Event('change', { bubbles: true }));
+}
 async function ready(opts) {
   const w = makeDom(opts);
   await flush();  // let the page boot (carrier list, listeners) before driving it
@@ -424,8 +429,16 @@ test('waive shows and submits payer broker', async () => {
   assert.ok(visible($(w, 'pay-faster')));
   assert.strictEqual($(w, 'pf-toggle-label').textContent, 'Waive the quick pay fee (this load only)');
   toggle(w, true);
-  assert.ok(!$(w, 'pf-payer-broker'));
-  assert.match($(w, 'pf-options').textContent, /\$40\.00/);
+  // PAYCHGPICK2: only "I'll cover the fee" is offered, and it must be picked.
+  assert.ok($(w, 'pf-payer-broker'));
+  assert.ok(!$(w, 'pf-payer-carrier'));
+  assert.strictEqual($(w, 'pf-payer-broker').checked, false);
+  assert.match($(w, 'pf-options').textContent, /Who pays the quick pay fee\?/);
+  assert.strictEqual(w.payFasterBlocksSubmit(), true);
+  assert.strictEqual(w.payFasterPayload(), null);
+  pickPayer(w, 'broker');
+  assert.match($(w, 'pf-options').textContent, /\$40\.00 \(OperFi's 2%\) is charged to your reserve/);
+  assert.strictEqual(w.payFasterBlocksSubmit(), false);
   await fillAndSubmit(w);
   await flush();
   assert.deepStrictEqual(finalizeBody(w).pay_faster, { payer: 'broker', broker_note: '' });
@@ -438,6 +451,8 @@ test('waive short reserve blocks submit', async () => {
   assert.strictEqual(w.payFasterBlocksSubmit(), false);
   toggle(w, true);
   assert.strictEqual(w.payFasterBlocksSubmit(), true);
+  assert.strictEqual($(w, 'pf-payer-broker').disabled, true);
+  assert.match($(w, 'pf-options').textContent, /doesn't cover/);
   toggle(w, false);
   assert.strictEqual(w.payFasterBlocksSubmit(), false);
 });
@@ -449,6 +464,9 @@ test('waive summary and margin', async () => {
   pickCarrier(w, 'v-qp');
   assert.match($(w, 'sum-margin').textContent, /\$540\.00/);
   toggle(w, true);
+  assert.doesNotMatch($(w, 'sum-pay-faster').textContent, /fee waived/, 'nothing picked yet');
+  assert.match($(w, 'sum-margin').textContent, /\$540\.00/);
+  pickPayer(w, 'broker');
   assert.match($(w, 'sum-pay-faster').textContent, /fee waived/);
   assert.match($(w, 'sum-margin').textContent, /\$460\.00/);
   assert.match($(w, 'sum-margin-note').textContent, /-|−/);
@@ -487,15 +505,24 @@ test('FC-QP summary names factor', async () => {
 const PCTX = Object.assign({}, CTX, { waive_enabled: true, fee_pick_enabled: true });
 const ctxCalls = (w) => w.__calls.filter((x) => x.url.indexOf('/pay-change/context') !== -1).length;
 
-test('fee picker replaces radios when fee_pick_enabled', async () => {
+test('fee adjust: who pays radios first, the fee select under The carrier pays', async () => {
   for (const vid of ['v-net', 'v-fac']) {
     const w = await ready({ ctx: PCTX });
     setVal(w, 'carrier-rate', '2000');
     pickCarrier(w, vid);
     toggle(w, true);
-    assert.ok($(w, 'pf-fee'), vid);
-    assert.ok(!$(w, 'pf-payer-carrier'));
-    assert.ok(!$(w, 'pf-payer-broker'));
+    assert.ok($(w, 'pf-payer-carrier'), vid);
+    assert.ok($(w, 'pf-payer-broker'), vid);
+    assert.strictEqual($(w, 'pf-payer-carrier').checked, false, vid);
+    assert.strictEqual($(w, 'pf-payer-broker').checked, false, vid);
+    assert.ok(!$(w, 'pf-fee'), 'no select until The carrier pays is picked');
+    assert.strictEqual(w.payFasterBlocksSubmit(), true);
+    assert.strictEqual(w.payFasterPayload(), null);
+    assert.strictEqual($(w, 'submit-btn').disabled, true);
+    pickPayer(w, 'carrier');
+    assert.strictEqual($(w, 'pf-fee').tagName, 'SELECT');
+    assert.deepStrictEqual([...$(w, 'pf-fee').options].map((o) => o.value), ['5', '4', '3', '2', '1']);
+    assert.strictEqual($(w, 'pf-fee').options[1].textContent, '4% (your standard)');
   }
 });
 
@@ -504,29 +531,35 @@ test('picker default is saved fee', async () => {
   setVal(w, 'carrier-rate', '2000');
   pickCarrier(w, 'v-net');
   toggle(w, true);
+  pickPayer(w, 'carrier');
   assert.strictEqual($(w, 'pf-fee').value, '4');
   assert.strictEqual(w.payFasterBlocksSubmit(), false);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(w.payFasterPayload())), { carrier_fee_pct: '4', broker_note: '' });
+  assert.match($(w, 'pf-options').textContent, /\$80\.00 deducted from the carrier's payment/);
+  assert.match($(w, 'pf-options').textContent, /You earn \$40\.00 · OperFi earns \$40\.00/);
+  assert.match($(w, 'pf-options').textContent, /Carrier receives \$1,920\.00/);
 });
 
-test('picker default 0 when saved unset', async () => {
+test('picker default 2 when saved unset or below 2', async () => {
   for (const pct of [null, '1.5']) {
     const w = await ready({ ctx: Object.assign({}, PCTX, { qp_fee_pct: pct }) });
     setVal(w, 'carrier-rate', '2000');
     pickCarrier(w, 'v-net');
     toggle(w, true);
-    assert.strictEqual($(w, 'pf-fee').value, '0');
+    pickPayer(w, 'carrier');
+    assert.strictEqual($(w, 'pf-fee').value, '2');
     assert.match($(w, 'pf-options').textContent, /Your saved quick pay fee isn't set up\. Contact OperFi\./);
   }
 });
 
 test('picker validity', async () => {
-  for (const v of ['', 'abc', '5.1', '-1']) {
+  for (const v of ['', 'abc', '5.1', '-1', '1.25']) {
     const w = await ready({ ctx: PCTX });
     pickCarrier(w, 'v-net');
     setVal(w, 'carrier-rate', '2000');
     toggle(w, true);
-    setVal(w, 'pf-fee', v);
+    pickPayer(w, 'carrier');
+    w.eval('_pf.fee = ' + JSON.stringify(v) + '; renderPayFaster(); refreshValidity();');
     assert.strictEqual(w.payFasterBlocksSubmit(), true, v);
     assert.strictEqual($(w, 'submit-btn').disabled, true, v);
     assert.strictEqual(w.payFasterPayload(), null, v);
@@ -544,10 +577,14 @@ test('picker 1 sends carrier_fee_pct "1"', async () => {
   setVal(w, 'customer-rate', '2500');
   setVal(w, 'carrier-rate', '2000');
   toggle(w, true);
-  const el = $(w, 'pf-fee');
-  setVal(w, 'pf-fee', '1');
-  assert.strictEqual($(w, 'pf-fee'), el, 'input element is kept while typing');
-  assert.match($(w, 'pf-options').textContent, /Carrier pays 1% \(\$20\.00\) · you cover 1% \(\$20\.00\) from reserve · you earn \$0\.00/);
+  pickPayer(w, 'carrier');
+  pickFee(w, '1');
+  assert.strictEqual($(w, 'pf-fee').value, '1');
+  const t = $(w, 'pf-options').textContent;
+  assert.match(t, /\$20\.00 deducted from the carrier's payment/);
+  assert.match(t, /You earn \$0\.00 · OperFi earns \$40\.00/);
+  assert.match(t, /Carrier receives \$1,980\.00/);
+  assert.match(t, /You cover the other 1% \(\$20\.00\) from your reserve/);
   const s = $(w, 'sum-pay-faster').textContent;
   assert.match(s, /Carrier is charged \(1%\)\$20\.00/);
   assert.match(s, /Charged to your reserve \(1%\)-\$20\.00/);
@@ -559,6 +596,36 @@ test('picker 1 sends carrier_fee_pct "1"', async () => {
   assert.deepStrictEqual(finalizeBody(w).pay_faster, { carrier_fee_pct: '1', broker_note: 'Rush' });
 });
 
+test('fee adjust: I will cover the fee sends carrier_fee_pct "0"', async () => {
+  const w = await ready({ ctx: PCTX });
+  pickCarrier(w, 'v-net');
+  setVal(w, 'customer-rate', '2500');
+  setVal(w, 'carrier-rate', '2000');
+  toggle(w, true);
+  pickPayer(w, 'broker');
+  assert.ok(!$(w, 'pf-fee'));
+  assert.match($(w, 'pf-options').textContent, /Carrier receives the full \$2,000\.00/);
+  assert.match($(w, 'pf-options').textContent, /\$40\.00 \(OperFi's 2%\) is charged to your reserve/);
+  assert.match($(w, 'sum-pay-faster').textContent, /Charged to your reserve-\$40\.00/);
+  assert.match($(w, 'sum-margin').textContent, /\$460\.00/);
+  await fillAndSubmit(w);
+  await flush();
+  assert.deepStrictEqual(finalizeBody(w).pay_faster, { carrier_fee_pct: '0', broker_note: '' });
+});
+
+test('without fee adjust carrier pays sends payer carrier, never carrier_fee_pct', async () => {
+  const w = await ready({ ctx: Object.assign({}, PCTX, { access: { pay_faster: true, fee_adjust: false } }) });
+  pickCarrier(w, 'v-net');
+  setVal(w, 'carrier-rate', '2000');
+  toggle(w, true);
+  pickPayer(w, 'carrier');
+  assert.ok(!$(w, 'pf-fee'));
+  assert.match($(w, 'pf-options').textContent, /\$80\.00 deducted from the carrier's payment/);
+  await fillAndSubmit(w);
+  await flush();
+  assert.deepStrictEqual(finalizeBody(w).pay_faster, { payer: 'carrier', broker_note: '' });
+});
+
 test('quickpay picker at saved blocks', async () => {
   const w = await ready({ ctx: PCTX });
   setVal(w, 'customer-rate', '2500');
@@ -568,13 +635,16 @@ test('quickpay picker at saved blocks', async () => {
   assert.strictEqual($(w, 'pf-toggle-label').textContent, 'Change the quick pay fee (this load only)');
   assert.match($(w, 'sum-margin').textContent, /\$540\.00/);
   toggle(w, true);
+  assert.strictEqual(w.payFasterBlocksSubmit(), true, 'nothing picked');
+  pickPayer(w, 'carrier');
   assert.strictEqual($(w, 'pf-fee').value, '4');
   assert.strictEqual(w.payFasterBlocksSubmit(), true);
   assert.strictEqual(w.payFasterPayload(), null);
-  setVal(w, 'pf-fee', '3');
+  assert.match($(w, 'pf-options').textContent, /That's your saved quick pay fee/);
+  pickFee(w, '3');
   assert.strictEqual(w.payFasterBlocksSubmit(), false);
   assert.match($(w, 'sum-margin').textContent, /\$520\.00/);
-  setVal(w, 'pf-fee', '0');
+  pickPayer(w, 'broker');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(w.payFasterPayload())), { carrier_fee_pct: '0', broker_note: '' });
   assert.match($(w, 'sum-pay-faster').textContent, /fee waived/);
   assert.match($(w, 'sum-margin').textContent, /\$460\.00/);
@@ -585,17 +655,19 @@ test('picker refetches the reserve once when it first charges the reserve', asyn
   setVal(w, 'carrier-rate', '2000');
   pickCarrier(w, 'v-net');
   toggle(w, true);
+  pickPayer(w, 'carrier');
   assert.strictEqual(ctxCalls(w), 0);
   const orig = w.fetch;
   w.fetch = (u, o) => String(u).indexOf('/pay-change/context') !== -1
     ? (w.__calls.push({ url: String(u), opts: {} }), Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(Object.assign({}, PCTX, { reserve: { cash: 10, status: 'ok' } })) }))
     : orig(u, o);
-  setVal(w, 'pf-fee', '1');
+  pickFee(w, '1');
   await flush();
   assert.strictEqual(ctxCalls(w), 1);
   assert.strictEqual(w.payFasterBlocksSubmit(), true);
   assert.match($(w, 'pf-options').textContent, /doesn't cover/);
-  setVal(w, 'pf-fee', '0.5');
+  pickFee(w, '2');
+  pickFee(w, '1');
   await flush();
   assert.strictEqual(ctxCalls(w), 1);
 });
@@ -605,10 +677,13 @@ test('picker carrier switch resets the fee', async () => {
   setVal(w, 'carrier-rate', '2000');
   pickCarrier(w, 'v-net');
   toggle(w, true);
-  setVal(w, 'pf-fee', '1');
+  pickPayer(w, 'carrier');
+  pickFee(w, '1');
   pickCarrier(w, 'v-fac');
   assert.strictEqual(w.payFasterPayload(), null);
   toggle(w, true);
+  assert.ok(!$(w, 'pf-fee'), 'who pays starts empty again');
+  pickPayer(w, 'carrier');
   assert.strictEqual($(w, 'pf-fee').value, '4');
 });
 
@@ -667,6 +742,8 @@ test('pay faster without fee_adjust uses radios', async () => {
   toggle(w, true);
   assert.ok($(w, 'pf-payer-broker'));
   assert.ok(!$(w, 'pf-fee'));
+  pickPayer(w, 'carrier');
+  assert.ok(!$(w, 'pf-fee'), 'no select without fee adjust');
 });
 
 test('quickpay without fee_adjust shows waive only when waive_enabled', async () => {
@@ -680,4 +757,30 @@ test('quickpay without fee_adjust shows waive only when waive_enabled', async ()
   setVal(w2, 'carrier-rate', '2000');
   pickCarrier(w2, 'v-qp');
   assert.ok(!visible($(w2, 'pay-faster')));
+});
+
+// PAYCHGPICK2: clear refusal messages on the post-submit banner.
+test('finalize refusal codes show plain copy on the banner', async () => {
+  const cases = [
+    ['not_enabled_for_account', "Pay Faster isn't turned on for your account. Contact OperFi."],
+    ['fee_adjust_not_enabled', "Changing the quick pay fee isn't turned on for your account. Pick 'I'll cover the fee' or your standard fee. Request it from Submission History."],
+    ['bad_fee_pct', 'Pick a fee of 0% to 5%. Request it from Submission History.'],
+    ['no_change', "That's already this carrier's quick pay fee. Nothing to change. Request it from Submission History."],
+    ['terms_not_eligible', "This carrier's payment terms can't be changed here."],
+    ['carrier_paid', 'This carrier has already been paid.']
+  ];
+  for (const [code, copy] of cases) {
+    const w = await ready({ finalize: { ok: true, pay_change: { ok: false, error: code } } });
+    pickCarrier(w, 'v-net');
+    setVal(w, 'carrier-rate', '2000');
+    toggle(w, true);
+    pickPayer(w, 'carrier');
+    await fillAndSubmit(w);
+    await flush();
+    const b = $(w, 'post-submit-banner');
+    assert.match(b.className, /\bwarn\b/, code);
+    assert.ok(b.textContent.indexOf("Your load was submitted, but the pay change request didn't go through. " + copy) !== -1, code + ': ' + b.textContent);
+    assert.doesNotMatch(b.textContent, /[–—]/);
+    if (!/Request it from Submission History/.test(copy)) assert.doesNotMatch(b.textContent, /Request it from Submission History/, code);
+  }
 });

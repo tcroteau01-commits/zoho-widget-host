@@ -1912,19 +1912,17 @@ function pfPickMode(kind) {
   return !!(_pfCtx && _pfCtx.fee_pick_enabled && (pfStaffEntry() || pfFeeAccess()) &&
     (kind === 'net30' || kind === 'factored' || kind === 'quickpay'));
 }
-function pfDefaultFee() {
-  var p = window.PayFaster.parseFeePct(_pfCtx.qp_fee_pct);
-  return (p !== null && p >= window.PayFaster.OPERFI_SHARE_PCT) ? String(p) : '0';
-}
-function pfPickArgs(pop, rate) {
-  return { kind: pop.elig.kind, rate: rate, pct: pop.fee, savedPct: _pfCtx.qp_fee_pct, reserve: _pfCtx.reserve,
+// PAYCHGPICK2: the "Who pays the quick pay fee?" block for the open popup.
+function pfWhoArgs(pop, rate) {
+  return { kind: pop.elig.kind, rate: rate, payer: pop.payer, feeAdjust: pop.pick, pct: pop.fee,
+    savedPct: _pfCtx.qp_fee_pct, reserve: _pfCtx.reserve,
     factorName: window.PayFaster.factorNameForTerms(pop.elig.terms), trained: pfTrained(),
     videoId: _pfCtx.training_video_id };
 }
-// The picked value spends reserve: re-read the balance once, then re-render against it.
+// The picked carrier fee spends reserve (below 2%): re-read the balance once, then re-render against it.
 function pfMaybeRefetchFee() {
   var pop = _pfPop, PF = window.PayFaster;
-  if (!pop || !pop.pick || pop.feeRefetched || !PF.feeValid(pop.fee, _pfCtx.qp_fee_pct)) return;
+  if (!pop || !pop.pick || pop.payer !== 'carrier' || pop.feeRefetched || !PF.feeValid(pop.fee, _pfCtx.qp_fee_pct)) return;
   var rate = pfParseRate(pop.rec);
   if (!(rate > 0)) return;
   var f = PF.computeFeesAt(rate, pop.fee);
@@ -1939,8 +1937,9 @@ function pfOpenPopup(r) {
   pfClosePopup();
   var pick = pfPickMode(d.kind);
   var waive = d.kind === 'quickpay' && !pick;
-  _pfPop = { rec: r, elig: d, payer: waive ? 'broker' : null, sending: false, waive: waive, pick: pick,
-    fee: pick ? pfDefaultFee() : null, feeRefetched: false };
+  // PAYCHGPICK2: nothing pre-selected, the waive included.
+  _pfPop = { rec: r, elig: d, payer: null, sending: false, waive: waive, pick: pick,
+    fee: pick ? window.PayFaster.defaultFee(_pfCtx.qp_fee_pct) : null, feeRefetched: false };
   var factored = d.kind === 'factored';
   var m = document.createElement('div');
   m.className = 'pf-modal-backdrop';
@@ -1966,23 +1965,25 @@ function pfOpenPopup(r) {
     var a = t.closest && t.closest('a.pf-video-link');
     if (a) { e.preventDefault(); window.open(PF_HELP_URL, '_blank'); }
   });
-  m.addEventListener('input', function(e) {
-    var t = e.target;
-    if (!t || t.id !== 'pf-fee' || !_pfPop || !_pfPop.pick) return;
-    _pfPop.fee = t.value;
-    pfRenderOpts();
-    pfMaybeRefetchFee();
-  });
   m.addEventListener('change', function(e) {
     var t = e.target;
-    if (!t || t.name !== 'pf-payer' || !_pfPop) return;
+    if (!t || !_pfPop) return;
+    if (t.id === 'pf-fee' && _pfPop.pick) {
+      // PAYCHGPICK2: a whole-number fee pick under "The carrier pays".
+      _pfPop.fee = t.value;
+      pfRenderOpts();
+      var sel = document.getElementById('pf-fee'); if (sel) sel.focus();
+      pfMaybeRefetchFee();
+      return;
+    }
+    if (t.name !== 'pf-payer') return;
     _pfPop.payer = t.value === 'broker' ? 'broker' : 'carrier';
     pfRenderOpts();
-    // Broker pays spends reserve: re-read the balance, then re-render against it.
+    // I'll cover the fee spends reserve: re-read the balance, then re-render against it.
     if (_pfPop.payer === 'broker') payFasterLoadContext(true).then(pfRenderOpts);
+    else pfMaybeRefetchFee();
   });
   pfRenderOpts();
-  if (pick) pfMaybeRefetchFee();
   // The waive spends reserve: re-read the balance now so the check below is fresh.
   if (waive) payFasterLoadContext(true).then(pfRenderOpts);
 }
@@ -2003,47 +2004,12 @@ function pfShowError(msg) {
 function pfRenderOpts() {
   var box = document.getElementById('pf-opts');
   if (!box || !_pfPop || !pfOn()) return;
-  var PF = window.PayFaster, d = _pfPop.elig, rate = pfParseRate(_pfPop.rec);
-  if (_pfPop.pick) {
-    var ps = PF.feePickerHtml(pfPickArgs(_pfPop, rate));
-    var curOut = box.querySelector('.pf-fee-out');
-    if (curOut && box.querySelector('#pf-fee')) {
-      // Keep the input element (focus, caret) while the broker types; refresh only the lines under it.
-      var tmp = document.createElement('div');
-      tmp.innerHTML = ps.html;
-      var nextOut = tmp.querySelector('.pf-fee-out');
-      curOut.innerHTML = nextOut ? nextOut.innerHTML : '';
-    } else {
-      box.innerHTML = ps.html;
-    }
-    var psend = document.getElementById('pf-send');
-    if (psend) psend.disabled = ps.blocked || _pfPop.sending;
-    return;
-  }
-  if (_pfPop.waive) {
-    var ws = PF.waiveState({ rate: rate, reserve: _pfCtx.reserve, factorName: PF.factorNameForTerms(d.terms), kind: 'quickpay',
-      trained: pfTrained(), videoId: _pfCtx.training_video_id });
-    box.innerHTML = ws.html;
-    var wsend = document.getElementById('pf-send');
-    if (wsend) wsend.disabled = ws.short || _pfPop.sending;
-    return;
-  }
-  // A reserve that cannot cover the 2% charge cannot be chosen; drop a stale broker pick.
-  if (_pfPop.payer === 'broker') {
-    var bf = PF.computeFees(rate, _pfCtx.qp_fee_pct, 'broker');
-    var rv = _pfCtx.reserve;
-    if (!bf.error && rv && rv.status === 'ok' && rv.cash != null && rv.cash < bf.reserveCharge) _pfPop.payer = null;
-  }
-  box.innerHTML = PF.optionsHtml({ kind: PF.kindForTerms(d.terms), payer: _pfPop.payer, rate: rate,
-    feePct: _pfCtx.qp_fee_pct, reserve: _pfCtx.reserve, factorName: PF.factorNameForTerms(d.terms),
-    trained: pfTrained(), videoId: _pfCtx.training_video_id });
-  if (!_pfPop.payer) {
-    Array.prototype.forEach.call(box.querySelectorAll('input[name="pf-payer"]'), function(x) {
-      x.checked = false; if (x.parentNode) x.parentNode.classList.remove('pf-sel');
-    });
-  }
+  // PAYCHGPICK2: one explicit "Who pays the quick pay fee?" choice for every popup.
+  var st = window.PayFaster.whoPaysState(pfWhoArgs(_pfPop, pfParseRate(_pfPop.rec)));
+  _pfPop.payer = st.payer;  // drops a pick that is no longer available (reserve short)
+  box.innerHTML = st.html;
   var send = document.getElementById('pf-send');
-  if (send) send.disabled = !_pfPop.payer || _pfPop.sending;
+  if (send) send.disabled = st.blocked || _pfPop.sending;
 }
 
 function pfApplyRequest(r, q) {
@@ -2076,29 +2042,28 @@ function pfErrorCopy(res) {
   var code = res.body && res.body.error;
   if (res.status === 409) {
     if (code === 'already_requested') return 'A pay change request is already open for this load.';
-    if (code === 'carrier_paid') return 'This carrier has already been paid.';
     if (code === 'reserve_insufficient' && res.body.cash != null && res.body.charge != null) {
       return "Your reserve balance (" + window.PayFaster.money(parseMoney(res.body.cash)) + ") doesn't cover the " +
         window.PayFaster.money(parseMoney(res.body.charge)) + ' fee.';
     }
   }
-  return PF_GENERIC_ERR;
+  // PAYCHGPICK2: a known refusal says why; anything else keeps the generic copy.
+  return window.PayFaster.refusalMessage(code) || PF_GENERIC_ERR;
 }
 
 function pfSend() {
   var pop = _pfPop;
   if (!pop || pop.sending) return;
-  if (pop.pick) {
-    var rate = pfParseRate(pop.rec);
-    if (window.PayFaster.feePickerHtml(pfPickArgs(pop, rate)).blocked) return;
-  } else if (!pop.payer) return;
+  if (!pop.payer || window.PayFaster.whoPaysState(pfWhoArgs(pop, pfParseRate(pop.rec))).blocked) return;
   var note = document.getElementById('pf-note');
   pop.sending = true;
   var send = document.getElementById('pf-send');
   if (send) send.disabled = true;
   pfShowError('');
+  // Never both payer and carrier_fee_pct: with fee adjust "I'll cover the fee" is carrier_fee_pct "0".
   var body = pop.pick
-    ? { email: brokerEmail, record_id: String(pop.rec.ID), carrier_fee_pct: String(pop.fee).trim(),
+    ? { email: brokerEmail, record_id: String(pop.rec.ID),
+        carrier_fee_pct: pop.payer === 'broker' ? '0' : String(pop.fee).trim(),
         broker_note: note ? note.value.trim().slice(0, 500) : '' }
     : { email: brokerEmail, record_id: String(pop.rec.ID), payer: pop.payer,
         broker_note: note ? note.value.trim().slice(0, 500) : '' };
@@ -2117,15 +2082,12 @@ function pfSend() {
     } else if (res.status === 409 && code === 'reserve_insufficient') {
       payFasterLoadContext(true).then(pfRenderOpts);
     }
-    var b = document.getElementById('pf-send');
-    if (b) b.disabled = !pop.pick && !pop.payer;
-    if (pop.waive || pop.pick) pfRenderOpts();
+    pfRenderOpts();
   }).catch(function() {
     if (_pfPop !== pop) return;
     pop.sending = false;
     pfShowError(PF_GENERIC_ERR);
-    var b = document.getElementById('pf-send'); if (b) b.disabled = false;
-    if (pop.waive || pop.pick) pfRenderOpts();
+    pfRenderOpts();
   });
 }
 

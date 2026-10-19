@@ -640,9 +640,15 @@ test('hidden when access key missing', async () => {
   const c = Object.assign({}, CTX); delete c.access;
   const w = await ready({ ctx: c });
   setVal(w, 'carrier-rate', '2000');
-  pickCarrier(w, 'v-qp');
+  pickCarrier(w, 'v-net');
+  assert.ok(!visible($(w, 'pay-faster')));
+  toggle(w, true);
   assert.ok(!visible($(w, 'pay-faster')));
   assert.strictEqual(w.payFasterPayload(), null);
+  assert.strictEqual(w.payFasterBlocksSubmit(), false);
+  await fillAndSubmit(w);
+  await flush();
+  assert.ok(!('pay_faster' in finalizeBody(w)));
 });
 
 test('no access keeps the plain Carrier Payment line only', async () => {

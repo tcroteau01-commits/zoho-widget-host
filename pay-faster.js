@@ -250,7 +250,7 @@
 
     var p = parseFeePct(a.feePct);
     var payeeWord = factored ? 'Factor' : 'Carrier';
-    if (factored && a.factorName) h += sl('Paid to', esc(a.factorName));
+    if (a.factorName && (factored || (quick && a.factorName !== 'factor on file'))) h += sl('Paid to', esc(a.factorName));
     if (payer === 'carrier') {
       h += '<div class="pf-qph">Quick Pay fee · carrier pays ' + (p == null ? '' : esc(pctText(p)) + '%') + '</div>';
       h += sl(factored ? 'Deducted from factor payment' : 'Carrier is charged', money(fees.feeTotal), 'pf-ind');

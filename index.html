@@ -951,7 +951,7 @@ function onCarrierChange() {
   // PAYCHG1: any carrier change resets the one-off and recomputes eligibility.
   _pfReset();
   _pf.kind = (window.PayFaster && terms) ? window.PayFaster.kindForTerms(terms) : null;
-  _pf.factor = _pfFactorName(terms);
+  _pf.factor = window.PayFaster ? window.PayFaster.factorNameForTerms(terms) : '';
 
   var warnFactor = document.getElementById('terms-warn-factor');
   if (warnFactor) {
@@ -1088,12 +1088,6 @@ function loadPayFasterContext(isRefetch) {
     .then(function () { if (seq !== _pfSeq) return; renderPayFaster(); refreshValidity(); });
 }
 
-function _pfFactorName(terms) {
-  var pre = 'Factoring Company - ';
-  terms = String(terms || '').trim();
-  return terms.indexOf(pre) === 0 ? terms.slice(pre.length).trim() : '';
-}
-
 function _pfRate() {
   var el = document.getElementById('carrier-rate');
   var n = el ? Number(el.value) : 0;
@@ -1101,6 +1095,15 @@ function _pfRate() {
 }
 
 function _pfPct() { return _pf.ctx ? _pf.ctx.qp_fee_pct : null; }
+
+// PAYCHG2: a Quick Pay carrier can have the fee waived on this load (flag from the API context).
+function _pfWaiveMode() {
+  return !!(_pf.ctx && _pf.ctx.waive_enabled && _pf.kind === 'quickpay');
+}
+function _pfWaiveArgs(rate) {
+  return { rate: rate, reserve: _pf.ctx.reserve, factorName: _pf.factor, kind: 'quickpay',
+    trained: true, videoId: _pf.ctx.training_video_id };
+}
 
 function _pfVideoLink() {
   return '<div class="pf-msg pf-info pf-lock"><a class="pf-video-link" href="#" data-video-id="' +
@@ -1132,8 +1135,9 @@ function renderPayFaster() {
   var factored = kind === 'factored';
   var imp = _pfImpersonating();
   if (imp) { _pf.toggled = false; _pf.payer = null; }
+  var waive = on && _pfWaiveMode();
 
-  if (!on || imp || (kind !== 'net30' && kind !== 'factored')) {
+  if (!on || imp || (kind !== 'net30' && kind !== 'factored' && !waive)) {
     if (blk) blk.style.display = 'none';
     var tg0 = document.getElementById('pf-toggle'); if (tg0) tg0.checked = false;
     if (opts) opts.innerHTML = '';
@@ -1141,7 +1145,7 @@ function renderPayFaster() {
   } else {
     if (blk) blk.style.display = '';
     var lbl = document.getElementById('pf-toggle-label');
-    if (lbl) lbl.textContent = factored ? 'Pay the factoring company faster (this load only)' : 'Pay this carrier faster (this load only)';
+    if (lbl) lbl.textContent = waive ? 'Waive the quick pay fee (this load only)' : factored ? 'Pay the factoring company faster (this load only)' : 'Pay this carrier faster (this load only)';
     var tg = document.getElementById('pf-toggle');
     var trained = _pf.ctx.trained !== false;
     if (tg) { tg.checked = !!_pf.toggled; tg.disabled = !trained; }
@@ -1153,6 +1157,14 @@ function renderPayFaster() {
     } else if (!_pf.toggled) {
       if (opts) opts.innerHTML = '';
       if (noteWrap) noteWrap.style.display = 'none';
+    } else if (waive) {
+      _pf.payer = 'broker';
+      if (noteWrap) noteWrap.style.display = '';
+      if (!rate) {
+        if (opts) opts.innerHTML = '<div class="pf-sub">Enter the carrier rate to see the fee.</div>';
+      } else if (opts) {
+        opts.innerHTML = PF.waiveHtml(_pfWaiveArgs(rate));
+      }
     } else {
       // A reserve that can't cover the 2% charge can't be chosen; drop a stale broker pick.
       if (_pf.payer === 'broker' && rate) {
@@ -1183,7 +1195,7 @@ function renderPayFaster() {
       sum.innerHTML = (found && found.payment_terms)
         ? '<div class="pf-sl">Carrier Payment<b>' + esc(found.payment_terms) + '</b></div>' : '';
     } else {
-      var payer = kind === 'quickpay' ? 'carrier' : _pf.payer;
+      var payer = kind === 'quickpay' ? ((waive && _pf.toggled) ? 'broker' : 'carrier') : _pf.payer;
       var fees = (rate && payer) ? PF.computeFees(rate, _pfPct(), payer) : { error: 'no_split' };
       sum.innerHTML = PF.summaryHtml({ kind: kind, toggled: _pf.toggled, payer: payer, fees: fees,
         feePct: _pfPct(), factorName: _pf.factor });
@@ -1195,7 +1207,7 @@ function renderPayFaster() {
 function _pfMarginEffect() {
   if (!window.PayFaster || !_pf.ctx) return null;
   var payer = _pf.payer;
-  if (_pf.kind === 'quickpay') payer = 'carrier';  // already on Quick Pay: split always applies
+  if (_pf.kind === 'quickpay') payer = (_pfWaiveMode() && _pf.toggled) ? 'broker' : 'carrier';  // QP: split applies unless waived
   else if (!_pf.toggled || !payer) return null;
   var rate = _pfRate();
   if (!rate) return null;
@@ -1207,7 +1219,9 @@ function _pfMarginEffect() {
 // True while the toggle is on but the request can't be sent yet (no payer, or no rate).
 function payFasterBlocksSubmit() {
   if (!_pf.ctx || !_pf.toggled) return false;
-  return !_pf.payer || !_pfRate();
+  if (!_pf.payer || !_pfRate()) return true;
+  if (_pfWaiveMode()) return window.PayFaster.waiveState(_pfWaiveArgs(_pfRate())).short;
+  return false;
 }
 
 // The pay_faster object for /funding-finalize, or null. Never has a missing payer.
@@ -1228,6 +1242,8 @@ function _pfWire() {
     _pf.toggled = !!tg.checked;
     if (!_pf.toggled) { _pf.payer = null; var n = document.getElementById('pf-note'); if (n) n.value = ''; }
     renderPayFaster(); updateMargin(); refreshValidity();
+    // The waive spends reserve: re-read the balance, then re-render against it.
+    if (_pf.toggled && _pfWaiveMode()) loadPayFasterContext(true).then(function () { updateMargin(); refreshValidity(); });
   });
   var opts = document.getElementById('pf-options');
   if (opts) {

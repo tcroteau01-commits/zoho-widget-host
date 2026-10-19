@@ -14,6 +14,7 @@ const CARRIERS = [
   { vendor_id: 'v-net', carrier_name: 'Sample Hauling LLC', payment_terms: 'Standard Net 30' },
   { vendor_id: 'v-fac', carrier_name: 'Sample Freight Inc', payment_terms: 'Factoring Company - Example Capital' },
   { vendor_id: 'v-qp', carrier_name: 'Sample Express LLC', payment_terms: 'Quick Pay' },
+  { vendor_id: 'v-fcqp', carrier_name: 'Sample Capital Carrier', payment_terms: 'Factoring Company - Quick Pay - Example Capital' },
   { vendor_id: 'v-x', carrier_name: 'Sample Other LLC', payment_terms: 'No Invoice - 180 Days' }
 ];
 
@@ -400,4 +401,83 @@ test('a stale context response is ignored', async () => {
   first();
   await p1;
   assert.strictEqual(w.eval('_pf.ctx.reserve.cash'), 900);
+});
+
+// PAYCHG2: waive the quick pay fee on one load (kind quickpay, waive_enabled).
+const WCTX = Object.assign({}, CTX, { waive_enabled: true, fee_pick_enabled: false });
+
+test('waive hidden when waive_enabled false', async () => {
+  const w = await ready();
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-qp');
+  assert.ok(!visible($(w, 'pay-faster')));
+  const w2 = await ready({ ctx: Object.assign({}, CTX, { waive_enabled: false }) });
+  pickCarrier(w2, 'v-qp');
+  assert.ok(!visible($(w2, 'pay-faster')));
+});
+
+test('waive shows and submits payer broker', async () => {
+  const w = await ready({ ctx: WCTX });
+  pickCarrier(w, 'v-qp');
+  setVal(w, 'carrier-rate', '2000');
+  assert.ok(visible($(w, 'pay-faster')));
+  assert.strictEqual($(w, 'pf-toggle-label').textContent, 'Waive the quick pay fee (this load only)');
+  toggle(w, true);
+  assert.ok(!$(w, 'pf-payer-broker'));
+  assert.match($(w, 'pf-options').textContent, /\$40\.00/);
+  await fillAndSubmit(w);
+  await flush();
+  assert.deepStrictEqual(finalizeBody(w).pay_faster, { payer: 'broker', broker_note: '' });
+});
+
+test('waive short reserve blocks submit', async () => {
+  const w = await ready({ ctx: Object.assign({}, WCTX, { reserve: { cash: 10, status: 'ok' } }) });
+  pickCarrier(w, 'v-qp');
+  setVal(w, 'carrier-rate', '2000');
+  assert.strictEqual(w.payFasterBlocksSubmit(), false);
+  toggle(w, true);
+  assert.strictEqual(w.payFasterBlocksSubmit(), true);
+  toggle(w, false);
+  assert.strictEqual(w.payFasterBlocksSubmit(), false);
+});
+
+test('waive summary and margin', async () => {
+  const w = await ready({ ctx: WCTX });
+  setVal(w, 'customer-rate', '2500');
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-qp');
+  assert.match($(w, 'sum-margin').textContent, /\$540\.00/);
+  toggle(w, true);
+  assert.match($(w, 'sum-pay-faster').textContent, /fee waived/);
+  assert.match($(w, 'sum-margin').textContent, /\$460\.00/);
+  assert.match($(w, 'sum-margin-note').textContent, /-|−/);
+  assert.match($(w, 'sum-margin-note').textContent, /\$40\.00/);
+  toggle(w, false);
+  assert.match($(w, 'sum-margin').textContent, /\$540\.00/);
+  assert.doesNotMatch($(w, 'sum-pay-faster').textContent, /fee waived/);
+});
+
+test('waive untrained shows video link and no payload', async () => {
+  const w = await ready({ ctx: Object.assign({}, WCTX, { trained: false }) });
+  pickCarrier(w, 'v-qp');
+  setVal(w, 'carrier-rate', '2000');
+  assert.strictEqual($(w, 'pf-toggle').disabled, true);
+  assert.ok($(w, 'pf-options').querySelector('a.pf-video-link'));
+  assert.strictEqual(w.payFasterPayload(), null);
+});
+
+test('waive hidden while impersonating', async () => {
+  const w = await ready({ ctx: WCTX });
+  w.OPERFI_IMP = { target: () => 'client@sample-brokerage.example', isStaff: () => true };
+  pickCarrier(w, 'v-qp');
+  assert.ok(!visible($(w, 'pay-faster')));
+});
+
+test('FC-QP summary names factor', async () => {
+  const w = await ready();
+  setVal(w, 'carrier-rate', '2000');
+  pickCarrier(w, 'v-fcqp');
+  const s = $(w, 'sum-pay-faster').textContent;
+  assert.match(s, /Paid to/);
+  assert.match(s, /Example Capital/);
 });

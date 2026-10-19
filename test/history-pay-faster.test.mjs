@@ -152,7 +152,7 @@ test('409 already_requested message', async () => {
   const w = await openPopup({}, { post: { status: 409, body: { error: 'already_requested' } } });
   pick(w, 'carrier'); await flush();
   click(w, $(w, 'pf-send')); await flush();
-  assert.match($(w, 'pf-error').textContent, /A pay-faster request is already open for this load\./);
+  assert.match($(w, 'pf-error').textContent, /A pay change request is already open for this load\./);
 });
 
 test('other errors map to copy', async () => {

@@ -221,7 +221,7 @@
 
   function waiveState(a) {
     var f = computeFeesAt(a.rate, 0);
-    if (f.error) return { html: '', short: false };
+    if (f.error || !(Number(a.rate) > 0)) return { html: msg('info', 'Enter the carrier rate to see the fee.'), short: true };
     var who = a.factorName ? (a.factorName === 'factor on file' ? 'The factor on file' : esc(a.factorName)) : 'Carrier';
     var rsv = reserveMsg(a.reserve, f.reserveCharge);
     var html = msg('info', 'Waive the quick pay fee on this load. ' + who + ' receives the full ' + money(f.payeeReceives) +
@@ -237,6 +237,7 @@
     if (p === null || p < 0) return false;
     var saved = parseFeePct(savedPct);
     if (saved !== null && p === saved) return true;
+    if (!/^[+-]?(\d+\.?\d{0,2}|\.\d{1,2})$/.test(String(v).trim().replace(/%\s*$/, '').trim())) return false;
     return p <= 5 && Math.abs(p * 4 - Math.round(p * 4)) < 1e-9;
   }
 

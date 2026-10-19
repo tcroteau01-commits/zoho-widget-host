@@ -1919,7 +1919,7 @@ function pfPostJson(url, payload) {
 function pfErrorCopy(res) {
   var code = res.body && res.body.error;
   if (res.status === 409) {
-    if (code === 'already_requested') return 'A pay-faster request is already open for this load.';
+    if (code === 'already_requested') return 'A pay change request is already open for this load.';
     if (code === 'carrier_paid') return 'This carrier has already been paid.';
     if (code === 'reserve_insufficient' && res.body.cash != null && res.body.charge != null) {
       return "Your reserve balance (" + window.PayFaster.money(parseMoney(res.body.cash)) + ") doesn't cover the " +

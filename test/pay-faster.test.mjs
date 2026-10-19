@@ -208,6 +208,12 @@ test('waiveState and waiveHtml', () => {
   assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { cash: 39.99, status: 'ok' } })).short, true);
   assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { cash: 40, status: 'ok' } })).short, false);
   assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { status: 'unavailable' } })).short, false);
+  for (const rate of [0, '', 'abc', null]) {
+    const z = PF.waiveState(Object.assign({}, a, { rate }));
+    assert.equal(z.short, true, String(rate));
+    assert.match(z.html, /Enter the carrier rate to see the fee\./);
+    assert.doesNotMatch(z.html, DASH);
+  }
   const f = PF.waiveHtml(Object.assign({}, a, { factorName: 'Example <Capital>' }));
   assert.match(f, /Example &lt;Capital&gt; receives the full/);
   assert.doesNotMatch(ok.html, DASH);
@@ -232,6 +238,10 @@ test('feeValid table', () => {
   assert.equal(v('3.3', '3.3'), true);
   assert.equal(v('6', '6'), true);
   assert.equal(v('3.3', null), false);
+  assert.equal(v('1.2500000000001', '4'), false);
+  assert.equal(v('1.25', '4'), true);
+  assert.equal(v('-0', '4'), true);
+  assert.equal(v('0.00', '4'), true);
 });
 
 const PICK = { kind: 'net30', rate: 2000, savedPct: '4', reserve: RES_OK, factorName: '', trained: true };

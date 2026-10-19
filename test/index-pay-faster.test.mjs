@@ -217,7 +217,7 @@ test('finalize pay_change failure shows message', async () => {
   await fillAndSubmit(w);
   await flush();
   const t = $(w, 'post-submit-banner').textContent;
-  assert.match(t, /Your load was submitted, but the pay-faster request didn't go through\. Request it from Submission History\./);
+  assert.match(t, /Your load was submitted, but the pay change request didn't go through\. Request it from Submission History\./);
 });
 
 test('finalize pay_change already_requested is treated as success', async () => {
@@ -229,7 +229,7 @@ test('finalize pay_change already_requested is treated as success', async () => 
   await fillAndSubmit(w);
   await flush();
   const b = $(w, 'post-submit-banner');
-  assert.doesNotMatch(b.textContent, /pay-faster request didn't go through/);
+  assert.doesNotMatch(b.textContent, /pay change request didn't go through/);
   assert.match(b.className, /\bok\b/);
 });
 
@@ -531,8 +531,9 @@ test('picker validity', async () => {
     assert.strictEqual(w.payFasterPayload(), null, v);
     await fillAndSubmit(w);
     await flush();
-    for (const c of w.__calls.filter((x) => x.url.indexOf('/funding-finalize') !== -1))
-      assert.ok(!('pay_faster' in JSON.parse(c.opts.body)), v);
+    const fin = w.__calls.filter((x) => x.url.indexOf('/funding-finalize') !== -1);
+    // The button is disabled (asserted above); a direct submitLoad() still finalizes, but never with pay_faster.
+    assert.strictEqual(fin.filter((x) => 'pay_faster' in JSON.parse(x.opts.body)).length, 0, v);
   }
 });
 

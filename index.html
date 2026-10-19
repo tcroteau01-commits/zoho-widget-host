@@ -1101,31 +1101,38 @@ function _pfFeeAccess() { return _pfAccess() && _pf.ctx.access.fee_adjust === tr
 function _pfPct() { return _pf.ctx ? _pf.ctx.qp_fee_pct : null; }
 
 // PAYCHG3: the broker picks the carrier's fee on this load (flag from the API context).
-// The picker replaces the payer radios and takes precedence over the waive (the waive is the 0 value).
+// It takes precedence over the waive (the waive is "I'll cover the fee", sent as 0).
+// PAYCHGPICK2: the pick lives under "The carrier pays" as a whole-number <select>.
 function _pfPickMode() {
   return !!(_pf.ctx && _pf.ctx.fee_pick_enabled && _pfFeeAccess() &&
     (_pf.kind === 'net30' || _pf.kind === 'factored' || _pf.kind === 'quickpay'));
 }
-function _pfDefaultFee() {
-  var p = window.PayFaster.parseFeePct(_pfPct());
-  return (p !== null && p >= window.PayFaster.OPERFI_SHARE_PCT) ? String(p) : '0';
+// PAYCHGPICK2: the "Who pays the quick pay fee?" block for this load.
+function _pfWhoArgs(rate) {
+  return { kind: _pf.kind, rate: rate, payer: _pf.payer, feeAdjust: _pfPickMode(), pct: _pf.fee,
+    savedPct: _pfPct(), reserve: _pf.ctx.reserve, factorName: _pf.factor, trained: true,
+    videoId: _pf.ctx.training_video_id };
 }
-function _pfPickArgs(rate) {
-  return { kind: _pf.kind, rate: rate, pct: _pf.fee, savedPct: _pfPct(), reserve: _pf.ctx.reserve,
-    factorName: _pf.factor, trained: true, videoId: _pf.ctx.training_video_id };
+// The carrier fee the pick sends: "0" for I'll cover the fee, the select value for the carrier, else null.
+function _pfPickPct() {
+  var PF = window.PayFaster;
+  if (!_pfPickMode() || !_pf.toggled) return null;
+  if (_pf.payer === 'broker') return '0';
+  if (_pf.payer !== 'carrier' || !PF.feeValid(_pf.fee, _pfPct()) || PF.parseFeePct(_pf.fee) === 0) return null;
+  return String(_pf.fee).trim();
 }
 // Picked value that changes the load: valid, and on quick pay not the saved fee.
 function _pfPickApplies() {
-  var PF = window.PayFaster;
-  if (!_pfPickMode() || !_pf.toggled || !PF.feeValid(_pf.fee, _pfPct())) return false;
-  return !(_pf.kind === 'quickpay' && PF.parseFeePct(_pf.fee) === PF.parseFeePct(_pfPct()));
+  var PF = window.PayFaster, pct = _pfPickPct();
+  if (pct === null) return false;
+  return !(_pf.kind === 'quickpay' && PF.parseFeePct(pct) === PF.parseFeePct(_pfPct()));
 }
-// The picked value spends reserve: re-read the balance once, then re-render against it.
+// The picked carrier fee spends reserve (below 2%): re-read the balance once, then re-render against it.
 function _pfMaybeRefetchFee() {
-  if (_pf.feeRefetched || !_pfPickMode() || !_pf.toggled) return;
-  var rate = _pfRate();
-  if (!rate || !window.PayFaster.feeValid(_pf.fee, _pfPct())) return;
-  var f = window.PayFaster.computeFeesAt(rate, _pf.fee);
+  if (_pf.feeRefetched || _pf.payer !== 'carrier') return;
+  var rate = _pfRate(), pct = _pfPickPct();
+  if (!rate || pct === null) return;
+  var f = window.PayFaster.computeFeesAt(rate, pct);
   if (f.error || !(f.reserveCharge > 0)) return;
   _pf.feeRefetched = true;
   loadPayFasterContext(true).then(function () { updateMargin(); refreshValidity(); });
@@ -1134,10 +1141,6 @@ function _pfMaybeRefetchFee() {
 // PAYCHG2: a Quick Pay carrier can have the fee waived on this load (flag from the API context).
 function _pfWaiveMode() {
   return !!(_pfAccess() && _pf.ctx.waive_enabled && _pf.kind === 'quickpay') && !_pfPickMode();
-}
-function _pfWaiveArgs(rate) {
-  return { rate: rate, reserve: _pf.ctx.reserve, factorName: _pf.factor, kind: 'quickpay',
-    trained: true, videoId: _pf.ctx.training_video_id };
 }
 
 function _pfVideoLink() {
@@ -1193,47 +1196,13 @@ function renderPayFaster() {
     } else if (!_pf.toggled) {
       if (opts) opts.innerHTML = '';
       if (noteWrap) noteWrap.style.display = 'none';
-    } else if (pick) {
-      if (_pf.fee == null) _pf.fee = _pfDefaultFee();
-      if (noteWrap) noteWrap.style.display = '';
-      var ps = PF.feePickerHtml(_pfPickArgs(rate));
-      var curOut = opts ? opts.querySelector('.pf-fee-out') : null;
-      if (curOut && opts.querySelector('#pf-fee')) {
-        // Keep the input element (focus, caret) while the broker types; refresh only the lines under it.
-        var tmp = document.createElement('div');
-        tmp.innerHTML = ps.html;
-        var nextOut = tmp.querySelector('.pf-fee-out');
-        curOut.innerHTML = nextOut ? nextOut.innerHTML : '';
-      } else if (opts) {
-        opts.innerHTML = ps.html;
-      }
-    } else if (waive) {
-      _pf.payer = 'broker';
-      if (noteWrap) noteWrap.style.display = '';
-      if (!rate) {
-        if (opts) opts.innerHTML = '<div class="pf-sub">Enter the carrier rate to see the fee.</div>';
-      } else if (opts) {
-        opts.innerHTML = PF.waiveHtml(_pfWaiveArgs(rate));
-      }
     } else {
-      // A reserve that can't cover the 2% charge can't be chosen; drop a stale broker pick.
-      if (_pf.payer === 'broker' && rate) {
-        var bf = PF.computeFees(rate, _pfPct(), 'broker');
-        var rv = _pf.ctx.reserve;
-        if (!bf.error && rv && rv.status === 'ok' && rv.cash != null && rv.cash < bf.reserveCharge) _pf.payer = null;
-      }
+      // PAYCHGPICK2: one explicit "Who pays the quick pay fee?" choice, nothing pre-selected.
+      if (pick && _pf.fee == null) _pf.fee = PF.defaultFee(_pfPct());
+      var st = PF.whoPaysState(_pfWhoArgs(rate));
+      _pf.payer = st.payer;  // drops a pick that is no longer available (reserve short)
       if (noteWrap) noteWrap.style.display = '';
-      if (!rate) {
-        if (opts) opts.innerHTML = '<div class="pf-sub">Enter the carrier rate to see the fee.</div>';
-      } else if (opts) {
-        opts.innerHTML = PF.optionsHtml({ kind: kind, payer: _pf.payer, rate: rate, feePct: _pfPct(),
-          reserve: _pf.ctx.reserve, factorName: _pf.factor, trained: true, videoId: _pf.ctx.training_video_id });
-        if (!_pf.payer) {
-          Array.prototype.forEach.call(opts.querySelectorAll('input[name="pf-payer"]'), function (r) {
-            r.checked = false; if (r.parentNode) r.parentNode.classList.remove('pf-sel');
-          });
-        }
-      }
+      if (opts) opts.innerHTML = st.html;
     }
   }
 
@@ -1245,13 +1214,13 @@ function renderPayFaster() {
       sum.innerHTML = (found && found.payment_terms)
         ? '<div class="pf-sl">Carrier Payment<b>' + esc(found.payment_terms) + '</b></div>' : '';
     } else if (_pfPickApplies()) {
-      sum.innerHTML = PF.summaryHtml({ kind: kind, toggled: true, pickPct: _pf.fee,
+      sum.innerHTML = PF.summaryHtml({ kind: kind, toggled: true, pickPct: _pfPickPct(),
         carrierRate: rate || null, feePct: _pfPct(), factorName: _pf.factor });
     } else if (pick && _pf.toggled && kind !== 'quickpay') {
       sum.innerHTML = PF.summaryHtml({ kind: kind, toggled: true, payer: null, fees: { error: 'no_split' },
         feePct: _pfPct(), factorName: _pf.factor });
     } else {
-      var payer = kind === 'quickpay' ? ((waive && _pf.toggled) ? 'broker' : 'carrier') : _pf.payer;
+      var payer = kind === 'quickpay' ? ((waive && _pf.toggled && _pf.payer === 'broker') ? 'broker' : 'carrier') : _pf.payer;
       var fees = (rate && payer) ? PF.computeFees(rate, _pfPct(), payer) : { error: 'no_split' };
       sum.innerHTML = PF.summaryHtml({ kind: kind, toggled: _pf.toggled, payer: payer, fees: fees,
         feePct: _pfPct(), factorName: _pf.factor });
@@ -1264,13 +1233,13 @@ function _pfMarginEffect() {
   if (!window.PayFaster || !_pfAccess()) return null;
   if (_pfPickApplies()) {
     var pr = _pfRate();
-    var pf = pr ? window.PayFaster.computeFeesAt(pr, _pf.fee) : { error: 'bad_rate' };
+    var pf = pr ? window.PayFaster.computeFeesAt(pr, _pfPickPct()) : { error: 'bad_rate' };
     if (pf.error) return null;
     return { effect: window.PayFaster.marginEffect(pf), payer: pf.payer };
   }
   if (_pfPickMode() && _pf.toggled && _pf.kind !== 'quickpay') return null;
   var payer = _pf.payer;
-  if (_pf.kind === 'quickpay') payer = (_pfWaiveMode() && _pf.toggled) ? 'broker' : 'carrier';  // QP: split applies unless waived
+  if (_pf.kind === 'quickpay') payer = (_pfWaiveMode() && _pf.toggled && _pf.payer === 'broker') ? 'broker' : 'carrier';  // QP: split applies unless waived
   else if (!_pf.toggled || !payer) return null;
   var rate = _pfRate();
   if (!rate) return null;
@@ -1279,25 +1248,20 @@ function _pfMarginEffect() {
   return { effect: window.PayFaster.marginEffect(f, payer), payer: payer };
 }
 
-// True while the toggle is on but the request can't be sent yet (no payer, or no rate).
+// True while the toggle is on but the request can't be sent yet (no payer, no rate, bad fee, short reserve).
 function payFasterBlocksSubmit() {
   if (!_pfAccess() || !_pf.toggled) return false;
-  if (_pfPickMode()) return !_pfRate() || window.PayFaster.feePickerHtml(_pfPickArgs(_pfRate())).blocked;
-  if (!_pf.payer || !_pfRate()) return true;
-  if (_pfWaiveMode()) return window.PayFaster.waiveState(_pfWaiveArgs(_pfRate())).short;
-  return false;
+  return !_pfRate() || window.PayFaster.whoPaysState(_pfWhoArgs(_pfRate())).blocked;
 }
 
-// The pay_faster object for /funding-finalize, or null. Never has a missing payer.
+// The pay_faster object for /funding-finalize, or null. Never both payer and carrier_fee_pct:
+// with fee adjust the carrier fee ("0" = I'll cover the fee), without it the payer.
 function payFasterPayload() {
-  if (_pfAccess() && _pf.toggled && _pfPickMode()) {
-    if (payFasterBlocksSubmit()) return null;
-    var pn = document.getElementById('pf-note');
-    return { carrier_fee_pct: String(_pf.fee).trim(), broker_note: pn ? pn.value.trim() : '' };
-  }
-  if (!_pfAccess() || !_pf.toggled || !_pf.payer || !_pfRate()) return null;
+  if (!_pfAccess() || !_pf.toggled || !_pf.payer || payFasterBlocksSubmit()) return null;
   var n = document.getElementById('pf-note');
-  return { payer: _pf.payer, broker_note: n ? n.value.trim() : '' };
+  var note = n ? n.value.trim() : '';
+  if (_pfPickMode()) return { carrier_fee_pct: _pfPickPct(), broker_note: note };
+  return { payer: _pf.payer, broker_note: note };
 }
 
 function _pfReset() {
@@ -1310,29 +1274,29 @@ function _pfWire() {
   if (tg) tg.addEventListener('change', function () {
     _pf.toggled = !!tg.checked;
     _pf.fee = null; _pf.feeRefetched = false;  // PAYCHG3: each toggle-on starts from the default fee
-    if (!_pf.toggled) { _pf.payer = null; var n = document.getElementById('pf-note'); if (n) n.value = ''; }
+    _pf.payer = null;  // PAYCHGPICK2: nothing pre-selected
+    if (!_pf.toggled) { var n = document.getElementById('pf-note'); if (n) n.value = ''; }
     renderPayFaster(); updateMargin(); refreshValidity();
-    _pfMaybeRefetchFee();
-    // The waive spends reserve: re-read the balance, then re-render against it.
-    if (_pf.toggled && _pfWaiveMode()) loadPayFasterContext(true).then(function () { updateMargin(); refreshValidity(); });
   });
   var opts = document.getElementById('pf-options');
   if (opts) {
     opts.addEventListener('change', function (e) {
       var t = e.target;
-      if (!t || t.name !== 'pf-payer') return;
+      if (!t) return;
+      if (t.id === 'pf-fee') {
+        // PAYCHGPICK2: a fee pick re-renders the lines, the summary and the margin.
+        _pf.fee = t.value;
+        renderPayFaster(); updateMargin(); refreshValidity();
+        var sel = document.getElementById('pf-fee'); if (sel) sel.focus();
+        _pfMaybeRefetchFee();
+        return;
+      }
+      if (t.name !== 'pf-payer') return;
       _pf.payer = t.value === 'broker' ? 'broker' : 'carrier';
       renderPayFaster(); updateMargin(); refreshValidity();
-      // Broker pays spends reserve: re-read the balance, then re-render against it.
+      // I'll cover the fee spends reserve: re-read the balance, then re-render against it.
       if (_pf.payer === 'broker') loadPayFasterContext(true).then(function () { updateMargin(); refreshValidity(); });
-    });
-    // PAYCHG3: the fee picker re-renders its lines, the summary and the margin as the broker types.
-    opts.addEventListener('input', function (e) {
-      var t = e.target;
-      if (!t || t.id !== 'pf-fee') return;
-      _pf.fee = t.value;
-      renderPayFaster(); updateMargin(); refreshValidity();
-      _pfMaybeRefetchFee();
+      else _pfMaybeRefetchFee();
     });
     opts.addEventListener('click', function (e) {
       var a = e.target && e.target.closest ? e.target.closest('a.pf-video-link') : null;
@@ -2279,6 +2243,7 @@ function submitLoad() {
             // after the first attempt created it), so it is not a failure.
             var pcFailed = !!(_pfPayChange && _pfPayChange.ok === false &&
               _pfPayChange.error !== 'already_requested');
+            var pcError = _pfPayChange ? _pfPayChange.error : null;
             var hadPf = !!_pfPending;
             _pfPending = null; _pfPayChange = null;
             resetFormAfterSubmit(recordId, !cleanSuccess);
@@ -2290,7 +2255,10 @@ function submitLoad() {
               var pb = document.getElementById('post-submit-banner');
               if (pb) {
                 pb.className = 'post-submit-banner warn';
-                pb.appendChild(document.createTextNode(" Your load was submitted, but the pay change request didn't go through. Request it from Submission History."));
+                // PAYCHGPICK2: say why when the API gave a known refusal code.
+                var why = window.PayFaster ? window.PayFaster.refusalMessage(pcError) : null;
+                pb.appendChild(document.createTextNode(" Your load was submitted, but the pay change request didn't go through. " +
+                  (why || 'Request it from Submission History.')));
               }
             }
           });

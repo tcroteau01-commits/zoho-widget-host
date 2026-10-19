@@ -106,59 +106,201 @@ test('summaryHtml toggled broker pays and factored short pay', () => {
   assert.match(f, /Factor receives/);
 });
 
-test('optionsHtml reserve insufficient disables broker option', () => {
-  const h = PF.optionsHtml({ kind: 'net30', payer: 'carrier', rate: 2000, feePct: 4,
-    reserve: { cash: 25, status: 'ok' }, trained: true });
-  assert.match(h, /doesn't cover the \$40\.00 fee/);
-  assert.match(h, /\$25\.00/);
-  assert.match(h, /<input[^>]*value="broker"[^>]*disabled/);
-  assert.doesNotMatch(h, /<input[^>]*value="carrier"[^>]*disabled/);
+// PAYCHGPICK2: explicit "Who pays the quick pay fee?" (whoPaysState replaces optionsHtml,
+// waiveState and feePickerHtml).
+const WP = { kind: 'net30', rate: 2000, payer: null, feeAdjust: false, savedPct: '4', reserve: RES_OK, factorName: '', trained: true };
+const wp = (o) => PF.whoPaysState(Object.assign({}, WP, o));
+const radio = (h, v) => (h.match(new RegExp('<input[^>]*value="' + v + '"[^>]*>')) || [null])[0];
+
+test('whoPaysState shows both options, nothing picked, blocked', () => {
+  const r = wp({});
+  assert.match(r.html, /Who pays the quick pay fee\?/);
+  assert.match(r.html, /The carrier pays/);
+  assert.match(r.html, /I'll cover the fee/);
+  assert.ok(radio(r.html, 'carrier') && radio(r.html, 'broker'));
+  assert.doesNotMatch(r.html, /checked/);
+  assert.equal(r.blocked, true);
+  assert.equal(r.payer, null);
+  assert.doesNotMatch(r.html, /id="pf-fee"/);
 });
 
-test('optionsHtml reserve ok and unavailable', () => {
-  const ok = PF.optionsHtml({ kind: 'net30', payer: 'broker', rate: 2000, feePct: 4, reserve: RES_OK, trained: true });
-  assert.match(ok, /Your reserve balance \$1,250\.00 covers this fee\. Balance after: \$1,210\.00\./);
-  const un = PF.optionsHtml({ kind: 'net30', payer: 'broker', rate: 2000, feePct: 4,
-    reserve: { cash: null, status: 'unavailable' }, trained: true });
-  assert.match(un, /We couldn't check your reserve balance right now/);
-  assert.doesNotMatch(un, /<input[^>]*value="broker"[^>]*disabled/);
+test('whoPaysState carrier pays without fee adjust uses the saved fee', () => {
+  const r = wp({ payer: 'carrier' });
+  assert.equal(r.blocked, false);
+  assert.match(radio(r.html, 'carrier'), /checked/);
+  assert.doesNotMatch(r.html, /<select/);
+  assert.match(r.html, /\$80\.00 deducted from the carrier's payment/);
+  assert.match(r.html, /You earn \$40\.00 · OperFi earns \$40\.00/);
+  assert.match(r.html, /Carrier receives \$1,920\.00/);
+  assert.doesNotMatch(r.html, /from your reserve/);
+  assert.doesNotMatch(r.html, DASH);
 });
 
-test('optionsHtml factored carrier pays has short pay warning', () => {
-  const h = PF.optionsHtml({ kind: 'factored', payer: 'carrier', rate: 2000, feePct: 4, reserve: RES_OK,
-    factorName: 'RTS Financial', trained: true });
-  assert.match(h, /RTS Financial will receive \$80\.00 less than its invoice/);
-  const b = PF.optionsHtml({ kind: 'factored', payer: 'broker', rate: 2000, feePct: 4, reserve: RES_OK,
-    factorName: 'RTS Financial', trained: true });
-  assert.match(b, /This only pays the factor sooner/);
-  assert.doesNotMatch(b, /less than its invoice/);
+test('whoPaysState I will cover the fee', () => {
+  const r = wp({ payer: 'broker' });
+  assert.equal(r.blocked, false);
+  assert.match(r.html, /Carrier receives the full \$2,000\.00/);
+  assert.match(r.html, /\$40\.00 \(OperFi's 2%\) is charged to your reserve/);
+  assert.match(r.html, /Your reserve balance \$1,250\.00 covers this fee\. Balance after: \$1,210\.00\./);
+  const un = wp({ payer: 'broker', reserve: { cash: null, status: 'unavailable' } });
+  assert.match(un.html, /We couldn't check your reserve balance right now/);
+  assert.equal(un.blocked, false);
 });
 
-test('optionsHtml fee not set up disables carrier option', () => {
-  const h = PF.optionsHtml({ kind: 'net30', payer: 'broker', rate: 2000, feePct: null, reserve: RES_OK, trained: true });
-  assert.match(h, /Your quick pay fee isn't set up\. Contact OperFi\./);
-  assert.match(h, /<input[^>]*value="carrier"[^>]*disabled/);
+test('whoPaysState short reserve disables I will cover and drops a stale pick', () => {
+  const r = wp({ payer: 'broker', reserve: { cash: 25, status: 'ok' } });
+  assert.match(radio(r.html, 'broker'), /disabled/);
+  assert.doesNotMatch(radio(r.html, 'carrier'), /disabled/);
+  assert.match(r.html, /doesn't cover the \$40\.00 fee/);
+  assert.equal(r.payer, null);
+  assert.equal(r.blocked, true);
 });
 
-test('optionsHtml untrained is locked', () => {
-  const h = PF.optionsHtml({ kind: 'net30', payer: 'carrier', rate: 2000, feePct: 4, reserve: RES_OK,
-    trained: false, videoId: 'vid1' });
-  assert.match(h, /Watch the 2-minute Pay Faster video to unlock/);
-  assert.match(h, /data-video-id="vid1"/);
-  assert.equal((h.match(/<input[^>]*disabled/g) || []).length, 2);
+test('whoPaysState factored wording and short pay warning', () => {
+  const c = wp({ kind: 'factored', factorName: 'RTS Financial', payer: 'carrier' });
+  assert.match(c.html, /Payment still goes to RTS Financial, just sooner\. Who pays the quick pay fee\?/);
+  assert.match(c.html, /\$80\.00 deducted from the factor's payment/);
+  assert.match(c.html, /RTS Financial receives \$1,920\.00/);
+  assert.match(c.html, /RTS Financial will receive \$80\.00 less than its invoice/);
+  const b = wp({ kind: 'factored', factorName: 'RTS Financial', payer: 'broker' });
+  assert.match(b.html, /RTS Financial receives the full \$2,000\.00/);
+  assert.doesNotMatch(b.html, /less than its invoice/);
+});
+
+test('whoPaysState saved fee not set up disables carrier pays without fee adjust', () => {
+  for (const savedPct of [null, '1.5']) {
+    const r = wp({ savedPct, payer: 'carrier' });
+    assert.match(r.html, /Your quick pay fee isn't set up\. Contact OperFi\./);
+    assert.match(radio(r.html, 'carrier'), /disabled/);
+    assert.equal(r.blocked, true);
+  }
+});
+
+test('whoPaysState untrained is locked', () => {
+  const r = wp({ trained: false, videoId: 'vid1', payer: 'carrier' });
+  assert.match(r.html, /Watch the 2-minute Pay Faster video to unlock/);
+  assert.match(r.html, /data-video-id="vid1"/);
+  assert.equal(r.blocked, true);
+});
+
+test('whoPaysState no rate shows no dollar figures and blocks', () => {
+  for (const rate of [0, '', 'abc', null]) {
+    const r = wp({ rate, payer: 'broker' });
+    assert.match(r.html, /Enter the carrier rate to see the fee\./);
+    assert.doesNotMatch(r.html, /\$/);
+    assert.equal(r.blocked, true, String(rate));
+  }
+});
+
+test('whoPaysState fee adjust: whole-number select 5..1 plus the saved fee', () => {
+  const r = wp({ feeAdjust: true, payer: 'carrier', pct: '4' });
+  const sel = r.html.match(/<select[^>]*id="pf-fee"[^>]*>([\s\S]*?)<\/select>/);
+  assert.ok(sel, 'select rendered');
+  const opts = [...sel[1].matchAll(/<option value="([^"]*)"( selected)?>([^<]*)<\/option>/g)].map((m) => [m[1], !!m[2], m[3]]);
+  assert.deepEqual(opts.map((o) => o[0]), ['5', '4', '3', '2', '1']);
+  assert.deepEqual(opts.map((o) => o[2]), ['5%', '4% (your standard)', '3%', '2%', '1%']);
+  assert.deepEqual(opts.filter((o) => o[1]).map((o) => o[0]), ['4']);
+  assert.doesNotMatch(r.html, /type="number"/);
+  assert.doesNotMatch(sel[1], /value="0"/);
+  assert.equal(r.blocked, false);
+  const s = wp({ feeAdjust: true, payer: 'carrier', pct: '3.5', savedPct: '3.5' }).html;
+  assert.match(s, /<option value="4">4%<\/option><option value="3\.5" selected>3\.5% \(your standard\)<\/option><option value="3">/);
+  const six = wp({ feeAdjust: true, payer: 'carrier', pct: '6', savedPct: '6' }).html;
+  assert.match(six, /<option value="6" selected>6% \(your standard\)<\/option><option value="5">/);
+  // The select only shows under "The carrier pays".
+  assert.doesNotMatch(wp({ feeAdjust: true, payer: 'broker', pct: '4' }).html, /<select/);
+  assert.doesNotMatch(wp({ feeAdjust: true, payer: null, pct: '4' }).html, /<select/);
+});
+
+test('whoPaysState fee adjust 1%: split lines and reserve check', () => {
+  const r = wp({ feeAdjust: true, payer: 'carrier', pct: '1' });
+  assert.match(r.html, /\$20\.00 deducted from the carrier's payment/);
+  assert.match(r.html, /You earn \$0\.00 · OperFi earns \$40\.00/);
+  assert.match(r.html, /Carrier receives \$1,980\.00/);
+  assert.match(r.html, /You cover the other 1% \(\$20\.00\) from your reserve/);
+  assert.match(r.html, /Your reserve balance \$1,250\.00 covers this fee\. Balance after: \$1,230\.00\./);
+  assert.equal(r.blocked, false);
+  assert.equal(wp({ feeAdjust: true, payer: 'carrier', pct: '1', reserve: { cash: 5, status: 'ok' } }).blocked, true);
+  assert.equal(wp({ feeAdjust: true, payer: 'carrier', pct: '1', reserve: { status: 'unavailable' } }).blocked, false);
+  const five = wp({ feeAdjust: true, payer: 'carrier', pct: '5' });
+  assert.match(five.html, /\$100\.00 deducted from the carrier's payment/);
+  assert.match(five.html, /You earn \$60\.00 · OperFi earns \$40\.00/);
+  assert.doesNotMatch(five.html, /from your reserve/);
+});
+
+test('whoPaysState fee adjust refuses a value that is not a choice', () => {
+  for (const pct of ['', 'abc', '5.1', '-1', '0.3', '1.25', '4.5', '0'])
+    assert.equal(wp({ feeAdjust: true, payer: 'carrier', pct }).blocked, true, pct);
+});
+
+test('whoPaysState quickpay: fee adjust offers both, saved fee is no change', () => {
+  const q = { kind: 'quickpay', feeAdjust: true };
+  const at = wp(Object.assign({ payer: 'carrier', pct: '4' }, q));
+  assert.equal(at.blocked, true);
+  assert.match(at.html, /That's your saved quick pay fee\. Pick a different fee to change it on this load\./);
+  assert.equal(wp(Object.assign({ payer: 'carrier', pct: '3' }, q)).blocked, false);
+  const b = wp(Object.assign({ payer: 'broker', pct: '4' }, q));
+  assert.equal(b.blocked, false);
+  assert.match(b.html, /\$40\.00 \(OperFi's 2%\) is charged to your reserve/);
+});
+
+test('whoPaysState quickpay without fee adjust offers only I will cover the fee', () => {
+  const r = wp({ kind: 'quickpay', payer: null });
+  assert.ok(!radio(r.html, 'carrier'));
+  assert.ok(radio(r.html, 'broker'));
+  assert.equal(r.blocked, true);
+  const b = wp({ kind: 'quickpay', payer: 'broker', factorName: 'Example <Capital>' });
+  assert.equal(b.blocked, false);
+  assert.match(b.html, /Example &lt;Capital&gt; receives the full \$2,000\.00/);
+  const c = wp({ kind: 'quickpay', payer: 'carrier' });
+  assert.equal(c.payer, null, 'carrier is not an option here');
+  assert.equal(c.blocked, true);
+  assert.equal(wp({ kind: 'quickpay', payer: 'broker', reserve: { cash: 39.99, status: 'ok' } }).blocked, true);
+  assert.equal(wp({ kind: 'quickpay', payer: 'broker', reserve: { cash: 40, status: 'ok' } }).blocked, false);
+});
+
+test('feeChoices and defaultFee', () => {
+  const v = (s) => PF.feeChoices(s).map((c) => c.value + '|' + c.label);
+  assert.deepEqual(v('4'), ['5|5%', '4|4% (your standard)', '3|3%', '2|2%', '1|1%']);
+  assert.deepEqual(v(null), ['5|5%', '4|4%', '3|3%', '2|2%', '1|1%']);
+  assert.deepEqual(v('1.5'), ['5|5%', '4|4%', '3|3%', '2|2%', '1.5|1.5% (your standard)', '1|1%']);
+  assert.deepEqual(v('0'), ['5|5%', '4|4%', '3|3%', '2|2%', '1|1%']);
+  assert.equal(PF.defaultFee('4'), '4');
+  assert.equal(PF.defaultFee('4.00'), '4');
+  assert.equal(PF.defaultFee('6'), '6');
+  assert.equal(PF.defaultFee('3.5'), '3.5');
+  assert.equal(PF.defaultFee('1.5'), '2');
+  assert.equal(PF.defaultFee(null), '2');
+  assert.equal(PF.defaultFee('abc'), '2');
+});
+
+test('refusalMessage maps API codes', () => {
+  const m = PF.refusalMessage;
+  assert.equal(m('not_enabled_for_account'), "Pay Faster isn't turned on for your account. Contact OperFi.");
+  assert.equal(m('fee_adjust_not_enabled'), "Changing the quick pay fee isn't turned on for your account. Pick 'I'll cover the fee' or your standard fee.");
+  assert.equal(m('bad_fee_pct'), 'Pick a fee of 0% to 5%.');
+  assert.equal(m('no_change'), "That's already this carrier's quick pay fee. Nothing to change.");
+  assert.equal(m('terms_not_eligible'), "This carrier's payment terms can't be changed here.");
+  assert.equal(m('carrier_paid'), 'This carrier has already been paid.');
+  assert.equal(m('lookup_failed'), null);
+  assert.equal(m(undefined), null);
 });
 
 test('no em or en dashes in any html', () => {
   const all = [];
-  for (const kind of ['net30', 'factored'])
-    for (const payer of ['carrier', 'broker'])
-      for (const reserve of [RES_OK, { cash: 5, status: 'ok' }, { cash: null, status: 'unavailable' }])
-        for (const trained of [true, false])
-          all.push(PF.optionsHtml({ kind, payer, rate: 2000, feePct: 4, reserve, factorName: 'RTS', trained, videoId: 'v' }));
+  for (const kind of ['net30', 'factored', 'quickpay'])
+    for (const payer of ['carrier', 'broker', null])
+      for (const feeAdjust of [true, false])
+        for (const pct of ['4', '1', '0'])
+          for (const reserve of [RES_OK, { cash: 5, status: 'ok' }, { cash: null, status: 'unavailable' }])
+            for (const trained of [true, false])
+              all.push(wp({ kind, payer, feeAdjust, pct, reserve, factorName: 'RTS', trained, videoId: 'v' }).html);
   for (const kind of ['net30', 'factored', 'quickpay'])
     for (const payer of ['carrier', 'broker'])
       for (const toggled of [true, false])
         all.push(PF.summaryHtml({ kind, toggled, payer, fees: PF.computeFees(2000, 4, payer), feePct: 4, factorName: 'RTS', carrierRate: 2000 }));
+  for (const c of ['not_enabled_for_account', 'fee_adjust_not_enabled', 'bad_fee_pct', 'no_change', 'terms_not_eligible', 'carrier_paid'])
+    all.push(PF.refusalMessage(c));
   for (const h of all) assert.doesNotMatch(h, DASH);
   assert.doesNotMatch(src, DASH);
 });
@@ -199,26 +341,6 @@ test('factorNameForTerms table', () => {
   assert.equal(n(null), '');
 });
 
-test('waiveState and waiveHtml', () => {
-  const a = { rate: 2000, reserve: { cash: 1250, status: 'ok' }, factorName: '', kind: 'quickpay', trained: true };
-  const ok = PF.waiveState(a);
-  assert.equal(ok.short, false);
-  assert.match(ok.html, /Waive the quick pay fee on this load\. Carrier receives the full \$2,000\.00\. You cover OperFi's 2% \(\$40\.00\) from your reserve\./);
-  assert.equal(PF.waiveHtml(a), ok.html);
-  assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { cash: 39.99, status: 'ok' } })).short, true);
-  assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { cash: 40, status: 'ok' } })).short, false);
-  assert.equal(PF.waiveState(Object.assign({}, a, { reserve: { status: 'unavailable' } })).short, false);
-  for (const rate of [0, '', 'abc', null]) {
-    const z = PF.waiveState(Object.assign({}, a, { rate }));
-    assert.equal(z.short, true, String(rate));
-    assert.match(z.html, /Enter the carrier rate to see the fee\./);
-    assert.doesNotMatch(z.html, DASH);
-  }
-  const f = PF.waiveHtml(Object.assign({}, a, { factorName: 'Example <Capital>' }));
-  assert.match(f, /Example &lt;Capital&gt; receives the full/);
-  assert.doesNotMatch(ok.html, DASH);
-});
-
 test('summaryHtml quickpay broker-paid shows fee waived', () => {
   const h = PF.summaryHtml({ kind: 'quickpay', payer: 'broker', carrierRate: 2000, feePct: '4' });
   assert.match(h, /fee waived/);
@@ -229,67 +351,17 @@ test('summaryHtml quickpay broker-paid shows fee waived', () => {
   assert.doesNotMatch(c, /fee waived/);
 });
 
-// PAYCHG3: per-load fee picker.
+// PAYCHGPICK2: whole numbers 0 to 5, or the saved fee as is.
 test('feeValid table', () => {
   const v = PF.feeValid;
-  for (const x of ['0', '0.25', '5', '1.5', '4.75', 2]) assert.equal(v(x, '4'), true, String(x));
-  for (const x of ['5.1', '-1', '', 'abc', '0.3', '5.25', null, undefined]) assert.equal(v(x, '4'), false, String(x));
+  for (const x of ['0', '1', '2', '3', '4', '5', '4.0', '4.00', 2, '-0', '0.00']) assert.equal(v(x, '4'), true, String(x));
+  for (const x of ['5.1', '-1', '', 'abc', '0.3', '5.25', '0.25', '1.25', '1.5', '4.75', '5.5', '6', null, undefined]) assert.equal(v(x, '4'), false, String(x));
   assert.equal(v('3.3', '4'), false);
   assert.equal(v('3.3', '3.3'), true);
   assert.equal(v('6', '6'), true);
+  assert.equal(v('3.5', '3.5'), true);
   assert.equal(v('3.3', null), false);
-  assert.equal(v('1.2500000000001', '4'), false);
-  assert.equal(v('1.25', '4'), true);
-  assert.equal(v('-0', '4'), true);
-  assert.equal(v('0.00', '4'), true);
-});
-
-const PICK = { kind: 'net30', rate: 2000, savedPct: '4', reserve: RES_OK, factorName: '', trained: true };
-
-test('feePickerHtml live line for 2000 at 1', () => {
-  const r = PF.feePickerHtml(Object.assign({}, PICK, { pct: '1' }));
-  assert.match(r.html, /<input[^>]*type="number"[^>]*id="pf-fee"[^>]*min="0"[^>]*max="5"[^>]*step="0\.25"[^>]*value="1"/);
-  assert.match(r.html, /Carrier pays 1% \(\$20\.00\) · you cover 1% \(\$20\.00\) from reserve · you earn \$0\.00/);
-  assert.match(r.html, /Your reserve balance \$1,250\.00 covers this fee\. Balance after: \$1,230\.00\./);
-  assert.match(r.html, /Let the carrier know this load pays with a \$20\.00 fee deducted\./);
-  assert.equal(r.blocked, false);
-  assert.doesNotMatch(r.html, DASH);
-});
-
-test('feePickerHtml carrier above 2 and zero', () => {
-  const r = PF.feePickerHtml(Object.assign({}, PICK, { pct: '4' }));
-  assert.match(r.html, /Carrier pays 4% \(\$80\.00\) · you earn \$40\.00/);
-  assert.doesNotMatch(r.html, /from reserve/);
-  assert.doesNotMatch(r.html, /reserve balance/);
-  const z = PF.feePickerHtml(Object.assign({}, PICK, { pct: '0' }));
-  assert.match(z.html, /Carrier pays 0% \(\$0\.00\) · you cover 2% \(\$40\.00\) from reserve · you earn \$0\.00/);
-  assert.doesNotMatch(z.html, /Let the carrier know/);
-  assert.equal(z.blocked, false);
-});
-
-test('feePickerHtml blocked cases', () => {
-  for (const pct of ['', 'abc', '5.1', '-1', '0.3'])
-    assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { pct })).blocked, true, pct);
-  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { pct: '1', reserve: { cash: 5, status: 'ok' } })).blocked, true);
-  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { pct: '1', reserve: { status: 'unavailable' } })).blocked, false);
-  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { kind: 'quickpay', pct: '4' })).blocked, true);
-  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { kind: 'quickpay', pct: '3' })).blocked, false);
-  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { kind: 'net30', pct: '4' })).blocked, false);
-  assert.equal(PF.feePickerHtml(Object.assign({}, PICK, { pct: '1', rate: 0 })).blocked, true);
-});
-
-test('feePickerHtml factored short pay and saved fee not set up', () => {
-  const f = PF.feePickerHtml(Object.assign({}, PICK, { kind: 'factored', factorName: 'Example Capital', pct: '1' }));
-  assert.match(f.html, /Example Capital will receive \$20\.00 less than its invoice/);
-  assert.doesNotMatch(f.html, /Let the carrier know/);
-  const f0 = PF.feePickerHtml(Object.assign({}, PICK, { kind: 'factored', factorName: 'Example Capital', pct: '0' }));
-  assert.doesNotMatch(f0.html, /less than its invoice/);
-  for (const savedPct of [null, '1.5']) {
-    const u = PF.feePickerHtml(Object.assign({}, PICK, { savedPct, pct: '0' }));
-    assert.match(u.html, /Your saved quick pay fee isn't set up\. Contact OperFi\./);
-    assert.equal(u.blocked, false);
-  }
-  assert.doesNotMatch(PF.feePickerHtml(Object.assign({}, PICK, { pct: '1' })).html, /isn't set up/);
+  assert.equal(v('1.0000000000001', '4'), false);
 });
 
 test('summaryHtml split shows carrier part, reserve part and OperFi 2%', () => {

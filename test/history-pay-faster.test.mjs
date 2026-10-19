@@ -862,11 +862,17 @@ test('open requests outside the date range are listed in a note', async () => {
   assert.doesNotMatch(note.textContent, /Q-1/);
 });
 
-test('queue list refused (non-admin see-all) shows no note and keeps the chip', async () => {
+test('queue list refused (no admin session) shows neither chip nor note', async () => {
   const w = makeDom({ rows: QROWS, allClients: true, open: 403 });
   await flush();
   assert.equal($(w, 'pf-queue-note'), null);
-  assert.ok(queueChip(w));
+  assert.equal(queueChip(w), null);
+});
+
+test('chip does not depend on the feature context arriving first', async () => {
+  const w = makeDom({ rows: QROWS, allClients: true, staff: true, ctx: 404 });
+  await flush();
+  assert.ok(queueChip(w), 'chip comes from the queue answer, not the context');
 });
 
 test('deciding from the queue drops the chip count in place', async () => {

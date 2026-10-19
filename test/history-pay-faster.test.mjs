@@ -615,3 +615,13 @@ test('fee change pill wording', async () => {
   assert.match(tl, /QP fee changed to 3\.25%/);
   assert.equal((tl.match(/3\.25%/g) || []).length, 1);
 });
+
+test('legacy carrier row at 1.5% reads as PAYCHG1 (no split wording)', async () => {
+  const LEG = Object.assign({}, REQ, { payer: 'carrier', qp_fee_pct: '1.5', request_type: null, carrier_fee_pct: null });
+  const w = await open({ pay_change: { status: 'requested' } }, { staff: true, elig: { eligible: false, reason: 'already_requested', kind: 'net30', terms: 'Standard Net 30', request: LEG } });
+  const tl = $(w, 'panel').querySelector('.timeline').textContent;
+  assert.match(tl, /Pay change requested: Standard Net 30 → Quick Pay, carrier pays 1\.5%/);
+  assert.doesNotMatch(tl, /broker covers/);
+  assert.match($(w, 'pf-slot').textContent, /Standard Net 30 → Quick Pay, carrier pays 1\.5%/);
+  assert.doesNotMatch($(w, 'pf-slot').textContent, /broker covers/);
+});

@@ -1565,6 +1565,7 @@ function pfCarrierPct(q) {
 }
 // PAYCHG3: carrier pays 0 < X < 2, the broker covers the rest of OperFi's 2%. Returns {x, y} text or null.
 function pfSplit(q) {
+  if (!q || q.payer !== 'split') return null;  // the API stores 0 < fee < 2 as payer "split"
   var cp = pfCarrierPct(q);
   if (cp === '') return null;
   var n = Number(cp), share = Number(pfPctText(q.operfi_share_pct) || 2);

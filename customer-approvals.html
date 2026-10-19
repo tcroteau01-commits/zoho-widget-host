@@ -515,6 +515,15 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
    so this never needs its own gate. */
 .ca-app-recovery { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e3e0d5; display: flex; flex-direction: column; gap: 8px; }
 .ca-app-recovery-row { display: flex; gap: 6px; align-items: center; }
+/* STAFFREFHELP1 -- what each recovery control is for, and the Fix email jump target. */
+.ca-app-recovery-help { display: flex; gap: 8px; font-size: 11px; line-height: 1.5; color: #666; background: #f7f6f1; border-radius: 6px; padding: 7px 9px; }
+.ca-app-recovery-help b { color: #444; font-weight: 600; }
+.ca-app-recovery-help-icon {
+  flex: 0 0 15px; height: 15px; border-radius: 50%; border: 1px solid #999; color: #777;
+  font: italic 600 10px/13px Georgia, serif; text-align: center; margin-top: 1px;
+}
+@keyframes caAppRecoveryFlash { 0% { background: #fff1cc; } 100% { background: transparent; } }
+.ca-app-recovery-flash { animation: caAppRecoveryFlash 1.6s ease-out; border-radius: 6px; }
 .ca-app-recovery-input {
   flex: 1; font-size: 12px; font-family: inherit; border: 1px solid #d8d8d8;
   border-radius: 6px; padding: 6px 8px; box-sizing: border-box;
@@ -2577,9 +2586,18 @@ function caAppRowHtml(p, legacy) {
   // applicant's own party), so this never offers a control that would 400.
   // Takes a note, never an address -- see credit_app_report_problem's own
   // docstring for the attack that boundary guards against.
-  var reportBtnHtml = (legacy || p.slot === 'customer') ? '' :
-    '<button type="button" class="row-action ca-app-report-problem" data-slot="' + esc(p.slot) + '">Report a problem</button>';
-  var reportFormHtml = (legacy || p.slot === 'customer') ? '' :
+  //
+  // STAFFREFHELP1 (Tom, 2026-10-19): Pat needed to fix a reference's email and
+  // hit this row's broker controls. For staff, Report a problem (a note TO
+  // credit) becomes Fix email, which jumps to that reference's own Correct
+  // address box in the Full Submission section below. Shown only where that
+  // box renders (caAppReferenceAnswerHtml's CA_APP_ANSWERED gate).
+  var staffFix = allClients && !legacy && p.slot !== 'customer' && CA_APP_ANSWERED.indexOf(p.status) === -1;
+  var reportBtnHtml = staffFix
+    ? '<button type="button" class="row-action ca-app-fix-email" data-slot="' + esc(p.slot) + '">Fix email</button>'
+    : ((allClients || legacy || p.slot === 'customer') ? '' :
+    '<button type="button" class="row-action ca-app-report-problem" data-slot="' + esc(p.slot) + '">Report a problem</button>');
+  var reportFormHtml = (allClients || legacy || p.slot === 'customer') ? '' :
     '<div class="ca-app-report-form" data-slot="' + esc(p.slot) + '" style="display:none;">' +
       '<textarea class="ca-app-report-note" placeholder="What looks wrong with this reference?"></textarea>' +
       '<div class="ca-app-report-btns">' +
@@ -2728,6 +2746,9 @@ function renderCreditAppSection(r, payload) {
   // just above, since these rows are rebuilt on every render.
   section.querySelectorAll('.ca-app-report-problem').forEach(function(btn) {
     btn.addEventListener('click', function() { caAppShowReportForm(section, btn.dataset.slot); });
+  });
+  section.querySelectorAll('.ca-app-fix-email').forEach(function(btn) {
+    btn.addEventListener('click', function() { caAppJumpToRecovery(section, btn.dataset.slot); });
   });
   section.querySelectorAll('.ca-app-report-cancel').forEach(function(btn) {
     btn.addEventListener('click', function() { caAppHideReportForm(section, btn.dataset.slot); });
@@ -2916,6 +2937,28 @@ function caAppMsgEl(section, slot) {
   return section.querySelector('.ca-app-msg[data-slot-msg="' + slot + '"]');
 }
 
+// STAFFREFHELP1 -- staff Fix email: scroll to this reference's Correct address
+// box in the Full Submission section, flash it, and put the cursor in it. That
+// section fills from a separate fetch, so a click before it lands says so
+// instead of doing nothing.
+function caAppJumpToRecovery(section, slot) {
+  var staffSection = document.getElementById('ca-app-staff-section');
+  var box = staffSection ? staffSection.querySelector('.ca-app-recovery[data-slot="' + slot + '"]') : null;
+  var msgEl = caAppMsgEl(section, slot);
+  if (!box || staffSection.style.display === 'none') {
+    if (msgEl) { msgEl.textContent = 'Full Submission is still loading. Try again in a moment.'; msgEl.className = 'ca-app-msg error'; }
+    return;
+  }
+  if (msgEl) { msgEl.textContent = ''; msgEl.className = 'ca-app-msg'; }
+  if (box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  box.classList.remove('ca-app-recovery-flash');
+  void box.offsetWidth;   // restart the animation on a second click
+  box.classList.add('ca-app-recovery-flash');
+  var input = box.querySelector('.ca-app-address-input');
+  if (input) input.focus({ preventScroll: true });
+}
+if (typeof window !== 'undefined') { window.caAppJumpToRecovery = caAppJumpToRecovery; }
+
 // One party's Nudge click (also fired per-row by "Nudge all waiting"). Success
 // and every refusal are handled entirely from the server's own response --
 // this never guesses at WHY a nudge was refused beyond what credit_app_store's
@@ -2928,10 +2971,19 @@ function caAppDoNudge(r, slot, btn) {
   btn.textContent = 'Nudging…';
   if (msgEl) { msgEl.textContent = ''; msgEl.className = 'ca-app-msg'; }
   var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
-  fetch(BROKER_API_BASE + '/credit-app/nudge', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email, submission_id: r.ID, slot: slot })
-  }).then(function(res) {
+  // STAFFREFHELP1: /credit-app/nudge is scoped to the broker's own account and
+  // 403s for OperFi staff. Staff go through the customer profile's nudge
+  // (session-gated, same cooldown and three-reminder cap in credit_app_store).
+  var req = allClients
+    ? fetch(BROKER_API_BASE + '/customer-profile/' + encodeURIComponent(r.ID) + '/nudge', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot: slot })
+      })
+    : fetch(BROKER_API_BASE + '/credit-app/nudge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, submission_id: r.ID, slot: slot })
+      });
+  req.then(function(res) {
     return res.text().then(function(t) {
       var data = {}; try { data = t ? JSON.parse(t) : {}; } catch (e) {}
       return { status: res.status, data: data };
@@ -2949,7 +3001,14 @@ function caAppDoNudge(r, slot, btn) {
 function caAppHandleNudgeResult(rr, btn, msgEl) {
   if (rr.status === 200) {
     btn.textContent = 'Nudged';
-    if (msgEl) { msgEl.textContent = 'Nudged just now'; msgEl.className = 'ca-app-msg ok'; }
+    // The staff route reports whether mail actually took it (sent: false = the
+    // send failed, the reminder still counts). The broker route never sends it.
+    if (rr.data && rr.data.sent === false) {
+      if (msgEl) { msgEl.textContent = 'The reminder did not send. The address may be bad. Use Fix email.'; msgEl.className = 'ca-app-msg error'; }
+    } else if (msgEl) {
+      msgEl.textContent = rr.data && rr.data.to ? 'Nudged just now (' + rr.data.to + ')' : 'Nudged just now';
+      msgEl.className = 'ca-app-msg ok';
+    }
     // A successful nudge starts the very cooldown record_nudge enforces server-side --
     // disable through it rather than let an immediate second click just 409.
     caAppScheduleReenable(btn, msgEl, CA_APP_NUDGE_COOLDOWN_HOURS);
@@ -2958,6 +3017,12 @@ function caAppHandleNudgeResult(rr, btn, msgEl) {
   if (rr.status === 409) {
     var reason = (rr.data && rr.data.error) || 'Could not nudge';
     if (reason === CA_APP_NUDGE_LIMIT_MSG) {
+      // Staff ARE credit@operfi.com -- point them at their own tools instead.
+      if (allClients) {
+        btn.disabled = true;
+        if (msgEl) { msgEl.textContent = 'All 3 reminders sent. Fix email or Waive in Full Submission below.'; msgEl.className = 'ca-app-msg error'; }
+        return;
+      }
       caAppReplaceWithContact(btn);
       return;
     }
@@ -2972,7 +3037,10 @@ function caAppHandleNudgeResult(rr, btn, msgEl) {
   }
   btn.disabled = false;
   btn.textContent = 'Nudge';
-  if (msgEl) { msgEl.textContent = 'Could not nudge. Try again.'; msgEl.className = 'ca-app-msg error'; }
+  // The server's own reason when it gave one (e.g. "Not your customer"), so a
+  // refusal never reads as a temporary glitch.
+  var why = rr.data && rr.data.error;
+  if (msgEl) { msgEl.textContent = why ? 'Could not nudge: ' + why : 'Could not nudge. Try again.'; msgEl.className = 'ca-app-msg error'; }
 }
 if (typeof window !== 'undefined') { window.caAppHandleNudgeResult = caAppHandleNudgeResult; }
 
@@ -3721,7 +3789,13 @@ function caAppReferenceAnswerHtml(p) {
   // CANNOT_BE_ANSWERED: a party that already has a final answer gets
   // neither control, matching the 409 the server would return anyway.
   if (CA_APP_ANSWERED.indexOf(p.status) === -1) {
+    // STAFFREFHELP1: which control fixes which problem, said where staff act.
     html += '<div class="ca-app-recovery" data-slot="' + esc(p.slot) + '">' +
+      '<div class="ca-app-recovery-help"><span class="ca-app-recovery-help-icon" aria-hidden="true">i</span><div>' +
+        '<b>Wrong email:</b> enter the right one and click Correct address. The survey goes to the new address and the old link stops working.<br>' +
+        '<b>Right email, no answer:</b> use Nudge on the reference row above.<br>' +
+        '<b>Can’t get this reference:</b> enter a reason and click Waive.' +
+      '</div></div>' +
       '<div class="ca-app-recovery-row">' +
         '<input type="email" class="ca-app-recovery-input ca-app-address-input" ' +
           'placeholder="Corrected email address">' +

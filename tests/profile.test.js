@@ -926,6 +926,24 @@ test('a waiting reference that may be reminded gets a Send reminder button', () 
   assert.ok(html.includes('Send reminder'));
 });
 
+test('a reference shows its contact name, phone and email while still waiting', () => {
+  const html = P.render(appWith({ slot: 'trade1', company: 'Amx Logistics', name: 'Muhamed',
+                                  phone: '+1 210 319 6939', email: 'availableloads+dat@amxtrucking.com',
+                                  status: 'sent', response: null, can_nudge: true, reminders: 0 }));
+  assert.ok(html.includes('class="cp-refcontact">Muhamed &middot; +1 210 319 6939 &middot; availableloads+dat@amxtrucking.com</div>'));
+});
+
+test('a reference with no company does not repeat the name in its contact line', () => {
+  const html = P.render(appWith({ slot: 'bank', company: '', name: 'Azur', email: 'abuse@jpmorgan.com',
+                                  status: 'sent', response: null }));
+  assert.ok(html.includes('class="cp-refcontact">abuse@jpmorgan.com</div>'));
+});
+
+test('a reference with no contact details gets no empty contact line', () => {
+  const html = P.render(appWith({ slot: 'trade1', company: 'Preferred Pump', status: 'sent', response: null }));
+  assert.ok(!html.includes('class="cp-refcontact"'));
+});
+
 test('a reference that may not be reminded shows why, and no button', () => {
   const html = P.render(appWith({ slot: 'trade2', company: 'Trojan', status: 'sent', response: null,
                                   can_nudge: false, nudge_blocked: 'reminded 3h ago', reminders: 1 }));

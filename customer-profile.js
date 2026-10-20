@@ -1200,8 +1200,15 @@ function renderReferenceTable(refs) {
     '</tr></thead>';
 
   var rows = refs.map(function (r) {
+    // REFCONTACT1, Tom 2026-10-20: the contact the customer gave us for each
+    // reference shows here too, not only in the detail pane. It is what the
+    // analyst checks first (a jpmorgan "abuse@" officer email, a load-board
+    // inbox for a trade reference) and it matters most while the reply is out.
+    var contact = [r.company ? r.name : '', r.phone, r.email].filter(Boolean);
     var who = esc(SLOT_LABELS[r.slot] || r.slot) + '<br>' +
-              '<span class="muted">' + esc(r.company || r.name || '—') + '</span>';
+              '<span class="muted">' + esc(r.company || r.name || '—') + '</span>' +
+              (contact.length ? '<div class="cp-refcontact">' +
+                contact.map(esc).join(' &middot; ') + '</div>' : '');
     var resp = r.response;
     if (!resp) {
       return '<tr><td>' + who + '</td><td>' + statusPill(r.status) + '</td>' +
@@ -1288,6 +1295,7 @@ function renderApplicationBody(customer) {
       field('Bank', bank.name ? esc(bank.name) : emptyDash()) +
       field('Officer', bank.officer ? esc(bank.officer) : emptyDash()) +
       field('Bank Phone', bank.phone ? esc(bank.phone) : emptyDash()) +
+      field('Officer Email', bank.email ? esc(bank.email) : emptyDash()) +
       field('AP Email', bill.ap_email ? esc(bill.ap_email) : emptyDash()) +
       field('Billing Contact', bill.contact_name ? esc(bill.contact_name) : emptyDash()) +
       field('Billing Phone', bill.phone ? esc(bill.phone) : emptyDash()) +
@@ -1559,6 +1567,7 @@ var CP_CSS = '' +
   '.cp-reftable td{font-size:13.5px;color:#1d1d1f;font-weight:600;' +
     'padding:7px 10px 7px 0;border-top:1px solid #f1efe9;vertical-align:top;}' +
   '.cp-reftable td.waiting{color:#9a958a;font-weight:500;}' +
+  '.cp-refcontact{font-size:12px;font-weight:500;color:#6b6b6b;margin-top:2px;overflow-wrap:anywhere;}' +
   '.cp-reftable tr.has-risk td{background:#fffbf5;}' +
   // Two sections read together sit together, and fall back to stacked on a
   // narrow window without a breakpoint to maintain.

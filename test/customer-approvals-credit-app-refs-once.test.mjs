@@ -181,8 +181,12 @@ test('the surviving row is the tracker row, with its actions intact', () => {
       slot + ' should survive as the tracker row');
     assert.ok(rows[0].closest('#ca-app-section'),
       slot + ' should survive inside the tracker section');
-    assert.ok(rows[0].querySelector('.ca-app-report-problem'),
-      slot + ' should keep its Report a problem control');
+    // STAFFREFHELP1: staff get Fix email in place of the broker's Report a
+    // problem, on every reference that has not answered (trade1 has).
+    assert.ok(!rows[0].querySelector('.ca-app-report-problem'),
+      slot + ' should not offer staff the broker Report a problem control');
+    assert.equal(!!rows[0].querySelector('.ca-app-fix-email'), slot !== 'trade1',
+      slot + ' Fix email only where the reference has not answered');
   }
   // Nudge only where nudging is still useful: trade1 is completed.
   assert.ok(!statusRowsFor(w, 'trade1')[0].querySelector('.ca-app-nudge'));

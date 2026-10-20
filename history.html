@@ -1571,16 +1571,39 @@ function pfOpenRecord() { return openIndex >= 0 ? filteredRecords[openIndex] : n
 // PAYCHGACCESS1: per-client access from the context. Only a real true counts (missing = no access).
 function pfAccess() { return !!(_pfCtx && _pfCtx.access && _pfCtx.access.pay_faster === true); }
 function pfFeeAccess() { return pfAccess() && _pfCtx.access.fee_adjust === true; }
-// Server truth: an OperFi admin session that is impersonating. Staff entry skips the boxes and training.
+// Server truth: an OperFi admin on their OWN session in All clients (not impersonating).
+// Staff entry skips the boxes and training.
 function pfStaffEntry() { return !!(_pfCtx && _pfCtx.staff === true); }
 function pfTrained() { return pfStaffEntry() || _pfCtx.trained !== false; }
+function pfOffered(d) {
+  if (!pfOn() || !d || !d.eligible) return false;
+  return !(d.kind === 'quickpay' && !pfPickMode(d.kind) && _pfCtx.waive_enabled !== true);
+}
 // Who may open the request popup for this eligibility. Staff: any eligible load. Client: the
 // Pay Faster box, not impersonating. A quick pay load needs the picker or the waive flag.
 function pfCanEnter(d) {
-  if (!pfOn() || !d || !d.eligible) return false;
-  if (!pfStaffEntry() && (!pfAccess() || pfImpersonating())) return false;
-  if (d.kind === 'quickpay' && !pfPickMode(d.kind) && _pfCtx.waive_enabled !== true) return false;
-  return true;
+  if (!pfOffered(d)) return false;
+  return pfStaffEntry() || (pfAccess() && !pfImpersonating());
+}
+// Staff mirroring a client see the client's button, locked: mirroring is view only.
+function pfMirrorPreview(d) {
+  return !pfStaffEntry() && pfImpersonating() && pfAccess() && pfOffered(d);
+}
+// The client's own fee and reserve: staff entry in All clients reads them from the
+// eligibility answer (the page context is the staffer's, with no account).
+function pfCtxFor(pop) {
+  var c = pop && pop.elig && pop.elig.client;
+  return c ? Object.assign({}, _pfCtx, c) : _pfCtx;
+}
+// Re-read the reserve before a charge to it is offered.
+function pfRefetchReserve(pop) {
+  if (!(pop && pop.elig && pop.elig.client)) return payFasterLoadContext(true);
+  var id = String(pop.rec.ID);
+  return fetch(BROKER_API_BASE + '/pay-change/eligibility?email=' + encodeURIComponent(brokerEmail) +
+      '&record_id=' + encodeURIComponent(id))
+    .then(function(res) { if (!res.ok) throw new Error(res.status); return res.json(); })
+    .then(function(j) { if (j && j.client) pop.elig.client = j.client; })
+    .catch(function() { pop.elig.client = Object.assign({}, pop.elig.client, { reserve: { cash: null, status: 'unavailable' } }); });
 }
 
 var PF_PILL = { requested: 'Requested', applied: 'Applied', declined: 'Declined' };
@@ -1866,6 +1889,10 @@ function pfStaffMathHtml(q) {
   return h + '</div>';
 }
 
+function pfOpenLabel(d) {
+  return (d.kind === 'factored' ? 'Pay the factoring company faster' : d.kind === 'quickpay' ? (pfPickMode(d.kind) ? 'Change QP fee' : 'Waive QP fee') : 'Pay carrier faster');
+}
+
 function payFasterSlotHtml(r) {
   if (!pfOn() || !r || isDraft(r)) return '';
   var d = pfCurrentElig(r);
@@ -1874,9 +1901,14 @@ function payFasterSlotHtml(r) {
   if (pfCanEnter(d)) {
     var locked = !pfTrained();
     h += '<button class="pf-open" id="pf-open"' + (locked ? ' disabled' : '') + '>⚡ ' +
-      (d.kind === 'factored' ? 'Pay the factoring company faster' : d.kind === 'quickpay' ? (pfPickMode(d.kind) ? 'Change QP fee' : 'Waive QP fee') : 'Pay carrier faster') +
+      pfOpenLabel(d) +
       (pfStaffEntry() ? ' (for client)' : '') + '</button>';
     if (locked) h += pfVideoLink();
+  } else if (pfMirrorPreview(d)) {
+    h += '<button class="pf-open" disabled>⚡ ' +
+      pfOpenLabel(d) +
+      '</button><div class="pf-msg pf-info pf-staff-view">Staff view: this is what the client sees. ' +
+      'Mirroring is view only. To enter one for them, open this load in All clients.</div>';
   }
   var q = d.request;
   if (pfIsStaff() && q && q.status === 'requested') {
@@ -1914,21 +1946,22 @@ function pfPickMode(kind) {
 }
 // PAYCHGPICK2: the "Who pays the quick pay fee?" block for the open popup.
 function pfWhoArgs(pop, rate) {
+  var ctx = pfCtxFor(pop);
   return { kind: pop.elig.kind, rate: rate, payer: pop.payer, feeAdjust: pop.pick, pct: pop.fee,
-    savedPct: _pfCtx.qp_fee_pct, reserve: _pfCtx.reserve,
+    savedPct: ctx.qp_fee_pct, reserve: ctx.reserve,
     factorName: window.PayFaster.factorNameForTerms(pop.elig.terms), trained: pfTrained(),
     videoId: _pfCtx.training_video_id };
 }
 // The picked carrier fee spends reserve (below 2%): re-read the balance once, then re-render against it.
 function pfMaybeRefetchFee() {
   var pop = _pfPop, PF = window.PayFaster;
-  if (!pop || !pop.pick || pop.payer !== 'carrier' || pop.feeRefetched || !PF.feeValid(pop.fee, _pfCtx.qp_fee_pct)) return;
+  if (!pop || !pop.pick || pop.payer !== 'carrier' || pop.feeRefetched || !PF.feeValid(pop.fee, pfCtxFor(pop).qp_fee_pct)) return;
   var rate = pfParseRate(pop.rec);
   if (!(rate > 0)) return;
   var f = PF.computeFeesAt(rate, pop.fee);
   if (f.error || !(f.reserveCharge > 0)) return;
   pop.feeRefetched = true;
-  payFasterLoadContext(true).then(function() { if (_pfPop === pop) pfRenderOpts(); });
+  pfRefetchReserve(pop).then(function() { if (_pfPop === pop) pfRenderOpts(); });
 }
 
 function pfOpenPopup(r) {
@@ -1939,7 +1972,7 @@ function pfOpenPopup(r) {
   var waive = d.kind === 'quickpay' && !pick;
   // PAYCHGPICK2: nothing pre-selected, the waive included.
   _pfPop = { rec: r, elig: d, payer: null, sending: false, waive: waive, pick: pick,
-    fee: pick ? window.PayFaster.defaultFee(_pfCtx.qp_fee_pct) : null, feeRefetched: false };
+    fee: pick ? window.PayFaster.defaultFee(pfCtxFor({ elig: d }).qp_fee_pct) : null, feeRefetched: false };
   var factored = d.kind === 'factored';
   var m = document.createElement('div');
   m.className = 'pf-modal-backdrop';
@@ -1980,12 +2013,12 @@ function pfOpenPopup(r) {
     _pfPop.payer = t.value === 'broker' ? 'broker' : 'carrier';
     pfRenderOpts();
     // I'll cover the fee spends reserve: re-read the balance, then re-render against it.
-    if (_pfPop.payer === 'broker') payFasterLoadContext(true).then(pfRenderOpts);
+    if (_pfPop.payer === 'broker') pfRefetchReserve(_pfPop).then(pfRenderOpts);
     else pfMaybeRefetchFee();
   });
   pfRenderOpts();
   // The waive spends reserve: re-read the balance now so the check below is fresh.
-  if (waive) payFasterLoadContext(true).then(pfRenderOpts);
+  if (waive) pfRefetchReserve(_pfPop).then(pfRenderOpts);
 }
 
 function pfClosePopup() {
@@ -2080,7 +2113,7 @@ function pfSend() {
     if (res.status === 409 && (code === 'already_requested' || code === 'carrier_paid')) {
       pfFetchElig(pop.rec);
     } else if (res.status === 409 && code === 'reserve_insufficient') {
-      payFasterLoadContext(true).then(pfRenderOpts);
+      pfRefetchReserve(pop).then(pfRenderOpts);
     }
     pfRenderOpts();
   }).catch(function() {

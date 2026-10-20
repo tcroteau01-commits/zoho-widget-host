@@ -1155,7 +1155,7 @@ function _pfFoundCarrier() {
 }
 
 // Staff impersonating a client: the API refuses an impersonated request (read-only),
-// so the broker's request control is not offered at all.
+// so the box shows as the client sees it, locked, with a staff note.
 function _pfImpersonating() {
   try { return !!(window.OPERFI_IMP && typeof OPERFI_IMP.target === 'function' && OPERFI_IMP.target()); }
   catch (e) { return false; }
@@ -1176,7 +1176,7 @@ function renderPayFaster() {
   var waive = on && _pfWaiveMode();
   var pick = on && _pfPickMode();
 
-  if (!on || imp || (kind !== 'net30' && kind !== 'factored' && !waive && !pick)) {
+  if (!on || (kind !== 'net30' && kind !== 'factored' && !waive && !pick)) {
     if (blk) blk.style.display = 'none';
     var tg0 = document.getElementById('pf-toggle'); if (tg0) tg0.checked = false;
     if (opts) opts.innerHTML = '';
@@ -1187,8 +1187,13 @@ function renderPayFaster() {
     if (lbl) lbl.textContent = (pick && kind === 'quickpay') ? 'Change the quick pay fee (this load only)' : waive ? 'Waive the quick pay fee (this load only)' : factored ? 'Pay the factoring company faster (this load only)' : 'Pay this carrier faster (this load only)';
     var tg = document.getElementById('pf-toggle');
     var trained = _pf.ctx.trained !== false;
-    if (tg) { tg.checked = !!_pf.toggled; tg.disabled = !trained; }
-    if (!trained) {
+    if (tg) { tg.checked = !!_pf.toggled; tg.disabled = imp || !trained; }
+    if (imp) {
+      if (opts) opts.innerHTML = '<div class="pf-msg pf-info pf-staff-view">Staff view: this is what the client sees. ' +
+        'Only the client can turn this on.' + (trained ? '' : " They haven't watched the training video yet, so it's locked for them.") +
+        ' To enter one for them, open the submitted load on Submission History in All clients.</div>';
+      if (noteWrap) noteWrap.style.display = 'none';
+    } else if (!trained) {
       _pf.toggled = false; _pf.payer = null;
       if (tg) tg.checked = false;
       if (opts) opts.innerHTML = _pfVideoLink();

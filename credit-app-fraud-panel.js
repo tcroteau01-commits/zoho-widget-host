@@ -45,7 +45,6 @@
 
   function render(fraud) {
     if (!fraud || !fraud.level) return '';
-    var rep = fraud.repeats || {};
     var html = '<div class="cfp">';
     html += '<div class="cfp-head cfp-level-' + esc(fraud.level) + '">' +
       esc(LEVELS[fraud.level] || fraud.level) + '</div>';
@@ -55,7 +54,15 @@
         return '<li class="cfp-' + esc(r.strength) + '">' + esc(r.text) + '</li>';
       }).join('') + '</ul>';
     }
-    var parties = fraud.parties || [];
+    return html + renderParties(fraud) + '</div>';
+  }
+
+  // The per-party table on its own. FRAUDTABLE1: the full customer profile
+  // renders it under its own fraud box, so both pages show the same table.
+  function renderParties(fraud) {
+    var html = '';
+    var rep = (fraud && fraud.repeats) || {};
+    var parties = (fraud && fraud.parties) || [];
     var netCount = {};
     parties.forEach(function (p) {
       if (p.network && !residential(p)) netCount[p.network] = (netCount[p.network] || 0) + 1;
@@ -87,7 +94,7 @@
       });
       html += '</tbody></table></div>';
     }
-    return html + '</div>';
+    return html;
   }
 
   var STYLES =
@@ -115,7 +122,7 @@
     document.head.appendChild(s);
   }
 
-  var api = { render: render, injectStyles: injectStyles, esc: esc };
+  var api = { render: render, renderParties: renderParties, injectStyles: injectStyles, esc: esc };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; }
   if (typeof window !== 'undefined') { window.OperFiCreditFraudPanel = api; }
 })();

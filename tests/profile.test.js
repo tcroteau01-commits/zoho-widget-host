@@ -944,6 +944,34 @@ test('a reference with no contact details gets no empty contact line', () => {
   assert.ok(!html.includes('class="cp-refcontact"'));
 });
 
+test('FRAUDTABLE1: the fraud box carries the detail pane party table', () => {
+  const html = P.render(appWith({ slot: 'trade2', company: 'All Green Freight LLC', status: 'completed',
+    response: null, risk_level: 'high', risk_signals: [{ code: 'same_ip_as_applicant', detail: 'x' }] }, {
+    fraud: { level: 'high', reasons: ['Applicant and Trade 2 submitted from the same IP address (212.102.44.84).'],
+      parties: [
+        { label: 'Applicant', company: 'EXXONMOBIL CHEMICAL', email_domain: 'exxonmobchemical.com',
+          domain_age_days: 69, ip: '212.102.44.84', ip_captured: true },
+        { label: 'Trade 2', company: 'ALL GREEN FREIGHT LLC', email_domain: 'allgreenfreight.com',
+          domain_age_days: 2598, ip: '212.102.44.84', ip_captured: true }],
+      repeats: { ip: ['212.102.44.84'] } } }));
+  const box = html.indexOf('cp-fraud-high');
+  const table = html.indexOf('cfp-table');
+  const risk = html.indexOf('Trade Reference 2 risk: high');
+  const refs = html.indexOf('<table class="cp-reftable"');
+  assert.ok(box > -1 && table > box, 'party table under the verdict');
+  assert.ok(risk > box && risk < refs, 'reference risk lines above the references table');
+  assert.ok(html.includes('<th>Email domain</th><th>Domain age</th>'));
+  assert.ok(html.includes('69 days'));
+  assert.ok(html.includes('class="cfp-repeat"'), 'a shared IP is highlighted as on the pane');
+});
+
+test('FRAUDTABLE1: an older payload with no party rows renders no empty table', () => {
+  const html = P.render(appWith({ slot: 'trade1', company: 'X', status: 'sent', response: null },
+    { fraud: { level: 'review', reasons: ['r'] } }));
+  assert.ok(!html.includes('cfp-table'));
+  assert.ok(!html.includes('cp-fraud-parties'));
+});
+
 test('a reference that may not be reminded shows why, and no button', () => {
   const html = P.render(appWith({ slot: 'trade2', company: 'Trojan', status: 'sent', response: null,
                                   can_nudge: false, nudge_blocked: 'reminded 3h ago', reminders: 1 }));

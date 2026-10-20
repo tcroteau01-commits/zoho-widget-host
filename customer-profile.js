@@ -1235,23 +1235,12 @@ function renderReferenceTable(refs) {
            cells + '</tr>';
   }).join('');
 
-  // Risk and free-text stay BELOW the table, one line each. They are prose and
-  // would wreck the column widths, but they are also the two things worth
-  // reading once the numbers line up.
+  // Free-text comments stay BELOW the table: prose would wreck the column
+  // widths. Per-reference risk lines moved up beside the fraud read
+  // (renderRefRiskLines), FRAUDTABLE1.
   var extra = refs.map(function (r) {
-    var out = '';
-    if (r.risk_level && r.risk_signals && r.risk_signals.length) {
-      out += '<div class="cp-refnote"><span class="cp-flag">' +
-        esc(SLOT_LABELS[r.slot] || r.slot) + ' risk: ' + esc(r.risk_level) +
-        '</span> ' + r.risk_signals.map(function (s) {
-          return esc(String(s.code || '').replace(/_/g, ' ')) +
-                 (s.detail ? ' (' + esc(s.detail) + ')' : '');
-        }).join(' &middot; ') + '</div>';
-    }
-    if (r.response && r.response.comments) {
-      out += '<div class="cp-quote">' + esc(r.response.comments) + '</div>';
-    }
-    return out;
+    return (r.response && r.response.comments)
+      ? '<div class="cp-quote">' + esc(r.response.comments) + '</div>' : '';
   }).join('');
 
   return '<table class="cp-reftable">' + head + '<tbody>' + rows +
@@ -1306,6 +1295,27 @@ function renderApplicationBody(customer) {
   return out;
 }
 
+// credit-app-fraud-panel.js owns the party table. On the page it is a window
+// global loaded beside this file; under node tests it is required.
+function fraudPanel() {
+  if (typeof window !== 'undefined' && window.OperFiCreditFraudPanel) {
+    return window.OperFiCreditFraudPanel;
+  }
+  try { return require('./credit-app-fraud-panel.js'); } catch (e) { return null; }
+}
+
+function renderRefRiskLines(refs) {
+  return (refs || []).map(function (r) {
+    if (!(r.risk_level && r.risk_signals && r.risk_signals.length)) { return ''; }
+    return '<div class="cp-refnote"><span class="cp-flag">' +
+      esc(SLOT_LABELS[r.slot] || r.slot) + ' risk: ' + esc(r.risk_level) +
+      '</span> ' + r.risk_signals.map(function (s) {
+        return esc(String(s.code || '').replace(/_/g, ' ')) +
+               (s.detail ? ' (' + esc(s.detail) + ')' : '');
+      }).join(' &middot; ') + '</div>';
+  }).join('');
+}
+
 function renderCreditApp(p) {
   var a = p.credit_app;
   if (!a) {
@@ -1331,6 +1341,15 @@ function renderCreditApp(p) {
       ((a.fraud.reasons || []).length ? '<ul>' + a.fraud.reasons.map(function (r) {
         return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' : '') + '</div>';
   }
+  // FRAUDTABLE1, Tom 2026-10-20: the detail pane's party table and the
+  // per-reference risk lines sit right under the verdict, so the evidence is
+  // read with the conclusion rather than after scrolling past the references.
+  var panel = fraudPanel();
+  if (a.fraud && panel && panel.renderParties) {
+    var parties = panel.renderParties(a.fraud);
+    if (parties) { head += '<div class="cp-fraud-parties">' + parties + '</div>'; }
+  }
+  head += renderRefRiskLines(a.references);
   if (a.legacy) {
     // An imported Zoho Forms app. "Awaiting reply" there means the reference was
     // asked by Zoho when the app came in, which can be months ago.
@@ -1575,6 +1594,7 @@ var CP_CSS = '' +
     'gap:8px;margin-bottom:8px;}' +
   '.cp-pair > .panel-section{margin-bottom:0;}' +
   '.cp-refnote{margin-top:8px;font-size:11.5px;color:#b25e00;}' +
+  '.cp-fraud-parties{margin:4px 0 6px;}' +
   '.cp-fraud{margin:10px 0;padding:8px 12px;border-radius:8px;font-size:12.5px;}' +
   '.cp-fraud ul{margin:4px 0 0 18px;padding:0;}' +
   '.cp-fraud-high{background:#fdecea;color:#c62828;}' +
@@ -1611,6 +1631,8 @@ var CP_CSS = '' +
 
 function injectStyles() {
   if (typeof document === 'undefined') { return; }
+  var panel = fraudPanel();
+  if (panel && panel.injectStyles) { panel.injectStyles(); }
   if (document.getElementById(CP_STYLE_ID)) { return; }
   var s = document.createElement('style');
   s.id = CP_STYLE_ID;

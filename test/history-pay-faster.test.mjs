@@ -351,9 +351,13 @@ test('staff always see timeline dates; brokers do not', async () => {
   items(w).forEach((i) => assert.equal(i.querySelector('.timeline-time'), null));
 });
 
-test('impersonating staff get no request button but keep resolve controls', async () => {
+test('impersonating staff get a locked preview but keep resolve controls', async () => {
   let w = await open({}, { staff: true, imp: 'client@sample-brokerage.example' });
-  assert.ok(!$(w, 'pf-open'), 'no broker request button while impersonating');
+  assert.ok(!$(w, 'pf-open'), 'no usable request button while impersonating');
+  const prev = $(w, 'pf-slot').querySelector('button.pf-open');
+  assert.ok(prev && prev.disabled, "the client's button, locked");
+  assert.equal(prev.textContent, '⚡ Pay carrier faster');
+  assert.match($(w, 'pf-slot').textContent, /Staff view: this is what the client sees\. Mirroring is view only/);
   w = await open({ pay_change: { status: 'requested' } },
     { staff: true, imp: 'client@sample-brokerage.example', elig: PENDING_ELIG });
   assert.ok($(w, 'pf-apply'));
@@ -823,6 +827,26 @@ test('staff impersonating sees for-client button and banner', async () => {
   assert.doesNotMatch($(w, 'pf-open').textContent, /for client/);
   click(w, $(w, 'pf-open')); await flush();
   assert.doesNotMatch($(w, 'pf-modal').textContent, /entering this for/);
+});
+
+// PAYCHGSTAFF1: staff enter from All clients; the page context has no account, so the
+// popup reads the client's own fee and reserve from the eligibility answer.
+test('staff entry uses the client fee from eligibility', async () => {
+  const ctx = Object.assign({}, STAFF_CTX, { qp_fee_pct: null, reserve: { cash: null, status: 'unavailable' } });
+  const elig = Object.assign({}, ELIG, { client: { qp_fee_pct: '3', reserve: { cash: '900.00', status: 'ok' } } });
+  const w = await open(ACCT_ROW, { ctx, elig });
+  assert.equal($(w, 'pf-open').textContent, '⚡ Pay carrier faster (for client)');
+  click(w, $(w, 'pf-open')); await flush();
+  pick(w, 'carrier'); await flush();
+  assert.match($(w, 'pf-modal').textContent, /\$60\.00 deducted/, "3% of $2,000: the client's saved fee, not the page context");
+  assert.doesNotMatch($(w, 'pf-modal').textContent, /\$80\.00/);
+  assert.equal($(w, 'pf-send').disabled, false);
+});
+
+test('impersonating a client without access: no preview', async () => {
+  const w = await open({}, { staff: true, imp: IMP, ctx: NO_ACCESS_CTX,
+    elig: { eligible: false, reason: 'not_enabled_for_account', kind: null, terms: null, request: null } });
+  assert.equal($(w, 'pf-slot').querySelector('button.pf-open'), null);
 });
 
 test('staff popup posts once', async () => {

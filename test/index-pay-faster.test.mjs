@@ -265,12 +265,15 @@ test('draft finalize without pay faster has no pay faster line', async () => {
   assert.doesNotMatch(t, /Pay faster/);
 });
 
-test('impersonating hides the toggle and sends no pay_faster', async () => {
+test('impersonating shows the box locked and sends no pay_faster', async () => {
   const w = await ready();
   w.OPERFI_IMP = { target: () => 'client@sample-brokerage.example', isStaff: () => true };
   setVal(w, 'carrier-rate', '2000');
   pickCarrier(w, 'v-net');
-  assert.ok(!visible($(w, 'pay-faster')));
+  assert.ok(visible($(w, 'pay-faster')), 'staff see what the client sees');
+  assert.equal($(w, 'pf-toggle').disabled, true, 'mirroring is view only');
+  assert.match($(w, 'pf-options').textContent, /Staff view: this is what the client sees/);
+  assert.match($(w, 'pf-options').textContent, /Submission History in All clients/);
   assert.strictEqual(w.payFasterPayload(), null);
   await fillAndSubmit(w);
   await flush();
@@ -485,11 +488,21 @@ test('waive untrained shows video link and no payload', async () => {
   assert.strictEqual(w.payFasterPayload(), null);
 });
 
-test('waive hidden while impersonating', async () => {
+test('waive shown locked while impersonating', async () => {
   const w = await ready({ ctx: WCTX });
   w.OPERFI_IMP = { target: () => 'client@sample-brokerage.example', isStaff: () => true };
   pickCarrier(w, 'v-qp');
-  assert.ok(!visible($(w, 'pay-faster')));
+  assert.ok(visible($(w, 'pay-faster')));
+  assert.equal($(w, 'pf-toggle').disabled, true);
+  assert.match($(w, 'pf-toggle-label').textContent, /Waive the quick pay fee/);
+  assert.strictEqual(w.payFasterPayload(), null);
+});
+
+test('impersonating a client without access: still hidden', async () => {
+  const w = await ready({ ctx: Object.assign({}, WCTX, { access: { pay_faster: false, fee_adjust: false } }) });
+  w.OPERFI_IMP = { target: () => 'client@sample-brokerage.example', isStaff: () => true };
+  pickCarrier(w, 'v-net');
+  assert.ok(!visible($(w, 'pay-faster')), 'the client would not see it either');
 });
 
 test('FC-QP summary names factor', async () => {

@@ -86,6 +86,31 @@ test('COI item is locked while a COI is on file but unopened', () => {
   assert.match(hint.textContent, /open the coi/i);
 });
 
+test('COILINK1: locked hint is a link (no "below") that opens the doc and releases the lock', () => {
+  const w = boot();
+  w.profilePayload = { account_vendor: { av_id: '1' } };
+  w.renderChecklist(_p());
+  w.document.getElementById('cp-docs-body').innerHTML =
+    '<button class="cp-doc-preview" data-token="t1" data-filename="b.pdf" data-type="banking">View</button>' +
+    '<button class="cp-doc-preview" data-token="t2" data-filename="coi.pdf" data-type="coi">View</button>';
+  const opened = [];
+  w.openCarrierDoc = (t) => opened.push(t);
+  w.cpFetchDocAdvisory = () => {};
+  w._bindCarrierDocsListener();
+  w.cpDocTypesOnFile = { coi: true };
+  w.cpViewedTypes = {};
+  w.cpApplyForcedGates();
+  const hint = w.document.querySelector('.cp-check-hint[data-hint-for="Checklist_COI_Truck_Driver"]');
+  assert.doesNotMatch(hint.textContent, /below/i);
+  const link = hint.querySelector('.cp-check-open');
+  assert.ok(link, 'hint should render a clickable link');
+  link.click();
+  assert.deepEqual(opened, ['t2']);
+  const coi = w.document.querySelector('.cp-check-item[data-key="Checklist_COI_Truck_Driver"]');
+  assert.equal(coi.disabled, false);
+  assert.equal(coi.checked, false, 'opening the doc must not tick the box');
+});
+
 test('opening the COI (viewed) releases the lock', () => {
   const w = boot();
   w.profilePayload = { account_vendor: { av_id: '1' } };

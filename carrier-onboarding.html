@@ -567,7 +567,6 @@ var FORMS = {
 
 // ── State ─────────────────────────────────────────────────────────────────
 var brokerEmail   = '';
-var brokerContactId = null;        // Current broker's own Contact ID (used for Contact_Name on the form)
 var lookupResult  = null;          // { carrier, existing_vendor, global_dnu } from last successful lookup
 var historyRecords = [];           // Combined records from both reports
 var historySearch = '';
@@ -599,7 +598,6 @@ function bootApp() {
       return;
     }
     console.log('[CarrierOnboarding] Booted as', brokerEmail);
-    loadBrokerContact();
     loadHistory();
   }
   if (!ZOHO.CREATOR.UTIL || typeof ZOHO.CREATOR.UTIL.getInitParams !== 'function') {
@@ -691,19 +689,6 @@ function navigateParent(hash) {
   try { window.top.location.href = url; return; } catch (e) {}
   try { window.parent.location.href = url; return; } catch (e) {}
   try { window.open(url, '_top'); } catch (e) {}
-}
-
-// ── Broker self-lookup (for Contact_Name on the form) ─────────────────────
-function loadBrokerContact() {
-  fetch(BROKER_API_BASE + '/broker-users?email=' + encodeURIComponent(brokerEmail))
-    .then(function(res) { return res.json(); })
-    .then(function(res) {
-      brokerContactId = (res && res.self_contact_id) || '';
-      if (brokerContactId) console.log('[CarrierOnboarding] Broker Contact ID:', brokerContactId);
-      else console.warn('[CarrierOnboarding] No self_contact_id for', brokerEmail);
-    }).catch(function(err) {
-      console.error('[CarrierOnboarding] /broker-users fetch failed', err);
-    });
 }
 
 // ── Lookup ────────────────────────────────────────────────────────────────
@@ -1303,10 +1288,9 @@ function validateModal() {
 
 function submitModal() {
   if (!validateModal()) return;
-  if (!brokerContactId) {
-    showModalMsg('Could not identify your contact. Reload the page and try again.', 'error');
-    return;
-  }
+  // ONBLINK1: no client-side contact lookup. /broker-send-onboarding-link resolves
+  // the acting contact itself; the old roster-route pre-check is gated on Company
+  // Profile and blocked every send for a user whose admin unchecked that page.
   if (!currentModalType) return;
 
   var submit = document.getElementById('modal-submit');

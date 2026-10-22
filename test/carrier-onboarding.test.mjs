@@ -177,6 +177,7 @@ function makeLookupWidget(carrier, opts, carrier2, opts2) {
   // opts.admin: stub window.OPERFI_IMP so isAdminSession() is true
   // opts.globalDnu: /carrier-lookup response includes global_dnu: true
   // carrier2, opts2: optional second carrier/opts for sequential lookups in the same widget
+  // opts.brokerUsersForbidden: /broker-users answers 403 (user without Company Profile)
   opts = opts || {};
   const posts = [];
   let lookupCount = 0;
@@ -201,6 +202,10 @@ function makeLookupWidget(carrier, opts, carrier2, opts2) {
             json: () => Promise.resolve({ carrier: c, existing_vendor: null, global_dnu: !!o.globalDnu }) });
         }
         if (u.includes('/broker-users')) {
+          if (opts.brokerUsersForbidden) {
+            return Promise.resolve({ ok: false, status: 403,
+              json: () => Promise.resolve({ error: 'Forbidden' }) });
+          }
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ self_contact_id: 'c1' }) });
         }
         if (u.includes('/broker-send-onboarding-link')) {
@@ -391,6 +396,26 @@ test('send posts the locked FMCSA email and DOT', async () => {
   assert.equal(posts.length, 1);
   assert.equal(posts[0].body.send_to, 'fmcsa@carrier.com');
   assert.equal(String(posts[0].body.carrier_dot), '92261');
+});
+
+// ONBLINK1 (2026-10-22). A user whose admin unchecked Company Profile gets 403
+// from /broker-users. The send route resolves the contact server-side, so that
+// must not stop the link: AART's Harry Withers hit "Could not identify your
+// contact" on every send.
+test('send still posts when the user lacks Company Profile (/broker-users 403)', async () => {
+  const dom = makeLookupWidget({ dot_number: '92261', carrier_name: 'A&M', email_address: 'fmcsa@carrier.com' },
+    { brokerUsersForbidden: true });
+  const w = dom.window;
+  w.dispatchEvent(new w.Event('load'));
+  await waitFor(w, '[data-open-modal]');
+  await runLookup(w);
+  w.document.querySelector('[data-open-modal="full"]').click();
+  w.document.getElementById('modal-submit').click();
+  await new Promise(r => setTimeout(r, 30));
+  const posts = w._posts.filter(p => p.url.includes('/broker-send-onboarding-link'));
+  assert.equal(posts.length, 1);
+  assert.doesNotMatch(w.document.getElementById('modal-msg')?.textContent || '',
+    /Could not identify your contact/);
 });
 
 // ── Client-facing error copy (no DevTools/F12 hints) ──────────────────────────

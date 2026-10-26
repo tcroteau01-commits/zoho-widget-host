@@ -1290,14 +1290,14 @@ function rowHtml(r, idx) {
   var email = r.Email || '';
   var phone = r.Phone_Number1 || r.Phone_Number || '';
   var addr = formatAddress(r);
-  var submittedAt = parseDate(r.Added_Time);
+  var submittedOn = submittedAt(r);
   var decidedAt = parseDate(r.Credit_Decision_Date);
   var dateLine = '';
   if (decidedAt && (s.key === 'approved' || s.key === 'denied' || s.key === 'expired' || s.key === 'boost')) {
     var verb = s.key === 'denied' ? 'Denied' : (s.key === 'expired' ? 'Expired' : (s.key === 'boost' ? 'Boost decision' : 'Approved'));
     dateLine = verb + ' ' + fmtRelative(decidedAt);
-  } else if (submittedAt) {
-    dateLine = 'Submitted ' + fmtRelative(submittedAt);
+  } else if (submittedOn) {
+    dateLine = 'Submitted ' + fmtRelative(submittedOn);
   }
 
   var recId = r.ID || '';
@@ -1436,7 +1436,7 @@ function renderPanel() {
   var s = statusMeta(r);
   var limit = parseMoney(r.Credit_Limit);
   var hasLimit = (s.key === 'approved' || s.key === 'boost') && limit > 0;
-  var added = parseDate(r.Added_Time);
+  var added = submittedAt(r);
   var prevDis = (openIndex <= 0) ? ' disabled' : '';
   var nextDis = (openIndex >= filteredRecords.length - 1) ? ' disabled' : '';
 
@@ -4616,7 +4616,14 @@ function parseDate(v) {
 }
 // Returns a NEW sorted array; never mutates `records`. sortKey defaults to
 // the module-level currentSort so production call sites can omit it.
-// Missing/unparseable Added_Time always sorts last in 'newest'/'oldest'.
+// Missing/unparseable submitted time always sorts last in 'newest'/'oldest'.
+// SUBMITTIME1: when the check went live. The API adds Submitted_Time (Added_Time's own format)
+// from the go-live event, because a saved draft's Added_Time is the day it was STARTED. A row
+// without one is an older check, whose Added_Time already is its submit time.
+function submittedAt(r) {
+  return parseDate((r && r.Submitted_Time) || (r && r.Added_Time));
+}
+window.submittedAt = submittedAt;  // exposed for tests
 function sortRecords(records, sortKey) {
   var key = sortKey || currentSort;
   var arr = records.slice();
@@ -4631,7 +4638,7 @@ function sortRecords(records, sortKey) {
   // 'newest' (default) or 'oldest'
   var sign = key === 'oldest' ? 1 : -1;
   arr.sort(function(a, b) {
-    var da = parseDate(a.Added_Time), db = parseDate(b.Added_Time);
+    var da = submittedAt(a), db = submittedAt(b);
     if (!da && !db) return 0;
     if (!da) return 1;   // missing dates always sort last
     if (!db) return -1;
@@ -4972,7 +4979,7 @@ function exportCsv() {
   if (!filteredRecords.length) return;
   var headers = ['Submitted','Decision Date','Status','Customer','Address','POC','Email','Phone','Website','Credit Limit','Credit Notes'];
   var rows = filteredRecords.map(function(r) {
-    var added = parseDate(r.Added_Time);
+    var added = submittedAt(r);
     var decided = parseDate(r.Credit_Decision_Date);
     return [
       added ? fmtDateTime(added) : '',

@@ -12,6 +12,7 @@
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-coi-hold.js"></script>
 <style>
 :root{
   --ink:#272727;--amber:#e8a020;--amber-dk:#c9871a;--body:#f0efe9;--card:#fff;
@@ -231,6 +232,7 @@ select.gsel.done{border-color:#bfe3cc;background:#f1faf4}
     <button class="btn" id="resolve-carr">Resolve carriers</button>
   </div>
 
+  <div id="coi-hold-banner" style="display:none"></div>
   <div class="toolbar">
     <div class="filters" id="filters">
       <button class="chip on" data-filter="all">All <span class="ct" id="ct-all">0</span></button>
@@ -791,7 +793,7 @@ function renderSummary(summary){
   setText('ct-attn', summary.attention!=null?summary.attention:__state.drafts.filter(function(d){return d.status==='attention';}).length);
   var ready = summary.ready!=null?summary.ready:__state.drafts.filter(function(d){return d.status==='ready';}).length;
   setText('submit-all', 'Submit all Ready ('+ready+')');
-  var sb=document.getElementById('submit-all'); if(sb) sb.disabled = !ready;
+  var sb=document.getElementById('submit-all'); if(sb) sb.disabled = !ready || !!__coiHold;
   renderSmartBar();
 }
 
@@ -1002,12 +1004,37 @@ function closeModal(){ var s=document.getElementById('scrim'); if(s) s.classList
 
 /* ---------------- submit gating ---------------- */
 
+// COIHOLD1: a broker the COI Tool holds for contingent cargo cannot submit. The banner and the
+// disabled button are courtesy; /draft-loads/submit is the gate and answers 403 coi_hold.
+// A failed check leaves everything open (fails open, like the server).
+var __coiHold = null;
+var COI_HOLD_TOAST = 'Funding on hold: contingent cargo insurance needed';
+function setCoiHold(hold){
+  __coiHold = hold || null;
+  if (window.OperFiCoiHold) OperFiCoiHold.render(document.getElementById('coi-hold-banner'), __coiHold);
+  var sb=document.getElementById('submit-all'); if(sb && __coiHold) sb.disabled = true;
+}
+function loadCoiHold(){
+  if (!window.OperFiCoiHold) return Promise.resolve(null);
+  return OperFiCoiHold.check({ email:brokerEmail, apiBase:BROKER_API_BASE }).then(function(h){ setCoiHold(h); return h; });
+}
+window.loadCoiHold = loadCoiHold;
+
 function submitIds(ids){
+  if (__coiHold){ showToast(COI_HOLD_TOAST); return Promise.resolve(); }
   return fetch(BROKER_API_BASE+'/draft-loads/submit', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({ email:brokerEmail, ids:ids })
-  }).then(function(r){ if(r&&r.ok===false) throw new Error('submit failed'); return r.json(); })
-    .then(function(res){ handleSubmitResult(res); return res; })
+  }).then(function(r){
+      if(r&&r.ok===false){
+        return Promise.resolve(r.json ? r.json() : null).catch(function(){ return null; }).then(function(j){
+          var m = window.OperFiCoiHold && OperFiCoiHold.refusal(j);
+          if (!m) throw new Error('submit failed');
+          setCoiHold({ reason:j.reason, message:m }); showToast(COI_HOLD_TOAST);
+        });
+      }
+      return r.json().then(function(res){ handleSubmitResult(res); return res; });
+    })
     .catch(function(){ showToast('Submit failed'); });
 }
 function submitAllReady(){
@@ -1129,6 +1156,7 @@ function boot(){
   if (result && typeof result.then==='function'){
     result.then(function(params){
       brokerEmail=(params && (params.loginUser||params.login_user||params.email))||'';
+      loadCoiHold();
       loadPickLists().then(loadQueue);
     });
   }

@@ -6,6 +6,7 @@
 <title>Load Detail</title>
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
+<script src="https://app.operfi.com/operfi-coi-hold.js"></script>
 <script src="https://app.operfi.com/operfi-places.js?v=1"></script>
 <script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-docviewer.js?v=6"></script>
@@ -943,6 +944,7 @@ function boot() {
   if (result && typeof result.then === 'function') {
     result.then(function(params){
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
+      loadCoiHold();
       wireAddressAutocomplete();
       loadRefData();
     });
@@ -1309,6 +1311,7 @@ function renderSubmitPanel(load, docs) {
         '<input type="text" id="f-factoring-invoice" placeholder="from carrier or factoring co."></div>' +
       '</div>' +
     '</div>' +
+    '<div id="coi-hold-banner" style="display:none"></div>' +
     '<button id="btn-submit-factoring" class="btn primary" disabled style="margin-top:12px">Submit for Factoring</button>' +
     '<div id="submit-result" class="muted" style="margin-top:8px"></div></div>';
 
@@ -1328,6 +1331,7 @@ function renderSubmitPanel(load, docs) {
     });
   });
 
+  if (window.OperFiCoiHold) OperFiCoiHold.render(document.getElementById('coi-hold-banner'), _coiHold);
   _refreshGates(load, docs, warnings);
   var inv = document.getElementById('f-factoring-invoice');
   if (inv) inv.oninput = function () { _refreshGates(load, docs, warnings); };
@@ -1352,10 +1356,25 @@ function _refreshGates(load, docs, warnings) {
   }
   var btn = document.getElementById('btn-submit-factoring');
   if (btn) {
-    btn.disabled = failures.length > 0;
-    if (failures.length > 0) btn.classList.remove('ready'); else btn.classList.add('ready');
+    btn.disabled = failures.length > 0 || !!_coiHold;
+    if (failures.length > 0 || _coiHold) btn.classList.remove('ready'); else btn.classList.add('ready');
   }
 }
+
+// COIHOLD1: a broker the COI Tool holds for contingent cargo cannot submit. Courtesy only:
+// /tms-submit is the gate and answers 403 coi_hold. A failed check leaves the button alone.
+var _coiHold = null;
+function setCoiHold(hold) {
+  _coiHold = hold || null;
+  if (window.OperFiCoiHold) OperFiCoiHold.render(document.getElementById('coi-hold-banner'), _coiHold);
+  var btn = document.getElementById('btn-submit-factoring');
+  if (btn && _coiHold) { btn.disabled = true; btn.classList.remove('ready'); }
+}
+function loadCoiHold() {
+  if (!window.OperFiCoiHold) return Promise.resolve(null);
+  return OperFiCoiHold.check({ email: brokerEmail, apiBase: BROKER_API_BASE }).then(function (h) { setCoiHold(h); return h; });
+}
+window.loadCoiHold = loadCoiHold;
 
 function submitForFactoring(load) {
   var inv = document.getElementById('f-factoring-invoice');
@@ -1379,6 +1398,9 @@ function submitForFactoring(load) {
       } else if (o.j.vetting_warnings) {
         if (res) res.textContent = 'Vetting warning — check override to proceed.';
         if (btn) btn.disabled = false;
+      } else if (window.OperFiCoiHold && OperFiCoiHold.refusal(o.j)) {
+        setCoiHold({ reason: o.j.reason, message: OperFiCoiHold.refusal(o.j) });
+        if (res) res.textContent = OperFiCoiHold.refusal(o.j);
       } else {
         if (res) res.textContent = (o.j.gate_failures || [o.j.error || 'Submit failed']).join(' ');
         if (btn) btn.disabled = false;

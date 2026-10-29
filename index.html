@@ -404,6 +404,8 @@ textarea { resize: vertical; min-height: 90px; }
 <!-- Shared AV (carrier vetting + credit) component -->
 <script src="https://app.operfi.com/operfi-av.js?v=2"></script>
 <script src="https://app.operfi.com/pay-faster.js"></script>
+<!-- COIHOLD1: contingent cargo hold banner + the coi_hold refusal message -->
+<script src="https://app.operfi.com/operfi-coi-hold.js"></script>
 <!-- Shared document viewer: previews a picked doc before submit -->
 <script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
 <script src="https://app.operfi.com/operfi-docviewer.js?v=6"></script>
@@ -445,6 +447,7 @@ textarea { resize: vertical; min-height: 90px; }
   </div>
 
   <div id="auth-banner" class="auth-banner"></div>
+  <div id="coi-hold-banner" style="display:none"></div>
   <div id="post-submit-banner" class="post-submit-banner" style="display:none"></div>
   <div id="draft-summary" class="draft-summary" hidden></div>
 
@@ -1396,6 +1399,7 @@ function onCustomerChange() {
 
 function onReady() {
   if (!brokerEmail) return;
+  loadCoiHold();
   var custLoad = loadCustomers().then(function () {
     var custSel = document.getElementById('customer-select');
     if (custSel) custSel.addEventListener('change', onCustomerChange);
@@ -1503,7 +1507,7 @@ window.markStepInvalid = markStepInvalid;
 // Enables/disables submit; updates .done classes on hstep indicators.
 function refreshValidity() {
   var submitBtn = document.getElementById('submit-btn');
-  var allValid = stepValid('customer') && stepValid('carrier') && !payFasterBlocksSubmit();
+  var allValid = stepValid('customer') && stepValid('carrier') && !payFasterBlocksSubmit() && !_coiHold;
   if (submitBtn) submitBtn.disabled = !allValid;
 
   var custDone = stepValid('customer');
@@ -2043,6 +2047,20 @@ window.onCustomerChange = onCustomerChange;
 // ── B5: Submit + upload ──────────────────────────────────────────────────────
 var _submitting = false;
 
+// COIHOLD1: a broker the COI Tool holds for contingent cargo cannot submit. Courtesy only:
+// /funding-submit is the real gate. A failed check leaves the button alone (fails open).
+var _coiHold = null;
+function loadCoiHold() {
+  if (!window.OperFiCoiHold) return Promise.resolve(null);
+  return OperFiCoiHold.check({ email: brokerEmail, apiBase: BROKER_API_BASE }).then(function (hold) {
+    _coiHold = hold;
+    OperFiCoiHold.render(document.getElementById('coi-hold-banner'), hold);
+    refreshValidity();
+    return hold;
+  });
+}
+window.loadCoiHold = loadCoiHold;
+
 function _collectFields() {
   function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
   var carrierId = v('carrier-select');
@@ -2214,14 +2232,17 @@ function submitLoad() {
         if (!res.ok || !res.j || !res.j.record_id) {
           // Prefer the backend's specific gate/rejection message (e.g. the
           // hiring-decision block reason) over the generic fallback when present.
-          if (statusEl) statusEl.textContent = (res.j && res.j.error)
+          var coiMsg = window.OperFiCoiHold && OperFiCoiHold.refusal(res.j);
+          if (coiMsg) { _coiHold = { reason: res.j.reason, message: coiMsg };
+                        OperFiCoiHold.render(document.getElementById('coi-hold-banner'), _coiHold); }
+          if (statusEl) statusEl.textContent = coiMsg || (res.j && res.j.error)
             || 'Submission failed. Your entries are kept — please try again.';
           // BPOC1: reaching the billing gate means the picker let this customer through
           // on a stale list (it was cached before someone cleared the billing fields, or
           // the flag predates this build). Reload so the option actually grays out and
           // the list agrees with the message the broker is reading.
           if (res.j && res.j.code === 'billing_incomplete') loadCustomers();
-          if (btn) btn.disabled = false;
+          if (btn) btn.disabled = !!coiMsg;
           return;
         }
         var recordId = res.j.record_id;

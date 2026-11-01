@@ -185,15 +185,33 @@ test('a financials-only app shows its state, never as App sent', () => {
   assert.strictEqual(w.CA_APP_SUMMARY_FOR_TEST.financials_only, 'Financials requested');
 });
 
-test('broker file links go to the financials-file route with the broker email, as downloads', () => {
+test('broker file links go to the financials-file route with no ?email=, as downloads', () => {
   const w = bootPane();
   w.renderCreditAppFinancials({ ID: '9' }, STATUS_FIN_ONLY);
   const a = w.document.querySelector('#ca-fin-section a');
   assert.ok(a, 'no file link');
-  assert.ok(a.href.includes('/credit-app/financials-file/app9/f1?email=broker%40marek.com'), a.href);
+  assert.ok(a.href.endsWith('/credit-app/financials-file/app9/f1'), a.href);
+  assert.ok(!/email=/.test(a.href), 'downloads are session-only; the email must never ride the URL');
   assert.ok(a.hasAttribute('download'));
   assert.strictEqual(a.getAttribute('target'), '_blank');
   assert.ok(a.textContent.includes('P&L 2025.pdf'));
+  assert.ok(!w.document.getElementById('ca-fin-section').textContent.includes('Sign in to the new OperFi portal'));
+});
+
+test('received with the file list withheld (no portal session) says to sign in, with no links', () => {
+  const w = bootPane();
+  w.renderCreditAppFinancials({ ID: '9' }, Object.assign({}, STATUS_FIN_ONLY, { financials_files: [] }));
+  const sec = w.document.getElementById('ca-fin-section');
+  assert.ok(sec.textContent.includes('Financials received'));
+  assert.ok(sec.textContent.includes('Sign in to the new OperFi portal to view and download these files.'));
+  assert.strictEqual(sec.querySelector('a'), null);
+});
+
+test('waiting with no files does not tell the broker to sign in', () => {
+  const w = bootPane();
+  w.renderCreditAppFinancials({ ID: '9' }, Object.assign({}, STATUS_FIN_ONLY,
+    { financials_state: 'waiting', financials_files: [] }));
+  assert.ok(!w.document.getElementById('ca-fin-section').textContent.includes('Sign in'));
 });
 
 test('without application_id in the status payload, files are named but not linked', () => {

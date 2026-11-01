@@ -552,6 +552,7 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-fin-files { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
 .ca-fin-files li { margin: 4px 0; }
 .ca-fin-size { color: #888; }
+.ca-fin-signin { font-size: 12px; color: #555; margin-bottom: 10px; }
 .ca-fin-row { font-size: 11px; font-weight: 600; margin-top: 4px; }
 .ca-src-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 8px; margin-top: 3px; background: #eaf3fc; color: #0d4a8a; }
 .ca-src-badge.uw { background: #f3e8ff; color: #6d28d9; }
@@ -704,7 +705,7 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
     </div>
     <div class="header-actions">
       <button class="btn" id="btn-export"><span class="ic">⤓</span>Export CSV</button>
-      <!-- CREDITINT1: staff who can act, carrier and general clients only. Shown by fetchInternalCreditList. -->
+      <!-- CREDITINT1: staff (admin/credit see-all), carrier and general clients only. Shown by fetchInternalCreditSources. -->
       <button class="btn" id="btn-internal-new" style="display:none;"><span class="ic">＋</span>New internal credit app</button>
       <button class="btn primary" id="btn-new"><span class="ic">＋</span>New Credit Check</button>
     </div>
@@ -730,7 +731,7 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
       <option value="name_asc">Name (A–Z)</option>
       <option value="name_desc">Name (Z–A)</option>
     </select>
-    <!-- CREDITINT1: staff only, shown once /internal-credit/list answers. -->
+    <!-- CREDITINT1: staff only, shown once /internal-credit/sources answers. -->
     <select id="source-select" class="btn" aria-label="Filter by source" style="display:none;cursor:pointer;">
       <option value="all" selected>All sources</option>
       <option value="any_internal">Internal and UW prospect</option>
@@ -825,7 +826,7 @@ var allClients = false;       // true when backend returns see-all (admin/credit
 Object.defineProperty(window, 'allClients',
   { get: function(){ return allClients; }, set: function(v){ allClients = v; }, configurable: true });  // exposed for tests
 var currentStatus = 'all';
-var currentSource = 'all';     // CREDITINT1: staff source filter (see fetchInternalCreditList)
+var currentSource = 'all';     // CREDITINT1: staff source filter (see fetchInternalCreditSources)
 
 // The owning broker is the dotted traversal field "Contact.Account_Name" (a lookup object),
 // distinct from the debtor (Customer_Company_Name); fall back to a direct Account_Name.
@@ -1184,7 +1185,7 @@ function onRecordsLoaded(records) {
   fetchCreditAppStatusBulk();   // one call for the whole list, see CREDITAPP1 Task 17 below
   fetchCustomerEventsBulk();    // one call for the whole list, see CUSTEVENT1 below
   fetchCoBrokerStatusBulk();    // one call for the whole list, see COBROKERGATE1
-  fetchInternalCreditList();    // staff only, see CREDITINT1
+  fetchInternalCreditSources(); // staff only, see CREDITINT1
 }
 window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 
@@ -2985,10 +2986,15 @@ if (typeof window !== 'undefined') { window.renderCreditAppSection = renderCredi
 // needs the application id, which the status payload carries as
 // `application_id`; without it the file is named but not linked, rather than
 // pointing at a URL that cannot resolve. Downloads only: the route serves an
-// attachment, never inline. The broker path proves ownership with ?email=, the
-// same as every other broker credit-app call.
+// attachment, never inline.
+//
+// 🚨 Tom, 2026-11-01: financial statements are downloaded on the portal
+// SIGN-IN SESSION only, never ?email=. The status call withholds file names and
+// ids from a caller with no session (a Creator-hosted widget), so a received
+// state with an empty list means "not signed in", and says so.
 var CA_FIN_STATE = { none: 'None requested', waiting: 'Waiting on financials',
                      received: 'Financials received' };
+var CA_FIN_SIGN_IN = 'Sign in to the new OperFi portal to view and download these files.';
 
 function caAppFinFileSize(n) {
   var v = Number(n) || 0;
@@ -3011,7 +3017,7 @@ function renderCreditAppFinancials(r, payload) {
       esc(caAppFinFileSize(f.size)) + '</span>';
     if (!appId || !f.id) return label;
     var href = BROKER_API_BASE + '/credit-app/financials-file/' + encodeURIComponent(appId) + '/' +
-      encodeURIComponent(f.id) + (allClients ? '' : '?email=' + encodeURIComponent(email));
+      encodeURIComponent(f.id);
     return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" download>' + label + '</a>';
   };
   // The broker asks from here; staff ask from the customer profile, where the
@@ -3021,7 +3027,8 @@ function renderCreditAppFinancials(r, payload) {
     '<div class="ca-fin-state ca-fin-' + esc(state) + '">' + esc(CA_FIN_STATE[state] || CA_FIN_STATE.none) + '</div>' +
     (files.length
       ? '<ul class="ca-fin-files">' + files.map(function(f) { return '<li>' + fileHtml(f) + '</li>'; }).join('') + '</ul>'
-      : '') +
+      : (state === 'received'
+          ? '<div class="ca-fin-signin">' + esc(CA_FIN_SIGN_IN) + '</div>' : '')) +
     (canAsk
       ? '<button type="button" class="row-action" id="ca-fin-ask">Request financials</button>' +
         '<div class="ca-app-supplement-form" id="ca-fin-form" style="display:none;">' +
@@ -3466,32 +3473,36 @@ if (typeof window !== 'undefined') { window.fetchCreditAppStatusBulk = fetchCred
 // ── CREDITINT1: internal credit checks, staff only ──────────────────────────
 // Internal checks and UW prospect checks are owned by the internal credit
 // account, so the Client column shows that account, not the real client. The
-// row tags come from GET /internal-credit/list (the staff page's own read,
-// submission_id + source + client), never from matching a name. That route is
-// 404 while the feature is dark and 403 for a non-staff session: either way the
-// page stays exactly as it was. can_act on the same response gates the New
-// internal credit app button; the send route still refuses on its own.
+// row tags come from GET /internal-credit/sources (a bare array of
+// {submission_id, source, client_name}, one projected query), never from
+// matching a name. That route is 404 while the feature is dark and 403 for a
+// non-staff session: either way the page stays exactly as it was.
+//
+// The New internal credit app button needs no second call: all_clients on
+// this report is OperFi admin or credit, not impersonating (app.py
+// _can_see_all), which is the same population as the send route's can_act
+// (credit or admin). The button shows when allClients is true AND the sources
+// read answered, so a dark feature never offers it. The send route still
+// refuses on its own.
 var internalCreditBySubmission = {};   // submission ID -> { source, client_name }
-var internalCreditCanAct = false;
 var internalCreditSeq = 0;
 var INTERNAL_SOURCE_LABELS = { internal_send: 'Internal', uw_prospect: 'UW prospect' };
 
-function fetchInternalCreditList() {
+function fetchInternalCreditSources() {
   if (!allClients) return;
   var seq = ++internalCreditSeq;
   try {
-    fetch(BROKER_API_BASE + '/internal-credit/list', { credentials: 'include' })
+    fetch(BROKER_API_BASE + '/internal-credit/sources', { credentials: 'include' })
       .then(function(res) { return res.ok ? res.json() : null; })
-      .then(function(payload) {
-        if (seq !== internalCreditSeq || !payload || !Array.isArray(payload.requests)) return;
+      .then(function(rows) {
+        if (seq !== internalCreditSeq || !Array.isArray(rows)) return;
         var map = {};
-        payload.requests.forEach(function(q) {
+        rows.forEach(function(q) {
           if (!q || !q.submission_id || !INTERNAL_SOURCE_LABELS[q.source]) return;
-          map[String(q.submission_id)] = { source: q.source, client_name: (q.client && q.client.name) || '' };
+          map[String(q.submission_id)] = { source: q.source, client_name: q.client_name || '' };
         });
         internalCreditBySubmission = map;
-        internalCreditCanAct = !!payload.can_act;
-        document.getElementById('btn-internal-new').style.display = internalCreditCanAct ? '' : 'none';
+        document.getElementById('btn-internal-new').style.display = allClients ? '' : 'none';
         document.getElementById('source-select').style.display = '';
         try { applyFilters(); } catch (e) { /* list not drawn yet */ }
       })
@@ -3594,7 +3605,7 @@ function submitInternalCreditForm() {
 }
 
 if (typeof window !== 'undefined') {
-  window.fetchInternalCreditList = fetchInternalCreditList;
+  window.fetchInternalCreditSources = fetchInternalCreditSources;
   window.internalCreditSourceOf = internalCreditSourceOf;
   window.internalSourceBadgeHtml = internalSourceBadgeHtml;
   window.openInternalCreditForm = openInternalCreditForm;

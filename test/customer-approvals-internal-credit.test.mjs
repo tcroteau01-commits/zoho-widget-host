@@ -1,7 +1,7 @@
 // CREDITINT1: staff send a credit app for a carrier or general client from
 // Customer Approvals, and can find internal and UW prospect checks in the list.
-// Rows are tagged from GET /internal-credit/list (submission_id + source), the
-// staff page's own read; nothing is inferred from a client name.
+// Rows are tagged from GET /internal-credit/sources (a bare array of
+// {submission_id, source, client_name}); nothing is inferred from a client name.
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { JSDOM } from 'jsdom';
@@ -16,11 +16,11 @@ function reply(status, body) {
     text: function() { return Promise.resolve(JSON.stringify(body)); } });
 }
 
-const LIST = { can_act: true, requests: [
-  { id: 'm1', source: 'internal_send', submission_id: '101', client: { name: 'Swift <Haul>', kind: 'carrier' } },
-  { id: 'm2', source: 'uw_prospect', submission_id: '102', client: { name: 'Prospect Brokerage', kind: 'broker_prospect' } },
-  { id: 'm3', source: 'uw_prospect', submission_id: null, client: { name: 'Stuck intake' } }
-] };
+const SOURCES = [
+  { submission_id: '101', source: 'internal_send', client_name: 'Swift <Haul>' },
+  { submission_id: '102', source: 'uw_prospect', client_name: 'Prospect Brokerage' },
+  { submission_id: '', source: 'uw_prospect', client_name: 'Stuck intake' }
+];
 
 const RECORDS = [
   { ID: '101', Customer_Company_Name: 'ALPHA FOODS', Credit_Decision: 'Awaiting Credit Decision' },
@@ -36,7 +36,7 @@ async function boot(routes) {
   w.fetch = function(url, opts) {
     calls.push({ url: url, opts: opts || {} });
     for (const [re, fn] of routes || []) { if (re.test(url)) return fn(url, opts || {}); }
-    if (/\/internal-credit\/list$/.test(url)) return reply(200, LIST);
+    if (/\/internal-credit\/sources$/.test(url)) return reply(200, SOURCES);
     return reply(404, {});
   };
   w.brokerEmail = 'staff@operfi.com';
@@ -48,43 +48,53 @@ async function boot(routes) {
 test('a broker viewer never calls the internal list and never sees the button', async () => {
   const { w, d, calls } = await boot();
   w.allClients = false;
-  w.fetchInternalCreditList();
+  w.fetchInternalCreditSources();
   await wait(20);
   assert.ok(!calls.some((c) => /internal-credit/.test(c.url)));
   assert.strictEqual(d.getElementById('btn-internal-new').style.display, 'none');
 });
 
-test('staff load the internal list with the session, and can_act shows the button', async () => {
+test('staff load the lean sources read with the session, and the button shows', async () => {
   const { w, d, calls } = await boot();
   w.allClients = true;
-  w.fetchInternalCreditList();
+  w.fetchInternalCreditSources();
   await wait(20);
-  const c = calls.find((x) => /\/internal-credit\/list$/.test(x.url));
+  const c = calls.find((x) => /\/internal-credit\/sources$/.test(x.url));
   assert.ok(c);
   assert.strictEqual(c.opts.credentials, 'include');
+  assert.ok(!calls.some((x) => /\/internal-credit\/list/.test(x.url)),
+    'the heavy list must not be read on page load');
   assert.strictEqual(d.getElementById('btn-internal-new').style.display, '');
+  assert.strictEqual(d.getElementById('source-select').style.display, '');
   assert.strictEqual(w.internalCreditSourceOf({ ID: '101' }), 'internal_send');
   assert.strictEqual(w.internalCreditSourceOf({ ID: '102' }), 'uw_prospect');
   assert.strictEqual(w.internalCreditSourceOf({ ID: '103' }), '');
 });
 
-test('view-only staff see the badges but not the button', async () => {
-  const { w, d } = await boot([[/\/internal-credit\/list$/, () => reply(200, Object.assign({}, LIST, { can_act: false }))]]);
+test('a non-array reply is ignored', async () => {
+  const { w, d } = await boot([[/\/internal-credit\/sources$/, () => reply(200, { requests: [] })]]);
   w.allClients = true;
-  w.fetchInternalCreditList();
+  w.fetchInternalCreditSources();
   await wait(20);
   assert.strictEqual(d.getElementById('btn-internal-new').style.display, 'none');
-  assert.strictEqual(w.internalCreditSourceOf({ ID: '101' }), 'internal_send');
 });
 
 test('the feature dark (404) leaves the page as it was', async () => {
-  const { w, d } = await boot([[/\/internal-credit\/list$/, () => reply(404, { error: 'Not found' })]]);
+  const { w, d } = await boot([[/\/internal-credit\/sources$/, () => reply(404, { error: 'Not found' })]]);
   w.allClients = true;
-  w.fetchInternalCreditList();
+  w.fetchInternalCreditSources();
   await wait(20);
   assert.strictEqual(d.getElementById('btn-internal-new').style.display, 'none');
   assert.strictEqual(d.getElementById('source-select').style.display, 'none');
   assert.strictEqual(w.internalCreditSourceOf({ ID: '101' }), '');
+});
+
+test('a 403 (not staff) leaves the page as it was', async () => {
+  const { w, d } = await boot([[/\/internal-credit\/sources$/, () => reply(403, { error: 'Forbidden' })]]);
+  w.allClients = true;
+  w.fetchInternalCreditSources();
+  await wait(20);
+  assert.strictEqual(d.getElementById('btn-internal-new').style.display, 'none');
 });
 
 // ── badge and filter ────────────────────────────────────────────────────────
@@ -92,7 +102,7 @@ test('the feature dark (404) leaves the page as it was', async () => {
 test('the badge names the source and the real client, escaped', async () => {
   const { w } = await boot();
   w.allClients = true;
-  w.fetchInternalCreditList();
+  w.fetchInternalCreditSources();
   await wait(20);
   const h = w.internalSourceBadgeHtml({ ID: '101' });
   assert.ok(h.includes('Internal'));
@@ -107,7 +117,7 @@ test('the source filter narrows the list to internal or UW prospect checks', asy
   w.allClients = true;
   w.onRecordsLoaded(RECORDS.slice());
   w.allClients = true;   // onRecordsLoaded does not touch it; set for the gated fetch
-  w.fetchInternalCreditList();
+  w.fetchInternalCreditSources();
   await wait(30);
   const sel = d.getElementById('source-select');
   assert.strictEqual(sel.style.display, '');

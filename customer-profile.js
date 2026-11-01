@@ -1133,7 +1133,9 @@ var APP_STATUS_LABELS = {
   sent: 'Sent, awaiting the customer',
   app_received: 'Application received',
   references_pending: 'Waiting on references',
-  ready_for_review: 'Ready for review'
+  ready_for_review: 'Ready for review',
+  // CREDITINT1: a financials request made on a customer that never got an app.
+  financials_only: 'Financials requested'
 };
 
 function statusPill(status) {
@@ -1365,6 +1367,91 @@ function renderCreditApp(p) {
   return section('Credit Application', head);
 }
 
+// ---- CREDITINT1: the customer's financial statements ------------------------
+// Tom, 2026-11-01: a customer's financials are stored and seen here, for broker
+// customers and carrier clients' customers alike. Nothing renders when the
+// payload has no `financials` key (an older API). Files are DOWNLOADS from the
+// financials-file route, never the shared inline viewer: these are the most
+// sensitive documents we hold and the route serves them as attachments.
+var FIN_STATE_LABELS = { none: 'None requested', waiting: 'Waiting on financials',
+                         received: 'Financials received' };
+var FIN_REQ_LABELS = { sent: 'Waiting', completed: 'Received',
+                       superseded: 'Replaced by a newer request' };
+
+// Same shape as the API's mask_email. Applied again here so a payload that ever
+// sends the full address still shows only the masked one.
+function maskEmail(email) {
+  var s = String(email || '').trim();
+  if (s.indexOf('***@') !== -1) { return s; }
+  var at = s.indexOf('@');
+  if (at < 1 || at === s.length - 1) { return ''; }
+  return s.charAt(0) + '***' + s.slice(at);
+}
+
+function fileSize(n) {
+  var v = Number(n) || 0;
+  if (v >= 1048576) { return (v / 1048576).toFixed(1) + ' MB'; }
+  if (v >= 1024) { return Math.round(v / 1024) + ' KB'; }
+  return v + ' B';
+}
+
+function renderFinancials(p) {
+  var fin = p.financials;
+  if (!fin || typeof fin !== 'object') { return ''; }
+  var appId = fin.application_id;
+  var fileHtml = function (f) {
+    var label = esc(f.name || 'document') + ' <span class="muted">&middot; ' +
+      esc(fileSize(f.size)) + '</span>';
+    if (!p.api_base || !appId || !f.id) { return label; }
+    var href = p.api_base + '/credit-app/financials-file/' + encodeURIComponent(appId) +
+      '/' + encodeURIComponent(f.id);
+    return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" download>' +
+      label + '</a>';
+  };
+  var reqs = (fin.requests || []).filter(Boolean);
+  var body = '<div class="cp-fin-state cp-fin-' + esc(fin.state || 'none') + '">' +
+    esc(FIN_STATE_LABELS[fin.state] || FIN_STATE_LABELS.none) + '</div>';
+  if (reqs.length) {
+    body += '<ul class="cp-fin-reqs">' + reqs.slice().reverse().map(function (r) {
+      var files = (r.files || []).filter(Boolean);
+      var sentTo = maskEmail(r.sent_to);
+      return '<li class="cp-fin-req">' +
+        '<div class="cp-fin-req-head"><strong>' +
+          esc(FIN_REQ_LABELS[r.status] || r.status || 'Unknown') + '</strong>' +
+          (r.at ? ' <span class="muted">&middot; requested ' + esc(when(r.at)) + '</span>' : '') +
+          (sentTo ? ' <span class="muted">&middot; sent to ' + esc(sentTo) + '</span>' : '') +
+        '</div>' +
+        (r.note ? '<div class="cp-fin-note">' + esc(r.note) + '</div>' : '') +
+        (files.length
+          ? '<ul class="cp-doc-list cp-fin-files">' + files.map(function (f) {
+              return '<li>' + fileHtml(f) + '</li>';
+            }).join('') + '</ul>'
+          : '') +
+      '</li>';
+    }).join('') + '</ul>';
+  }
+  if (p.can_act) {
+    // Filled from POST /credit-app/financials/staff-preview when opened; the
+    // page's own wiring (customer-approvals.html) sets every value as text.
+    body += '<button type="button" class="btn primary" data-fin-open="1">Request financials</button>' +
+      '<div class="cp-fin-form" id="cp-fin-form" hidden>' +
+        '<div class="cp-fin-preview" id="cp-fin-preview"></div>' +
+        '<label class="field-label" for="cp-fin-recipient">Send to</label>' +
+        '<input type="email" class="dec-input" id="cp-fin-recipient" maxlength="254">' +
+        '<div class="muted cp-fin-hint" id="cp-fin-recipient-hint"></div>' +
+        '<label class="field-label" for="cp-fin-note">Note (optional)</label>' +
+        '<textarea class="dec-input" id="cp-fin-note" maxlength="500" ' +
+          'placeholder="The customer and the client both see this note."></textarea>' +
+        '<div class="cp-cb-row">' +
+          '<button type="button" class="btn primary" data-fin-send="1">Send request</button>' +
+          '<button type="button" class="btn" data-fin-cancel="1">Cancel</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="cp-fin-msg" id="cp-fin-msg" role="status"></div>';
+  }
+  return '<div class="cp-financials">' + section('Financials', body) + '</div>';
+}
+
 function render(payload) {
   var p = payload || {};
   // Order: header -> engine read -> Creditsafe picker (resolves the identity) ->
@@ -1398,6 +1485,7 @@ function render(payload) {
       pair(renderFactorView(p), renderPriors(p)) +
       renderSummary(p) +
       renderCreditApp(p) +
+      renderFinancials(p) +
       renderDocuments(p) +
       // The broker's raw form and the audit trail are reference material, not
       // decision material: last, and read only when a question comes up.
@@ -1407,6 +1495,18 @@ function render(payload) {
 
 var CP_STYLE_ID = 'opf-cp-styles';
 var CP_CSS = '' +
+  '.cp-fin-state{font-weight:700;font-size:13.5px;margin-bottom:8px;}' +
+  '.cp-fin-waiting{color:#b45309;}' +
+  '.cp-fin-received{color:#15803d;}' +
+  '.cp-fin-none{color:#555;}' +
+  '.cp-fin-reqs{list-style:none;margin:0 0 10px;padding:0;}' +
+  '.cp-fin-req{border-top:1px solid #f0efe9;padding:8px 0;}' +
+  '.cp-fin-note{font-size:13px;color:#444;margin-top:4px;white-space:pre-wrap;}' +
+  '.cp-fin-form{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-width:520px;}' +
+  '.cp-fin-preview{font-size:13px;color:#333;line-height:1.5;}' +
+  '.cp-fin-hint{font-size:12px;}' +
+  '.cp-fin-msg{font-size:13px;margin-top:8px;}' +
+  '.cp-fin-msg.err{color:#c62828;}' +
   '.cp-cb-status{font-weight:700;font-size:13.5px;margin-bottom:10px;}' +
   '.cp-cb-note{font-weight:500;color:#555;}' +
   '.cp-cb-warn{color:#b45309;}' +
@@ -1691,5 +1791,5 @@ function mount(root, payload, handlers) {
   });
 }
 
-if (typeof module !== 'undefined' && module.exports) { module.exports = { render: render, mount: mount, injectStyles: injectStyles, esc: esc, money: money, renderCoBroker: renderCoBroker, boostSentence: boostSentence, boostTone: boostTone }; }
+if (typeof module !== 'undefined' && module.exports) { module.exports = { render: render, renderFinancials: renderFinancials, mount: mount, injectStyles: injectStyles, esc: esc, money: money, renderCoBroker: renderCoBroker, boostSentence: boostSentence, boostTone: boostTone }; }
 if (typeof window !== 'undefined') { window.OperFiCustomerProfile = { render: render, mount: mount, injectStyles: injectStyles, boostSentence: boostSentence, boostTone: boostTone }; }

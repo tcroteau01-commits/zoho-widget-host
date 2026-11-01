@@ -544,6 +544,35 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-app-answer-by, .ca-app-answer-note { font-size: 11px; color: #999; margin-top: 6px; }
 .ca-app-answer-note { grid-column: 1 / -1; margin-top: 0; }
 
+/* CREDITINT1 -- financials: drawer section, list-row line, source badge, and the
+   staff New internal credit app form. */
+.ca-fin-state { font-size: 13px; font-weight: 700; color: #555; margin-bottom: 8px; }
+.ca-fin-state.ca-fin-waiting, .ca-fin-row.ca-fin-waiting { color: #b25e00; }
+.ca-fin-state.ca-fin-received, .ca-fin-row.ca-fin-received { color: #2e7d32; }
+.ca-fin-files { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
+.ca-fin-files li { margin: 4px 0; }
+.ca-fin-size { color: #888; }
+.ca-fin-signin { font-size: 12px; color: #555; margin-bottom: 10px; }
+.ca-fin-row { font-size: 11px; font-weight: 600; margin-top: 4px; }
+.ca-src-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 8px; margin-top: 3px; background: #eaf3fc; color: #0d4a8a; }
+.ca-src-badge.uw { background: #f3e8ff; color: #6d28d9; }
+.ci-scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 60; display: none; }
+.ci-scrim.show { display: block; }
+.ci-modal { position: fixed; top: 5vh; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; background: #fff; border-radius: 10px; padding: 18px 20px; z-index: 61; display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+.ci-modal.show { display: block; }
+.ci-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.ci-sub { font-size: 12px; color: #777; margin-bottom: 12px; }
+.ci-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.ci-grid .wide { grid-column: 1 / -1; }
+.ci-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 700; color: #666; }
+.ci-grid input, .ci-grid select { border: 1px solid #d8d8d8; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; }
+.ci-head { grid-column: 1 / -1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #888; font-weight: 700; margin-top: 6px; }
+.ci-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.ci-msg { font-size: 13px; margin-top: 10px; }
+.ci-msg.error { color: #c62828; }
+.ci-msg.ok { color: #2e7d32; }
+@media (max-width: 640px) { .ci-grid { grid-template-columns: 1fr; } }
+
 /* CREDITAPP3 Task 7 -- ask customer for more references. Broker and staff
    both see this (it lives inside the shared tracker, #ca-app-section, never
    gated on allClients). Reuses .row-action for the buttons, .ca-app-msg for
@@ -676,6 +705,8 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
     </div>
     <div class="header-actions">
       <button class="btn" id="btn-export"><span class="ic">⤓</span>Export CSV</button>
+      <!-- CREDITINT1: staff (admin/credit see-all), carrier and general clients only. Shown by fetchInternalCreditSources. -->
+      <button class="btn" id="btn-internal-new" style="display:none;"><span class="ic">＋</span>New internal credit app</button>
       <button class="btn primary" id="btn-new"><span class="ic">＋</span>New Credit Check</button>
     </div>
   </div>
@@ -699,6 +730,13 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
       <option value="oldest">Oldest</option>
       <option value="name_asc">Name (A–Z)</option>
       <option value="name_desc">Name (Z–A)</option>
+    </select>
+    <!-- CREDITINT1: staff only, shown once /internal-credit/sources answers. -->
+    <select id="source-select" class="btn" aria-label="Filter by source" style="display:none;cursor:pointer;">
+      <option value="all" selected>All sources</option>
+      <option value="any_internal">Internal and UW prospect</option>
+      <option value="internal_send">Internal credit apps</option>
+      <option value="uw_prospect">UW prospect checks</option>
     </select>
   </div>
 
@@ -728,6 +766,39 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 <div id="ca-profile" class="widget" style="display:none"></div>
 <div class="toast" id="toast"></div>
 
+<!-- CREDITINT1: New internal credit app. Staff send a credit app on behalf of a
+     carrier or general client; brokers send their own, so Broker is not offered. -->
+<div class="ci-scrim" id="ci-scrim"></div>
+<aside class="ci-modal" id="ci-modal" role="dialog" aria-modal="true" aria-labelledby="ci-title">
+  <div class="ci-title" id="ci-title">New internal credit app</div>
+  <div class="ci-sub">For a carrier or general client. The customer gets the credit application by email; the client email, if given, is copied.</div>
+  <div class="ci-grid">
+    <div class="ci-head">Client</div>
+    <label>Client name *<input type="text" id="ci-client-name" maxlength="200"></label>
+    <label>Client type *<select id="ci-client-kind">
+      <option value="">Choose</option>
+      <option value="carrier">Carrier</option>
+      <option value="general">General</option>
+    </select></label>
+    <label class="wide">Client CC email<input type="email" id="ci-client-cc" maxlength="254"></label>
+    <div class="ci-head">Customer</div>
+    <label class="wide">Customer company *<input type="text" id="ci-company" maxlength="200"></label>
+    <label>Contact *<input type="text" id="ci-contact" maxlength="200"></label>
+    <label>Email *<input type="email" id="ci-email" maxlength="254"></label>
+    <label>Phone<input type="tel" id="ci-phone" maxlength="40"></label>
+    <label>Website<input type="text" id="ci-website" maxlength="200"></label>
+    <label class="wide">Address<input type="text" id="ci-line1" maxlength="200"></label>
+    <label>City<input type="text" id="ci-city" maxlength="100"></label>
+    <label>State<input type="text" id="ci-state" maxlength="50"></label>
+    <label>ZIP<input type="text" id="ci-zip" maxlength="20"></label>
+  </div>
+  <div class="ci-msg" id="ci-msg" role="status"></div>
+  <div class="ci-actions">
+    <button type="button" class="btn" id="ci-cancel">Close</button>
+    <button type="button" class="btn primary" id="ci-submit">Create check and send app</button>
+  </div>
+</aside>
+
 <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <script src="https://app.operfi.com/operfi-impersonate.js?v=2"></script>
 <script src="https://app.operfi.com/pdfjs/pdf.min.js?v=2"></script>
@@ -755,6 +826,7 @@ var allClients = false;       // true when backend returns see-all (admin/credit
 Object.defineProperty(window, 'allClients',
   { get: function(){ return allClients; }, set: function(v){ allClients = v; }, configurable: true });  // exposed for tests
 var currentStatus = 'all';
+var currentSource = 'all';     // CREDITINT1: staff source filter (see fetchInternalCreditSources)
 
 // The owning broker is the dotted traversal field "Contact.Account_Name" (a lookup object),
 // distinct from the debtor (Customer_Company_Name); fall back to a direct Account_Name.
@@ -978,6 +1050,15 @@ function bindGlobalUI() {
     applyFilters();
   });
   document.getElementById('btn-new').addEventListener('click', function() { navigateParent('#Page:Credit_Check'); });
+  // CREDITINT1
+  document.getElementById('source-select').addEventListener('change', function(e) {
+    currentSource = e.target.value;
+    applyFilters();
+  });
+  document.getElementById('btn-internal-new').addEventListener('click', openInternalCreditForm);
+  document.getElementById('ci-cancel').addEventListener('click', closeInternalCreditForm);
+  document.getElementById('ci-scrim').addEventListener('click', closeInternalCreditForm);
+  document.getElementById('ci-submit').addEventListener('click', submitInternalCreditForm);
   document.getElementById('btn-export').addEventListener('click', exportCsv);
 
   // Panel close + keyboard
@@ -1104,6 +1185,7 @@ function onRecordsLoaded(records) {
   fetchCreditAppStatusBulk();   // one call for the whole list, see CREDITAPP1 Task 17 below
   fetchCustomerEventsBulk();    // one call for the whole list, see CUSTEVENT1 below
   fetchCoBrokerStatusBulk();    // one call for the whole list, see COBROKERGATE1
+  fetchInternalCreditSources(); // staff only, see CREDITINT1
 }
 window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 
@@ -1200,6 +1282,11 @@ function applyFilters() {
     // CUSTEVENT1 — the bell as a filter. Lifts a customer with unread activity above
     // twenty newer, unchanged ones, independent of the status chip in effect.
     if (attentionFilterActive && !hasUnreadEvents(r)) return false;
+    // CREDITINT1 -- staff source filter; 'all' for every broker viewer.
+    if (currentSource !== 'all') {
+      var src = internalCreditSourceOf(r);
+      if (currentSource === 'any_internal' ? !src : src !== currentSource) return false;
+    }
     if (currentStatus !== 'all') {
       var k = statusMeta(r).key;
       // "Awaiting" chip groups awaiting + pending-app
@@ -1349,6 +1436,7 @@ function rowHtml(r, idx) {
     ? '<div>' +
         '<div class="cell-label">Client</div>' +
         '<div class="cell-val">' + esc(brokerName(r) || '—') + '</div>' +
+        internalSourceBadgeHtml(r) +
       '</div>'
     : '';
 
@@ -1665,6 +1753,15 @@ function renderPanel() {
         '<div class="ca-app-supplement" id="ca-app-supplement"></div>' +
       '</div>' +
 
+      // CREDITINT1 -- the customer's financial statements. Filled from the same
+      // /credit-app/status read as the tracker above, but its own section: a
+      // financials-only request has no parties, and the tracker hides itself
+      // when there are none.
+      '<div class="panel-section" id="ca-fin-section" style="display:none;">' +
+        '<div class="panel-section-title">Financials</div>' +
+        '<div id="ca-fin-body"></div>' +
+      '</div>' +
+
       // CREDITAPP1 — Application Details, every broker. GET /credit-app/application
       // returns only what is operationally the client's own (see
       // fetchCreditAppApplication's comment); hidden until that fills it, stays
@@ -1821,6 +1918,110 @@ function fetchProfile(rec) {
       var backBtn = document.getElementById('ca-profile-back');
       if (backBtn) backBtn.addEventListener('click', closeProfile);
     });
+}
+
+// ── CREDITINT1: staff request a customer's financials from the profile ──────
+// Any customer, broker's or carrier client's, app sent or not. The preview names
+// who owns the customer and the address on file before anything is sent; the
+// server decides who is staff from the session (credentials: 'include'), never
+// from a body email. Every value from the server is set as text.
+function profileFinPost(path, payload) {
+  return fetch(BROKER_API_BASE + path, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  }).then(function(res) {
+    return res.json().catch(function() { return {}; })
+      .then(function(j) { return { ok: res.ok, status: res.status, j: j || {} }; });
+  });
+}
+
+function wireProfileFinancials(rec, root) {
+  var openBtn = root.querySelector('[data-fin-open]');
+  var form = document.getElementById('cp-fin-form');
+  if (!openBtn || !form) return;
+  var msg = document.getElementById('cp-fin-msg');
+  var preview = document.getElementById('cp-fin-preview');
+  var recipient = document.getElementById('cp-fin-recipient');
+  var hint = document.getElementById('cp-fin-recipient-hint');
+  var note = document.getElementById('cp-fin-note');
+  var sendBtn = form.querySelector('[data-fin-send]');
+  var verified = false;
+  var say = function(text, isErr) {
+    if (!msg) return;
+    msg.textContent = text || '';
+    msg.className = 'cp-fin-msg' + (isErr ? ' err' : '');
+  };
+  var line = function(label, value) {
+    var row = document.createElement('div');
+    var b = document.createElement('strong');
+    b.textContent = label + ': ';
+    row.appendChild(b);
+    row.appendChild(document.createTextNode(value || 'Not on file'));
+    preview.appendChild(row);
+  };
+
+  openBtn.addEventListener('click', function() {
+    say('Loading…');
+    openBtn.disabled = true;
+    profileFinPost('/credit-app/financials/staff-preview', { submission_id: String(rec.ID) })
+      .then(function(r) {
+        openBtn.disabled = false;
+        if (!r.ok) { say('Could not load this customer: ' + (r.j.error || 'HTTP ' + r.status) + '.', true); return; }
+        var pv = r.j;
+        say('');
+        preview.textContent = '';
+        line('Company', pv.company);
+        line('Client', pv.owning_account_name);
+        line('Email on file', pv.customer_email_on_file);
+        verified = !!pv.verified_email_present;
+        if (verified) {
+          recipient.value = '';
+          recipient.placeholder = 'Leave blank to use the verified address';
+          hint.textContent = 'Leave blank to send to the verified address ' + (pv.verified_email || '') +
+            '. An address typed here is used instead.';
+        } else {
+          recipient.value = pv.customer_email_on_file || '';
+          recipient.placeholder = 'customer@company.com';
+          hint.textContent = 'No verified address yet. The customer confirms this address with a code before uploading.';
+        }
+        form.hidden = false;
+        openBtn.hidden = true;
+        recipient.focus();
+      })
+      .catch(function(err) {
+        console.error('[CustomerApprovals] financials preview failed', err);
+        openBtn.disabled = false;
+        say('Could not load this customer. Check your connection and try again.', true);
+      });
+  });
+
+  form.querySelector('[data-fin-cancel]').addEventListener('click', function() {
+    form.hidden = true;
+    openBtn.hidden = false;
+    say('');
+  });
+
+  sendBtn.addEventListener('click', function() {
+    var to = String(recipient.value || '').trim();
+    if (!verified && !to) { say('Enter the email address to send the request to.', true); recipient.focus(); return; }
+    if (to && to.indexOf('@') === -1) { say('That email address is not valid.', true); recipient.focus(); return; }
+    var payload = { submission_id: String(rec.ID), note: String(note.value || '').trim() };
+    if (to) payload.recipient_email = to;
+    sendBtn.disabled = true;
+    say('Sending…');
+    profileFinPost('/credit-app/request-financials', payload).then(function(r) {
+      sendBtn.disabled = false;
+      if (!r.ok) { say('Not sent: ' + (r.j.error || 'HTTP ' + r.status), true); return; }
+      showToast(r.j.delivered === false
+        ? 'Request recorded, but the email did not send to ' + (r.j.sent_to || 'the customer') + '. Follow up directly.'
+        : 'Financials requested. Sent to ' + (r.j.sent_to || 'the customer') + '.');
+      fetchProfile(rec);
+    }).catch(function(err) {
+      console.error('[CustomerApprovals] financials request failed', err);
+      sendBtn.disabled = false;
+      say('Not sent. Check your connection and try again.', true);
+    });
+  });
 }
 
 if (typeof window !== 'undefined') { window.renderProfile = function(rec, payload) { return renderProfile(rec, payload); }; }
@@ -2126,6 +2327,8 @@ function renderProfile(rec, payload) {
         });
     });
   });
+  // CREDITINT1. Guarded: several suites lift renderProfile out of this file alone.
+  if (typeof wireProfileFinancials === 'function') wireProfileFinancials(rec, root);
   // Reuse submitDecision -- there is one decision write path (POST /credit-decision)
   // and it stays that way. applyDecisionResult keeps allRecords/KPIs/the list in
   // sync the same way a decision made in the drawer already does.
@@ -2476,8 +2679,11 @@ var CA_APP_SUMMARY = {
   sent: 'Waiting on the customer to complete the application',
   app_received: 'Application received, references not sent yet',
   references_pending: 'Waiting on references',
-  ready_for_review: 'All parties have responded'
+  ready_for_review: 'All parties have responded',
+  // CREDITINT1: no app went out, only a financials request. Never "App sent".
+  financials_only: 'Financials requested'
 };
+if (typeof window !== 'undefined') { window.CA_APP_SUMMARY_FOR_TEST = CA_APP_SUMMARY; }
 
 if (typeof window !== 'undefined') {
   window.caAppSlotLabel = caAppSlotLabel;
@@ -2674,6 +2880,8 @@ function fetchCreditAppStatus(r) {
   var section = document.getElementById('ca-app-section');
   if (!section) return;
   section.style.display = 'none';   // hide any previous record's tracker immediately
+  var finSection = document.getElementById('ca-fin-section');
+  if (finSection) finSection.style.display = 'none';
   if (!r || !r.ID) return;
   var seq = ++caAppFetchSeq;
   var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
@@ -2684,6 +2892,7 @@ function fetchCreditAppStatus(r) {
       if (seq !== caAppFetchSeq) return;               // a newer record opened meanwhile
       if (!payload) return;                             // 404 (flag off) / non-200: stay hidden
       renderCreditAppSection(r, payload);
+      renderCreditAppFinancials(r, payload);
     })
     .catch(function() { /* degrade quietly -- no tracker section, not a broken panel */ });
 }
@@ -2771,6 +2980,106 @@ function renderCreditAppSection(r, payload) {
   section.style.display = '';
 }
 if (typeof window !== 'undefined') { window.renderCreditAppSection = renderCreditAppSection; }
+
+// CREDITINT1 -- financials on the broker's own customer. State and files come
+// from /credit-app/status (financials_state, financials_files). A file link
+// needs the application id, which the status payload carries as
+// `application_id`; without it the file is named but not linked, rather than
+// pointing at a URL that cannot resolve. Downloads only: the route serves an
+// attachment, never inline.
+//
+// 🚨 Tom, 2026-11-01: financial statements are downloaded on the portal
+// SIGN-IN SESSION only, never ?email=. The status call withholds file names and
+// ids from a caller with no session (a Creator-hosted widget), so a received
+// state with an empty list means "not signed in", and says so.
+var CA_FIN_STATE = { none: 'None requested', waiting: 'Waiting on financials',
+                     received: 'Financials received' };
+var CA_FIN_SIGN_IN = 'Sign in to the new OperFi portal to view and download these files.';
+
+function caAppFinFileSize(n) {
+  var v = Number(n) || 0;
+  if (v >= 1048576) return (v / 1048576).toFixed(1) + ' MB';
+  if (v >= 1024) return Math.round(v / 1024) + ' KB';
+  return v + ' B';
+}
+
+function renderCreditAppFinancials(r, payload) {
+  var section = document.getElementById('ca-fin-section');
+  var bodyEl = document.getElementById('ca-fin-body');
+  if (!section || !bodyEl) return;
+  if (!payload || !payload.financials_state) { section.style.display = 'none'; return; }
+  var state = payload.financials_state;
+  var email = (typeof window !== 'undefined' && window.brokerEmail) || brokerEmail;
+  var appId = payload.application_id;
+  var files = (payload.financials_files || []).filter(Boolean);
+  var fileHtml = function(f) {
+    var label = esc(f.name || 'document') + ' <span class="ca-fin-size">&middot; ' +
+      esc(caAppFinFileSize(f.size)) + '</span>';
+    if (!appId || !f.id) return label;
+    var href = BROKER_API_BASE + '/credit-app/financials-file/' + encodeURIComponent(appId) + '/' +
+      encodeURIComponent(f.id);
+    return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" download>' + label + '</a>';
+  };
+  // The broker asks from here; staff ask from the customer profile, where the
+  // preview names the owning client and the address before anything is sent.
+  var canAsk = !allClients && !payload.legacy;
+  bodyEl.innerHTML = '' +
+    '<div class="ca-fin-state ca-fin-' + esc(state) + '">' + esc(CA_FIN_STATE[state] || CA_FIN_STATE.none) + '</div>' +
+    (files.length
+      ? '<ul class="ca-fin-files">' + files.map(function(f) { return '<li>' + fileHtml(f) + '</li>'; }).join('') + '</ul>'
+      : (state === 'received'
+          ? '<div class="ca-fin-signin">' + esc(CA_FIN_SIGN_IN) + '</div>' : '')) +
+    (canAsk
+      ? '<button type="button" class="row-action" id="ca-fin-ask">Request financials</button>' +
+        '<div class="ca-app-supplement-form" id="ca-fin-form" style="display:none;">' +
+          '<textarea class="ca-app-report-note" id="ca-fin-note" maxlength="500" ' +
+            'placeholder="Note (optional). The customer sees this."></textarea>' +
+          '<div class="ca-app-report-btns">' +
+            '<button type="button" class="row-action primary" id="ca-fin-send">Send</button>' +
+            '<button type="button" class="row-action" id="ca-fin-cancel">Cancel</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ca-app-msg" id="ca-fin-msg"></div>'
+      : '');
+  section.style.display = '';
+  if (!canAsk) return;
+  var ask = document.getElementById('ca-fin-ask');
+  var form = document.getElementById('ca-fin-form');
+  var msgEl = document.getElementById('ca-fin-msg');
+  var sendBtn = document.getElementById('ca-fin-send');
+  ask.addEventListener('click', function() {
+    ask.style.display = 'none';
+    form.style.display = '';
+    document.getElementById('ca-fin-note').focus();
+  });
+  document.getElementById('ca-fin-cancel').addEventListener('click', function() {
+    form.style.display = 'none';
+    ask.style.display = '';
+  });
+  sendBtn.addEventListener('click', function() {
+    var note = String(document.getElementById('ca-fin-note').value || '').trim();
+    sendBtn.disabled = true;
+    msgEl.textContent = 'Sending…'; msgEl.className = 'ca-app-msg';
+    caAppPostRecovery('/credit-app/request-financials',
+      { email: email, submission_id: String(r.ID), note: note },
+      function(rr) {
+        sendBtn.disabled = false;
+        if (rr.status !== 200) {
+          msgEl.textContent = rr.status === 0 ? 'Not sent. Check your connection and try again.'
+            : 'Not sent: ' + ((rr.data && rr.data.error) || 'HTTP ' + rr.status);
+          msgEl.className = 'ca-app-msg error';
+          return;
+        }
+        var to = (rr.data && rr.data.sent_to) || 'the customer';
+        showToast(rr.data && rr.data.delivered === false
+          ? 'Request recorded, but the email to ' + to + ' did not send. Contact OperFi support.'
+          : 'Financials requested. Sent to ' + to + '.');
+        fetchCreditAppStatus(r);
+        fetchCreditAppStatusBulk();
+      });
+  });
+}
+if (typeof window !== 'undefined') { window.renderCreditAppFinancials = renderCreditAppFinancials; }
 
 // One supplement_requests row, in plain words: that a request was made, WHEN
 // (req.at, both audiences -- the spec's own wording), and how many were
@@ -3161,17 +3470,167 @@ function fetchCreditAppStatusBulk() {
 }
 if (typeof window !== 'undefined') { window.fetchCreditAppStatusBulk = fetchCreditAppStatusBulk; }
 
+// ── CREDITINT1: internal credit checks, staff only ──────────────────────────
+// Internal checks and UW prospect checks are owned by the internal credit
+// account, so the Client column shows that account, not the real client. The
+// row tags come from GET /internal-credit/sources (a bare array of
+// {submission_id, source, client_name}, one projected query), never from
+// matching a name. That route is 404 while the feature is dark and 403 for a
+// non-staff session: either way the page stays exactly as it was.
+//
+// The New internal credit app button needs no second call: all_clients on
+// this report is OperFi admin or credit, not impersonating (app.py
+// _can_see_all), which is the same population as the send route's can_act
+// (credit or admin). The button shows when allClients is true AND the sources
+// read answered, so a dark feature never offers it. The send route still
+// refuses on its own.
+var internalCreditBySubmission = {};   // submission ID -> { source, client_name }
+var internalCreditSeq = 0;
+var INTERNAL_SOURCE_LABELS = { internal_send: 'Internal', uw_prospect: 'UW prospect' };
+
+function fetchInternalCreditSources() {
+  if (!allClients) return;
+  var seq = ++internalCreditSeq;
+  try {
+    fetch(BROKER_API_BASE + '/internal-credit/sources', { credentials: 'include' })
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(rows) {
+        if (seq !== internalCreditSeq || !Array.isArray(rows)) return;
+        var map = {};
+        rows.forEach(function(q) {
+          if (!q || !q.submission_id || !INTERNAL_SOURCE_LABELS[q.source]) return;
+          map[String(q.submission_id)] = { source: q.source, client_name: q.client_name || '' };
+        });
+        internalCreditBySubmission = map;
+        document.getElementById('btn-internal-new').style.display = allClients ? '' : 'none';
+        document.getElementById('source-select').style.display = '';
+        try { applyFilters(); } catch (e) { /* list not drawn yet */ }
+      })
+      .catch(function() { /* degrade quietly -- no badges, no button */ });
+  } catch (e) { /* fetch unavailable -- same quiet degrade */ }
+}
+
+function internalCreditSourceOf(r) {
+  var m = r && r.ID != null ? internalCreditBySubmission[String(r.ID)] : null;
+  return m ? m.source : '';
+}
+
+function internalSourceBadgeHtml(r) {
+  var m = r && r.ID != null ? internalCreditBySubmission[String(r.ID)] : null;
+  if (!m) return '';
+  return '<div><span class="ca-src-badge' + (m.source === 'uw_prospect' ? ' uw' : '') + '">' +
+    esc(INTERNAL_SOURCE_LABELS[m.source]) + (m.client_name ? ': ' + esc(m.client_name) : '') +
+    '</span></div>';
+}
+
+// Step names from internal_credit_routes.internal_credit_send, in plain words.
+var INTERNAL_SEND_STEPS = {
+  precheck: 'Checking credit apps are on',
+  create_check: 'Creating the credit check',
+  write_mapping: 'Saving the internal record',
+  send_app: 'Sending the application'
+};
+var CI_FIELDS = ['ci-client-name', 'ci-client-kind', 'ci-client-cc', 'ci-company', 'ci-contact',
+  'ci-email', 'ci-phone', 'ci-website', 'ci-line1', 'ci-city', 'ci-state', 'ci-zip'];
+
+function ciVal(id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
+
+function ciSay(text, cls) {
+  var el = document.getElementById('ci-msg');
+  el.textContent = text || '';
+  el.className = 'ci-msg' + (cls ? ' ' + cls : '');
+}
+
+function openInternalCreditForm() {
+  if (!allClients) return;
+  CI_FIELDS.forEach(function(id) { document.getElementById(id).value = ''; });
+  ciSay('');
+  document.getElementById('ci-submit').disabled = false;
+  document.getElementById('ci-scrim').classList.add('show');
+  document.getElementById('ci-modal').classList.add('show');
+  document.getElementById('ci-client-name').focus();
+}
+
+function closeInternalCreditForm() {
+  document.getElementById('ci-scrim').classList.remove('show');
+  document.getElementById('ci-modal').classList.remove('show');
+}
+
+function submitInternalCreditForm() {
+  var required = [['ci-client-name', 'client name'], ['ci-client-kind', 'client type'],
+    ['ci-company', 'customer company'], ['ci-contact', 'contact'], ['ci-email', 'email']];
+  var missing = required.filter(function(f) { return !ciVal(f[0]); }).map(function(f) { return f[1]; });
+  if (missing.length) { ciSay('Fill in: ' + missing.join(', ') + '.', 'error'); return; }
+  var kind = ciVal('ci-client-kind');
+  if (kind !== 'carrier' && kind !== 'general') { ciSay('Client type must be Carrier or General.', 'error'); return; }
+  var to = ciVal('ci-email');
+  if (to.indexOf('@') === -1) { ciSay('The customer email is not valid.', 'error'); return; }
+  var body = {
+    client: { name: ciVal('ci-client-name'), kind: kind, cc_email: ciVal('ci-client-cc') },
+    customer: { company: ciVal('ci-company'), contact_name: ciVal('ci-contact'), email: to,
+                phone: ciVal('ci-phone'), website: ciVal('ci-website'),
+                address: { line1: ciVal('ci-line1'), city: ciVal('ci-city'),
+                           state: ciVal('ci-state'), zip: ciVal('ci-zip') } }
+  };
+  var btn = document.getElementById('ci-submit');
+  btn.disabled = true;
+  ciSay('Creating the check and sending the app…');
+  fetch(BROKER_API_BASE + '/internal-credit/send', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  }).then(function(res) {
+    return res.json().catch(function() { return {}; })
+      .then(function(j) { return { ok: res.ok, status: res.status, j: j || {} }; });
+  }).then(function(r) {
+    if (r.ok && r.j.ok) {
+      ciSay('Credit app sent to ' + to + '. Credit check ' + (r.j.submission_id || '') +
+            ' is on the list under the internal credit account.', 'ok');
+      loadAllRecords();
+      return;
+    }
+    btn.disabled = false;
+    var step = INTERNAL_SEND_STEPS[r.j.step];
+    var created = r.j.submission_id && (r.j.step === 'send_app' || r.j.step === 'write_mapping');
+    ciSay((step ? 'Failed at: ' + step + '. ' : 'Not sent. ') +
+          (r.j.error || ('HTTP ' + r.status)) +
+          (created ? ' Credit check ' + r.j.submission_id + ' was created. Do not resubmit; ' +
+                     'resend it from the Internal Credit page.' : ''), 'error');
+    if (created) btn.disabled = true;
+  }).catch(function(err) {
+    console.error('[CustomerApprovals] internal credit send failed', err);
+    btn.disabled = false;
+    ciSay('Not sent. Check your connection and try again. If it keeps failing, check the list ' +
+          'before resubmitting: the check may already exist.', 'error');
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.fetchInternalCreditSources = fetchInternalCreditSources;
+  window.internalCreditSourceOf = internalCreditSourceOf;
+  window.internalSourceBadgeHtml = internalSourceBadgeHtml;
+  window.openInternalCreditForm = openInternalCreditForm;
+}
+
 // A bar with no number is a decoration; a number alone is easy to miss -- always both.
 // A completed application reads as done, not as a full bar that still looks like more
 // work. Hover/focus names who we're waiting on, straight from waiting_on, the same
 // neutral copy the panel tracker uses -- never a reason, never a risk signal.
+// CREDITINT1: a financials request rides the same row, as its own line. A
+// financials-only app has no parties (total 0) and reads only that line.
+var CA_FIN_ROW = { waiting: 'Financials requested', received: 'Financials received' };
+function caAppFinRowHtml(entry) {
+  var t = entry && CA_FIN_ROW[entry.financials_state];
+  return t ? '<div class="ca-fin-row ca-fin-' + esc(entry.financials_state) + '">' + esc(t) + '</div>' : '';
+}
+
 function caAppRowProgressHtml(r) {
   var entry = r && r.ID ? caAppBulkStatus[r.ID] : null;
-  if (!entry || !(entry.total > 0)) return '';   // no application on file -- row untouched
+  var finHtml = caAppFinRowHtml(entry);
+  if (!entry || !(entry.total > 0)) return finHtml;   // no application on file -- row untouched
   var completed = entry.completed > 0 ? entry.completed : 0;
   var total = entry.total;
   if (completed >= total) {
-    return '<div class="ca-app-rowprog-done">✓ Application complete</div>';
+    return '<div class="ca-app-rowprog-done">✓ Application complete</div>' + finHtml;
   }
   var pct = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
   var waiting = (entry.waiting_on || []).filter(Boolean);
@@ -3188,7 +3647,7 @@ function caAppRowProgressHtml(r) {
         '<span class="ca-app-rowprog-text">' + completed + ' of ' + total + '</span>' +
       '</div>' +
       tipHtml +
-    '</div>';
+    '</div>' + finHtml;
 }
 if (typeof window !== 'undefined') { window.caAppRowProgressHtml = caAppRowProgressHtml; }
 

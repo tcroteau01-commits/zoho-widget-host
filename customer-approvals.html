@@ -558,7 +558,9 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ca-src-badge.uw { background: #f3e8ff; color: #6d28d9; }
 .ci-scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 60; display: none; }
 .ci-scrim.show { display: block; }
-.ci-modal { position: fixed; top: 5vh; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; background: #fff; border-radius: 10px; padding: 18px 20px; z-index: 61; display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+/* Starts below the staff admin bar (44px, fixed, z-index 100000), which otherwise
+   covers the title. Taller bar on phones, where it wraps. */
+.ci-modal { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 76px); overflow-y: auto; background: #fff; border-radius: 10px; padding: 18px 20px; z-index: 61; display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
 .ci-modal.show { display: block; }
 .ci-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
 .ci-sub { font-size: 12px; color: #777; margin-bottom: 12px; }
@@ -571,7 +573,7 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 .ci-msg { font-size: 13px; margin-top: 10px; }
 .ci-msg.error { color: #c62828; }
 .ci-msg.ok { color: #2e7d32; }
-@media (max-width: 640px) { .ci-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .ci-grid { grid-template-columns: 1fr; } .ci-modal { top: 100px; max-height: calc(100vh - 116px); } }
 
 /* CREDITAPP3 Task 7 -- ask customer for more references. Broker and staff
    both see this (it lives inside the shared tracker, #ca-app-section, never

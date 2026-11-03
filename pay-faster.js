@@ -25,6 +25,7 @@
  *   PayFaster.feeChoices(savedPct)           -> [{value, label}] 5..1 plus the saved fee ("4% (your standard)")
  *   PayFaster.defaultFee(savedPct)           -> the saved fee when >= 2, else "2"
  *   PayFaster.refusalMessage(code)           -> plain copy for an API refusal code, or null (use the generic)
+ *   PayFaster.ineligibleMessage(reason, requestStatus) -> why the button is grayed out, or null (show nothing)
  *   PayFaster.injectStyles()                 -> adds the .pf-* styles once
  *
  * Mirrors pay_change_math.py in operfi-broker-api. Money is integer cents, half-up per line.
@@ -190,10 +191,26 @@
     bad_fee_pct: 'Pick a fee of 0% to 5%.',
     no_change: "That's already this carrier's quick pay fee. Nothing to change.",
     terms_not_eligible: "This carrier's payment terms can't be changed here.",
+    terms_pending_review: "A payment terms update for this carrier is waiting on OperFi review. Pay Faster opens once it's approved.",
     carrier_paid: 'This carrier has already been paid.'
   };
   function refusalMessage(code) {
     return Object.prototype.hasOwnProperty.call(REFUSALS, code) ? REFUSALS[code] : null;
+  }
+
+  // PFREASON1: the info tip on a grayed-out button. null = the reason is not one to show.
+  // An applied request stays live, so already_requested reads by the request's status.
+  var INELIGIBLE = {
+    terms_pending_review: REFUSALS.terms_pending_review,
+    carrier_paid: REFUSALS.carrier_paid,
+    terms_not_eligible: "This carrier's payment terms aren't eligible for Pay Faster."
+  };
+  function ineligibleMessage(reason, requestStatus) {
+    if (reason === 'already_requested') {
+      return requestStatus === 'applied' ? 'Pay Faster was already applied to this load.'
+        : 'A Pay Faster request for this load is already waiting on OperFi.';
+    }
+    return Object.prototype.hasOwnProperty.call(INELIGIBLE, reason) ? INELIGIBLE[reason] : null;
   }
 
   // PAYCHGPICK2: one explicit "Who pays the quick pay fee?" choice for every open block.
@@ -385,6 +402,7 @@
     feeChoices: feeChoices,
     defaultFee: defaultFee,
     refusalMessage: refusalMessage,
+    ineligibleMessage: ineligibleMessage,
     whoPaysState: whoPaysState,
     marginEffect: marginEffect,
     money: money,

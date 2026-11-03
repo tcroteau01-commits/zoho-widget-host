@@ -282,8 +282,19 @@ test('refusalMessage maps API codes', () => {
   assert.equal(m('no_change'), "That's already this carrier's quick pay fee. Nothing to change.");
   assert.equal(m('terms_not_eligible'), "This carrier's payment terms can't be changed here.");
   assert.equal(m('carrier_paid'), 'This carrier has already been paid.');
+  assert.equal(m('terms_pending_review'), "A payment terms update for this carrier is waiting on OperFi review. Pay Faster opens once it's approved.");
   assert.equal(m('lookup_failed'), null);
   assert.equal(m(undefined), null);
+});
+
+test('ineligibleMessage explains why Pay Faster is grayed out', () => {
+  const m = PF.ineligibleMessage;
+  assert.equal(m('terms_pending_review'), "A payment terms update for this carrier is waiting on OperFi review. Pay Faster opens once it's approved.");
+  assert.equal(m('carrier_paid'), 'This carrier has already been paid.');
+  assert.equal(m('already_requested', 'requested'), 'A Pay Faster request for this load is already waiting on OperFi.');
+  assert.equal(m('already_requested', 'applied'), 'Pay Faster was already applied to this load.');
+  assert.equal(m('terms_not_eligible'), "This carrier's payment terms aren't eligible for Pay Faster.");
+  for (const c of ['not_enabled_for_account', 'not_your_load', 'draft', undefined]) assert.equal(m(c), null);
 });
 
 test('no em or en dashes in any html', () => {
@@ -299,8 +310,10 @@ test('no em or en dashes in any html', () => {
     for (const payer of ['carrier', 'broker'])
       for (const toggled of [true, false])
         all.push(PF.summaryHtml({ kind, toggled, payer, fees: PF.computeFees(2000, 4, payer), feePct: 4, factorName: 'RTS', carrierRate: 2000 }));
-  for (const c of ['not_enabled_for_account', 'fee_adjust_not_enabled', 'bad_fee_pct', 'no_change', 'terms_not_eligible', 'carrier_paid'])
+  for (const c of ['not_enabled_for_account', 'fee_adjust_not_enabled', 'bad_fee_pct', 'no_change', 'terms_not_eligible', 'carrier_paid', 'terms_pending_review'])
     all.push(PF.refusalMessage(c));
+  for (const c of ['terms_pending_review', 'carrier_paid', 'already_requested', 'terms_not_eligible'])
+    for (const st of ['requested', 'applied']) all.push(PF.ineligibleMessage(c, st));
   for (const h of all) assert.doesNotMatch(h, DASH);
   assert.doesNotMatch(src, DASH);
 });

@@ -1978,11 +1978,11 @@ function wireProfileFinancials(rec, root) {
           recipient.value = '';
           recipient.placeholder = 'Leave blank to use the verified address';
           hint.textContent = 'Leave blank to send to the verified address ' + (pv.verified_email || '') +
-            '. An address typed here is used instead.';
+            '. Addresses typed here are used instead. Up to 5, separated by commas.';
         } else {
           recipient.value = pv.customer_email_on_file || '';
           recipient.placeholder = 'customer@company.com';
-          hint.textContent = 'No verified address yet. The customer confirms this address with a code before uploading.';
+          hint.textContent = 'Up to 5 addresses, separated by commas. Each person gets their own link and confirms their own address with a code before uploading.';
         }
         form.hidden = false;
         openBtn.hidden = true;
@@ -2004,7 +2004,10 @@ function wireProfileFinancials(rec, root) {
   sendBtn.addEventListener('click', function() {
     var to = String(recipient.value || '').trim();
     if (!verified && !to) { say('Enter the email address to send the request to.', true); recipient.focus(); return; }
-    if (to && to.indexOf('@') === -1) { say('That email address is not valid.', true); recipient.focus(); return; }
+    var addrs = to ? to.split(/[,;\s]+/).filter(Boolean) : [];
+    var bad = addrs.filter(function(a) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a); })[0];
+    if (bad) { say(bad + ' is not a valid email address.', true); recipient.focus(); return; }
+    if (addrs.length > 5) { say('Send to at most 5 addresses at once.', true); recipient.focus(); return; }
     var payload = { submission_id: String(rec.ID), note: String(note.value || '').trim() };
     if (to) payload.recipient_email = to;
     sendBtn.disabled = true;
@@ -2013,7 +2016,7 @@ function wireProfileFinancials(rec, root) {
       sendBtn.disabled = false;
       if (!r.ok) { say('Not sent: ' + (r.j.error || 'HTTP ' + r.status), true); return; }
       showToast(r.j.delivered === false
-        ? 'Request recorded, but the email did not send to ' + (r.j.sent_to || 'the customer') + '. Follow up directly.'
+        ? 'Request recorded, but the email did not send to ' + (r.j.not_delivered || r.j.sent_to || 'the customer') + '. Follow up directly.'
         : 'Financials requested. Sent to ' + (r.j.sent_to || 'the customer') + '.');
       fetchProfile(rec);
     }).catch(function(err) {

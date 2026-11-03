@@ -138,6 +138,27 @@ test('a refusal keeps the form and shows the server reason', async () => {
   assert.strictEqual(d.getElementById('cp-fin-form').hidden, false);
 });
 
+test('several addresses go up as typed; a bad one is refused before any call', async () => {
+  const { d, calls } = await bootProfile([
+    [/staff-preview$/, () => reply(200, PREVIEW_UNVERIFIED)],
+    [/request-financials$/, () => reply(200, { ok: true, delivered: false, not_delivered: 'a***@hogan.com',
+                                               sent_to: 'c***@hogan.com, a***@hogan.com' })]]);
+  d.querySelector('[data-fin-open]').click();
+  await wait(20);
+  d.getElementById('cp-fin-recipient').value = 'cfo@hogan.com, nope';
+  d.querySelector('[data-fin-send]').click();
+  await wait(20);
+  assert.ok(!calls.some((c) => /request-financials$/.test(c.url)));
+  assert.ok(d.getElementById('cp-fin-msg').textContent.includes('nope is not a valid email address'));
+  d.getElementById('cp-fin-recipient').value = 'cfo@hogan.com, ap@hogan.com';
+  d.querySelector('[data-fin-send]').click();
+  await wait(30);
+  const send = calls.find((c) => /\/credit-app\/request-financials$/.test(c.url));
+  assert.strictEqual(body(send).recipient_email, 'cfo@hogan.com, ap@hogan.com');
+  // A partial failure names only the address that did not go out.
+  assert.ok(d.getElementById('toast').textContent.includes('did not send to a***@hogan.com.'));
+});
+
 test('a request that was recorded but not mailed says so', async () => {
   const { d } = await bootProfile([
     [/staff-preview$/, () => reply(200, PREVIEW_UNVERIFIED)],

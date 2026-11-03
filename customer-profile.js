@@ -1437,7 +1437,7 @@ function renderFinancials(p) {
       '<div class="cp-fin-form" id="cp-fin-form" hidden>' +
         '<div class="cp-fin-preview" id="cp-fin-preview"></div>' +
         '<label class="field-label" for="cp-fin-recipient">Send to</label>' +
-        '<input type="email" class="dec-input" id="cp-fin-recipient" maxlength="254">' +
+        '<input type="text" class="dec-input" id="cp-fin-recipient" maxlength="1300" autocomplete="off">' +
         '<div class="muted cp-fin-hint" id="cp-fin-recipient-hint"></div>' +
         '<label class="field-label" for="cp-fin-note">Note (optional)</label>' +
         '<textarea class="dec-input" id="cp-fin-note" maxlength="500" ' +

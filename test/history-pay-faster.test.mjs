@@ -115,6 +115,61 @@ test('button only when eligible', async () => {
   assert.ok(!w.__calls.some((c) => /eligibility/.test(c.url)));
 });
 
+// PFREASON1: an ineligible load shows the button grayed out with an info tip saying why.
+const NO = (reason, extra) => Object.assign({ eligible: false, reason, kind: 'net30', terms: 'Standard Net 30', request: null }, extra);
+function gray(w) { return $(w, 'pf-slot').querySelector('.pf-why'); }
+
+test('ineligible load shows a grayed button with the reason', async () => {
+  let w = await open({}, { elig: NO('terms_pending_review', { kind: null, terms: 'Payment Change' }) });
+  assert.ok(!$(w, 'pf-open'), 'never the clickable button');
+  const g = gray(w);
+  assert.ok(g);
+  const b = g.querySelector('button.pf-open');
+  assert.ok(b && b.disabled);
+  assert.equal(b.textContent, '⚡ Pay carrier faster');
+  const tip = g.querySelector('[role="tooltip"]');
+  assert.equal(tip.textContent, "A payment terms update for this carrier is waiting on OperFi review. Pay Faster opens once it's approved.");
+  const info = g.querySelector('button.pf-why-i');
+  assert.equal(info.getAttribute('aria-describedby'), tip.id);
+  w = await open({}, { elig: NO('carrier_paid') });
+  assert.match(gray(w).textContent, /This carrier has already been paid\./);
+  w = await open({}, { elig: NO('terms_not_eligible', { kind: null, terms: 'No Invoice - 180 Days' }) });
+  assert.match(gray(w).textContent, /aren't eligible for Pay Faster/);
+  w = await open({}, { elig: NO('carrier_paid', { kind: 'factored' }) });
+  assert.match(gray(w).querySelector('button.pf-open').textContent, /Pay the factoring company faster/);
+});
+
+test('already requested and applied read differently', async () => {
+  let w = await open({ pay_change: { status: 'requested' } }, { elig: PENDING_ELIG });
+  assert.match(gray(w).textContent, /already waiting on OperFi/);
+  w = await open({ pay_change: { status: 'applied' } },
+    { elig: Object.assign({}, PENDING_ELIG, { request: Object.assign({}, REQ, { status: 'applied' }) }) });
+  assert.match(gray(w).textContent, /already applied to this load/);
+});
+
+test('no grayed button for clients without access, drafts, or foreign loads', async () => {
+  const noBox = Object.assign({}, CTX, { access: { pay_faster: false, fee_adjust: false } });
+  let w = await open({}, { ctx: noBox, elig: NO('not_enabled_for_account', { kind: null, terms: null }) });
+  assert.ok(!gray(w));
+  w = await open({}, { ctx: noBox, elig: NO('carrier_paid') });
+  assert.ok(!gray(w), 'no access = never told the feature exists');
+  w = await open({}, { elig: NO('not_your_load', { kind: null, terms: null }) });
+  assert.ok(!gray(w));
+  w = await open({}, { elig: NO('terms_not_eligible', { kind: 'quickpay', terms: 'Quick Pay' }) });
+  assert.ok(!gray(w), 'quick pay with waive off is not offered at all');
+});
+
+test('staff see the grayed reason; mirroring staff see what the client sees', async () => {
+  const staffCtx = Object.assign({}, CTX, { staff: true, access: { pay_faster: false, fee_adjust: false } });
+  let w = await open({}, { staff: true, ctx: staffCtx, elig: NO('terms_pending_review', { kind: null, terms: 'Payment Change' }) });
+  assert.match(gray(w).textContent, /waiting on OperFi review/);
+  w = await open({}, { staff: true, imp: 'client@sample-brokerage.example', elig: NO('carrier_paid') });
+  assert.match(gray(w).textContent, /already been paid/);
+  w = await open({ pay_change: { status: 'requested' } }, { staff: true, elig: PENDING_ELIG });
+  assert.ok($(w, 'pf-apply'), 'resolve box still shows');
+  assert.ok(!gray(w), 'the resolve box already says it is waiting');
+});
+
 test('untrained shows locked button', async () => {
   const w = await open({}, { ctx: Object.assign({}, CTX, { trained: false }) });
   const b = $(w, 'pf-open');

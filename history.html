@@ -400,6 +400,11 @@ html, body {
 .pf-open { background:#fff; color:#9a5c00; border:1px solid #e8a33c; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
 .pf-open:hover { background:#fffaf1; }
 .pf-open:disabled { opacity:.55; cursor:not-allowed; }
+/* PFREASON1: grayed button + info tip. Hover on desktop, tap (focus) on touch. */
+.pf-why { position:relative; display:inline-flex; align-items:center; gap:6px; }
+.pf-why-i { width:20px; height:20px; border-radius:50%; border:1px solid #c9ccd1; background:#fff; color:#555; font-size:12px; font-weight:700; line-height:1; cursor:help; padding:0; }
+.pf-why-tip { display:none; position:absolute; left:0; top:calc(100% + 6px); z-index:5; width:max-content; max-width:min(280px, 80vw); background:#1f2937; color:#fff; font-size:12px; line-height:1.4; padding:8px 10px; border-radius:6px; }
+.pf-why:hover .pf-why-tip, .pf-why-i:focus + .pf-why-tip { display:block; }
 .pf-staff { margin-top:10px; border:1px solid #e3e0d6; border-radius:8px; padding:10px 12px; background:#faf9f5; }
 .pf-staff:first-child { margin-top:0; }
 .pf-staff-h { font-size:12px; font-weight:700; color:#272727; }
@@ -1893,6 +1898,19 @@ function pfOpenLabel(d) {
   return (d.kind === 'factored' ? 'Pay the factoring company faster' : d.kind === 'quickpay' ? (pfPickMode(d.kind) ? 'Change QP fee' : 'Waive QP fee') : 'Pay carrier faster');
 }
 
+// PFREASON1: a grayed button with an info tip saying why. Only for those who could use
+// Pay Faster (staff, or a client with the box); a client without access never learns it exists.
+function pfIneligibleHtml(d) {
+  if (d.eligible || !(pfStaffEntry() || pfAccess())) return '';
+  if (d.reason === 'terms_not_eligible' && d.kind === 'quickpay') return '';  // QP not offered at all
+  var why = typeof window.PayFaster.ineligibleMessage === 'function'
+    ? window.PayFaster.ineligibleMessage(d.reason, d.request && d.request.status) : null;
+  if (!why) return '';
+  return '<span class="pf-why"><button class="pf-open" type="button" disabled>⚡ ' + pfOpenLabel(d) + '</button>' +
+    '<button class="pf-why-i" type="button" aria-label="Why is Pay Faster unavailable?" aria-describedby="pf-why-tip">i</button>' +
+    '<span class="pf-why-tip" id="pf-why-tip" role="tooltip">' + esc(why) + '</span></span>';
+}
+
 function payFasterSlotHtml(r) {
   if (!pfOn() || !r || isDraft(r)) return '';
   var d = pfCurrentElig(r);
@@ -1911,7 +1929,9 @@ function payFasterSlotHtml(r) {
       'Mirroring is view only. To enter one for them, open this load in All clients.</div>';
   }
   var q = d.request;
-  if (pfIsStaff() && q && q.status === 'requested') {
+  var resolveBox = pfIsStaff() && q && q.status === 'requested';
+  if (!h && !resolveBox) h += pfIneligibleHtml(d);
+  if (resolveBox) {
     var qpFee = q.request_type === 'qp_fee';
     h += '<div class="pf-staff"><div class="pf-staff-h">' + esc(qpFee ? pfRequestLabel(q) : 'Pay faster') + ' request (OperFi staff)</div>' +
       '<div class="pf-staff-sub">' + (qpFee ? esc(pfQpFeeDetail(q)) : esc(pfPayFasterLine(q))) + '</div>' +

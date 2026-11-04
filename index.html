@@ -1079,7 +1079,7 @@ function loadPayFasterContext(isRefetch) {
     .then(function (j) {
       if (seq !== _pfSeq) return;
       _pf.ctx = (j && j.enabled) ? j : null;
-      if (_pf.ctx) window.PayFaster.injectStyles();
+      if (_pf.ctx) { window.PayFaster.injectStyles(); window.PayFaster.startCutoffClock(); }
     })
     .catch(function () {
       if (seq !== _pfSeq) return;
@@ -2271,6 +2271,7 @@ function submitLoad() {
               _pfPayChange.error !== 'already_requested');
             var pcError = _pfPayChange ? _pfPayChange.error : null;
             var hadPf = !!_pfPending;
+            var pcSent = !!_pfPayChange && !pcFailed;
             _pfPending = null; _pfPayChange = null;
             resetFormAfterSubmit(recordId, !cleanSuccess);
             if (!cleanSuccess && hadPf) {
@@ -2288,6 +2289,10 @@ function submitLoad() {
                 pb.appendChild(document.createTextNode(" Your load was submitted, but the pay change request didn't go through. " +
                   (why || 'Request it from Submission History.')));
               }
+            } else if (hadPf && pcSent && window.PayFaster) {
+              // PFCUTOFF1: say when OperFi processes it (1:00 PM CT cutoff, same as the Wallet).
+              var cb = document.getElementById('post-submit-banner');
+              if (cb) cb.appendChild(document.createTextNode(' ' + window.PayFaster.confirmationLine()));
             }
           });
         });

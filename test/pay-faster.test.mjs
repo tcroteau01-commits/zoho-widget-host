@@ -397,3 +397,62 @@ test('summaryHtml split shows carrier part, reserve part and OperFi 2%', () => {
   assert.match(fs, /Short pay to factor/);
   assert.match(fs, /Deducted from factor payment \(1%\)/);
 });
+
+// PFCUTOFF1: same 1:00 PM CT cutoff as the Wallet's Reserve Release banner.
+// 2026-11-04 is a Wednesday; CST = UTC-6 in November.
+const ct = (iso) => new Date(iso);
+test('cutoffState before 1 PM CT on a weekday: same day, countdown', () => {
+  const s = PF.cutoffState(ct('2026-11-04T16:15:00Z')); // Wed 10:15 AM CT
+  assert.equal(s.cls, 'ok');
+  assert.equal(s.sameDay, true);
+  assert.equal(s.processDate, 'today');
+  assert.match(s.head, /2 hours, 45 minutes before the 1:00 PM CT cutoff/);
+  assert.match(s.detail, /processed today/);
+});
+test('cutoffState after 1 PM CT midweek: next business day', () => {
+  const s = PF.cutoffState(ct('2026-11-04T21:30:00Z')); // Wed 3:30 PM CT
+  assert.equal(s.cls, 'late');
+  assert.equal(s.sameDay, false);
+  assert.equal(s.processDate, 'Thursday, November 05');
+  assert.match(s.head, /Past the 1:00 PM CT cutoff/);
+  assert.match(s.detail, /processed the next business day, Thursday, November 05/);
+});
+test('cutoffState exactly 1:00 PM CT is past cutoff', () => {
+  assert.equal(PF.cutoffState(ct('2026-11-04T19:00:00Z')).sameDay, false);
+  assert.equal(PF.cutoffState(ct('2026-11-04T18:59:00Z')).head, '1 minute before the 1:00 PM CT cutoff');
+});
+test('cutoffState Friday after cutoff and weekend roll to Monday', () => {
+  const fri = PF.cutoffState(ct('2026-11-06T20:00:00Z')); // Fri 2 PM CT
+  assert.equal(fri.cls, 'weekend');
+  assert.equal(fri.processDate, 'Monday, November 09');
+  const sat = PF.cutoffState(ct('2026-11-07T16:00:00Z')); // Sat 10 AM CT
+  assert.equal(sat.cls, 'weekend');
+  assert.equal(sat.processDate, 'Monday, November 09');
+  assert.match(sat.head, /Weekend/);
+  const sun = PF.cutoffState(ct('2026-11-09T04:00:00Z')); // Sun 10 PM CT
+  assert.equal(sun.processDate, 'Monday, November 09');
+});
+test('cutoffState uses Central time, not the viewer clock (DST)', () => {
+  // July: CDT = UTC-5. 17:30Z = 12:30 PM CDT, still before cutoff.
+  assert.equal(PF.cutoffState(ct('2026-07-08T17:30:00Z')).sameDay, true);
+  assert.equal(PF.cutoffState(ct('2026-07-08T18:30:00Z')).sameDay, false);
+});
+test('cutoffHtml + whoPaysState carry the banner, no dashes', () => {
+  const h = PF.cutoffHtml(ct('2026-11-04T21:30:00Z'));
+  assert.match(h, /class="pf-cutoff pf-msg pf-warn"/);
+  const st = PF.whoPaysState({ kind: 'net30', rate: 2000, payer: null, savedPct: 4, reserve: RES_OK, trained: true });
+  assert.match(st.html, /pf-cutoff/);
+  for (const iso of ['2026-11-04T16:15:00Z', '2026-11-04T21:30:00Z', '2026-11-06T20:00:00Z', '2026-11-07T16:00:00Z']) {
+    const s = PF.cutoffState(ct(iso));
+    assert.doesNotMatch(s.head + s.detail + PF.cutoffHtml(ct(iso)), DASH);
+  }
+});
+test('whoPaysState locked block has no cutoff banner', () => {
+  const st = PF.whoPaysState({ kind: 'net30', rate: 2000, payer: null, savedPct: 4, reserve: RES_OK, trained: false });
+  assert.doesNotMatch(st.html, /pf-cutoff/);
+});
+test('confirmationLine names the processing day', () => {
+  assert.equal(PF.confirmationLine(ct('2026-11-04T16:15:00Z')), 'Pay Faster request sent. OperFi processes it today.');
+  assert.equal(PF.confirmationLine(ct('2026-11-04T21:30:00Z')),
+    'Pay Faster request sent after the 1:00 PM CT cutoff. OperFi processes it the next business day, Thursday, November 05.');
+});

@@ -1708,7 +1708,7 @@ function payFasterLoadContext(isRefetch) {
     .then(function(j) {
       if (seq !== _pfCtxSeq) return;
       _pfCtx = (j && j.enabled) ? j : null;
-      if (_pfCtx) window.PayFaster.injectStyles();
+      if (_pfCtx) { window.PayFaster.injectStyles(); window.PayFaster.startCutoffClock(); }
     })
     .catch(function() {
       if (seq !== _pfCtxSeq) return;

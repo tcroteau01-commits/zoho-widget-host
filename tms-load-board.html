@@ -580,7 +580,11 @@ function changeStatus(load, status) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: brokerEmail, load_id: lid, status: status })
   }).then(function(r){ return r.json(); }).then(function(p){
-    if (p && p.ok) { load.status = status; window._slideoutLoad = load; renderView(load); showToast('Status → ' + status); }
+    if (p && p.ok) {
+      load.status = status; window._slideoutLoad = load; renderView(load); showToast('Status → ' + status);
+      // TMSBOARD1: the table, totals and POD banner behind the panel must reflect the change too
+      loadBoard();
+    }
     else { showToast((p && p.error) || 'Status update failed'); }
   }).catch(function(){ showToast('Status update failed'); });
 }

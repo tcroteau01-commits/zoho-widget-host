@@ -190,7 +190,11 @@ test('renderDocLibrary: Delete button triggers confirm then posts to /tms-doc/de
   const delBtn = window.document.querySelector('button.doc-lib-delete');
   assert.ok(delBtn, 'Delete button must exist');
   delBtn.click();
-  assert.equal(confirms.length, 1, 'confirm was called');
+  assert.equal(confirms.length, 0, 'native confirm is never called (TMSFB3)');
+  const cm = window.document.getElementById('confirm-modal');
+  assert.equal(cm.classList.contains('hidden'), false, 'in-page confirm shown');
+  assert.equal(posts.length, 0, 'nothing posted before confirming');
+  window.document.getElementById('cm-ok').click();
   // wait a tick for the async post
   await new Promise(r => setTimeout(r, 20));
   assert.equal(posts.length, 1, 'one POST made');

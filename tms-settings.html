@@ -42,9 +42,39 @@ h3 { font-size:15px; font-weight:700; margin:0 0 4px; }
   border:1px solid transparent; border-radius:5px; padding:1px 6px; cursor:pointer; }
 .cl-tools button:hover { background:var(--of-gray-50); border-color:var(--of-gray-200);
   color:var(--of-gray-700); }
-.cl-body { font-size:12.5px; color:var(--of-gray-700); margin:5px 0 0 25px; }
-.cl-body textarea { width:100%; font:inherit; font-size:12.5px; border:1px solid var(--of-gray-300);
-  border-radius:6px; padding:7px 9px; resize:vertical; }
+.cl-body { font-size:12.5px; color:var(--of-gray-700); margin:5px 0 0 25px; white-space:pre-line; }
+.cl-body textarea, .ed textarea { width:100%; box-sizing:border-box; font:inherit; font-size:13px;
+  line-height:1.45; border:1px solid var(--of-gray-300); border-radius:6px; padding:8px 10px;
+  resize:vertical; min-height:140px; white-space:pre-wrap; }
+.ed { margin:6px 0 0; white-space:normal; }
+.ed.add { margin:14px 0 0; padding:12px 14px; border:1px solid var(--of-gray-200);
+  border-radius:10px; background:var(--of-gray-50); }
+.ed label { display:block; font-size:11px; font-weight:600; color:var(--of-gray-500);
+  margin:0 0 4px; }
+.ed input[type=text] { width:100%; box-sizing:border-box; font:inherit; font-size:13px;
+  border:1px solid var(--of-gray-300); border-radius:6px; padding:7px 10px; margin:0 0 10px; }
+.ed .ed-err { font-size:12px; color:#B42318; min-height:0; margin:6px 0 0; }
+.ed .ed-btns { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+.ls-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px 16px; }
+.ls-field label { display:block; font-size:11px; font-weight:600; color:var(--of-gray-500);
+  margin:0 0 4px; }
+.ls-field input { width:100%; box-sizing:border-box; font:inherit; font-size:13px;
+  border:1px solid var(--of-gray-300); border-radius:6px; padding:7px 10px; background:#fff; }
+.ls-field input:disabled { background:var(--of-gray-50); color:var(--of-gray-500); }
+.ls-hint { font-size:11px; color:var(--of-gray-500); margin-top:4px; }
+.ls-next { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin:14px 0 0;
+  padding:10px 12px; border-radius:8px; background:var(--of-orange-soft); border:1px solid #FCD3A8; }
+.ls-next span { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--of-gray-700); }
+.ls-next b { font-size:16px; color:var(--of-charcoal); }
+.ls-next em { font-style:normal; font-size:11.5px; color:var(--of-gray-500); }
+.ls-err { font-size:12px; color:#B42318; margin-top:8px; }
+.card + .card { margin-top:16px; }
+@media (max-width:640px) {
+  .ls-grid { grid-template-columns:1fr; }
+  .row-actions .btns { flex-wrap:wrap; }
+  .ed input[type=text], .ed textarea, .ls-field input { font-size:16px; }
+}
 .vars { display:flex; flex-wrap:wrap; gap:6px 12px; margin:8px 0 0 25px; align-items:center; }
 .var { display:inline-flex; align-items:center; gap:5px; }
 .var label { font-size:11px; color:var(--of-gray-500); }
@@ -74,6 +104,37 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
     <h2>TMS Settings</h2>
     <button class="qa secondary" id="back-btn" type="button">← Back to Dispatch Board</button>
   </div>
+  <div class="card" id="load-settings-card" style="display:none">
+    <h3>Load Settings</h3>
+    <p class="sub">How new loads are numbered, and when a delivered load without paperwork gets flagged on the board.</p>
+    <div class="banner" id="ls-readonly-banner" style="display:none">
+      Only Full Access users can change these settings.</div>
+    <div class="ls-grid">
+      <div class="ls-field">
+        <label for="ls-prefix">Load # prefix</label>
+        <input type="text" id="ls-prefix" maxlength="6" autocomplete="off" spellcheck="false">
+        <div class="ls-hint" id="ls-prefix-hint">1 to 6 letters or numbers.</div>
+      </div>
+      <div class="ls-field">
+        <label for="ls-start">Next number (optional)</label>
+        <input type="text" id="ls-start" inputmode="numeric" autocomplete="off" placeholder="e.g. 5001">
+        <div class="ls-hint">Coming from another TMS? Start where you left off.</div>
+      </div>
+      <div class="ls-field">
+        <label for="ls-pod-hours">POD alert after (hours)</label>
+        <input type="text" id="ls-pod-hours" inputmode="numeric" autocomplete="off">
+        <div class="ls-hint">Delivered loads with no paperwork after this long show a warning.</div>
+      </div>
+    </div>
+    <div class="ls-next"><span>Next load #</span><b id="ls-next">-</b><em id="ls-next-note"></em></div>
+    <div class="ls-err" id="ls-err"></div>
+    <div class="row-actions">
+      <span class="stamp">Never reuses a number already taken under the same prefix.</span>
+      <div class="btns">
+        <button class="qa primary" id="btn-ls-save" type="button">Save load settings</button>
+      </div>
+    </div>
+  </div>
   <div class="card">
     <h3>Rate Confirmation Terms</h3>
     <p class="sub">These appear on every rate confirmation you send.</p>
@@ -84,6 +145,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
     <div class="banner" id="readonly-banner" style="display:none">
       Only Full Access users can change these terms.</div>
     <div id="clause-list"><div class="loading">Loading terms...</div></div>
+    <div id="add-editor-host"></div>
     <div class="row-actions">
       <span class="stamp" id="stamp"></span>
       <div class="btns">
@@ -223,21 +285,104 @@ function removeClause(i) {
   renderClauses();
 }
 
+// Paste cleanup (TMSFB1). Text pasted from another TMS or a Word doc carries CRLFs,
+// NBSPs, zero-width chars and tabs. Same rules as the server's
+// tms_terms.normalize_clauses: line breaks and interior spaces are kept.
+function cleanClauseText(s) {
+  return String(s == null ? '' : s)
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u2028\u2029]/g, '\n')
+    .replace(/[\u200B\u200C\u200D\u2060\uFEFF]/g, '')
+    .replace(/[\t\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
+    .replace(/ +$/gm, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function autoGrow(ta) {
+  ta.style.height = 'auto';
+  var h = ta.scrollHeight || 0;
+  ta.style.height = Math.max(h + 2, 140) + 'px';
+}
+
+function onCleanPaste(e) {
+  var ta = e.target;
+  var cd = e.clipboardData || window.clipboardData;
+  if (!cd || typeof cd.getData !== 'function') { return; }
+  var txt = cd.getData('text/plain') || cd.getData('text');
+  if (!txt) { return; }
+  e.preventDefault();
+  var clean = cleanClauseText(txt);
+  var a = ta.selectionStart || 0, b = ta.selectionEnd || 0;
+  ta.value = ta.value.slice(0, a) + clean + ta.value.slice(b);
+  try { ta.selectionStart = ta.selectionEnd = a + clean.length; } catch (err) {}
+  autoGrow(ta);
+}
+
+// One in-page editor for both "add a custom clause" and "edit a clause body".
+// Explicit Save / Cancel: nothing commits on blur.
+function buildClauseEditor(opts) {
+  var ed = document.createElement('div');
+  ed.className = 'ed' + (opts.add ? ' add' : '');
+  var ti = null;
+  if (opts.showTitle) {
+    var tl = document.createElement('label');
+    tl.textContent = 'Clause title';
+    ti = document.createElement('input');
+    ti.type = 'text'; ti.className = 'ed-title'; ti.maxLength = 120;
+    ti.value = opts.title || '';
+    ti.id = 'ed-title-' + opts.key; tl.setAttribute('for', ti.id);
+    ed.appendChild(tl); ed.appendChild(ti);
+  }
+  var bl = document.createElement('label');
+  bl.textContent = 'Clause text';
+  var ta = document.createElement('textarea');
+  ta.className = 'ed-body'; ta.rows = 7;
+  ta.id = 'ed-body-' + opts.key; bl.setAttribute('for', ta.id);
+  ta.value = opts.body || '';
+  ta.addEventListener('paste', onCleanPaste);
+  ta.addEventListener('input', function () { autoGrow(ta); });
+  ed.appendChild(bl); ed.appendChild(ta);
+  var err = document.createElement('div');
+  err.className = 'ed-err';
+  ed.appendChild(err);
+  var btns = document.createElement('div');
+  btns.className = 'ed-btns';
+  var cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'qa secondary ed-cancel'; cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', opts.onCancel);
+  var save = document.createElement('button');
+  save.type = 'button'; save.className = 'qa primary ed-save'; save.textContent = opts.saveLabel;
+  save.addEventListener('click', function () {
+    var title = ti ? ti.value.trim() : null;
+    var body = cleanClauseText(ta.value).trim();
+    if (ti && !title) { err.textContent = 'Give the clause a title.'; ti.focus(); return; }
+    if (!body) { err.textContent = 'Clause text cannot be empty.'; ta.focus(); return; }
+    opts.onSave(title, body);
+  });
+  btns.appendChild(cancel); btns.appendChild(save);
+  ed.appendChild(btns);
+  setTimeout(function () { autoGrow(ta); }, 0);
+  return ed;
+}
+
 function editBody(i) {
   var c = CLAUSES[i];
+  if (!c) { return; }
   var host = document.getElementById('body-' + c.id);
   if (!host || host.querySelector('textarea')) { return; }
-  var ta = document.createElement('textarea');
-  ta.rows = 4; ta.value = c.body;
-  ta.addEventListener('blur', function () {
-    var v = ta.value.trim();
-    if (!v) { showToast('Clause body cannot be empty.'); renderClauses(); return; }
-    CLAUSES[i].body = ta.value;
-    renderClauses();
+  var ed = buildClauseEditor({
+    key: c.id, showTitle: !!c.custom, title: c.title, body: c.body, saveLabel: 'Done',
+    onSave: function (title, body) {
+      if (title !== null) { CLAUSES[i].title = title; }
+      CLAUSES[i].body = body;
+      renderClauses();
+    },
+    onCancel: function () { renderClauses(); }
   });
   host.textContent = '';
-  host.appendChild(ta);
-  ta.focus();
+  host.appendChild(ed);
+  var first = ed.querySelector('input, textarea');
+  if (first) { first.focus(); }
 }
 
 function nextCustomId() {
@@ -258,15 +403,27 @@ function addCustomClause(title, body) {
   renderClauses();
 }
 
-function promptCustomClause() {
-  var title = window.prompt('Clause title');
-  if (!title) { return; }
-  var body = window.prompt('Clause text');
-  if (!body) { return; }
-  addCustomClause(title, body);
+function openAddClause() {
+  var host = document.getElementById('add-editor-host');
+  if (!host || host.firstChild) { return; }
+  host.appendChild(buildClauseEditor({
+    key: 'new', add: true, showTitle: true, title: '', body: '', saveLabel: 'Save clause',
+    onSave: function (title, body) { closeAddClause(); addCustomClause(title, body); },
+    onCancel: closeAddClause
+  }));
+  var ti = host.querySelector('input');
+  if (ti) { ti.focus(); }
 }
 
-function collectClauses() { return CLAUSES; }
+function closeAddClause() {
+  var host = document.getElementById('add-editor-host');
+  if (host) { host.innerHTML = ''; }
+}
+
+function collectClauses() {
+  CLAUSES.forEach(function (c) { c.body = cleanClauseText(c.body).trim(); });
+  return CLAUSES;
+}
 
 function applySettings(data) {
   CLAUSES = (data && data.clauses) || [];
@@ -326,6 +483,122 @@ function resetDefaults() {
     .catch(function () { showToast('Could not load the defaults. Nothing was changed.'); });
 }
 
+// ---- Load Settings (TMSFB1): load # prefix + start, POD alert hours ----
+// An API without /tms-dispatch-settings (or a GET that fails) leaves the card hidden.
+var DS = null;
+
+function applyDispatchSettings(d) {
+  var card = document.getElementById('load-settings-card');
+  if (!d || typeof d !== 'object' || !('load_prefix' in d || 'next_load_number' in d)) {
+    DS = null; card.style.display = 'none'; return;
+  }
+  DS = d;
+  card.style.display = '';
+  var canEdit = d.can_edit !== false;
+  document.getElementById('ls-prefix').value = d.load_prefix || d.load_prefix_default || '';
+  document.getElementById('ls-start').value =
+    (d.load_start == null || d.load_start === '') ? '' : String(d.load_start);
+  document.getElementById('ls-pod-hours').value =
+    (d.pod_alert_hours == null || d.pod_alert_hours === '') ? '48' : String(d.pod_alert_hours);
+  ['ls-prefix', 'ls-start', 'ls-pod-hours'].forEach(function (id) {
+    document.getElementById(id).disabled = !canEdit;
+  });
+  document.getElementById('btn-ls-save').style.display = canEdit ? '' : 'none';
+  document.getElementById('ls-readonly-banner').style.display = canEdit ? 'none' : 'block';
+  document.getElementById('ls-err').textContent = '';
+  renderNextPreview();
+}
+
+function _seqOf(num) {
+  var m = /-(\d+)$/.exec(String(num || ''));
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+// The server owns the number (max of the highest used + 1 and the start). While the
+// form matches what was loaded, show the server's figure as-is; once edited, show
+// the best local estimate and say it is confirmed on save.
+function renderNextPreview() {
+  if (!DS) { return; }
+  var el = document.getElementById('ls-next');
+  var note = document.getElementById('ls-next-note');
+  var pfEl = document.getElementById('ls-prefix');
+  var up = String(pfEl.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (pfEl.value !== up) { pfEl.value = up; }
+  var startRaw = String(document.getElementById('ls-start').value || '').trim();
+  var start = /^\d+$/.test(startRaw) ? parseInt(startRaw, 10) : 0;
+  var savedPrefix = String(DS.load_prefix || DS.load_prefix_default || '').toUpperCase();
+  var savedStart = (DS.load_start == null || DS.load_start === '') ? '' : String(DS.load_start);
+  if (up === savedPrefix && startRaw === savedStart && DS.next_load_number) {
+    el.textContent = DS.next_load_number;
+    note.textContent = '';
+    return;
+  }
+  if (!up) { el.textContent = '-'; note.textContent = 'Enter a prefix.'; return; }
+  var seq = up === savedPrefix ? Math.max(_seqOf(DS.next_load_number), start) : (start || 1001);
+  el.textContent = up + '-' + seq;
+  note.textContent = 'Confirmed when you save. A number already used under this prefix is never reused.';
+}
+
+function validateDispatchForm() {
+  var prefix = String(document.getElementById('ls-prefix').value || '').trim().toUpperCase();
+  var startRaw = String(document.getElementById('ls-start').value || '').trim();
+  var hoursRaw = String(document.getElementById('ls-pod-hours').value || '').trim();
+  if (!/^[A-Z0-9]{1,6}$/.test(prefix)) { return { error: 'Prefix must be 1 to 6 letters or numbers.' }; }
+  var start = null;
+  if (startRaw) {
+    if (!/^\d+$/.test(startRaw) || +startRaw < 1 || +startRaw > 99999999) {
+      return { error: 'Next number must be a whole number from 1 to 99,999,999.' };
+    }
+    start = parseInt(startRaw, 10);
+  }
+  if (!/^\d+$/.test(hoursRaw) || +hoursRaw < 1 || +hoursRaw > 720) {
+    return { error: 'POD alert hours must be a whole number from 1 to 720.' };
+  }
+  return { load_prefix: prefix, load_start: start, pod_alert_hours: parseInt(hoursRaw, 10) };
+}
+
+function loadDispatchSettings() {
+  return fetch(API_BASE + '/tms-dispatch-settings?email=' + encodeURIComponent(brokerEmail))
+    .then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) { throw new Error('load failed'); }
+        return j;
+      });
+    })
+    .then(applyDispatchSettings)
+    .catch(function () { applyDispatchSettings(null); });
+}
+
+function saveDispatchSettings() {
+  var err = document.getElementById('ls-err');
+  var v = validateDispatchForm();
+  if (v.error) { err.textContent = v.error; return Promise.resolve(); }
+  err.textContent = '';
+  var btn = document.getElementById('btn-ls-save');
+  btn.disabled = true;
+  return fetch(API_BASE + '/tms-dispatch-settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_prefix: v.load_prefix,
+                           load_start: v.load_start, pod_alert_hours: v.pod_alert_hours })
+  })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j || {} }; }); })
+    .then(function (res) {
+      btn.disabled = false;
+      if (!res.ok || res.body.ok === false) {
+        err.textContent = res.body.error || 'Save failed.';
+        return;
+      }
+      showToast('Load settings saved.');
+      if (res.body.next_load_number) {
+        applyDispatchSettings(Object.assign({ can_edit: true }, DS || {}, v, res.body));
+        return;
+      }
+      return loadDispatchSettings();
+    })
+    .catch(function () { btn.disabled = false; err.textContent = 'Save failed.'; });
+}
+
 function boot() {
   if (typeof ZOHO === 'undefined' || !ZOHO.CREATOR || !ZOHO.CREATOR.UTIL) return;
   var result = ZOHO.CREATOR.UTIL.getInitParams();
@@ -333,6 +606,7 @@ function boot() {
     result.then(function(params){
       brokerEmail = (params && (params.loginUser || params.login_user || params.email)) || '';
       loadSettings();
+      loadDispatchSettings();
     });
   }
 }
@@ -353,7 +627,11 @@ function goToDispatchBoard() {
 
 window.addEventListener('load', function () {
   document.getElementById('btn-save').addEventListener('click', saveSettings);
-  document.getElementById('btn-add').addEventListener('click', promptCustomClause);
+  document.getElementById('btn-add').addEventListener('click', openAddClause);
+  document.getElementById('btn-ls-save').addEventListener('click', saveDispatchSettings);
+  ['ls-prefix', 'ls-start'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', renderNextPreview);
+  });
   document.getElementById('btn-reset').addEventListener('click', resetDefaults);
   document.getElementById('back-btn').addEventListener('click', goToDispatchBoard);
   boot();

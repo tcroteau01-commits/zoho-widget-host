@@ -18,7 +18,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .sec-h { font-size: 11px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.4px; margin: 14px 0 8px; }
 .stop { font-size: 12px; color: #444; padding: 6px 0; border-bottom: 1px solid #f3f1ea; }
 label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; display: block; margin-bottom: 5px; }
-select, input[type=file] { width: 100%; border: 1px solid #d8d8d8; border-radius: 8px; padding: 11px 12px; font-size: 13px; font-family: inherit; background: #fff; margin-bottom: 12px; }
+select, input[type=file], input.field { width: 100%; border: 1px solid #d8d8d8; border-radius: 8px; padding: 11px 12px; font-size: 13px; font-family: inherit; background: #fff; margin-bottom: 12px; }
 .btn { background: #F97316; color: #fff; border: none; border-radius: 8px; padding: 12px 20px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; font-family: inherit; }
 .btn:disabled { opacity: 0.6; }
 .status { font-size: 13px; font-weight: 600; margin-top: 10px; }
@@ -27,12 +27,21 @@ select, input[type=file] { width: 100%; border: 1px solid #d8d8d8; border-radius
 .dropzone { border: 2px dashed #d8cfa8; border-radius: 8px; padding: 16px; text-align: center; color: #888; cursor: pointer; margin-bottom: 12px; }
 .dropzone.staged { border-color: #2e7d32; color: #2e7d32; font-weight: 600; }
 .dropzone.dragover { border-color: #F97316; background: #fef6e7; }
+.card > .sec-h:first-child { margin-top: 0; }
+/* TMSOTP1 verify steps */
+.lead { font-size: 13px; color: #555; line-height: 1.5; margin: 8px 0 14px; }
+input.code { font-size: 22px; letter-spacing: 8px; text-align: center; font-variant-numeric: tabular-nums; }
+.linkbtn { background: none; border: none; color: #F97316; font-size: 13px; font-weight: 600; cursor: pointer; padding: 10px 0; font-family: inherit; }
+.linkbtn:disabled { color: #aaa; cursor: default; }
+.row-links { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
 
 @media (max-width: 640px) {
   html, body { overflow-x: hidden; }
   .page { width: 100%; max-width: 100%; padding: 16px 12px 56px; }
   .card { width: 100%; max-width: 100%; padding: 16px 14px; }
-  select, input[type=file] { width: 100%; font-size: 16px; padding: 12px; min-height: 44px; }
+  select, input[type=file], input.field { width: 100%; font-size: 16px; padding: 12px; min-height: 44px; }
+  input.code { font-size: 22px; }
+  .linkbtn { min-height: 44px; }
   .btn { width: 100%; min-height: 44px; font-size: 16px; }
   #uploaded-list { width: 100%; }
 }
@@ -41,6 +50,27 @@ select, input[type=file] { width: 100%; border: 1px solid #d8d8d8; border-radius
 <body>
 <div class="page">
   <div class="brand">OperFi</div>
+  <div class="card hidden" id="verify-card">
+    <div id="step-email">
+      <div class="title">Verify your email</div>
+      <div class="lead">To protect this load's paperwork, enter the email address this link was sent to. We'll email you a 6-digit code.</div>
+      <label for="otp-email">Email address</label>
+      <input class="field" type="email" id="otp-email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" placeholder="you@company.com">
+      <button class="btn" id="otp-send">Send code</button>
+    </div>
+    <div id="step-code" class="hidden">
+      <div class="title">Enter your code</div>
+      <div class="lead" id="otp-lead"></div>
+      <label for="otp-code">6-digit code</label>
+      <input class="field code" type="text" id="otp-code" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" aria-label="6-digit code">
+      <button class="btn" id="otp-verify">Verify</button>
+      <div class="row-links">
+        <button class="linkbtn" id="otp-resend" type="button">Resend code</button>
+        <button class="linkbtn" id="otp-change" type="button">Use a different email</button>
+      </div>
+    </div>
+    <div class="status" id="vstatus"></div>
+  </div>
   <div class="card" id="summary"><div class="sub">Loading…</div></div>
   <div class="card hidden" id="upload-card">
     <div class="sec-h">Upload a document</div>
@@ -61,6 +91,116 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 
 function getToken() {
   try { return new URL(window.location.href).searchParams.get('token') || ''; } catch (e) { return ''; }
+}
+
+// ---- TMSOTP1: email OTP gate. The session is kept per token in this browser. ----
+var SESSION_HEADER = 'X-TMS-Upload-Session';
+var _otpEmail = '';
+var _resendTimer = null;
+var _memSession = '';
+
+function sessionKey() { return 'tmsotp1:' + getToken(); }
+function getSession() {
+  try {
+    var raw = window.localStorage.getItem(sessionKey());
+    if (!raw) return '';
+    var s = JSON.parse(raw);
+    if (!s || !s.session || !s.exp || s.exp <= Date.now()) { window.localStorage.removeItem(sessionKey()); return ''; }
+    return s.session;
+  } catch (e) { return ''; }
+}
+function saveSession(session, expiresIn) {
+  _memSession = session;
+  try {
+    window.localStorage.setItem(sessionKey(), JSON.stringify({ session: session, exp: Date.now() + (expiresIn || 86400) * 1000 }));
+  } catch (e) {}
+}
+function clearSession() {
+  _memSession = '';
+  try { window.localStorage.removeItem(sessionKey()); } catch (e) {}
+}
+function currentSession() { return getSession() || _memSession; }
+function authHeaders() { var h = {}; var s = currentSession(); if (s) h[SESSION_HEADER] = s; return h; }
+
+function vstatus(msg, cls) {
+  var el = document.getElementById('vstatus');
+  if (el) { el.textContent = msg || ''; el.className = 'status ' + (cls || ''); }
+}
+function show(id, on) { var el = document.getElementById(id); if (el) el.classList.toggle('hidden', !on); }
+
+function showVerify(step, msg, cls) {
+  show('summary', false); show('upload-card', false); show('verify-card', true);
+  show('step-email', step !== 'code'); show('step-code', step === 'code');
+  vstatus(msg || '', cls || '');
+  var focus = document.getElementById(step === 'code' ? 'otp-code' : 'otp-email');
+  if (focus) { try { focus.focus(); } catch (e) {} }
+}
+
+function postJson(path, body) {
+  return fetch(BROKER_API_BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r){ return r.json().then(function(p){ return { status: r.status, body: p || {} }; }, function(){ return { status: r.status, body: {} }; }); });
+}
+
+function apiError(res, fallback) {
+  if (res.status === 503) return 'Verification is unavailable right now. Try again in a minute.';
+  if (res.status === 403) return 'This link is invalid or has expired. Ask the broker for a new link.';
+  return (res.body && res.body.error) || fallback;
+}
+
+function resetResend() {
+  if (_resendTimer) { clearInterval(_resendTimer); _resendTimer = null; }
+  var b = document.getElementById('otp-resend');
+  if (b) { b.disabled = false; b.textContent = 'Resend code'; }
+}
+function startResendCountdown(sec) {
+  var b = document.getElementById('otp-resend');
+  if (!b) return;
+  var left = sec || 60;
+  resetResend();
+  b.disabled = true; b.textContent = 'Resend code in ' + left + 's';
+  _resendTimer = setInterval(function(){
+    left -= 1;
+    if (left <= 0) resetResend();
+    else b.textContent = 'Resend code in ' + left + 's';
+  }, 1000);
+}
+
+function sendCode(email) {
+  email = String(email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { vstatus('Enter a valid email address.', 'err'); return Promise.resolve(); }
+  _otpEmail = email;
+  var btn = document.getElementById('otp-send'); if (btn) btn.disabled = true;
+  vstatus('Sending…', '');
+  return postJson('/tms-public/otp/start', { token: getToken(), email: email })
+    .then(function(res){
+      if (btn) btn.disabled = false;
+      if (res.status !== 200 || !res.body.ok) { vstatus(apiError(res, 'Could not send a code. Try again.'), 'err'); return; }
+      var lead = document.getElementById('otp-lead');
+      if (lead) lead.textContent = 'If ' + email + ' is on file for this load, we sent it a 6-digit code. It expires in 10 minutes.';
+      var ci = document.getElementById('otp-code'); if (ci) ci.value = '';
+      showVerify('code');
+      startResendCountdown(res.body.resend_after || 60);
+    })
+    .catch(function(){ if (btn) btn.disabled = false; vstatus('Network error. Try again.', 'err'); });
+}
+
+function verifyCode(code) {
+  code = String(code || '').replace(/\D/g, '');
+  if (code.length !== 6) { vstatus('Enter the 6-digit code.', 'err'); return Promise.resolve(); }
+  var btn = document.getElementById('otp-verify'); if (btn) btn.disabled = true;
+  vstatus('Checking…', '');
+  return postJson('/tms-public/otp/check', { token: getToken(), email: _otpEmail, code: code })
+    .then(function(res){
+      if (btn) btn.disabled = false;
+      if (res.status === 200 && res.body.ok && res.body.session) {
+        saveSession(res.body.session, res.body.expires_in);
+        resetResend();
+        show('verify-card', false); vstatus('');
+        return loadSummary();
+      }
+      vstatus(apiError(res, 'That code is not valid or has expired.'), 'err');
+    })
+    .catch(function(){ if (btn) btn.disabled = false; vstatus('Network error. Try again.', 'err'); });
 }
 
 function status(msg, cls) {
@@ -91,6 +231,7 @@ function renderSummary(s) {
   }
   var card = document.getElementById('upload-card');
   if (card) card.classList.remove('hidden');
+  box.classList.remove('hidden');
 }
 
 function uploadFile(docType, file) {
@@ -102,10 +243,11 @@ function uploadFile(docType, file) {
   var fd = new FormData();
   fd.append('doc_type', docType);
   fd.append('file', file);
-  return fetch(BROKER_API_BASE + '/tms-public/upload?token=' + encodeURIComponent(token), { method: 'POST', body: fd })
-    .then(function(r){ return r.json(); })
+  return fetch(BROKER_API_BASE + '/tms-public/upload?token=' + encodeURIComponent(token), { method: 'POST', body: fd, headers: authHeaders() })
+    .then(function(r){ return r.json().then(function(p){ return r.status === 401 ? { _unverified: true } : p; }); })
     .then(function(p){
       if (btn) btn.disabled = false;
+      if (p && p._unverified) { clearSession(); status(''); showVerify('email', 'Your verification has expired. Verify your email again to keep uploading.', 'err'); return; }
       if (p && p.ok) {
         status('Uploaded ' + docType + '. You can add another.', 'ok');
         var list = document.getElementById('uploaded-list');
@@ -118,9 +260,14 @@ function uploadFile(docType, file) {
 
 function loadSummary() {
   var token = getToken();
-  fetch(BROKER_API_BASE + '/tms-public/load?token=' + encodeURIComponent(token))
-    .then(function(r){ return r.json(); })
-    .then(function(p){
+  if (!currentSession()) { showVerify('email'); return Promise.resolve(); }
+  var box = document.getElementById('summary');
+  box.classList.remove('hidden'); box.innerHTML = '<div class="sub">Loading…</div>';
+  return fetch(BROKER_API_BASE + '/tms-public/load?token=' + encodeURIComponent(token), { headers: authHeaders() })
+    .then(function(r){ return r.json().then(function(p){ return { status: r.status, p: p }; }); })
+    .then(function(res){
+      var p = res.p;
+      if (res.status === 401) { clearSession(); showVerify('email'); return; }
       if (p && p.load_number !== undefined && !p.error) renderSummary(p);
       else document.getElementById('summary').innerHTML = '<div class="status err">This link is invalid or has expired. Ask the broker for a new link.</div>';
     })
@@ -163,6 +310,16 @@ window.addEventListener('load', function(){
     var sel = document.getElementById('ctype');
     uploadFile(sel ? sel.value : 'Other', _carrierStaged).then(function(){ setCarrierStagedFile(null); });
   });
+  var ei = document.getElementById('otp-email'), ci = document.getElementById('otp-code');
+  var sb = document.getElementById('otp-send'); if (sb) sb.addEventListener('click', function(){ sendCode(ei && ei.value); });
+  if (ei) ei.addEventListener('keydown', function(e){ if (e.key === 'Enter') sendCode(ei.value); });
+  var vb = document.getElementById('otp-verify'); if (vb) vb.addEventListener('click', function(){ verifyCode(ci && ci.value); });
+  if (ci) {
+    ci.addEventListener('keydown', function(e){ if (e.key === 'Enter') verifyCode(ci.value); });
+    ci.addEventListener('input', function(){ var v = ci.value.replace(/\D/g, '').slice(0, 6); if (v !== ci.value) ci.value = v; if (v.length === 6) verifyCode(v); });
+  }
+  var rb = document.getElementById('otp-resend'); if (rb) rb.addEventListener('click', function(){ sendCode(_otpEmail); });
+  var cb = document.getElementById('otp-change'); if (cb) cb.addEventListener('click', function(){ resetResend(); showVerify('email'); });
   wireCarrierDropzone();
   boot();
 });
@@ -171,6 +328,8 @@ window.addEventListener('load', function(){
 window.renderSummary = renderSummary; window.getToken = getToken;
 window.uploadFile = uploadFile; window.boot = boot;
 window.setCarrierStagedFile = setCarrierStagedFile;
+window.sendCode = sendCode; window.verifyCode = verifyCode; window.loadSummary = loadSummary;
+window.showVerify = showVerify; window.clearSession = clearSession;
 </script>
 </body>
 </html>

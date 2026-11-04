@@ -125,3 +125,32 @@ test('slide-out badges a customized load', () => {
   assert.ok(badge, 'expected a customized badge');
   assert.match(badge.textContent, /Customized/);
 });
+
+test('a status change from the slide-out reloads the board behind it (TMSBOARD1)', async () => {
+  const { window, posts } = makeWidget();
+  const gets = [];
+  const orig = window.fetch;
+  window.fetch = function(url, init) {
+    if (!init || init.method !== 'POST') gets.push(String(url));
+    return orig(url, init);
+  };
+  const load = Object.assign({}, LOAD, { status: 'Dispatched' });
+  window.renderView(load);
+  window.changeStatus(load, 'Delivered');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(posts.some((p) => /\/tms-status$/.test(p.url) && p.body.status === 'Delivered'), 'status posted');
+  assert.ok(gets.some((u) => u.indexOf('/tms-loads?') !== -1), 'board reloaded');
+});
+
+test('a failed status change does not reload the board', async () => {
+  const { window } = makeWidget();
+  const gets = [];
+  window.fetch = function(url, init) {
+    if (init && init.method === 'POST') return Promise.resolve({ json: () => Promise.resolve({ ok: false, error: 'nope' }) });
+    gets.push(String(url));
+    return Promise.resolve({ json: () => Promise.resolve({}) });
+  };
+  window.changeStatus(Object.assign({}, LOAD), 'Delivered');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(gets.filter((u) => u.indexOf('/tms-loads?') !== -1).length, 0);
+});

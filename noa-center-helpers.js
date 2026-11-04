@@ -13,7 +13,8 @@
   var FLAGS = {
     verify: 'Needs verification call', stale: 'No response in 7 days', bounce: 'Bounced',
     reply: 'AP replied by email', dispute: 'Question or dispute', vendor_setup: 'Vendor setup / W-9',
-    contact_review: 'AP named a contact to review', operfi_send: 'Client asked OperFi to send'
+    contact_review: 'AP named a contact to review', operfi_send: 'Client asked OperFi to send',
+    open_payables: 'Open payables reported'
   };
   var CHECKS = {
     free_mail: 'Free email address (Gmail, Yahoo, ...)', lookalike_domain: 'Looks like the debtor domain but is not',
@@ -45,11 +46,23 @@
     });
     return out;
   }
+  var SKIPS = { free_mail: 'Free email address, not sent', no_address: 'No AP address on file',
+                bad_email: 'Address is not valid' };
+  function norm(s) { return String(s || '').split(/\s+/).filter(Boolean).join(' ').toLowerCase(); }
+  function nameMatches(typed, name) { return !!norm(name) && norm(typed) === norm(name); }
+  function skipLabel(code) { return SKIPS[code] || code || ''; }
+  function summaryText(s) {
+    s = s || {};
+    return (s.sent || 0) + ' sent, ' + (s.skipped || 0) + ' skipped, ' + (s.bounced || 0) + ' bounced, ' +
+      (s.acknowledged || 0) + ' acknowledged, ' + (s.confirmed || 0) + ' confirmed, ' +
+      (s.open_payables || 0) + ' open payables ($' + Number(s.open_amount_total || 0).toFixed(2) + ')';
+  }
   function ageText(days) {
     if (!days) return 'today';
     return days === 1 ? '1 day' : days + ' days';
   }
   return { chipLabel: chipLabel, flagLabel: flagLabel, waitingOnText: waitingOnText,
            confirmAllowed: confirmAllowed, renderChecks: renderChecks, ageText: ageText,
+           nameMatches: nameMatches, skipLabel: skipLabel, summaryText: summaryText,
            NUMBER_SOURCES: NUMBER_SOURCES };
 });

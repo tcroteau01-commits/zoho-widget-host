@@ -108,8 +108,56 @@
       <p class="muted" id="inbox-empty" hidden>No unmatched copies.</p>
     </section>
 
-    <section id="tab-campaigns" hidden><p class="muted">Blanket NOA campaigns arrive in Phase 3.</p></section>
-    <section id="tab-directory" hidden><p class="muted">The debtor NOA directory screen arrives in Phase 3.</p></section>
+    <section id="tab-campaigns" hidden>
+      <p class="muted">Blanket NOAs for one client to many debtors. No FactorView link is created. A later
+        first invoice still gets its own relationship NOA.</p>
+      <div class="bar">
+        <input id="camp-client-q" placeholder="Search FactorView clients" size="34">
+        <button class="link" id="camp-client-search">Search</button>
+        <strong id="camp-client-name"></strong>
+      </div>
+      <div id="camp-client-results"></div>
+      <div id="camp-builder" class="card" hidden>
+        <div class="bar">
+          <label>Debtors from <select id="camp-source">
+            <option value="hauled">Debtors this client has invoiced (FactorView)</option>
+            <option value="list">A saved list</option>
+            <option value="ids">FV debtor ids (one per line)</option></select></label>
+          <button class="link" id="camp-load">Load</button>
+        </div>
+        <div id="camp-picks"></div>
+        <div class="bar" style="margin-top:8px">
+          <input id="camp-save-name" placeholder="Save these debtors as a list (name)">
+          <button class="link" id="camp-save-list">Save list</button>
+          <button class="primary" id="camp-build">Build campaign</button>
+        </div>
+        <div id="camp-msg"></div>
+      </div>
+      <h3>Campaigns</h3>
+      <table><thead><tr><th>Created</th><th>Status</th><th>Counts</th><th>By</th></tr></thead>
+        <tbody id="camp-list"></tbody></table>
+      <div id="camp-detail" class="card" hidden style="margin-top:12px">
+        <h3 id="camp-title"></h3>
+        <div class="muted" id="camp-summary"></div>
+        <div class="card" id="camp-launch-box">
+          <strong>Launch</strong>
+          <p id="camp-launch-count"></p>
+          <label>Type the client name to confirm<br><input id="camp-typed" size="40" autocomplete="off"></label>
+          <button class="primary" id="camp-launch" disabled>Launch campaign</button>
+          <div id="camp-launch-msg"></div>
+        </div>
+        <table><thead><tr><th>Debtor</th><th>Address</th><th>State</th><th>NOA</th><th>Open payables</th></tr></thead>
+          <tbody id="camp-recipients"></tbody></table>
+      </div>
+    </section>
+    <section id="tab-directory" hidden>
+      <div class="bar">
+        <input id="dir-q" placeholder="Search debtor key or address" size="36">
+        <button class="link" id="dir-search">Search</button>
+      </div>
+      <table><thead><tr><th>Debtor</th><th>Best NOA / AP address</th><th>Confirmed NOAs</th><th>Last confirmed</th></tr></thead>
+        <tbody id="dir-body"></tbody></table>
+    </section>
   </main>
 </div>
 
@@ -201,12 +249,13 @@
       b.classList.add('on');
       ['queue', 'clients', 'inbox', 'campaigns', 'directory'].forEach(function (t) { $('tab-' + t).hidden = (t !== b.dataset.tab); });
       if (b.dataset.tab === 'inbox') loadInbox();
+      if (b.dataset.tab === 'directory') loadDirectory();
       if (b.dataset.tab === 'queue') loadQueue();
     });
   });
 
   // ---- queue -----------------------------------------------------------------------
-  ['verify', 'operfi_send', 'stale', 'bounce', 'reply', 'dispute', 'vendor_setup', 'contact_review'].forEach(function (f) {
+  ['verify', 'operfi_send', 'open_payables', 'stale', 'bounce', 'reply', 'dispute', 'vendor_setup', 'contact_review'].forEach(function (f) {
     var o = el('option', H.flagLabel(f)); o.value = f; $('queue-flag').appendChild(o);
   });
   function loadQueue() {
@@ -371,6 +420,149 @@
   $('x-go').addEventListener('click', function () { act('/release', { method: 'POST', json: { reason: $('x-reason').value } }); });
   $('drawer-close').addEventListener('click', function () { $('drawer').hidden = true; });
 
+  // ---- campaigns -------------------------------------------------------------------
+  var camp = { client: null, picks: [], campaign: null };
+  function rowOf(cells) {
+    var tr = document.createElement('tr');
+    cells.forEach(function (c) { tr.appendChild(typeof c === 'string' || c == null ? el('td', c == null ? '' : c) : c); });
+    return tr;
+  }
+  $('camp-client-search').addEventListener('click', function () {
+    api('/internal/noa/clients/search?q=' + encodeURIComponent($('camp-client-q').value)).then(function (res) {
+      var box = $('camp-client-results'); clear(box);
+      (res.body.clients || []).forEach(function (c) {
+        var b = el('button', c.name + (c.mc_number ? '  MC ' + c.mc_number : ''), 'link');
+        b.style.display = 'block';
+        b.addEventListener('click', function () {
+          camp.client = c; clear(box); $('camp-client-name').textContent = c.name;
+          $('camp-builder').hidden = false; loadCampaigns();
+        });
+        box.appendChild(b);
+      });
+    }).catch(function () {});
+  });
+  function renderPicks(debtors) {
+    camp.picks = debtors.slice();
+    var box = $('camp-picks'); clear(box);
+    debtors.forEach(function (d, i) {
+      var lab = el('label'); lab.style.display = 'block';
+      var cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+      cb.addEventListener('change', function () { camp.picks[i] = cb.checked ? d : null; });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' ' + (d.name || d.fv_debtor_id) +
+        (d.invoices ? '  (' + d.invoices + ' invoices)' : '')));
+      box.appendChild(lab);
+    });
+    if (!debtors.length) box.appendChild(el('p', 'No debtors.', 'muted'));
+  }
+  $('camp-load').addEventListener('click', function () {
+    var src = $('camp-source').value, box = $('camp-picks');
+    if (src === 'hauled') {
+      api('/internal/noa/campaigns/hauled-for?client_id=' + encodeURIComponent(camp.client.fv_client_id))
+        .then(function (res) { renderPicks(res.body.debtors || []); }).catch(function () {});
+    } else if (src === 'list') {
+      api('/internal/noa/lists').then(function (res) {
+        clear(box);
+        var sel = el('select'); sel.appendChild(el('option', 'Pick a list'));
+        (res.body.lists || []).forEach(function (l) { var o = el('option', l.name + ' (' + l.count + ')'); o.value = l.list_id; sel.appendChild(o); });
+        sel.addEventListener('change', function () {
+          var l = (res.body.lists || []).filter(function (x) { return x.list_id === sel.value; })[0];
+          if (l) { renderPicks(l.debtors || []); box.insertBefore(sel, box.firstChild); }
+        });
+        box.appendChild(sel);
+      }).catch(function () {});
+    } else {
+      clear(box);
+      var ta = el('textarea'); ta.rows = 6; ta.style.width = '100%'; ta.id = 'camp-ids';
+      box.appendChild(ta);
+    }
+  });
+  function chosen() {
+    var ta = $('camp-ids');
+    if ($('camp-source').value === 'ids' && ta) {
+      return ta.value.split(/\s+/).filter(Boolean).map(function (id) { return { fv_debtor_id: id, name: '' }; });
+    }
+    return camp.picks.filter(Boolean).map(function (d) { return { fv_debtor_id: d.fv_debtor_id, name: d.name }; });
+  }
+  $('camp-save-list').addEventListener('click', function () {
+    api('/internal/noa/lists', { method: 'POST', json: { name: $('camp-save-name').value, debtors: chosen() } })
+      .then(function (res) { say($('camp-msg'), res.ok ? 'List saved.' : 'Not saved: ' + res.body.error, !res.ok); })
+      .catch(function () {});
+  });
+  $('camp-build').addEventListener('click', function () {
+    api('/internal/noa/campaigns', { method: 'POST', json: {
+      client: { fv_client_id: camp.client.fv_client_id, name: camp.client.name }, debtors: chosen() } })
+      .then(function (res) {
+        if (!res.ok) { say($('camp-msg'), 'Not built: ' + res.body.error, true); return; }
+        say($('camp-msg'), ''); showCampaign(res.body.campaign); loadCampaigns();
+      }).catch(function () {});
+  });
+  function loadCampaigns() {
+    if (!camp.client) return;
+    api('/internal/noa/campaigns?client_id=' + encodeURIComponent(camp.client.fv_client_id)).then(function (res) {
+      var body = $('camp-list'); clear(body);
+      (res.body.campaigns || []).forEach(function (c) {
+        var n = c.counts || {};
+        var tr = rowOf([when(c.created_at), c.status, (n.pending || 0) + ' pending, ' + (n.sent || 0) + ' sent, ' +
+                        (n.skipped || 0) + ' skipped', c.created_by]);
+        tr.addEventListener('click', function () { openCampaign(c.campaign_id); });
+        body.appendChild(tr);
+      });
+    }).catch(function () {});
+  }
+  function openCampaign(id) {
+    api('/internal/noa/campaigns/' + encodeURIComponent(id)).then(function (res) {
+      if (res.ok) showCampaign(res.body.campaign);
+    }).catch(function () {});
+  }
+  function updateLaunch() {
+    var c = camp.campaign;
+    $('camp-launch').disabled = !(c && c.status === 'draft' && H.nameMatches($('camp-typed').value, (c.client || {}).name));
+  }
+  function showCampaign(c) {
+    camp.campaign = c;
+    $('camp-detail').hidden = false;
+    $('camp-title').textContent = (c.client || {}).name + '  \u00b7  ' + c.status;
+    $('camp-summary').textContent = c.summary ? H.summaryText(c.summary) : '';
+    var pending = (c.recipients || []).filter(function (r) { return r.state === 'pending'; }).length;
+    $('camp-launch-box').hidden = c.status !== 'draft';
+    $('camp-launch-count').textContent = 'This sends ' + (c.client || {}).name + "'s signed NOA to " + pending +
+      (pending === 1 ? ' debtor.' : ' debtors.');
+    $('camp-typed').value = '';
+    updateLaunch();
+    var body = $('camp-recipients'); clear(body);
+    (c.recipients || []).forEach(function (r) {
+      body.appendChild(rowOf([r.name || r.fv_debtor_id, r.email || H.skipLabel(r.skip_reason), r.state,
+                              r.record_status ? H.chipLabel(r.record_status) : '',
+                              r.open_payables ? ('Yes' + (r.open_amount != null ? ' ($' + Number(r.open_amount).toFixed(2) + ')' : ''))
+                                : (r.open_payables === false ? 'No' : '')]));
+    });
+  }
+  $('camp-typed').addEventListener('input', updateLaunch);
+  $('camp-launch').addEventListener('click', function () {
+    var c = camp.campaign;
+    if (!c || !H.nameMatches($('camp-typed').value, (c.client || {}).name)) return;
+    api('/internal/noa/campaigns/' + encodeURIComponent(c.campaign_id) + '/launch',
+        { method: 'POST', json: { typed_name: $('camp-typed').value } }).then(function (res) {
+      if (res.ok) { say($('camp-launch-msg'), 'Launched. Emails go out over the next runs.'); openCampaign(c.campaign_id); loadCampaigns(); }
+      else say($('camp-launch-msg'), 'Not launched: ' + (res.body.error || res.status), true);
+    }).catch(function () {});
+  });
+
+  // ---- directory -------------------------------------------------------------------
+  function loadDirectory() {
+    return api('/internal/noa/directory?q=' + encodeURIComponent($('dir-q').value)).then(function (res) {
+      var body = $('dir-body'); clear(body);
+      (res.body.entries || []).forEach(function (e) {
+        var total = (e.addresses || []).reduce(function (n, a) { return n + (a.verified_count || 0); }, 0);
+        var last = (e.addresses || []).map(function (a) { return a.last_confirmed_at || ''; }).sort().pop();
+        body.appendChild(rowOf([e.debtor_key, e.best_email || '', String(total), when(last)]));
+      });
+    }).catch(function () {});
+  }
+  $('dir-search').addEventListener('click', loadDirectory);
+
+  window.NOA_CENTER_TEST = { showCampaign: showCampaign };
   loadQueue();
 })();
 </script>

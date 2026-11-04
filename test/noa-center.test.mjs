@@ -79,7 +79,7 @@ test('never sends status or confirmed_by from the screen', () => {
 function boot(responder) {
   const calls = [];
   const dom = new JSDOM(HTML.replace('<script src="noa-center-helpers.js"></script>',
-                                     '<script>' + HELPERS + '</script>'), {
+                                     () => '<script>' + HELPERS + '</script>'), {  // a function: HELPERS contains $'
     runScripts: 'dangerously', url: 'https://app.operfi.com/noa-center.html',
     beforeParse(win) {
       win.fetch = (url, opts) => {
@@ -115,4 +115,64 @@ test('403 shows the access panel and no data', async () => {
   const doc = dom.window.document;
   assert.strictEqual(doc.getElementById('no-access').hidden, false);
   assert.strictEqual(doc.getElementById('app').hidden, true);
+});
+
+// ---- Phase 3: campaigns and directory -------------------------------------------------
+test('nameMatches ignores case and spacing, not words', () => {
+  assert.strictEqual(H.nameMatches('  testing   haul llc ', 'TESTING Haul LLC'), true);
+  assert.strictEqual(H.nameMatches('TESTING Haul', 'TESTING Haul LLC'), false);
+  assert.strictEqual(H.nameMatches('', ''), false);
+});
+
+test('skip labels and summary text', () => {
+  assert.strictEqual(H.skipLabel('free_mail'), 'Free email address, not sent');
+  assert.strictEqual(H.skipLabel('no_address'), 'No AP address on file');
+  assert.strictEqual(H.skipLabel('bad_email'), 'Address is not valid');
+  assert.strictEqual(H.flagLabel('open_payables'), 'Open payables reported');
+  assert.strictEqual(H.summaryText({ sent: 3, skipped: 1, failed: 0, bounced: 1, acknowledged: 2, confirmed: 0,
+                                     open_payables: 2, open_amount_total: 750 }),
+    '3 sent, 1 skipped, 1 bounced, 2 acknowledged, 0 confirmed, 2 open payables ($750.00)');
+});
+
+test('campaign and directory endpoints are wired', () => {
+  for (const p of ['/internal/noa/campaigns', '/launch', '/internal/noa/lists', '/internal/noa/campaigns/hauled-for',
+                   '/internal/noa/directory'])
+    assert.ok(HTML.includes(p), p);
+  assert.doesNotMatch(HTML, /arrive in Phase 3/);
+});
+
+test('launch stays disabled until the typed name matches', async () => {
+  const campaign = { campaign_id: 'c1', status: 'draft', client: { fv_client_id: '2001', name: 'TESTING Haul LLC' },
+                     counts: { pending: 1, skipped: 1, sent: 0, failed: 0 },
+                     recipients: [{ fv_debtor_id: '9001', name: 'Acme Test Logistics', email: 'ap@acmetest.com', state: 'pending' },
+                                  { fv_debtor_id: '9003', name: '<b>Gmail</b>', email: null, skip_reason: 'free_mail', state: 'skipped' }] };
+  const { dom } = boot(url => url.includes('/internal/noa/campaigns/c1') ? [200, { campaign }]
+    : [200, { records: [], items: [], campaigns: [], lists: [], entries: [] }]);
+  await tick();
+  const w = dom.window, doc = w.document;
+  w.NOA_CENTER_TEST.showCampaign(campaign);
+  const btn = doc.getElementById('camp-launch'), typed = doc.getElementById('camp-typed');
+  assert.strictEqual(btn.disabled, true);
+  typed.value = 'TESTING Haul'; typed.dispatchEvent(new w.Event('input'));
+  assert.strictEqual(btn.disabled, true);
+  typed.value = 'testing haul llc'; typed.dispatchEvent(new w.Event('input'));
+  assert.strictEqual(btn.disabled, false);
+  assert.match(doc.getElementById('camp-launch-count').textContent, /to 1 debtor\.$/);
+  assert.strictEqual(doc.querySelector('#camp-recipients b'), null);
+  assert.match(doc.getElementById('camp-recipients').textContent, /Free email address, not sent/);
+});
+
+test('directory rows render escaped', async () => {
+  const { dom } = boot(url => url.includes('/internal/noa/directory')
+    ? [200, { entries: [{ debtor_key: 'fv:9001', best_email: '<i>ap@acmetest.com</i>',
+                          addresses: [{ email: 'ap@acmetest.com', verified_count: 3, last_confirmed_at: '2026-11-01T10:00:00' }],
+                          updated_at: '2026-11-01T10:00:00' }] }]
+    : [200, { records: [], items: [] }]);
+  await tick();
+  const doc = dom.window.document;
+  doc.querySelector('nav button[data-tab="directory"]').click();
+  await tick();
+  const row = doc.querySelector('#dir-body tr');
+  assert.ok(row && /fv:9001/.test(row.textContent) && /3/.test(row.textContent));
+  assert.strictEqual(doc.querySelector('#dir-body i'), null);
 });

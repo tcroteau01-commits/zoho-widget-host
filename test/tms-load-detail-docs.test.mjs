@@ -53,8 +53,8 @@ test('generateDoc(send) posts send:true with recipient', async () => {
   const { window, posts } = makeWidget();
   window.brokerEmail = 'b@op.com';
   window.loadId = '1001';
-  window.document.getElementById('doc-to-rate_con').value = 'dispatch@roadway.com';
-  await window.generateDoc('rate_con', true);
+  // TMSFB1: the recipient comes from the send popup, not an inline input
+  await window.generateDoc('rate_con', true, 'dispatch@roadway.com', []);
   assert.equal(posts[0].body.send, true);
   assert.equal(posts[0].body.recipient_email, 'dispatch@roadway.com');
 });
@@ -83,8 +83,7 @@ test('BOL row exists and generates with doc_type bol', async () => {
   const { window, posts } = makeWidget();
   window.brokerEmail = 'b@op.com';
   window.loadId = '1001';
-  window.document.getElementById('doc-to-bol').value = 'dispatch@roadway.com';
-  await window.generateDoc('bol', true);
+  await window.generateDoc('bol', true, 'dispatch@roadway.com');
   assert.equal(posts.length, 1);
   assert.match(posts[0].url, /\/tms-doc\/generate$/);
   assert.equal(posts[0].body.doc_type, 'bol');

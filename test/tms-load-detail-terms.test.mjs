@@ -169,13 +169,13 @@ test('save preserves the raw body text through the real body editor, not the sub
   const ta = window.document.querySelector('#tbody-detention textarea');
   assert.match(ta.value, /\{rate\}/); // seeds RAW text, not the substituted preview
   ta.value = 'Detention is now {rate} per hour, flat.';
-  ta.dispatchEvent(new window.Event('blur', { bubbles: true }));
+  window.document.querySelector('#tbody-detention .ed-save').click();
   await window.saveLoadTerms();
   const sent = posts[0].body.clauses.find((c) => c.id === 'detention');
   assert.equal(sent.body, 'Detention is now {rate} per hour, flat.');
 });
 
-test('clearing a clause body on blur restores the previous body instead of deleting it', async () => {
+test('an empty body on Done is refused inline and the previous body is kept', async () => {
   const { window, posts } = makeWidget();
   window.brokerEmail = 't@x.com';
   window.renderTermsCard(load());
@@ -183,7 +183,8 @@ test('clearing a clause body on blur restores the previous body instead of delet
   window.termsEditBody(1);
   const ta = window.document.querySelector('#tbody-detention textarea');
   ta.value = '   ';
-  ta.dispatchEvent(new window.Event('blur', { bubbles: true }));
+  window.document.querySelector('#tbody-detention .ed-save').click();
+  assert.match(window.document.querySelector('#tbody-detention .ed-err').textContent, /empty/);
   await window.saveLoadTerms();
   assert.equal(posts[0].body.clauses.length, 3, 'no clause should have been dropped');
   const sent = posts[0].body.clauses.find((c) => c.id === 'detention');

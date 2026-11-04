@@ -94,6 +94,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
   .errline, .okline { margin-right: 0; }
   /* Submit-for-factoring panel button + input full-width */
   #submit-panel input[type="text"], #submit-panel button { width: 100%; box-sizing: border-box; }
+  .of-modal .m-btns .btn, .ed .ed-btns .btn { flex: 1; }
 }
 #btn-submit-factoring { width:100%; min-height:44px; }
 #btn-submit-factoring:disabled { background:#d8d8d8; color:#888; border-color:#d8d8d8; opacity:1; cursor:not-allowed; }
@@ -129,9 +130,38 @@ ol.snap .tt { font-weight:700; color:#272727; text-transform:uppercase;
   border:1px solid transparent; border-radius:5px; padding:1px 6px; cursor:pointer; }
 .cl-tools button:hover { background:#fbfaf6; border-color:#eee;
   color:#444; }
-.cl-body { font-size:12.5px; color:#444; margin:5px 0 0 25px; }
-.cl-body textarea { width:100%; font:inherit; font-size:12.5px; border:1px solid #d8d8d8;
-  border-radius:6px; padding:7px 9px; resize:vertical; }
+.cl-body { font-size:12.5px; color:#444; margin:5px 0 0 25px; white-space:pre-line; }
+ol.snap li { white-space:pre-line; }
+/* TMSFB1 in-page clause editor (duplicated from tms-settings.html on purpose) */
+.cl-body textarea, .ed textarea { width:100%; font:inherit; font-size:13px; line-height:1.45;
+  border:1px solid #d8d8d8; border-radius:6px; padding:8px 10px; resize:vertical;
+  min-height:140px; white-space:pre-wrap; }
+.ed { margin:6px 0 0; white-space:normal; }
+.ed.add { margin:14px 0 0; padding:12px 14px; border:1px solid #eee; border-radius:10px;
+  background:#fbfaf6; }
+.ed label { display:block; font-size:11px; font-weight:600; color:#888; margin:0 0 4px;
+  text-transform:uppercase; letter-spacing:.3px; }
+.ed input[type=text] { width:100%; font:inherit; font-size:13px; border:1px solid #d8d8d8;
+  border-radius:6px; padding:7px 10px; margin:0 0 10px; }
+.ed .ed-err { font-size:12px; color:#c62828; margin:6px 0 0; }
+.ed textarea:focus, .ed input[type=text]:focus { outline:none; border-color:#e8a020;
+  box-shadow:0 0 0 3px rgba(232,160,32,0.12); }
+.ed .ed-btns { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+
+/* TMSFB1 send popup + in-page confirm */
+.of-modal { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:10001;
+  display:flex; align-items:center; justify-content:center; padding:16px; }
+.of-modal.hidden { display:none !important; }
+.of-modal .m-box { background:#fff; border-radius:12px; padding:20px 22px; width:460px;
+  max-width:100%; box-shadow:0 20px 50px rgba(16,24,40,.3); }
+.of-modal .m-title { font-size:16px; font-weight:700; color:#272727; margin-bottom:4px; }
+.of-modal .m-note { font-size:12.5px; color:#666; margin-bottom:14px; line-height:1.45; }
+.of-modal .field { margin-bottom:12px; }
+.of-modal .m-hint { font-size:11px; color:#999; }
+.of-modal .m-err { font-size:12px; color:#c62828; font-weight:600; min-height:16px; }
+.of-modal .m-btns { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+.btn.danger { color:#b42318; }
+.btn.danger-solid { background:#b42318; border-color:#b42318; color:#fff; }
 .vars { display:flex; flex-wrap:wrap; gap:6px 12px; margin:8px 0 0 25px; align-items:center; }
 .var { display:inline-flex; align-items:center; gap:5px; }
 .var label { font-size:11px; color:#888; }
@@ -267,25 +297,21 @@ ol.snap .tt { font-weight:700; color:#272727; text-transform:uppercase;
     <h3>Documents</h3>
     <div class="doc-gen-row" data-doc="rate_con">
       <div class="doc-gen-name">Rate Confirmation <span class="muted">→ carrier</span></div>
-      <input class="doc-to" id="doc-to-rate_con" placeholder="carrier email">
       <button class="btn small" data-act="preview" data-doc="rate_con">Preview</button>
       <button class="btn small primary" data-act="send" data-doc="rate_con">Send</button>
     </div>
     <div class="doc-gen-row" data-doc="bol">
       <div class="doc-gen-name">Bill of Lading <span class="muted">→ carrier</span></div>
-      <input class="doc-to" id="doc-to-bol" placeholder="carrier email">
       <button class="btn small" data-act="preview" data-doc="bol">Preview</button>
       <button class="btn small primary" data-act="send" data-doc="bol">Send</button>
     </div>
     <div class="doc-gen-row" data-doc="customer_po">
       <div class="doc-gen-name">Customer PO <span class="muted">→ customer</span></div>
-      <input class="doc-to" id="doc-to-customer_po" placeholder="customer email">
       <button class="btn small" data-act="preview" data-doc="customer_po">Preview</button>
       <button class="btn small primary" data-act="send" data-doc="customer_po">Send</button>
     </div>
     <div class="doc-gen-row" data-doc="customer_invoice">
       <div class="doc-gen-name">Customer Invoice <span class="muted">→ customer</span></div>
-      <input class="doc-to" id="doc-to-customer_invoice" placeholder="customer email">
       <button class="btn small" data-act="preview" data-doc="customer_invoice">Preview</button>
       <button class="btn small primary" data-act="send" data-doc="customer_invoice">Send</button>
     </div>
@@ -305,6 +331,7 @@ ol.snap .tt { font-weight:700; color:#272727; text-transform:uppercase;
         <div class="doc-gen-name">Carrier upload link <span class="muted">(no login)</span></div>
         <button class="btn small" id="carrier-link-btn">Get link</button>
         <button class="btn small primary" id="carrier-email-btn">Email to carrier</button>
+        <button class="btn small hidden" id="pod-nudge-btn">Send POD reminder</button>
       </div>
       <div id="carrier-link-box" class="muted" style="margin-top:6px; word-break:break-all;"></div>
     </div>
@@ -316,12 +343,41 @@ ol.snap .tt { font-weight:700; color:#272727; text-transform:uppercase;
   <div class="actions">
     <span class="errline" id="form-error"></span>
     <span class="okline" id="form-ok"></span>
+    <button class="btn danger hidden" id="delete-draft-btn">Delete draft</button>
     <button class="btn" id="duplicate-btn">Duplicate…</button>
     <button class="btn hidden" id="save-draft-btn">Save as Draft</button>
     <button class="btn primary" id="save-btn">Save</button>
   </div>
 
   </div><!-- /#edit-mode -->
+</div>
+
+<!-- TMSFB1: one send popup for RC/BOL/PO/Invoice, the upload link and the POD reminder -->
+<div class="of-modal hidden" id="send-modal" role="dialog" aria-modal="true" aria-labelledby="sm-title">
+  <div class="m-box">
+    <div class="m-title" id="sm-title">Send</div>
+    <div class="m-note" id="sm-note"></div>
+    <div class="field"><label for="sm-to">To *</label><input id="sm-to" type="email" autocomplete="off"></div>
+    <div class="field"><label for="sm-cc">CC</label><input id="sm-cc" autocomplete="off" placeholder="Optional. Separate with commas.">
+      <span class="m-hint">Up to 5 addresses. Your rep is copied automatically.</span></div>
+    <div class="m-err" id="sm-err"></div>
+    <div class="m-btns">
+      <button class="btn small" id="sm-cancel" type="button">Cancel</button>
+      <button class="btn small primary" id="sm-send" type="button">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- TMSFB1: in-page confirm (no native confirm()) -->
+<div class="of-modal hidden" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="cm-title">
+  <div class="m-box">
+    <div class="m-title" id="cm-title"></div>
+    <div class="m-note" id="cm-msg"></div>
+    <div class="m-btns">
+      <button class="btn small" id="cm-cancel" type="button">Keep it</button>
+      <button class="btn small danger-solid" id="cm-ok" type="button">Delete</button>
+    </div>
+  </div>
 </div>
 
 
@@ -721,8 +777,14 @@ window.markCarriersReady = markCarriersReady;
 function draftEligible(status) { return (status || 'Draft') === 'Draft' || status === 'Available'; }
 
 function refreshSaveButtons() {
+  var st = val('f-status');
   var b = document.getElementById('save-draft-btn');
-  if (b) b.classList.toggle('hidden', !draftEligible(val('f-status')));
+  if (b) b.classList.toggle('hidden', !draftEligible(st));
+  // TMSFB1: Delete draft needs a saved load; POD reminder needs a load on the road or delivered.
+  var d = document.getElementById('delete-draft-btn');
+  if (d) d.classList.toggle('hidden', !(loadId && draftEligible(st)));
+  var n = document.getElementById('pod-nudge-btn');
+  if (n) n.classList.toggle('hidden', !(loadId && podNudgeEligible(st)));
 }
 
 function saveAndReturn() {
@@ -973,6 +1035,7 @@ window.addEventListener('load', function(){
     try { window.top.location.href = portalPageUrl('TMS_Dispatch_Board'); } catch (e) {}
   });
   wireDocButtons();
+  wireSendModal();
   wireUploadControls();
   wireDropzone();
   refreshDocCard();
@@ -1107,7 +1170,8 @@ function _docStatus(msg, busy) {
   el.className = busy ? 'doc-status busy' : 'muted';
 }
 
-function generateDoc(docType, send) {
+// recipient / cc come from the send popup (openSendModal); a preview passes neither.
+function generateDoc(docType, send, recipient, cc) {
   if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
   if (_hasUnsavedChanges()) {
     // Saving before the carrier list lands would post a blank carrier, which the
@@ -1116,20 +1180,20 @@ function generateDoc(docType, send) {
     _docStatus('Saving changes…', true);
     return saveLoad().then(function(ok){
       if (!ok) { _docStatus('Not generated. Fix the save error above, then try again.'); return; }
-      return _generateDoc(docType, send);
+      return _generateDoc(docType, send, recipient, cc);
     });
   }
-  return _generateDoc(docType, send);
+  return _generateDoc(docType, send, recipient, cc);
 }
 
-function _generateDoc(docType, send) {
-  var toEl = document.getElementById('doc-to-' + docType);
-  var recipient = toEl ? toEl.value : '';
+function _generateDoc(docType, send, recipient, cc) {
   _docStatus(send ? 'Sending…' : 'Generating…', true);
+  var payload = { email: brokerEmail, load_id: loadId, doc_type: docType,
+                  send: !!send, recipient_email: recipient || '' };
+  if (send && cc && cc.length) { payload.cc = cc.slice(); }
   return fetch(BROKER_API_BASE + '/tms-doc/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_type: docType,
-                             send: !!send, recipient_email: recipient }) })
+      body: JSON.stringify(payload) })
     .then(function(r){ return r.json(); })
     .then(function(p){
       if (!p || !p.ok) { _docStatus((p && p.error) || 'Failed.'); return; }
@@ -1144,8 +1208,171 @@ function wireDocButtons() {
   var card = document.getElementById('docs-card');
   if (!card) return;
   card.querySelectorAll('button[data-act]').forEach(function(b){
-    b.addEventListener('click', function(){ generateDoc(b.getAttribute('data-doc'), b.getAttribute('data-act') === 'send'); });
+    b.addEventListener('click', function(){
+      var doc = b.getAttribute('data-doc');
+      if (b.getAttribute('data-act') === 'send') { openSendModal('doc', doc); }
+      else { generateDoc(doc, false); }
+    });
   });
+}
+
+// ---- TMSFB1: send popup (To prefilled from /tms-doc/recipients, optional CC) ----
+var SEND_KINDS = {
+  rate_con:         { title: 'Send Rate Confirmation', side: 'carrier', note: 'Attaches the Rate Confirmation PDF for this load.' },
+  bol:              { title: 'Send Bill of Lading', side: 'carrier', note: 'Attaches the Bill of Lading PDF for this load.' },
+  customer_po:      { title: 'Send Customer PO', side: 'customer', note: 'Attaches the Customer PO PDF for this load.' },
+  customer_invoice: { title: 'Send Customer Invoice', side: 'customer', note: 'Attaches the Customer Invoice PDF for this load.' },
+  upload_link:      { title: 'Email upload link to carrier', side: 'carrier', note: 'Sends the carrier a no-login link to upload the POD and other paperwork.' },
+  pod_nudge:        { title: 'Send POD reminder', side: 'carrier', note: 'Reminds the carrier to send the POD and paperwork, with the upload link as a button.' }
+};
+var _sendCtx = null;
+var _recipients = null, _recipientsLoadId = '';
+var EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
+
+function isEmail(s) { return EMAIL_RE.test(String(s || '').trim()); }
+
+// "a@x.com; b@y.com,  c@z.com" -> {list:[...]} or {error}
+function parseCcList(raw) {
+  var parts = String(raw || '').split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean);
+  var seen = {}, list = [];
+  for (var i = 0; i < parts.length; i++) {
+    var e = parts[i];
+    if (!isEmail(e)) return { list: [], error: 'Not a valid CC address: ' + e };
+    var k = e.toLowerCase();
+    if (!seen[k]) { seen[k] = 1; list.push(e); }
+  }
+  if (list.length > 5) return { list: [], error: 'CC is limited to 5 addresses.' };
+  return { list: list, error: '' };
+}
+
+function fetchRecipients() {
+  if (_recipients && _recipientsLoadId === loadId) return Promise.resolve(_recipients);
+  if (!loadId || !brokerEmail) return Promise.resolve({});
+  return fetch(BROKER_API_BASE + '/tms-doc/recipients?email=' + encodeURIComponent(brokerEmail) +
+               '&load_id=' + encodeURIComponent(loadId))
+    .then(function(r){ return r.json().then(function(j){ if (r.ok === false) throw new Error('x'); return j; }); })
+    .then(function(p){ _recipients = (p && typeof p === 'object') ? p : {}; _recipientsLoadId = loadId; return _recipients; })
+    .catch(function(){ return {}; });
+}
+
+function openSendModal(kind, docType) {
+  if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
+  var key = kind === 'doc' ? docType : kind;
+  var meta = SEND_KINDS[key] || { title: 'Send', side: 'carrier', note: '' };
+  _sendCtx = { kind: kind, docType: docType };
+  document.getElementById('sm-title').textContent = meta.title;
+  var note = meta.note + ' Load ' + ((window._currentLoad && window._currentLoad.load_number) || '') + '.';
+  document.getElementById('sm-note').textContent = note.replace(/ Load \.$/, '');
+  var to = document.getElementById('sm-to');
+  to.value = ''; to.placeholder = meta.side === 'customer' ? 'customer email' : 'carrier email';
+  document.getElementById('sm-cc').value = '';
+  document.getElementById('sm-err').textContent = '';
+  document.getElementById('sm-send').disabled = false;
+  document.getElementById('send-modal').classList.remove('hidden');
+  return fetchRecipients().then(function(r){
+    if (!_sendCtx || to.value) return;
+    to.value = (meta.side === 'customer' ? r.customer_email : r.carrier_email) || '';
+    try { to.focus(); } catch (e) {}
+  });
+}
+
+function closeSendModal() {
+  _sendCtx = null;
+  document.getElementById('send-modal').classList.add('hidden');
+}
+
+function submitSendModal() {
+  if (!_sendCtx) return Promise.resolve();
+  var err = document.getElementById('sm-err');
+  var to = String(document.getElementById('sm-to').value || '').trim();
+  if (!to) { err.textContent = 'Enter who this goes to.'; return Promise.resolve(); }
+  if (!isEmail(to)) { err.textContent = 'Not a valid email address: ' + to; return Promise.resolve(); }
+  var cc = parseCcList(document.getElementById('sm-cc').value);
+  if (cc.error) { err.textContent = cc.error; return Promise.resolve(); }
+  var ctx = _sendCtx;
+  closeSendModal();
+  if (ctx.kind === 'doc') return generateDoc(ctx.docType, true, to, cc.list);
+  if (ctx.kind === 'upload_link') return emailCarrierLink(to, cc.list);
+  if (ctx.kind === 'pod_nudge') return sendPodNudge(to, cc.list);
+  return Promise.resolve();
+}
+
+function wireSendModal() {
+  var s = document.getElementById('sm-send'); if (s) s.addEventListener('click', submitSendModal);
+  var c = document.getElementById('sm-cancel'); if (c) c.addEventListener('click', closeSendModal);
+  var m = document.getElementById('send-modal');
+  if (m) m.addEventListener('click', function(e){ if (e.target === m) closeSendModal(); });
+  var cm = document.getElementById('confirm-modal');
+  if (cm) cm.addEventListener('click', function(e){ if (e.target === cm) _closeConfirm(false); });
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    closeSendModal(); _closeConfirm(false);
+  });
+}
+
+function podNudgeEligible(status) { return status === 'Delivered' || status === 'In Transit'; }
+
+function sendPodNudge(to, cc) {
+  if (!loadId || !brokerEmail) return Promise.resolve();
+  _docStatus('Sending the POD reminder…', true);
+  var body = { email: brokerEmail, load_ids: [String(loadId)] };
+  if (to) body.recipient_email = to;
+  if (cc && cc.length) body.cc = cc.slice();
+  return fetch(BROKER_API_BASE + '/tms-pod/nudge', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r){ return r.json(); })
+    .then(function(p){
+      if (p && p.sent && p.sent.length) { _docStatus('POD reminder sent.'); return; }
+      var sk = (p && p.skipped && p.skipped[0]) || null;
+      _docStatus('Reminder not sent' + (sk && sk.reason ? ': ' + sk.reason : (p && p.error ? ': ' + p.error : '')) + '.');
+    })
+    .catch(function(){ _docStatus('Network error sending the reminder.'); });
+}
+
+// ---- TMSFB1: in-page confirm + delete draft ----
+var _confirmResolve = null;
+function _closeConfirm(v) {
+  var m = document.getElementById('confirm-modal');
+  if (m) m.classList.add('hidden');
+  var r = _confirmResolve; _confirmResolve = null;
+  if (r) r(v);
+}
+function showConfirm(title, message, okLabel) {
+  if (_confirmResolve) _closeConfirm(false);
+  document.getElementById('cm-title').textContent = title;
+  document.getElementById('cm-msg').textContent = message;
+  var ok = document.getElementById('cm-ok');
+  ok.textContent = okLabel || 'Delete';
+  ok.onclick = function(){ _closeConfirm(true); };
+  document.getElementById('cm-cancel').onclick = function(){ _closeConfirm(false); };
+  document.getElementById('confirm-modal').classList.remove('hidden');
+  return new Promise(function(resolve){ _confirmResolve = resolve; });
+}
+
+function goToBoard() {
+  try { window.top.location.href = portalPageUrl('TMS_Dispatch_Board'); } catch (e) {}
+}
+
+function deleteDraftLoad() {
+  if (!loadId || !brokerEmail || !draftEligible(val('f-status'))) return Promise.resolve();
+  var num = (window._currentLoad && window._currentLoad.load_number) || loadId;
+  return showConfirm('Delete draft ' + num + '?',
+      'The load, its stops and its documents are removed for good. This cannot be undone.', 'Delete draft')
+    .then(function(ok){
+      if (!ok) return;
+      var b = document.getElementById('delete-draft-btn'); if (b) b.disabled = true;
+      return fetch(BROKER_API_BASE + '/tms-load/delete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: brokerEmail, load_id: String(loadId) }) })
+        .then(function(r){ return r.json().then(function(j){ return { ok: r.ok !== false && !!(j && j.ok), body: j || {} }; }); })
+        .then(function(res){
+          if (b) b.disabled = false;
+          if (!res.ok) { showError(res.body.error || 'Could not delete the draft.'); return; }
+          try { sessionStorage.removeItem('tmsLoadId'); } catch (e) {}
+          goToBoard();
+        })
+        .catch(function(){ if (b) b.disabled = false; showError('Network error deleting the draft.'); });
+    });
 }
 
 function uploadBrokerDoc(docType, file) {
@@ -1166,6 +1393,7 @@ function uploadBrokerDoc(docType, file) {
           window._currentLoad.status = p.status;
           setVal('f-status', p.status);
           renderStepper(p.status);
+          refreshSaveButtons();
         }
         loadDocList();
       }
@@ -1188,11 +1416,15 @@ function fetchCarrierLink() {
     });
 }
 
-function emailCarrierLink() {
+// to / cc come from the send popup; without them the server uses the carrier on file.
+function emailCarrierLink(to, cc) {
   if (!loadId) { _docStatus('Save the load first.'); return Promise.resolve(); }
   _docStatus('Emailing the carrier…', true);
+  var qs = '';
+  if (to) qs += '&recipient_email=' + encodeURIComponent(to);
+  if (cc && cc.length) qs += '&cc=' + encodeURIComponent(cc.join(','));
   return fetch(BROKER_API_BASE + '/tms-doc/upload-link?email=' + encodeURIComponent(brokerEmail) +
-               '&load_id=' + encodeURIComponent(loadId) + '&send=1')
+               '&load_id=' + encodeURIComponent(loadId) + '&send=1' + qs)
     .then(function(r){ return r.json(); })
     .then(function(p){
       var box = document.getElementById('carrier-link-box');
@@ -1233,7 +1465,11 @@ function wireUploadControls() {
   var cb = document.getElementById('carrier-link-btn');
   if (cb) cb.addEventListener('click', fetchCarrierLink);
   var ceb = document.getElementById('carrier-email-btn');
-  if (ceb) ceb.addEventListener('click', emailCarrierLink);
+  if (ceb) ceb.addEventListener('click', function(){ openSendModal('upload_link'); });
+  var pnb = document.getElementById('pod-nudge-btn');
+  if (pnb) pnb.addEventListener('click', function(){ openSendModal('pod_nudge'); });
+  var ddb = document.getElementById('delete-draft-btn');
+  if (ddb) ddb.addEventListener('click', deleteDraftLoad);
 }
 
 function _docSide(t) {
@@ -1425,6 +1661,10 @@ window.refreshDocCard = refreshDocCard; window.generateDoc = generateDoc;
 window.renderDocList = renderDocList; window.renderDocLibrary = renderDocLibrary; window.refreshDocs = refreshDocs; window._downloadPdf = _downloadPdf; window._gateFailures = _gateFailures;
 window.uploadBrokerDoc = uploadBrokerDoc; window.fetchCarrierLink = fetchCarrierLink; window.emailCarrierLink = emailCarrierLink;
 window.setStagedFile = setStagedFile;
+window.openSendModal = openSendModal; window.closeSendModal = closeSendModal;
+window.submitSendModal = submitSendModal; window.parseCcList = parseCcList;
+window.sendPodNudge = sendPodNudge; window.podNudgeEligible = podNudgeEligible;
+window.deleteDraftLoad = deleteDraftLoad; window.showConfirm = showConfirm;
 Object.defineProperty(window, '_stagedFile', { get: function(){ return _stagedFileRef; }, configurable: true });
 
 // --- Rate Confirmation Terms card ---
@@ -1605,19 +1845,115 @@ function termsRemove(i) {
   TERMS.splice(i, 1);
   renderTermsEditor();
 }
-function termsEditBody(i) {
-  var host = document.getElementById('tbody-' + TERMS[i].id);
-  if (!host || host.querySelector('textarea')) { return; }
+// TMSFB1 paste cleanup + in-page clause editor. Duplicated from tms-settings.html on
+// purpose (widget JS/CSS is not shared across files); same rules as the server's
+// tms_terms.normalize_clauses.
+function cleanClauseText(s) {
+  return String(s == null ? '' : s)
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u2028\u2029]/g, '\n')
+    .replace(/[\u200B\u200C\u200D\u2060\uFEFF]/g, '')
+    .replace(/[\t\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
+    .replace(/ +$/gm, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function autoGrow(ta) {
+  ta.style.height = 'auto';
+  var h = ta.scrollHeight || 0;
+  ta.style.height = Math.max(h + 2, 140) + 'px';
+}
+
+function onCleanPaste(e) {
+  var ta = e.target;
+  var cd = e.clipboardData || window.clipboardData;
+  if (!cd || typeof cd.getData !== 'function') { return; }
+  var txt = cd.getData('text/plain') || cd.getData('text');
+  if (!txt) { return; }
+  e.preventDefault();
+  var clean = cleanClauseText(txt);
+  var a = ta.selectionStart || 0, b = ta.selectionEnd || 0;
+  ta.value = ta.value.slice(0, a) + clean + ta.value.slice(b);
+  try { ta.selectionStart = ta.selectionEnd = a + clean.length; } catch (err) {}
+  autoGrow(ta);
+}
+
+// Explicit Save / Cancel: nothing commits on blur.
+function buildClauseEditor(opts) {
+  var ed = document.createElement('div');
+  ed.className = 'ed' + (opts.add ? ' add' : '');
+  var ti = null;
+  if (opts.showTitle) {
+    var tl = document.createElement('label');
+    tl.textContent = 'Clause title';
+    ti = document.createElement('input');
+    ti.type = 'text'; ti.className = 'ed-title'; ti.maxLength = 120;
+    ti.value = opts.title || '';
+    ti.id = 'ted-title-' + opts.key; tl.setAttribute('for', ti.id);
+    ed.appendChild(tl); ed.appendChild(ti);
+  }
+  var bl = document.createElement('label');
+  bl.textContent = 'Clause text';
   var ta = document.createElement('textarea');
-  ta.rows = 4; ta.value = TERMS[i].body; ta.style.width = '100%';
-  ta.addEventListener('blur', function () {
-    var v = ta.value.trim();
-    if (!v) { showError('Clause body cannot be empty.'); renderTermsEditor(); return; }
-    TERMS[i].body = ta.value; renderTermsEditor();
+  ta.className = 'ed-body'; ta.rows = 7;
+  ta.id = 'ted-body-' + opts.key; bl.setAttribute('for', ta.id);
+  ta.value = opts.body || '';
+  ta.addEventListener('paste', onCleanPaste);
+  ta.addEventListener('input', function () { autoGrow(ta); });
+  ed.appendChild(bl); ed.appendChild(ta);
+  var err = document.createElement('div');
+  err.className = 'ed-err';
+  ed.appendChild(err);
+  var btns = document.createElement('div');
+  btns.className = 'ed-btns';
+  var cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'btn small ed-cancel'; cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', opts.onCancel);
+  var save = document.createElement('button');
+  save.type = 'button'; save.className = 'btn small primary ed-save'; save.textContent = opts.saveLabel;
+  save.addEventListener('click', function () {
+    var title = ti ? ti.value.trim() : null;
+    var body = cleanClauseText(ta.value).trim();
+    if (ti && !title) { err.textContent = 'Give the clause a title.'; ti.focus(); return; }
+    if (!body) { err.textContent = 'Clause text cannot be empty.'; ta.focus(); return; }
+    opts.onSave(title, body);
+  });
+  btns.appendChild(cancel); btns.appendChild(save);
+  ed.appendChild(btns);
+  setTimeout(function () { autoGrow(ta); }, 0);
+  return ed;
+}
+
+function termsEditBody(i) {
+  var c = TERMS[i];
+  if (!c) { return; }
+  var host = document.getElementById('tbody-' + c.id);
+  if (!host || host.querySelector('textarea')) { return; }
+  var ed = buildClauseEditor({
+    key: c.id, showTitle: !!c.custom, title: c.title, body: c.body, saveLabel: 'Done',
+    onSave: function (title, body) {
+      if (title !== null) { TERMS[i].title = title; }
+      TERMS[i].body = body;
+      renderTermsEditor();
+    },
+    onCancel: function () { renderTermsEditor(); }
   });
   host.textContent = '';
-  host.appendChild(ta);
-  ta.focus();
+  host.appendChild(ed);
+  var first = ed.querySelector('input, textarea');
+  if (first) { first.focus(); }
+}
+
+function termsOpenAddClause() {
+  var host = document.getElementById('terms-add-host');
+  if (!host || host.firstChild) { return; }
+  host.appendChild(buildClauseEditor({
+    key: 'new', add: true, showTitle: true, title: '', body: '', saveLabel: 'Save clause',
+    onSave: function (title, body) { host.innerHTML = ''; termsAddClause(title, body); },
+    onCancel: function () { host.innerHTML = ''; }
+  }));
+  var ti = host.querySelector('input');
+  if (ti) { ti.focus(); }
 }
 // Mirrors tms-settings.html's nextCustomId() exactly: both surfaces write into the same
 // stored clause array, so a different derivation (e.g. array length) can mint an id that
@@ -1642,13 +1978,12 @@ function renderTermsActions() {
   var host = document.getElementById('terms-actions');
   host.innerHTML = '';
   if (!TERMS_UNLOCKED || !canEditTerms) { return; }
+  var addHost = document.createElement('div');
+  addHost.id = 'terms-add-host';
+  host.appendChild(addHost);
   var wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;gap:8px;margin-top:14px;flex-wrap:wrap';
-  [['+ Add clause', function () {
-      var t = window.prompt('Clause title'); if (!t) { return; }
-      var b = window.prompt('Clause text'); if (!b) { return; }
-      termsAddClause(t, b);
-    }, ''],
+  [['+ Add clause', termsOpenAddClause, 'terms-add-btn'],
    ['Reset to company standard', resetLoadTerms, 'terms-reset-btn'],
    ['Save terms', saveLoadTerms, 'terms-save-btn']].forEach(function (pair) {
     var b = document.createElement('button');
@@ -1694,6 +2029,7 @@ function postLoadTerms(payload) {
 }
 
 function saveLoadTerms() {
+  TERMS.forEach(function (c) { c.body = cleanClauseText(c.body).trim(); });
   return postLoadTerms({ email: brokerEmail, load_id: TERMS_LOAD_ID, clauses: TERMS });
 }
 
@@ -1706,6 +2042,8 @@ window.unlockTerms = unlockTerms;
 window.saveLoadTerms = saveLoadTerms;
 window.resetLoadTerms = resetLoadTerms;
 window.termsToggle = termsToggle;
+window.termsEditBody = termsEditBody; window.termsOpenAddClause = termsOpenAddClause;
+window.cleanClauseText = cleanClauseText;
 
 // --- Document viewer ---
 function openDocViewer(url, title) {

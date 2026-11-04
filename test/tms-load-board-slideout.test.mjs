@@ -81,12 +81,12 @@ test('row click opens slideout; chip click posts status', async () => {
 
 test('Cancel Load shows for an undelivered load and posts a single-id cancel', () => {
   const { window, posts } = makeWidget();
-  window.confirm = () => true;
   window.renderView({ id: '30', load_number: 'L-30', status: 'Booked' });
   const btn = window.document.getElementById('v-cancel-load');
   assert.ok(btn, 'cancel button present for undelivered load');
-  window.cancelLoad({ id: '30', status: 'Booked' });
-  return Promise.resolve().then(() => {
+  const done = window.cancelLoad({ id: '30', status: 'Booked' });
+  window.document.querySelector('#tms-confirm .cf-ok').click();   // TMSFB3: in-page confirm
+  return done.then(() => {
     const last = posts.at(-1);
     assert.match(last.url, /\/tms-status-bulk/);
     assert.deepEqual(last.body.load_ids, ['30']);

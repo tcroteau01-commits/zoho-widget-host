@@ -380,6 +380,22 @@ ol.snap li { white-space:pre-line; }
   </div>
 </div>
 
+<!-- TMSFB3: in-page prompt (no native prompt()) for Save as template + Duplicate -->
+<div class="of-modal hidden" id="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+  <div class="m-box">
+    <div class="m-title" id="pm-title"></div>
+    <div class="m-note" id="pm-note"></div>
+    <div class="field"><label for="pm-input" id="pm-label"></label>
+      <input id="pm-input" type="text" autocomplete="off" aria-describedby="pm-hint pm-err">
+      <span class="m-hint" id="pm-hint"></span></div>
+    <div class="m-err" id="pm-err" role="alert"></div>
+    <div class="m-btns">
+      <button class="btn small" id="pm-cancel" type="button">Cancel</button>
+      <button class="btn small primary" id="pm-ok" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
 
 <script>
 var BROKER_API_BASE = 'https://operfi-broker-api.onrender.com';
@@ -815,8 +831,14 @@ var _appliedTemplateId = '';
 
 function saveTemplate() {
   if (!val('f-customer_id')) { showError('Pick a customer first to save a template.'); return Promise.resolve(); }
-  var name = (typeof window.prompt === 'function') ? window.prompt('Template name?') : '';
-  if (!name) return Promise.resolve();
+  return showPrompt({
+    title: 'Save as template', note: 'Saves this lane, customer, equipment and stops for reuse.',
+    label: 'Template name', hint: 'Up to ' + TEMPLATE_NAME_MAX + ' characters.',
+    maxLength: TEMPLATE_NAME_MAX, okLabel: 'Save template', validate: validateTemplateName
+  }).then(function(name){ if (name) return _postTemplate(name); });
+}
+
+function _postTemplate(name) {
   var load = collectForm();
   var body = {
     email: brokerEmail, template_name: name,
@@ -1026,9 +1048,7 @@ window.addEventListener('load', function(){
   document.getElementById('add-delivery').addEventListener('click', function(){ addStop('Delivery'); });
   document.getElementById('save-btn').onclick = saveAndReturn;
   document.getElementById('save-draft-btn').onclick = function(){ saveLoad('Draft'); };
-  document.getElementById('duplicate-btn').onclick = function(){
-    var n = window.prompt('How many copies (as drafts)?', '1'); if (n) duplicateLoad(n);
-  };
+  document.getElementById('duplicate-btn').onclick = promptDuplicate;
   document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
   document.getElementById('update-template-btn').addEventListener('click', updateTemplate);
   document.getElementById('back-btn').addEventListener('click', function(){
@@ -1105,12 +1125,16 @@ function renderDocLibrary(docs) {
     deleteBtn.textContent = 'Delete';
     (function(doc){
       deleteBtn.addEventListener('click', function(){
-        if (!confirm('Delete this document?')) return;
-        fetch(BROKER_API_BASE + '/tms-doc/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_id: doc.id })
-        }).then(function(r){ return r.json(); }).then(function(){ refreshDocs(); });
+        return showConfirm('Delete this document?',
+            'It is removed from this load\'s documents.', 'Delete')
+          .then(function(ok){
+            if (!ok) return;
+            return fetch(BROKER_API_BASE + '/tms-doc/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: brokerEmail, load_id: loadId, doc_id: doc.id })
+            }).then(function(r){ return r.json(); }).then(function(){ refreshDocs(); });
+          });
       });
     })(d);
 
@@ -1304,9 +1328,11 @@ function wireSendModal() {
   if (m) m.addEventListener('click', function(e){ if (e.target === m) closeSendModal(); });
   var cm = document.getElementById('confirm-modal');
   if (cm) cm.addEventListener('click', function(e){ if (e.target === cm) _closeConfirm(false); });
+  var pm = document.getElementById('prompt-modal');
+  if (pm) pm.addEventListener('click', function(e){ if (e.target === pm) _closePrompt(null); });
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
-    closeSendModal(); _closeConfirm(false);
+    closeSendModal(); _closeConfirm(false); _closePrompt(null);
   });
 }
 
@@ -1348,6 +1374,77 @@ function showConfirm(title, message, okLabel) {
   document.getElementById('confirm-modal').classList.remove('hidden');
   return new Promise(function(resolve){ _confirmResolve = resolve; });
 }
+
+// ---- TMSFB3: in-page prompt with a labelled input (no native prompt()) ----
+var TEMPLATE_NAME_MAX = 80;
+var DUPLICATE_MAX = 20;
+var _promptCtx = null;
+function validateTemplateName(raw) {
+  var v = String(raw == null ? '' : raw).trim();
+  if (!v) return { error: 'Enter a template name.' };
+  if (v.length > TEMPLATE_NAME_MAX) return { error: 'Keep the name to ' + TEMPLATE_NAME_MAX + ' characters or fewer.' };
+  return { value: v };
+}
+function validateCopies(raw) {
+  var s = String(raw == null ? '' : raw).trim();
+  if (!/^\d+$/.test(s)) return { error: 'Enter a whole number from 1 to ' + DUPLICATE_MAX + '.' };
+  var n = Number(s);
+  if (n < 1 || n > DUPLICATE_MAX) return { error: 'Enter a whole number from 1 to ' + DUPLICATE_MAX + '.' };
+  return { value: n };
+}
+function _closePrompt(v) {
+  var m = document.getElementById('prompt-modal');
+  if (m) m.classList.add('hidden');
+  var ctx = _promptCtx; _promptCtx = null;
+  if (ctx) ctx.resolve(v);
+}
+function _submitPrompt() {
+  if (!_promptCtx) return;
+  var inp = document.getElementById('pm-input');
+  var res = _promptCtx.validate ? _promptCtx.validate(inp.value) : { value: inp.value };
+  if (res.error) {
+    document.getElementById('pm-err').textContent = res.error;
+    inp.setAttribute('aria-invalid', 'true');
+    try { inp.focus(); } catch (e) {}
+    return;
+  }
+  _closePrompt(res.value);
+}
+function showPrompt(o) {
+  o = o || {};
+  if (_promptCtx) _closePrompt(null);
+  document.getElementById('pm-title').textContent = o.title || '';
+  document.getElementById('pm-note').textContent = o.note || '';
+  document.getElementById('pm-label').textContent = o.label || '';
+  document.getElementById('pm-hint').textContent = o.hint || '';
+  document.getElementById('pm-err').textContent = '';
+  var inp = document.getElementById('pm-input');
+  inp.type = o.type || 'text';
+  inp.removeAttribute('aria-invalid');
+  ['min', 'max', 'maxlength', 'inputmode', 'step'].forEach(function(a){ inp.removeAttribute(a); });
+  if (o.maxLength) inp.setAttribute('maxlength', String(o.maxLength));
+  if (o.min != null) inp.setAttribute('min', String(o.min));
+  if (o.max != null) inp.setAttribute('max', String(o.max));
+  if (o.type === 'number') { inp.setAttribute('step', '1'); inp.setAttribute('inputmode', 'numeric'); }
+  inp.value = o.value == null ? '' : String(o.value);
+  inp.onkeydown = function(e){ if (e.key === 'Enter') { e.preventDefault(); _submitPrompt(); } };
+  inp.oninput = function(){ document.getElementById('pm-err').textContent = ''; inp.removeAttribute('aria-invalid'); };
+  document.getElementById('pm-ok').textContent = o.okLabel || 'Save';
+  document.getElementById('pm-ok').onclick = _submitPrompt;
+  document.getElementById('pm-cancel').onclick = function(){ _closePrompt(null); };
+  document.getElementById('prompt-modal').classList.remove('hidden');
+  try { inp.focus(); if (inp.select) inp.select(); } catch (e) {}
+  return new Promise(function(resolve){ _promptCtx = { resolve: resolve, validate: o.validate }; });
+}
+
+function promptDuplicate() {
+  return showPrompt({
+    title: 'Duplicate load', note: 'Copies are saved as drafts with no carrier assigned.',
+    label: 'Number of copies', hint: '1 to ' + DUPLICATE_MAX + '.',
+    type: 'number', min: 1, max: DUPLICATE_MAX, value: 1, okLabel: 'Duplicate', validate: validateCopies
+  }).then(function(n){ if (n) return duplicateLoad(n); });
+}
+window.showPrompt = showPrompt; window.promptDuplicate = promptDuplicate;
 
 function goToBoard() {
   try { window.top.location.href = portalPageUrl('TMS_Dispatch_Board'); } catch (e) {}

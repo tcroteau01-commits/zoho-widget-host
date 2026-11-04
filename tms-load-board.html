@@ -70,6 +70,7 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 #tms-confirm .cf-msg { font-size: 13px; color: #555; line-height: 1.45; }
 #tms-confirm .cf-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 #tms-confirm .cf-ok { background: #b42318; border-color: #b42318; color: #fff; }
+#tms-confirm .btn:focus-visible { outline: none; border-color: #e8a020; box-shadow: 0 0 0 3px rgba(232,160,32,0.35); }
 
 /* slide-out panel */
 .hidden { display: none !important; }
@@ -385,6 +386,8 @@ function showConfirm(title, message, okLabel) {
     wrap.querySelector('.cf-cancel').onclick = function(){ done(false); };
     wrap.querySelector('.cf-ok').onclick = function(){ done(true); };
     wrap.addEventListener('click', function(e){ if (e.target === wrap) done(false); });
+    // TMSFB3: Esc cancels the dialog only; it must not also close the slide-out underneath
+    wrap.addEventListener('keydown', function(e){ if (e.key === 'Escape') { e.stopPropagation(); done(false); } });
     document.body.appendChild(wrap);
     wrap.querySelector('.cf-cancel').focus();
   });
@@ -589,17 +592,19 @@ function canCancel(status) {
 function cancelLoad(load) {
   var lid = (load && load.id) || (window._slideoutLoad && window._slideoutLoad.id) || '';
   if (!lid || !brokerEmail) return Promise.resolve();
-  if (typeof confirm === 'function' && !confirm('Cancel load ' + (load.load_number || lid) + '? It will be removed from the active board (reversible).')) {
-    return Promise.resolve();
-  }
-  return fetch(BROKER_API_BASE + '/tms-status-bulk', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: brokerEmail, load_ids: [String(lid)], status: 'Cancelled' })
-  }).then(function(r){ return r.json(); }).then(function(p){
-    var skipped = (p && p.skipped && p.skipped.length);
-    showToast(skipped ? 'Could not cancel (ineligible)' : 'Load cancelled');
-    if (!skipped) { if (typeof closeSlideout === 'function') closeSlideout(); loadBoard(); }
-  }).catch(function(){ showToast('Cancel failed'); });
+  return showConfirm('Cancel load ' + (load.load_number || lid) + '?',
+      'It comes off the active board and stays under the Cancelled filter.', 'Cancel load')
+    .then(function(ok){
+      if (!ok) return;
+      return fetch(BROKER_API_BASE + '/tms-status-bulk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: brokerEmail, load_ids: [String(lid)], status: 'Cancelled' })
+      }).then(function(r){ return r.json(); }).then(function(p){
+        var skipped = (p && p.skipped && p.skipped.length);
+        showToast(skipped ? 'Could not cancel (ineligible)' : 'Load cancelled');
+        if (!skipped) { if (typeof closeSlideout === 'function') closeSlideout(); loadBoard(); }
+      }).catch(function(){ showToast('Cancel failed'); });
+    });
 }
 
 function renderViewActions(load) {

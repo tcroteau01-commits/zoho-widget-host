@@ -46,6 +46,30 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
 .chip.cancelled { background: #f1f1f1; color: #999; text-decoration: line-through; }
 .chip.issue { background: #fdecea; color: #c62828; }
 .empty { text-align: center; color: #999; padding: 40px 0; }
+.btn.small { padding: 7px 12px; font-size: 12px; }
+.btn.danger { color: #b42318; }
+
+/* TMSFB1: overdue-POD warning banner */
+.pod-banner { background: #fef6e7; border: 1px solid #f0d9a8; border-radius: 12px; margin-bottom: 14px; color: #7a5a12; }
+.pod-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; flex-wrap: wrap; }
+.pod-toggle { background: none; border: 0; font: inherit; font-size: 13px; font-weight: 700; color: #7a5a12; cursor: pointer; text-align: left; padding: 4px 0; }
+.pod-toggle .caret { font-weight: 600; font-size: 12px; color: #a0711a; margin-left: 6px; text-decoration: underline; }
+.pod-head-btns { display: flex; gap: 8px; }
+.pod-list { border-top: 1px solid #f0d9a8; background: #fff; border-radius: 0 0 12px 12px; }
+.pod-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #f3f1ea; font-size: 13px; color: #333; }
+.pod-row:last-child { border-bottom: 0; }
+.pod-main { flex: 1; min-width: 0; }
+.pod-main .ld-num { display: inline; margin-right: 8px; }
+.pod-main .muted { margin-top: 3px; }
+.pod-acts { display: flex; gap: 6px; flex: none; }
+
+/* TMSFB1: in-page confirm (no native confirm()) */
+#tms-confirm { position: fixed; inset: 0; background: rgba(16,24,40,.45); z-index: 10002; display: flex; align-items: center; justify-content: center; padding: 16px; }
+#tms-confirm .cf-box { background: #fff; border-radius: 12px; padding: 20px 22px; width: 420px; max-width: 100%; box-shadow: 0 20px 50px rgba(16,24,40,.3); }
+#tms-confirm .cf-title { font-size: 16px; font-weight: 700; color: #272727; margin-bottom: 8px; }
+#tms-confirm .cf-msg { font-size: 13px; color: #555; line-height: 1.45; }
+#tms-confirm .cf-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+#tms-confirm .cf-ok { background: #b42318; border-color: #b42318; color: #fff; }
 
 /* slide-out panel */
 .hidden { display: none !important; }
@@ -116,6 +140,13 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;
   }
 
+  /* TMSFB1 banner + bulk bar wrap */
+  .pod-head { flex-direction: column; align-items: stretch; }
+  .pod-head-btns .btn { flex: 1; }
+  .pod-row { flex-direction: column; align-items: stretch; }
+  .pod-acts .btn { flex: 1; }
+  #bulk-bar { flex-wrap: wrap; }
+
   /* P5 — slide-out near full screen + stack its cards */
   #tms-slideout { width: 100% !important; max-width: 100% !important; }
   #tms-slideout .vcards { grid-template-columns: 1fr !important; }
@@ -153,7 +184,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
     </select>
     <button class="btn" id="bulk-apply">Apply</button>
     <button class="btn" id="bulk-cancel">Cancel selected</button>
+    <button class="btn danger" id="bulk-delete">Delete selected drafts</button>
   </div>
+  <div id="pod-banner" class="pod-banner hidden"></div>
   <div class="card">
     <table class="tbl">
       <thead><tr><th style="width:28px"></th><th>Load</th><th>Status</th><th>Customer</th><th>Lane</th><th>Carrier</th><th style="text-align:right">Invoice</th><th style="text-align:right">Margin</th></tr></thead>
@@ -244,7 +277,173 @@ function renderBoard(payload) {
   setText('kpi-margin', money(marg));
   setText('kpi-tosubmit', toSubmit.length);
   setText('sub', allLoads.length + ' load' + (allLoads.length === 1 ? '' : 's'));
+  renderPodBanner(payload);
   applyFilters();
+}
+
+/* ---- TMSFB1: overdue-POD banner. The server decides pod_overdue; the widget only
+   filters on it, so an API without the field shows no banner. ---- */
+var podExpanded = false;
+
+function _podAgo(h) {
+  var n = Number(h);
+  if (h == null || h === '' || isNaN(n)) return '';
+  if (n < 72) return Math.max(0, Math.floor(n)) + 'h ago';
+  return Math.floor(n / 24) + 'd ago';
+}
+function _podStamp(v) {
+  var s = String(v || '');
+  if (!s) return '';
+  return s.indexOf('T') !== -1 ? s.replace('T', ' ').slice(0, 16) : s.slice(0, 17);
+}
+
+function renderPodBanner(payload) {
+  var box = document.getElementById('pod-banner');
+  if (!box) return;
+  var loads = (payload && payload.loads) || [];
+  var overdue = loads.filter(function(l){ return l && l.pod_overdue === true; });
+  if (!overdue.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  var hrs = Number(payload && payload.pod_alert_hours) || 48;
+  var n = overdue.length;
+  var headline = n + ' delivered load' + (n === 1 ? ' still needs' : 's still need') + ' paperwork (over ' + hrs + 'h)';
+  var rows = overdue.map(function(l){
+    var bits = [esc(l.carrier_name || 'No carrier')];
+    var ago = _podAgo(l.hours_since_delivered);
+    if (ago) bits.push('delivered ' + esc(ago));
+    bits.push(l.pod_nudged_at ? 'last nudged ' + esc(_podStamp(l.pod_nudged_at)) : 'not nudged yet');
+    return '<div class="pod-row" data-load-id="' + esc(l.id) + '">'
+      + '<div class="pod-main"><span class="ld-num">' + esc(l.load_number) + '</span>'
+      + '<div class="muted">' + bits.join(' · ') + '</div></div>'
+      + '<div class="pod-acts">'
+      +   '<button class="btn small pod-open" data-id="' + esc(l.id) + '">Open</button>'
+      +   '<button class="btn small pod-nudge" data-id="' + esc(l.id) + '">Nudge</button>'
+      +   '<button class="btn small pod-dismiss" data-id="' + esc(l.id) + '">Dismiss</button>'
+      + '</div></div>';
+  }).join('');
+  box.innerHTML =
+    '<div class="pod-head">'
+    + '<button class="pod-toggle" id="pod-toggle" aria-expanded="' + (podExpanded ? 'true' : 'false') + '">⚠ '
+    +   esc(headline) + '<span class="caret">' + (podExpanded ? 'Hide' : 'Show') + '</span></button>'
+    + '<div class="pod-head-btns"><button class="btn small" id="pod-nudge-all">Nudge all</button>'
+    + '<button class="btn small" id="pod-dismiss-all">Dismiss all</button></div>'
+    + '</div>'
+    + '<div class="pod-list' + (podExpanded ? '' : ' hidden') + '" id="pod-list">' + rows + '</div>';
+  box.classList.remove('hidden');
+  var ids = overdue.map(function(l){ return String(l.id); });
+  document.getElementById('pod-toggle').onclick = function(){ podExpanded = !podExpanded; renderPodBanner(payload); };
+  document.getElementById('pod-nudge-all').onclick = function(){ podNudge(ids); };
+  document.getElementById('pod-dismiss-all').onclick = function(){ podDismiss(ids); };
+  box.querySelectorAll('.pod-open').forEach(function(b){ b.onclick = function(){ selectForEdit(b.getAttribute('data-id')); }; });
+  box.querySelectorAll('.pod-nudge').forEach(function(b){ b.onclick = function(){ podNudge([b.getAttribute('data-id')]); }; });
+  box.querySelectorAll('.pod-dismiss').forEach(function(b){ b.onclick = function(){ podDismiss([b.getAttribute('data-id')]); }; });
+}
+
+function _podPost(path, ids) {
+  return fetch(BROKER_API_BASE + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_ids: ids.map(String) })
+  }).then(function(r){ return r.json(); });
+}
+
+function podNudge(ids) {
+  if (!ids || !ids.length || !brokerEmail) return Promise.resolve();
+  return _podPost('/tms-pod/nudge', ids).then(function(p){
+    if (p && p.error && !p.sent) { showToast(p.error); return; }
+    var sent = (p && p.sent ? p.sent.length : 0);
+    var sk = (p && p.skipped) || [];
+    var msg = sent + ' reminder' + (sent === 1 ? '' : 's') + ' sent';
+    if (sk.length) {
+      msg += ', ' + sk.length + ' skipped' + (sk.length === 1 && sk[0].reason ? ' (' + sk[0].reason + ')' : '');
+    }
+    showToast(msg);
+    return loadBoard();
+  }).catch(function(){ showToast('Reminder failed'); });
+}
+
+function podDismiss(ids) {
+  if (!ids || !ids.length || !brokerEmail) return Promise.resolve();
+  return _podPost('/tms-pod/dismiss', ids).then(function(p){
+    if (p && p.error) { showToast(p.error); return; }
+    showToast(ids.length === 1 ? 'Alert dismissed' : ids.length + ' alerts dismissed');
+    return loadBoard();
+  }).catch(function(){ showToast('Dismiss failed'); });
+}
+
+/* ---- TMSFB1: in-page confirm, never the native dialog ---- */
+function showConfirm(title, message, okLabel) {
+  return new Promise(function(resolve){
+    var old = document.getElementById('tms-confirm');
+    if (old) old.parentNode.removeChild(old);
+    var wrap = document.createElement('div');
+    wrap.id = 'tms-confirm';
+    wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-modal', 'true');
+    wrap.innerHTML = '<div class="cf-box"><div class="cf-title">' + esc(title) + '</div>'
+      + '<div class="cf-msg">' + esc(message) + '</div>'
+      + '<div class="cf-btns"><button class="btn small cf-cancel">Keep it</button>'
+      + '<button class="btn small cf-ok">' + esc(okLabel || 'Delete') + '</button></div></div>';
+    function done(v){ if (wrap.parentNode) wrap.parentNode.removeChild(wrap); resolve(v); }
+    wrap.querySelector('.cf-cancel').onclick = function(){ done(false); };
+    wrap.querySelector('.cf-ok').onclick = function(){ done(true); };
+    wrap.addEventListener('click', function(e){ if (e.target === wrap) done(false); });
+    document.body.appendChild(wrap);
+    wrap.querySelector('.cf-cancel').focus();
+  });
+}
+
+/* ---- TMSFB1: delete a draft (Draft or Available only; the server re-checks) ---- */
+function canDeleteDraft(status) { return status === 'Draft' || status === 'Available'; }
+
+function _postDelete(id) {
+  return fetch(BROKER_API_BASE + '/tms-load/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: brokerEmail, load_id: String(id) })
+  }).then(function(r){
+    return r.json().then(function(j){ return { ok: r.ok !== false && !!(j && j.ok), body: j || {} }; });
+  }).catch(function(){ return { ok: false, body: {} }; });
+}
+
+function deleteDraft(load) {
+  var lid = (load && load.id) || '';
+  if (!lid || !brokerEmail || !canDeleteDraft(load.status)) return Promise.resolve();
+  return showConfirm('Delete draft ' + (load.load_number || lid) + '?',
+      'The load, its stops and its documents are removed for good. This cannot be undone.', 'Delete draft')
+    .then(function(ok){
+      if (!ok) return;
+      return _postDelete(lid).then(function(res){
+        if (!res.ok) { showToast(res.body.error || 'Could not delete the draft'); return; }
+        showToast('Draft deleted');
+        closeSlideout();
+        return loadBoard();
+      });
+    });
+}
+
+function bulkDeleteDrafts() {
+  if (!selectedLoadIds.length || !brokerEmail) return Promise.resolve();
+  var byId = {};
+  allLoads.forEach(function(l){ byId[String(l.id)] = l; });
+  var ids = selectedLoadIds.slice();
+  var drafts = ids.filter(function(id){ return byId[id] && canDeleteDraft(byId[id].status); });
+  var nonDrafts = ids.length - drafts.length;
+  if (!drafts.length) { showToast('None of the selected loads are drafts'); return Promise.resolve(); }
+  var msg = 'The load' + (drafts.length === 1 ? '' : 's') + ', stops and documents are removed for good.'
+    + (nonDrafts ? ' ' + nonDrafts + ' selected load' + (nonDrafts === 1 ? ' is not a draft and will be' : 's are not drafts and will be') + ' skipped.' : '');
+  return showConfirm('Delete ' + drafts.length + ' draft' + (drafts.length === 1 ? '' : 's') + '?', msg, 'Delete')
+    .then(function(ok){
+      if (!ok) return;
+      var deleted = 0, failed = 0;
+      var chain = Promise.resolve();
+      drafts.forEach(function(id){
+        chain = chain.then(function(){ return _postDelete(id).then(function(res){ if (res.ok) deleted++; else failed++; }); });
+      });
+      return chain.then(function(){
+        var skipped = nonDrafts + failed;
+        showToast(deleted + ' deleted' + (skipped ? ', ' + skipped + ' skipped' : ''));
+        selectedLoadIds = [];
+        toggleBulkBar();
+        return loadBoard();
+      });
+    });
 }
 function setText(id, v){ var el = document.getElementById(id); if (el) el.textContent = v; }
 
@@ -417,10 +616,15 @@ function renderViewActions(load) {
   if (canCancel(load.status)) {
     actionsHtml += '<button class="vbtn" id="v-cancel-load" style="color:#7a1f1f">Cancel Load</button>';
   }
+  if (canDeleteDraft(load.status)) {
+    actionsHtml += '<button class="vbtn" id="v-delete-draft" style="color:#b42318">Delete draft</button>';
+  }
   el.innerHTML = actionsHtml;
   document.getElementById('v-edit').addEventListener('click', function(){ selectForEdit(load.id); });
   var cl = document.getElementById('v-cancel-load');
   if (cl) cl.onclick = function(){ cancelLoad(load); };
+  var dd = document.getElementById('v-delete-draft');
+  if (dd) dd.onclick = function(){ deleteDraft(load); };
 }
 
 function selectForEdit(loadId) {
@@ -506,6 +710,7 @@ window.addEventListener('load', function(){
   if (b) b.addEventListener('click', closeSlideout);
   var ba = document.getElementById('bulk-apply'); if (ba) ba.onclick = bulkApply;
   var bc = document.getElementById('bulk-cancel'); if (bc) bc.onclick = bulkCancel;
+  var bd = document.getElementById('bulk-delete'); if (bd) bd.onclick = bulkDeleteDrafts;
   boot();
 });
 
@@ -525,6 +730,9 @@ window.onRowCheck = onRowCheck; window.toggleBulkBar = toggleBulkBar;
 window.bulkApply = bulkApply; window.bulkCancel = bulkCancel;
 window.canCancel = canCancel; window.cancelLoad = cancelLoad;
 window.STATUSES = STATUSES; window.TMS_STATUSES = TMS_STATUSES;
+window.renderPodBanner = renderPodBanner; window.podNudge = podNudge; window.podDismiss = podDismiss;
+window.canDeleteDraft = canDeleteDraft; window.deleteDraft = deleteDraft;
+window.bulkDeleteDrafts = bulkDeleteDrafts; window.showConfirm = showConfirm;
 </script>
 </body>
 </html>

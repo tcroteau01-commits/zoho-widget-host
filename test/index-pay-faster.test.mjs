@@ -1,5 +1,5 @@
 // PAYCHG1 Task 8: Pay carrier faster on Submit Load (index.html).
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
@@ -19,10 +19,15 @@ const CARRIERS = [
   { vendor_id: 'v-x', carrier_name: 'Sample Other LLC', payment_terms: 'No Invoice - 180 Days' }
 ];
 
+// PFCUTOFF1: pay-faster.js runs a one-minute cutoff clock; close every window so the runner exits.
+const ALL_DOMS = [];
+after(() => { for (const d of ALL_DOMS) d.window.close(); });
+
 function makeDom(opts) {
   opts = opts || {};
   const calls = [];
   const dom = new JSDOM(HTML, { runScripts: 'dangerously', pretendToBeVisual: true });
+  ALL_DOMS.push(dom);
   const w = dom.window;
   w.__calls = calls;
   w.__opened = [];
@@ -796,4 +801,38 @@ test('finalize refusal codes show plain copy on the banner', async () => {
     assert.doesNotMatch(b.textContent, /[–—]/);
     if (!/Request it from Submission History/.test(copy)) assert.doesNotMatch(b.textContent, /Request it from Submission History/, code);
   }
+});
+
+// PFCUTOFF1
+test('pay faster box shows the 1:00 PM CT cutoff banner', async () => {
+  const w = await ready();
+  pickCarrier(w, 'v-net');
+  setVal(w, 'carrier-rate', '2000');
+  toggle(w, true);
+  const c = w.document.querySelector('.pf-cutoff');
+  assert.ok(c, 'cutoff banner rendered');
+  assert.match(c.textContent, /1:00 PM CT/);
+});
+
+test('successful pay faster submit says when OperFi processes it', async () => {
+  const w = await ready({ finalize: { ok: true, pay_change: { ok: true } } });
+  pickCarrier(w, 'v-net');
+  setVal(w, 'carrier-rate', '2000');
+  toggle(w, true);
+  pickPayer(w, 'carrier');
+  await fillAndSubmit(w);
+  await flush();
+  const t = $(w, 'post-submit-banner').textContent;
+  assert.match(t, /Pay Faster request sent(\.| after the 1:00 PM CT cutoff\.) OperFi processes it (today|the next business day, \w+, \w+ \d\d)\./);
+});
+
+test('failed pay faster submit has no processing line', async () => {
+  const w = await ready({ finalize: { ok: true, pay_change: { ok: false, error: 'reserve' } } });
+  pickCarrier(w, 'v-net');
+  setVal(w, 'carrier-rate', '2000');
+  toggle(w, true);
+  pickPayer(w, 'carrier');
+  await fillAndSubmit(w);
+  await flush();
+  assert.doesNotMatch($(w, 'post-submit-banner').textContent, /Pay Faster request sent/);
 });

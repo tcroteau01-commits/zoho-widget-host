@@ -26,6 +26,10 @@
  *   PayFaster.defaultFee(savedPct)           -> the saved fee when >= 2, else "2"
  *   PayFaster.refusalMessage(code)           -> plain copy for an API refusal code, or null (use the generic)
  *   PayFaster.ineligibleMessage(reason, requestStatus) -> why the button is grayed out, or null (show nothing)
+ *   PayFaster.cutoffState(now?)              -> {cls, sameDay, processDate, head, detail} (PFCUTOFF1, 1:00 PM CT, weekends roll)
+ *   PayFaster.cutoffHtml(now?)               -> the .pf-cutoff banner; whoPaysState puts it at the top of every unlocked block
+ *   PayFaster.confirmationLine(now?)         -> "Pay Faster request sent. OperFi processes it today." / next business day
+ *   PayFaster.startCutoffClock()             -> refreshes every .pf-cutoff banner each minute
  *   PayFaster.injectStyles()                 -> adds the .pf-* styles once
  *
  * Mirrors pay_change_math.py in operfi-broker-api. Money is integer cents, half-up per line.
@@ -213,6 +217,78 @@
     return Object.prototype.hasOwnProperty.call(INELIGIBLE, reason) ? INELIGIBLE[reason] : null;
   }
 
+  // PFCUTOFF1: the Wallet's Reserve Release cutoff (wallet.html cutoffState), applied to
+  // Pay Faster. Before 1:00 PM CT on a weekday = today; after, Friday late, or the weekend =
+  // the next business day. Weekends only, no holiday calendar (same as the Wallet).
+  var CUTOFF_MIN = 13 * 60;
+  var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function centralParts(now) {
+    var parts = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour12: false, weekday: 'long',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(now || new Date()).forEach(function (p) { parts[p.type] = p.value; });
+    var hour = parseInt(parts.hour, 10);
+    if (hour === 24) hour = 0;
+    return { dow: DAY_NAMES.indexOf(parts.weekday), hour: hour, minute: parseInt(parts.minute, 10),
+      year: parseInt(parts.year, 10), month: parseInt(parts.month, 10), day: parseInt(parts.day, 10) };
+  }
+
+  function nextBusinessDate(n) {
+    var d = new Date(Date.UTC(n.year, n.month - 1, n.day));
+    do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+    var dd = d.getUTCDate();
+    return DAY_NAMES[d.getUTCDay()] + ', ' + MONTHS[d.getUTCMonth()] + ' ' + (dd < 10 ? '0' : '') + dd;
+  }
+
+  function cutoffState(now) {
+    var n = centralParts(now);
+    var mins = n.hour * 60 + n.minute;
+    var weekend = n.dow === 0 || n.dow === 6;
+    var after = mins >= CUTOFF_MIN;
+    if (!weekend && !after) {
+      var left = CUTOFF_MIN - mins, hr = Math.floor(left / 60), mn = left % 60;
+      var head = (hr > 0 ? hr + (hr === 1 ? ' hour, ' : ' hours, ') : '') + mn + (mn === 1 ? ' minute' : ' minutes') +
+        ' before the 1:00 PM CT cutoff';
+      return { cls: 'ok', sameDay: true, processDate: 'today', head: head,
+        detail: 'Pay Faster requests sent before 1:00 PM CT on a business day are processed today.' };
+    }
+    var date = nextBusinessDate(n);
+    if (weekend) {
+      return { cls: 'weekend', sameDay: false, processDate: date, head: 'Weekend: this will be processed ' + date,
+        detail: 'Pay Faster requests sent on the weekend are processed the next business day, ' + date + '.' };
+    }
+    return { cls: n.dow === 5 ? 'weekend' : 'late', sameDay: false, processDate: date,
+      head: 'Past the 1:00 PM CT cutoff: this will be processed ' + date,
+      detail: 'You can still send it. Requests after 1:00 PM CT are processed the next business day, ' + date + '.' };
+  }
+
+  function cutoffHtml(now) {
+    var s = cutoffState(now);
+    return '<div class="pf-cutoff pf-msg ' + (s.sameDay ? 'pf-info' : 'pf-warn') + '">⏰ <b>' + esc(s.head) +
+      '</b><br>' + esc(s.detail) + '</div>';
+  }
+
+  function confirmationLine(now) {
+    var s = cutoffState(now);
+    return s.sameDay ? 'Pay Faster request sent. OperFi processes it today.'
+      : 'Pay Faster request sent after the 1:00 PM CT cutoff. OperFi processes it the next business day, ' + s.processDate + '.';
+  }
+
+  // Keeps every rendered banner's countdown current. Safe to call more than once.
+  var _cutoffClock = null;
+  function startCutoffClock() {
+    var d = global.document;
+    if (_cutoffClock || !d || typeof global.setInterval !== 'function') return;
+    _cutoffClock = global.setInterval(function () {
+      var els = d.querySelectorAll('.pf-cutoff');
+      if (!els.length) return;
+      var html = cutoffHtml();
+      for (var i = 0; i < els.length; i++) els[i].outerHTML = html;
+    }, 60 * 1000);
+  }
+
   // PAYCHGPICK2: one explicit "Who pays the quick pay fee?" choice for every open block.
   function whoPaysState(a) {
     var kind = a.kind;
@@ -234,6 +310,7 @@
     if (a.trained === false) {
       return { html: '<div class="pf-body pf-locked">' + sub + lockHtml(a.videoId) + '</div>', blocked: true, payer: payer };
     }
+    sub = cutoffHtml() + sub;
     if (!hasRate) {
       return { html: '<div class="pf-body">' + sub + msg('info', 'Enter the carrier rate to see the fee.') + '</div>', blocked: true, payer: payer };
     }
@@ -403,6 +480,10 @@
     defaultFee: defaultFee,
     refusalMessage: refusalMessage,
     ineligibleMessage: ineligibleMessage,
+    cutoffState: cutoffState,
+    cutoffHtml: cutoffHtml,
+    confirmationLine: confirmationLine,
+    startCutoffClock: startCutoffClock,
     whoPaysState: whoPaysState,
     marginEffect: marginEffect,
     money: money,

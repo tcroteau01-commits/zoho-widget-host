@@ -1,5 +1,5 @@
 // PAYCHG1 Task 9: Pay carrier faster on Submission History (history.html).
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
@@ -21,6 +21,10 @@ const ROW = { ID: '4100000000000000001', Purchase_Status: 'Purchased', Added_Tim
   Load_Rate_Confirmation_Number: 'L-100', Customer_Reference_Number: 'PO-1',
   Customer_Rate: '2,500.00', Carrier_Rate: '2,000.00', Payment_Terms: 'Standard Net 30',
   Broker_Pay_Term: 'Standard Net 30' };
+
+// PFCUTOFF1: pay-faster.js runs a one-minute cutoff clock; close every window so the runner exits.
+const ALL_DOMS = [];
+after(() => { for (const d of ALL_DOMS) d.window.close(); });
 
 function makeDom(opts) {
   opts = opts || {};
@@ -62,6 +66,7 @@ function makeDom(opts) {
       };
     }
   });
+  ALL_DOMS.push(dom);
   const w = dom.window;
   w.eval(PF_SRC);
   return w;
@@ -1033,4 +1038,12 @@ test('deciding from the queue drops the chip count in place', async () => {
   assert.ok($(w, 'pf-slot').querySelector('.pf-math'), 'math box renders');
   click(w, $(w, 'pf-apply')); await flush();
   assert.match(queueChip(w).textContent, /needs decision\s*1/);
+});
+
+// PFCUTOFF1
+test('popup shows the 1:00 PM CT cutoff banner', async () => {
+  const w = await openPopup();
+  const c = $(w, 'pf-modal').querySelector('.pf-cutoff');
+  assert.ok(c, 'cutoff banner rendered');
+  assert.match(c.textContent, /1:00 PM CT/);
 });

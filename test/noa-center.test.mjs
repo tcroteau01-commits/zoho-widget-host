@@ -44,6 +44,7 @@ test('flag labels', () => {
   assert.strictEqual(H.flagLabel('verify'), 'Needs verification call');
   assert.strictEqual(H.flagLabel('bounce'), 'Bounced');
   assert.strictEqual(H.flagLabel('new_thing'), 'new_thing');
+  assert.strictEqual(H.flagLabel('operfi_send'), 'Client asked OperFi to send');
 });
 
 test('age text', () => {

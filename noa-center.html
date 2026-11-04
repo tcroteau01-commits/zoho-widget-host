@@ -206,7 +206,7 @@
   });
 
   // ---- queue -----------------------------------------------------------------------
-  ['verify', 'stale', 'bounce', 'reply', 'dispute', 'vendor_setup', 'contact_review'].forEach(function (f) {
+  ['verify', 'operfi_send', 'stale', 'bounce', 'reply', 'dispute', 'vendor_setup', 'contact_review'].forEach(function (f) {
     var o = el('option', H.flagLabel(f)); o.value = f; $('queue-flag').appendChild(o);
   });
   function loadQueue() {

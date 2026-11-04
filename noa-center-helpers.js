@@ -13,7 +13,7 @@
   var FLAGS = {
     verify: 'Needs verification call', stale: 'No response in 7 days', bounce: 'Bounced',
     reply: 'AP replied by email', dispute: 'Question or dispute', vendor_setup: 'Vendor setup / W-9',
-    contact_review: 'AP named a contact to review'
+    contact_review: 'AP named a contact to review', operfi_send: 'Client asked OperFi to send'
   };
   var CHECKS = {
     free_mail: 'Free email address (Gmail, Yahoo, ...)', lookalike_domain: 'Looks like the debtor domain but is not',

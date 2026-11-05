@@ -1,0 +1,220 @@
+// test/noa-center.test.mjs  CNOA Task 11: staff NOA Center screen. Made-up data only.
+import { test } from 'node:test';
+import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { JSDOM } from 'jsdom';
+
+const require = createRequire(import.meta.url);
+const H = require('../noa-center-helpers.js');
+const HTML = readFileSync(new URL('../noa-center.html', import.meta.url), 'utf8');
+const HELPERS = readFileSync(new URL('../noa-center-helpers.js', import.meta.url), 'utf8');
+
+// ---- pure helpers ----------------------------------------------------------------------
+test('chip labels cover every status', () => {
+  assert.deepStrictEqual(
+    ['not_sent', 'sent', 'viewed', 'acknowledged', 'confirmed', 'action_needed', 'grandfathered', 'released']
+      .map(H.chipLabel),
+    ['Not sent', 'Sent', 'Viewed', 'Acknowledged', 'Confirmed', 'Action needed', 'Grandfathered', 'Released']);
+  assert.strictEqual(H.chipLabel('weird'), 'weird');
+});
+
+test('waiting-on text', () => {
+  assert.strictEqual(H.waitingOnText({ waiting_on: 'ap@acmetest.com' }), 'Waiting on ap@acmetest.com');
+  assert.strictEqual(H.waitingOnText({ waiting_on: 'OperFi verification' }), 'Waiting on OperFi verification');
+  assert.strictEqual(H.waitingOnText({ waiting_on: null }), '');
+});
+
+test('confirm needs an independent number source', () => {
+  assert.strictEqual(H.confirmAllowed('client'), false);
+  assert.strictEqual(H.confirmAllowed(''), false);
+  assert.strictEqual(H.confirmAllowed('creditsafe'), true);
+  assert.deepStrictEqual(H.NUMBER_SOURCES.map(s => s.value),
+    ['creditsafe', 'debtor_website', 'fmcsa', 'directory', 'other_independent']);
+});
+
+test('contact checks list blocks before warnings, in plain words', () => {
+  const lines = H.renderChecks({ blocks: ['free_mail'], warnings: ['domain_mismatch'], positives: ['role_address'] });
+  assert.deepStrictEqual(lines.map(l => l.level), ['block', 'warning', 'positive']);
+  assert.match(lines[0].text, /free email/i);
+  assert.strictEqual(H.renderChecks(null).length, 0);
+});
+
+test('flag labels', () => {
+  assert.strictEqual(H.flagLabel('verify'), 'Needs verification call');
+  assert.strictEqual(H.flagLabel('bounce'), 'Bounced');
+  assert.strictEqual(H.flagLabel('new_thing'), 'new_thing');
+  assert.strictEqual(H.flagLabel('operfi_send'), 'Client asked OperFi to send');
+});
+
+test('age text', () => {
+  assert.strictEqual(H.ageText(0), 'today');
+  assert.strictEqual(H.ageText(1), '1 day');
+  assert.strictEqual(H.ageText(9), '9 days');
+});
+
+// ---- page structure --------------------------------------------------------------------
+test('tabs and endpoints', () => {
+  for (const t of ['Queue', 'Clients', 'Needs a match', 'Campaigns', 'Directory']) assert.match(HTML, new RegExp(t));
+  for (const p of ['/internal/noa/queue', '/internal/noa/records', '/internal/noa/inbox',
+                   '/internal/noa/clients/search', '/confirm', '/evidence', '/release'])
+    assert.ok(HTML.includes(p), p);
+  assert.match(HTML, /credentials: 'include'/);
+  assert.match(HTML, /noa-center-helpers\.js/);
+});
+
+test('never writes data through innerHTML', () => {
+  for (const src of [HTML, HELPERS]) {
+    const sets = src.match(/\.innerHTML\s*=\s*[^;]+;/g) || [];
+    for (const s of sets) assert.match(s, /\.innerHTML\s*=\s*''\s*;/, s);
+  }
+});
+
+test('never sends status or confirmed_by from the screen', () => {
+  assert.doesNotMatch(HTML, /confirmed_by\s*:/);
+  assert.doesNotMatch(HTML, /status\s*:\s*'confirmed'/);
+});
+
+// ---- boot under jsdom ------------------------------------------------------------------
+function boot(responder) {
+  const calls = [];
+  const dom = new JSDOM(HTML.replace('<script src="noa-center-helpers.js"></script>',
+                                     () => '<script>' + HELPERS + '</script>'), {  // a function: HELPERS contains $'
+    runScripts: 'dangerously', url: 'https://app.operfi.com/noa-center.html',
+    beforeParse(win) {
+      win.fetch = (url, opts) => {
+        calls.push({ url, opts });
+        const [status, body] = responder(url, opts);
+        return Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
+      };
+    },
+  });
+  return { dom, calls };
+}
+const tick = () => new Promise(r => setTimeout(r, 30));
+
+test('queue renders rows as text, escaped', async () => {
+  const { dom, calls } = boot(url => url.includes('/internal/noa/queue')
+    ? [200, { records: [{ noa_id: 'n1', client: { name: '<img src=x onerror=alert(1)>' },
+                          debtor: { name: 'Acme Test Logistics' }, status: 'acknowledged',
+                          queue_flags: ['verify'], age_days: 2, waiting_on: 'OperFi verification' }] }]
+    : [200, { records: [], items: [] }]);
+  await tick();
+  const doc = dom.window.document;
+  const row = doc.querySelector('#queue-body tr');
+  assert.ok(row, 'a queue row');
+  assert.match(row.textContent, /<img src=x/);
+  assert.strictEqual(doc.querySelector('#queue-body img'), null);
+  assert.match(row.textContent, /Needs verification call/);
+  assert.strictEqual(calls[0].opts.credentials, 'include');
+});
+
+test('403 shows the access panel and no data', async () => {
+  const { dom } = boot(() => [403, { error: 'Forbidden' }]);
+  await tick();
+  const doc = dom.window.document;
+  assert.strictEqual(doc.getElementById('no-access').hidden, false);
+  assert.strictEqual(doc.getElementById('app').hidden, true);
+});
+
+// ---- Phase 3: campaigns and directory -------------------------------------------------
+test('nameMatches ignores case and spacing, not words', () => {
+  assert.strictEqual(H.nameMatches('  testing   haul llc ', 'TESTING Haul LLC'), true);
+  assert.strictEqual(H.nameMatches('TESTING Haul', 'TESTING Haul LLC'), false);
+  assert.strictEqual(H.nameMatches('', ''), false);
+});
+
+test('skip labels and summary text', () => {
+  assert.strictEqual(H.skipLabel('free_mail'), 'Free email address, not sent');
+  assert.strictEqual(H.skipLabel('no_address'), 'No AP address on file');
+  assert.strictEqual(H.skipLabel('bad_email'), 'Address is not valid');
+  assert.strictEqual(H.flagLabel('open_payables'), 'Open payables reported');
+  assert.strictEqual(H.summaryText({ sent: 3, skipped: 1, failed: 0, bounced: 1, acknowledged: 2, confirmed: 0,
+                                     open_payables: 2, open_amount_total: 750 }),
+    '3 sent, 1 skipped, 1 bounced, 2 acknowledged, 0 confirmed, 2 open payables ($750.00)');
+});
+
+test('campaign and directory endpoints are wired', () => {
+  for (const p of ['/internal/noa/campaigns', '/launch', '/internal/noa/lists', '/internal/noa/campaigns/hauled-for',
+                   '/internal/noa/directory'])
+    assert.ok(HTML.includes(p), p);
+  assert.doesNotMatch(HTML, /arrive in Phase 3/);
+});
+
+test('launch stays disabled until the typed name matches', async () => {
+  const campaign = { campaign_id: 'c1', status: 'draft', client: { fv_client_id: '2001', name: 'TESTING Haul LLC' },
+                     counts: { pending: 1, skipped: 1, sent: 0, failed: 0 },
+                     recipients: [{ fv_debtor_id: '9001', name: 'Acme Test Logistics', email: 'ap@acmetest.com', state: 'pending' },
+                                  { fv_debtor_id: '9003', name: '<b>Gmail</b>', email: null, skip_reason: 'free_mail', state: 'skipped' }] };
+  const { dom } = boot(url => url.includes('/internal/noa/campaigns/c1') ? [200, { campaign }]
+    : [200, { records: [], items: [], campaigns: [], lists: [], entries: [] }]);
+  await tick();
+  const w = dom.window, doc = w.document;
+  w.NOA_CENTER_TEST.showCampaign(campaign);
+  const btn = doc.getElementById('camp-launch'), typed = doc.getElementById('camp-typed');
+  assert.strictEqual(btn.disabled, true);
+  typed.value = 'TESTING Haul'; typed.dispatchEvent(new w.Event('input'));
+  assert.strictEqual(btn.disabled, true);
+  typed.value = 'testing haul llc'; typed.dispatchEvent(new w.Event('input'));
+  assert.strictEqual(btn.disabled, false);
+  assert.match(doc.getElementById('camp-launch-count').textContent, /to 1 debtor\.$/);
+  assert.strictEqual(doc.querySelector('#camp-recipients b'), null);
+  assert.match(doc.getElementById('camp-recipients').textContent, /Free email address, not sent/);
+});
+
+test('directory rows render escaped', async () => {
+  const { dom } = boot(url => url.includes('/internal/noa/directory')
+    ? [200, { entries: [{ debtor_key: 'fv:9001', best_email: '<i>ap@acmetest.com</i>',
+                          addresses: [{ email: 'ap@acmetest.com', verified_count: 3, last_confirmed_at: '2026-11-01T10:00:00' }],
+                          updated_at: '2026-11-01T10:00:00' }] }]
+    : [200, { records: [], items: [] }]);
+  await tick();
+  const doc = dom.window.document;
+  doc.querySelector('nav button[data-tab="directory"]').click();
+  await tick();
+  const row = doc.querySelector('#dir-body tr');
+  assert.ok(row && /fv:9001/.test(row.textContent) && /3/.test(row.textContent));
+  assert.strictEqual(doc.querySelector('#dir-body i'), null);
+});
+
+// ---- Phase 6: Releases tab -------------------------------------------------------------
+test('lorStatusLabel maps every status', () => {
+  assert.deepStrictEqual(
+    ['waiting_ar', 'requested', 'approved', 'sent', 'rejected', 'expired', 'failed'].map(H.lorStatusLabel),
+    ['Waiting on AR', 'To review', 'Approved, sending', 'Sent', 'Rejected', 'Expired', 'Failed to send']);
+});
+
+test('lorRowView flags unknown AR and client remit changes', () => {
+  const v = H.lorRowView({ status: 'requested', client: { name: 'TESTING Freight' }, debtor: { name: 'Acme Test' },
+                           ar_unknown: true, remit_changed: true, send_to: null,
+                           last_ar_check: { unknown: true } });
+  assert.strictEqual(v.ar, 'Balance unknown');
+  assert.strictEqual(v.arUnknown, true);
+  assert.deepStrictEqual(v.flags, ['AR unknown', 'Remit changed by client', 'No send-to address']);
+  assert.strictEqual(v.canReview, true);
+  assert.strictEqual(H.lorArText({ open_balance: 10000, pending_loads: 2 }), '$10,000.00 open, 2 load(s) in flight');
+  assert.strictEqual(H.sendToSourceLabel('staff:fmcsa'), 'Staff (fmcsa)');
+  assert.strictEqual(H.lorRowView({ status: 'sent', fv_block_pending: true }).flags.includes('Block in FV'), true);
+});
+
+test('releases tab renders rows escaped and the review card', async () => {
+  const req = { _id: 'abc', status: 'requested', client: { name: '<b>TESTING Freight</b>' },
+                debtor: { name: 'Acme Test Brokerage' }, send_to: 'noa@acme.example', send_to_source: 'fv_email_noa',
+                remit_to: { name: 'TESTING Freight', address_lines: ['1 Test Way'] },
+                last_ar_check: { unknown: false, open_balance: 0, pending_loads: 0 } };
+  const { dom } = boot(url => url.includes('/internal/noa/lor')
+    ? [200, { requests: [req], request: Object.assign({ fields: { debtor: { name: 'Acme Test Brokerage', mc: '333',
+                                                                            address_lines: ['9 Broker Rd'] } } }, req) }]
+    : [200, { records: [], items: [] }]);
+  await tick();
+  const w = dom.window, doc = w.document;
+  doc.querySelector('nav button[data-tab="releases"]').click();
+  await tick();
+  assert.match(doc.getElementById('lor-body').textContent, /Acme Test Brokerage.*To review.*\$0\.00 open/);
+  assert.strictEqual(doc.querySelector('#lor-body b'), null);
+  w.NOA_CENTER_TEST.showRelease(Object.assign({ fields: { debtor: { name: 'Acme Test Brokerage', mc: '333',
+                                                                    address_lines: ['9 Broker Rd'] } } }, req));
+  assert.match(doc.getElementById('lor-facts').textContent, /FactorView NOA email/);
+  assert.strictEqual(doc.getElementById('lor-approve').hidden, false);
+  assert.strictEqual(doc.getElementById('lor-fv').hidden, true);
+});

@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>NOA Center</title>
+<!-- CNOA staff screen. Identity is the operfi-broker-api session cookie
+     (credentials: 'include'); the API decides who is staff and who may confirm.
+     Every value from the API is written with textContent, never innerHTML. -->
+<style>
+  :root { --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --bg:#f6f5f1; --card:#fff;
+          --orange:#C2410C; --orange-soft:#fff1e8; --green:#047857; --red:#b91c1c; --amber:#b45309; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Arial, Helvetica, sans-serif; color:var(--ink); background:var(--bg); font-size:14px; }
+  header { background:var(--ink); color:#fff; padding:14px 20px; font-weight:bold; font-size:17px; }
+  nav { display:flex; gap:4px; padding:10px 20px 0; border-bottom:1px solid var(--line); background:var(--card); flex-wrap:wrap; }
+  nav button { border:0; background:none; padding:10px 14px; cursor:pointer; font-size:14px; color:var(--muted); border-bottom:3px solid transparent; }
+  nav button.on { color:var(--ink); border-bottom-color:var(--orange); font-weight:bold; }
+  main { padding:16px 20px; }
+  section[hidden], #drawer[hidden] { display:none; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  tbody tr { cursor:pointer; } tbody tr:hover { background:#faf9f6; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#eef2f7; }
+  .chip.confirmed, .chip.grandfathered { background:#e7f6ef; color:var(--green); }
+  .chip.action_needed { background:#fde8e8; color:var(--red); }
+  .chip.acknowledged { background:#fff7e0; color:var(--amber); }
+  .flag { display:inline-block; margin:0 4px 2px 0; padding:1px 6px; border-radius:4px; background:var(--orange-soft); color:var(--orange); font-size:12px; }
+  .muted { color:var(--muted); }
+  input, select, textarea { padding:7px; border:1px solid #cfd4dc; border-radius:5px; font-size:14px; }
+  button.primary { background:var(--orange); color:#fff; border:0; border-radius:5px; padding:8px 14px; cursor:pointer; font-weight:bold; }
+  button.primary:disabled { opacity:.45; cursor:not-allowed; }
+  button.link { background:none; border:0; color:var(--orange); cursor:pointer; padding:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:8px; }
+  .grid label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); }
+  .check.block { color:var(--red); } .check.warning { color:var(--amber); } .check.positive { color:var(--green); }
+  #drawer { position:fixed; top:0; right:0; width:min(520px, 100%); height:100%; overflow:auto; background:var(--card);
+            box-shadow:-6px 0 18px rgba(0,0,0,.12); padding:18px; }
+  #drawer h3 { margin:0 0 6px; }
+  .timeline li { margin-bottom:6px; }
+  .msg { padding:8px 10px; border-radius:5px; margin:8px 0; background:#eef2f7; }
+  .msg.err { background:#fde8e8; color:var(--red); }
+  #no-access { padding:60px 20px; text-align:center; font-size:16px; font-weight:bold; }
+</style>
+</head>
+<body>
+<header>NOA Center</header>
+<div id="no-access" hidden>You need NOA Center access. Ask an OperFi admin.</div>
+<div id="app">
+  <nav>
+    <button data-tab="queue" class="on">Queue</button>
+    <button data-tab="clients">Clients</button>
+    <button data-tab="inbox">Needs a match</button>
+    <button data-tab="campaigns">Campaigns</button>
+    <button data-tab="directory">Directory</button>
+    <button data-tab="releases">Releases</button>
+  </nav>
+  <main>
+    <section id="tab-queue">
+      <div class="bar">
+        <select id="queue-team"><option value="">All teams</option><option value="carrier">Carrier ops</option><option value="broker">Broker support</option></select>
+        <select id="queue-flag"><option value="">Everything that needs a person</option></select>
+        <button class="link" id="queue-refresh">Refresh</button>
+      </div>
+      <table><thead><tr><th>Client</th><th>Debtor</th><th>Why it's here</th><th>NOA</th><th>Age</th></tr></thead>
+        <tbody id="queue-body"></tbody></table>
+      <p class="muted" id="queue-empty" hidden>Nothing waiting on the team.</p>
+    </section>
+
+    <section id="tab-clients" hidden>
+      <div class="bar">
+        <input id="client-q" placeholder="Search FactorView clients (name, DBA)" size="40">
+        <button class="link" id="client-search">Search</button>
+      </div>
+      <div id="client-results"></div>
+      <div id="client-panel" hidden>
+        <h3 id="client-title"></h3>
+        <table><thead><tr><th>Debtor</th><th>NOA</th><th>Waiting on</th><th>Last action</th><th>Source</th></tr></thead>
+          <tbody id="client-body"></tbody></table>
+        <div class="card" style="margin-top:12px">
+          <strong>Send NOA</strong>
+          <div class="grid" style="margin-top:8px">
+            <label>Debtor name<input id="send-debtor-name"></label>
+            <label>FV debtor id (optional)<input id="send-debtor-id"></label>
+            <label>Debtor verified domain<input id="send-domain" placeholder="acme.com"></label>
+            <label>AP email<input id="send-email" type="email"></label>
+            <label>AP name (optional)<input id="send-name"></label>
+            <label>Approved limit<input id="send-limit" type="number" min="0"></label>
+            <label>Client email to CC<input id="send-cc" type="email"></label>
+            <label>Client is a<select id="send-kind"><option value="broker">Broker</option><option value="carrier">Carrier</option></select></label>
+          </div>
+          <label class="muted" style="display:block;margin-top:8px">Note to AP (optional)<br><textarea id="send-note" rows="2" style="width:100%"></textarea></label>
+          <div id="send-checks"></div>
+          <button class="primary" id="send-go">Send NOA</button>
+          <button class="link" id="send-force" hidden>Send anyway</button>
+          <div id="send-msg"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-inbox" hidden>
+      <p class="muted">FactorView NOA copies in noa@ that could not be matched to a client and debtor. Assigning one records the FV send. Nothing is emailed.</p>
+      <table><thead><tr><th>Received</th><th>Subject</th><th>To</th><th>Why</th><th></th></tr></thead>
+        <tbody id="inbox-body"></tbody></table>
+      <p class="muted" id="inbox-empty" hidden>No unmatched copies.</p>
+    </section>
+
+    <section id="tab-campaigns" hidden>
+      <p class="muted">Blanket NOAs for one client to many debtors. No FactorView link is created. A later
+        first invoice still gets its own relationship NOA.</p>
+      <div class="bar">
+        <input id="camp-client-q" placeholder="Search FactorView clients" size="34">
+        <button class="link" id="camp-client-search">Search</button>
+        <strong id="camp-client-name"></strong>
+      </div>
+      <div id="camp-client-results"></div>
+      <div id="camp-builder" class="card" hidden>
+        <div class="bar">
+          <label>Debtors from <select id="camp-source">
+            <option value="hauled">Debtors this client has invoiced (FactorView)</option>
+            <option value="list">A saved list</option>
+            <option value="ids">FV debtor ids (one per line)</option></select></label>
+          <button class="link" id="camp-load">Load</button>
+        </div>
+        <div id="camp-picks"></div>
+        <div class="bar" style="margin-top:8px">
+          <input id="camp-save-name" placeholder="Save these debtors as a list (name)">
+          <button class="link" id="camp-save-list">Save list</button>
+          <button class="primary" id="camp-build">Build campaign</button>
+        </div>
+        <div id="camp-msg"></div>
+      </div>
+      <h3>Campaigns</h3>
+      <table><thead><tr><th>Created</th><th>Status</th><th>Counts</th><th>By</th></tr></thead>
+        <tbody id="camp-list"></tbody></table>
+      <div id="camp-detail" class="card" hidden style="margin-top:12px">
+        <h3 id="camp-title"></h3>
+        <div class="muted" id="camp-summary"></div>
+        <div class="card" id="camp-launch-box">
+          <strong>Launch</strong>
+          <p id="camp-launch-count"></p>
+          <label>Type the client name to confirm<br><input id="camp-typed" size="40" autocomplete="off"></label>
+          <button class="primary" id="camp-launch" disabled>Launch campaign</button>
+          <div id="camp-launch-msg"></div>
+        </div>
+        <table><thead><tr><th>Debtor</th><th>Address</th><th>State</th><th>NOA</th><th>Open payables</th></tr></thead>
+          <tbody id="camp-recipients"></tbody></table>
+      </div>
+    </section>
+    <section id="tab-directory" hidden>
+      <div class="bar">
+        <input id="dir-q" placeholder="Search debtor key or address" size="36">
+        <button class="link" id="dir-search">Search</button>
+      </div>
+      <table><thead><tr><th>Debtor</th><th>Best NOA / AP address</th><th>Confirmed NOAs</th><th>Last confirmed</th></tr></thead>
+        <tbody id="dir-body"></tbody></table>
+    </section>
+    <section id="tab-releases" hidden>
+      <div class="bar">
+        <select id="lor-filter">
+          <option value="requested">To review</option>
+          <option value="waiting_ar">Waiting on AR</option>
+          <option value="sent">Sent</option>
+          <option value="fv">Block in FV</option>
+          <option value="failed,rejected,expired">Closed / failed</option>
+        </select>
+        <button class="link" id="lor-refresh">Refresh</button>
+      </div>
+      <table><thead><tr><th>Client</th><th>Debtor</th><th>Status</th><th>AR</th><th>Flags</th><th></th></tr></thead>
+        <tbody id="lor-body"></tbody></table>
+      <div class="card" id="lor-card" hidden>
+        <strong id="lor-title"></strong>
+        <p class="muted">The system filled this letter from FactorView and our confirmed contacts. You approve or reject it; you do not edit it.</p>
+        <div id="lor-facts"></div>
+        <div id="lor-msg"></div>
+        <div id="lor-actions">
+          <button class="primary" id="lor-approve">Approve and send</button>
+          <div class="grid" style="margin-top:8px"><label>Reject reason<input id="lor-reason"></label></div>
+          <button class="link" id="lor-reject">Reject</button>
+          <div class="grid" style="margin-top:8px">
+            <label>Send-to address<input id="lor-sendto" type="email"></label>
+            <label>Address came from<select id="lor-source"><option value="">Pick a source</option></select></label>
+          </div>
+          <button class="link" id="lor-sendto-go">Set send-to</button>
+        </div>
+        <button class="primary" id="lor-fv" hidden>Blocked in FV</button>
+      </div>
+      <div class="card"><strong>Start a release for a client</strong>
+        <div class="grid">
+          <label>FV client id<input id="lor-new-client"></label>
+          <label>FV debtor id<input id="lor-new-debtor"></label>
+        </div>
+        <button class="link" id="lor-new-go">Open request</button>
+        <button class="link" id="lor-exit-go">Full exit (every debtor)</button>
+        <div id="lor-new-msg"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<aside id="drawer" hidden>
+  <button class="link" id="drawer-close" style="float:right">Close</button>
+  <h3 id="d-title"></h3>
+  <div><span class="chip" id="d-status"></span> <span class="muted" id="d-waiting"></span></div>
+  <div id="d-flags" style="margin:6px 0"></div>
+  <div id="d-msg"></div>
+
+  <div class="card"><strong>Resend</strong>
+    <div class="grid" style="margin-top:6px"><label>AP email<input id="r-email" type="email"></label></div>
+    <div id="r-checks"></div>
+    <button class="primary" id="r-go">Resend NOA</button> <button class="link" id="r-force" hidden>Send anyway</button>
+  </div>
+
+  <div class="card"><strong>Record evidence</strong>
+    <p class="muted">AP acknowledged outside the page (email reply, phone). Say where it came from.</p>
+    <textarea id="e-note" rows="2" style="width:100%" placeholder="AP replied by email on 11/03 from ap@..."></textarea>
+    <input type="file" id="e-file" accept=".pdf,.png,.jpg,.jpeg,.eml,.msg">
+    <button class="primary" id="e-go">Record</button>
+  </div>
+
+  <div class="card"><strong>Confirm</strong>
+    <p class="muted">Call a number from an independent source. Never a number the client gave us.</p>
+    <div class="grid">
+      <label>How<select id="c-how"><option value="phone">Phone call</option><option value="email">Email from verified domain</option></select></label>
+      <label>Number called<input id="c-phone"></label>
+      <label>Spoke with<input id="c-spoke"></label>
+      <label>Number came from<select id="c-source"><option value="">Pick a source</option></select></label>
+    </div>
+    <button class="primary" id="c-go" disabled>Confirm NOA</button>
+  </div>
+
+  <div class="card"><strong>Release</strong>
+    <div class="grid"><label>Reason<input id="x-reason" placeholder="Client exit, LOR sent"></label></div>
+    <button class="primary" id="x-go">Release</button>
+  </div>
+
+  <h4>Timeline</h4>
+  <ul class="timeline" id="d-events"></ul>
+</aside>
+
+<script src="noa-center-helpers.js"></script>
+<script>
+(function () {
+  var H = window.NoaCenter;
+  var API = window.NOA_API_BASE || 'https://operfi-broker-api.onrender.com';
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { client: null, record: null };
+
+  function el(tag, text, cls) {
+    var n = document.createElement(tag);
+    if (text != null) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  }
+  function clear(node) { node.innerHTML = ''; }
+  function when(iso) { return iso ? String(iso).replace('T', ' ').slice(0, 16) : ''; }
+
+  function api(path, opts) {
+    opts = opts || {};
+    var init = { method: opts.method || 'GET', credentials: 'include', headers: {} };
+    if (opts.json) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.json); }
+    if (opts.form) { init.body = opts.form; }
+    return fetch(API + path, init).then(function (r) {
+      if (r.status === 403) { noAccess(); throw new Error('forbidden'); }
+      return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body || {} }; });
+    });
+  }
+  function noAccess() { $('app').hidden = true; $('drawer').hidden = true; $('no-access').hidden = false; }
+  function say(box, text, err) { clear(box); if (text) box.appendChild(el('div', text, err ? 'msg err' : 'msg')); }
+
+  function chip(status) { return el('span', H.chipLabel(status), 'chip ' + status); }
+  function flags(list) {
+    var span = el('span');
+    (list || []).forEach(function (f) { span.appendChild(el('span', H.flagLabel(f), 'flag')); });
+    return span;
+  }
+  function checksInto(box, checks) {
+    clear(box);
+    H.renderChecks(checks).forEach(function (c) { box.appendChild(el('div', c.text, 'check ' + c.level)); });
+  }
+
+  // ---- tabs ------------------------------------------------------------------------
+  Array.prototype.forEach.call(document.querySelectorAll('nav button'), function (b) {
+    b.addEventListener('click', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('nav button'), function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      ['queue', 'clients', 'inbox', 'campaigns', 'directory', 'releases'].forEach(function (t) { $('tab-' + t).hidden = (t !== b.dataset.tab); });
+      if (b.dataset.tab === 'releases') loadReleases();
+      if (b.dataset.tab === 'inbox') loadInbox();
+      if (b.dataset.tab === 'directory') loadDirectory();
+      if (b.dataset.tab === 'queue') loadQueue();
+    });
+  });
+
+  // ---- queue -----------------------------------------------------------------------
+  ['verify', 'operfi_send', 'open_payables', 'stale', 'bounce', 'reply', 'dispute', 'vendor_setup', 'contact_review'].forEach(function (f) {
+    var o = el('option', H.flagLabel(f)); o.value = f; $('queue-flag').appendChild(o);
+  });
+  function loadQueue() {
+    var qs = '?team=' + encodeURIComponent($('queue-team').value) + '&flag=' + encodeURIComponent($('queue-flag').value);
+    return api('/internal/noa/queue' + qs).then(function (res) {
+      var body = $('queue-body'); clear(body);
+      var rows = res.body.records || [];
+      $('queue-empty').hidden = rows.length > 0;
+      rows.forEach(function (r) {
+        var tr = document.createElement('tr');
+        tr.appendChild(el('td', (r.client || {}).name));
+        tr.appendChild(el('td', (r.debtor || {}).name));
+        var why = el('td'); why.appendChild(flags(r.queue_flags));
+        if (r.status_reason) why.appendChild(el('div', r.status_reason, 'muted'));
+        tr.appendChild(why);
+        var st = el('td'); st.appendChild(chip(r.status)); st.appendChild(el('div', H.waitingOnText(r), 'muted'));
+        tr.appendChild(st);
+        tr.appendChild(el('td', H.ageText(r.age_days)));
+        tr.addEventListener('click', function () { openRecord(r.noa_id); });
+        body.appendChild(tr);
+      });
+    }).catch(function () {});
+  }
+  $('queue-team').addEventListener('change', loadQueue);
+  $('queue-flag').addEventListener('change', loadQueue);
+  $('queue-refresh').addEventListener('click', loadQueue);
+
+  // ---- clients ---------------------------------------------------------------------
+  $('client-search').addEventListener('click', function () {
+    api('/internal/noa/clients/search?q=' + encodeURIComponent($('client-q').value)).then(function (res) {
+      var box = $('client-results'); clear(box);
+      (res.body.clients || []).forEach(function (c) {
+        var b = el('button', c.name + (c.dba_name ? ' (' + c.dba_name + ')' : '') + (c.mc_number ? '  MC ' + c.mc_number : ''), 'link');
+        b.style.display = 'block'; b.style.margin = '4px 0';
+        b.addEventListener('click', function () { pickClient(c); });
+        box.appendChild(b);
+      });
+      if (!(res.body.clients || []).length) box.appendChild(el('p', 'No clients found.', 'muted'));
+    }).catch(function () {});
+  });
+  function pickClient(c) {
+    state.client = c; $('client-panel').hidden = false; $('client-title').textContent = c.name;
+    loadClientRecords();
+  }
+  function loadClientRecords() {
+    return api('/internal/noa/records?client_id=' + encodeURIComponent(state.client.fv_client_id)).then(function (res) {
+      var body = $('client-body'); clear(body);
+      (res.body.records || []).forEach(function (r) {
+        var tr = document.createElement('tr');
+        tr.appendChild(el('td', (r.debtor || {}).name));
+        var st = el('td'); st.appendChild(chip(r.status)); tr.appendChild(st);
+        tr.appendChild(el('td', r.waiting_on || ''));
+        tr.appendChild(el('td', when(r.last_action_at)));
+        tr.appendChild(el('td', r.kind));
+        tr.addEventListener('click', function () { openRecord(r.noa_id); });
+        body.appendChild(tr);
+      });
+    }).catch(function () {});
+  }
+  function sendNew(force) {
+    var limit = $('send-limit').value;
+    var payload = {
+      client: { fv_client_id: state.client.fv_client_id, name: state.client.name,
+                kind: $('send-kind').value, email: $('send-cc').value || undefined },
+      debtor: { name: $('send-debtor-name').value, fv_debtor_id: $('send-debtor-id').value || undefined,
+                verified_domain: $('send-domain').value || undefined },
+      contact: { email: $('send-email').value, name: $('send-name').value || undefined },
+      approved_limit: limit === '' ? undefined : Number(limit),
+      note: $('send-note').value || undefined, force: !!force
+    };
+    api('/internal/noa/records', { method: 'POST', json: payload }).then(function (res) {
+      checksInto($('send-checks'), res.body.checks);
+      $('send-force').hidden = res.body.error !== 'blocked_contact';
+      if (res.ok) { say($('send-msg'), 'Sent.'); loadClientRecords(); }
+      else say($('send-msg'), 'Not sent: ' + (res.body.error || res.status), true);
+    }).catch(function () {});
+  }
+  $('send-go').addEventListener('click', function () { sendNew(false); });
+  $('send-force').addEventListener('click', function () { sendNew(true); });
+
+  // ---- needs a match ---------------------------------------------------------------
+  function loadInbox() {
+    return api('/internal/noa/inbox').then(function (res) {
+      var body = $('inbox-body'); clear(body);
+      var items = res.body.items || [];
+      $('inbox-empty').hidden = items.length > 0;
+      items.forEach(function (it) {
+        var tr = document.createElement('tr');
+        tr.appendChild(el('td', when(it.received_at)));
+        tr.appendChild(el('td', it.subject));
+        tr.appendChild(el('td', it.to));
+        tr.appendChild(el('td', it.reason));
+        var act = el('td');
+        var cid = el('input'); cid.placeholder = 'FV client id';
+        var cname = el('input'); cname.placeholder = 'Client name'; cname.value = (it.parsed || {}).client || '';
+        var did = el('input'); did.placeholder = 'FV debtor id';
+        var dname = el('input'); dname.placeholder = 'Debtor name';
+        var go = el('button', 'Assign', 'primary');
+        var msg = el('div');
+        go.addEventListener('click', function (e) {
+          e.stopPropagation();
+          api('/internal/noa/inbox/assign', { method: 'POST', json: {
+            item_id: it.item_id, client: { fv_client_id: cid.value, name: cname.value },
+            debtor: { fv_debtor_id: did.value || undefined, name: dname.value } } }).then(function (res) {
+            if (res.ok) loadInbox(); else say(msg, 'Not assigned: ' + (res.body.error || res.status), true);
+          }).catch(function () {});
+        });
+        [cid, cname, did, dname, go, msg].forEach(function (n) { act.appendChild(n); });
+        tr.appendChild(act);
+        body.appendChild(tr);
+      });
+    }).catch(function () {});
+  }
+
+  // ---- record drawer ---------------------------------------------------------------
+  H.NUMBER_SOURCES.forEach(function (s) { var o = el('option', s.label); o.value = s.value; $('c-source').appendChild(o); });
+  $('c-source').addEventListener('change', function () { $('c-go').disabled = !H.confirmAllowed($('c-source').value); });
+
+  function openRecord(id) {
+    return api('/internal/noa/records/' + encodeURIComponent(id)).then(function (res) {
+      if (!res.ok) return;
+      var r = res.body.record; state.record = r;
+      $('drawer').hidden = false;
+      $('d-title').textContent = (r.client || {}).name + ' → ' + (r.debtor || {}).name;
+      var st = $('d-status'); st.textContent = H.chipLabel(r.status); st.className = 'chip ' + r.status;
+      $('d-waiting').textContent = H.waitingOnText({ waiting_on: res.body.waiting_on });
+      var fl = $('d-flags'); clear(fl); fl.appendChild(flags(r.queue_flags));
+      if (!res.body.has_master) fl.appendChild(el('div', 'No signed master NOA on file for this client. Sends will refuse.', 'msg err'));
+      say($('d-msg'), '');
+      var ev = $('d-events'); clear(ev);
+      (res.body.events || []).slice().reverse().forEach(function (e) {
+        ev.appendChild(el('li', when(e.at) + '  ' + e.type + (e.actor ? '  by ' + e.actor : '')));
+      });
+    }).catch(function () {});
+  }
+  function act(path, opts) {
+    return api('/internal/noa/records/' + encodeURIComponent(state.record._id) + path, opts).then(function (res) {
+      if (res.ok) { say($('d-msg'), 'Done.'); openRecord(state.record._id); loadQueue(); }
+      else say($('d-msg'), 'Not done: ' + (res.body.error || res.status), true);
+      return res;
+    }).catch(function () {});
+  }
+  function resend(force) {
+    act('/send', { method: 'POST', json: { contact: { email: $('r-email').value }, force: !!force } }).then(function (res) {
+      if (!res) return;
+      checksInto($('r-checks'), res.body.checks);
+      $('r-force').hidden = res.body.error !== 'blocked_contact';
+    });
+  }
+  $('r-go').addEventListener('click', function () { resend(false); });
+  $('r-force').addEventListener('click', function () { resend(true); });
+  $('e-go').addEventListener('click', function () {
+    var fd = new FormData(); fd.append('source_note', $('e-note').value);
+    if ($('e-file').files[0]) fd.append('file', $('e-file').files[0]);
+    act('/evidence', { method: 'POST', form: fd });
+  });
+  $('c-go').addEventListener('click', function () {
+    if (!H.confirmAllowed($('c-source').value)) return;
+    act('/confirm', { method: 'POST', json: { how: $('c-how').value, phone: $('c-phone').value,
+                                              spoke_with: $('c-spoke').value, number_source: $('c-source').value } });
+  });
+  $('x-go').addEventListener('click', function () { act('/release', { method: 'POST', json: { reason: $('x-reason').value } }); });
+  $('drawer-close').addEventListener('click', function () { $('drawer').hidden = true; });
+
+  // ---- campaigns -------------------------------------------------------------------
+  var camp = { client: null, picks: [], campaign: null };
+  function rowOf(cells) {
+    var tr = document.createElement('tr');
+    cells.forEach(function (c) { tr.appendChild(typeof c === 'string' || c == null ? el('td', c == null ? '' : c) : c); });
+    return tr;
+  }
+  $('camp-client-search').addEventListener('click', function () {
+    api('/internal/noa/clients/search?q=' + encodeURIComponent($('camp-client-q').value)).then(function (res) {
+      var box = $('camp-client-results'); clear(box);
+      (res.body.clients || []).forEach(function (c) {
+        var b = el('button', c.name + (c.mc_number ? '  MC ' + c.mc_number : ''), 'link');
+        b.style.display = 'block';
+        b.addEventListener('click', function () {
+          camp.client = c; clear(box); $('camp-client-name').textContent = c.name;
+          $('camp-builder').hidden = false; loadCampaigns();
+        });
+        box.appendChild(b);
+      });
+    }).catch(function () {});
+  });
+  function renderPicks(debtors) {
+    camp.picks = debtors.slice();
+    var box = $('camp-picks'); clear(box);
+    debtors.forEach(function (d, i) {
+      var lab = el('label'); lab.style.display = 'block';
+      var cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+      cb.addEventListener('change', function () { camp.picks[i] = cb.checked ? d : null; });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' ' + (d.name || d.fv_debtor_id) +
+        (d.invoices ? '  (' + d.invoices + ' invoices)' : '')));
+      box.appendChild(lab);
+    });
+    if (!debtors.length) box.appendChild(el('p', 'No debtors.', 'muted'));
+  }
+  $('camp-load').addEventListener('click', function () {
+    var src = $('camp-source').value, box = $('camp-picks');
+    if (src === 'hauled') {
+      api('/internal/noa/campaigns/hauled-for?client_id=' + encodeURIComponent(camp.client.fv_client_id))
+        .then(function (res) { renderPicks(res.body.debtors || []); }).catch(function () {});
+    } else if (src === 'list') {
+      api('/internal/noa/lists').then(function (res) {
+        clear(box);
+        var sel = el('select'); sel.appendChild(el('option', 'Pick a list'));
+        (res.body.lists || []).forEach(function (l) { var o = el('option', l.name + ' (' + l.count + ')'); o.value = l.list_id; sel.appendChild(o); });
+        sel.addEventListener('change', function () {
+          var l = (res.body.lists || []).filter(function (x) { return x.list_id === sel.value; })[0];
+          if (l) { renderPicks(l.debtors || []); box.insertBefore(sel, box.firstChild); }
+        });
+        box.appendChild(sel);
+      }).catch(function () {});
+    } else {
+      clear(box);
+      var ta = el('textarea'); ta.rows = 6; ta.style.width = '100%'; ta.id = 'camp-ids';
+      box.appendChild(ta);
+    }
+  });
+  function chosen() {
+    var ta = $('camp-ids');
+    if ($('camp-source').value === 'ids' && ta) {
+      return ta.value.split(/\s+/).filter(Boolean).map(function (id) { return { fv_debtor_id: id, name: '' }; });
+    }
+    return camp.picks.filter(Boolean).map(function (d) { return { fv_debtor_id: d.fv_debtor_id, name: d.name }; });
+  }
+  $('camp-save-list').addEventListener('click', function () {
+    api('/internal/noa/lists', { method: 'POST', json: { name: $('camp-save-name').value, debtors: chosen() } })
+      .then(function (res) { say($('camp-msg'), res.ok ? 'List saved.' : 'Not saved: ' + res.body.error, !res.ok); })
+      .catch(function () {});
+  });
+  $('camp-build').addEventListener('click', function () {
+    api('/internal/noa/campaigns', { method: 'POST', json: {
+      client: { fv_client_id: camp.client.fv_client_id, name: camp.client.name }, debtors: chosen() } })
+      .then(function (res) {
+        if (!res.ok) { say($('camp-msg'), 'Not built: ' + res.body.error, true); return; }
+        say($('camp-msg'), ''); showCampaign(res.body.campaign); loadCampaigns();
+      }).catch(function () {});
+  });
+  function loadCampaigns() {
+    if (!camp.client) return;
+    api('/internal/noa/campaigns?client_id=' + encodeURIComponent(camp.client.fv_client_id)).then(function (res) {
+      var body = $('camp-list'); clear(body);
+      (res.body.campaigns || []).forEach(function (c) {
+        var n = c.counts || {};
+        var tr = rowOf([when(c.created_at), c.status, (n.pending || 0) + ' pending, ' + (n.sent || 0) + ' sent, ' +
+                        (n.skipped || 0) + ' skipped', c.created_by]);
+        tr.addEventListener('click', function () { openCampaign(c.campaign_id); });
+        body.appendChild(tr);
+      });
+    }).catch(function () {});
+  }
+  function openCampaign(id) {
+    api('/internal/noa/campaigns/' + encodeURIComponent(id)).then(function (res) {
+      if (res.ok) showCampaign(res.body.campaign);
+    }).catch(function () {});
+  }
+  function updateLaunch() {
+    var c = camp.campaign;
+    $('camp-launch').disabled = !(c && c.status === 'draft' && H.nameMatches($('camp-typed').value, (c.client || {}).name));
+  }
+  function showCampaign(c) {
+    camp.campaign = c;
+    $('camp-detail').hidden = false;
+    $('camp-title').textContent = (c.client || {}).name + '  \u00b7  ' + c.status;
+    $('camp-summary').textContent = c.summary ? H.summaryText(c.summary) : '';
+    var pending = (c.recipients || []).filter(function (r) { return r.state === 'pending'; }).length;
+    $('camp-launch-box').hidden = c.status !== 'draft';
+    $('camp-launch-count').textContent = 'This sends ' + (c.client || {}).name + "'s signed NOA to " + pending +
+      (pending === 1 ? ' debtor.' : ' debtors.');
+    $('camp-typed').value = '';
+    updateLaunch();
+    var body = $('camp-recipients'); clear(body);
+    (c.recipients || []).forEach(function (r) {
+      body.appendChild(rowOf([r.name || r.fv_debtor_id, r.email || H.skipLabel(r.skip_reason), r.state,
+                              r.record_status ? H.chipLabel(r.record_status) : '',
+                              r.open_payables ? ('Yes' + (r.open_amount != null ? ' ($' + Number(r.open_amount).toFixed(2) + ')' : ''))
+                                : (r.open_payables === false ? 'No' : '')]));
+    });
+  }
+  $('camp-typed').addEventListener('input', updateLaunch);
+  $('camp-launch').addEventListener('click', function () {
+    var c = camp.campaign;
+    if (!c || !H.nameMatches($('camp-typed').value, (c.client || {}).name)) return;
+    api('/internal/noa/campaigns/' + encodeURIComponent(c.campaign_id) + '/launch',
+        { method: 'POST', json: { typed_name: $('camp-typed').value } }).then(function (res) {
+      if (res.ok) { say($('camp-launch-msg'), 'Launched. Emails go out over the next runs.'); openCampaign(c.campaign_id); loadCampaigns(); }
+      else say($('camp-launch-msg'), 'Not launched: ' + (res.body.error || res.status), true);
+    }).catch(function () {});
+  });
+
+  // ---- directory -------------------------------------------------------------------
+  function loadDirectory() {
+    return api('/internal/noa/directory?q=' + encodeURIComponent($('dir-q').value)).then(function (res) {
+      var body = $('dir-body'); clear(body);
+      (res.body.entries || []).forEach(function (e) {
+        var total = (e.addresses || []).reduce(function (n, a) { return n + (a.verified_count || 0); }, 0);
+        var last = (e.addresses || []).map(function (a) { return a.last_confirmed_at || ''; }).sort().pop();
+        body.appendChild(rowOf([e.debtor_key, e.best_email || '', String(total), when(last)]));
+      });
+    }).catch(function () {});
+  }
+  $('dir-search').addEventListener('click', loadDirectory);
+
+  // ---- releases (Letters of Release) ------------------------------------------------
+  var lorState = { current: null };
+  H.NUMBER_SOURCES.forEach(function (s) { var o = el('option', s.label); o.value = s.value; $('lor-source').appendChild(o); });
+  function loadReleases() {
+    var f = $('lor-filter').value;
+    var qs = f === 'fv' ? '?fv_block=pending' : '?status=' + encodeURIComponent(f);
+    return api('/internal/noa/lor' + qs).then(function (res) {
+      if (res.status === 403) return noAccess();
+      var body = $('lor-body'); clear(body);
+      (res.body.requests || []).forEach(function (r) {
+        var v = H.lorRowView(r);
+        var tr = rowOf([v.client, v.debtor, v.status, v.ar, v.flags.join(', ')]);
+        if (v.arUnknown) tr.children[3].className = 'err';
+        var td = document.createElement('td');
+        var b = el('button', 'Open', 'link');
+        b.addEventListener('click', function () { openRelease(r._id); });
+        td.appendChild(b); tr.appendChild(td);
+        body.appendChild(tr);
+      });
+    }).catch(function () {});
+  }
+  function fact(label, value, warn) {
+    var d = el('div', label + ': ' + (value || ''));
+    if (warn) d.className = 'check warning';
+    return d;
+  }
+  function showRelease(r) {
+    lorState.current = r;
+    $('lor-card').hidden = false;
+    say($('lor-msg'), '');
+    var v = H.lorRowView(r);
+    $('lor-title').textContent = v.client + '  \u00b7  ' + v.debtor + '  \u00b7  ' + v.status;
+    var box = $('lor-facts'); clear(box);
+    var d = (r.fields || {}).debtor || r.debtor || {};
+    box.appendChild(fact('Debtor', [d.name, d.mc ? 'MC ' + d.mc : ''].filter(Boolean).join(', ')));
+    box.appendChild(fact('Debtor address', (d.address_lines || []).join(', ')));
+    box.appendChild(fact('Send to', (r.send_to || 'none') + ' (' + H.sendToSourceLabel(r.send_to_source) + ')', !r.send_to));
+    var remit = r.remit_to || {};
+    box.appendChild(fact('Remit to', [remit.name].concat(remit.address_lines || []).join(', ') +
+                         (r.remit_changed ? ' (changed by client)' : ''), r.remit_changed));
+    box.appendChild(fact('AR', v.ar, v.arUnknown));
+    if (r.verify_reply) box.appendChild(fact('Debtor replied', 'check noa@ before acting', true));
+    $('lor-actions').hidden = !v.canReview && r.status !== 'waiting_ar';
+    $('lor-approve').hidden = !v.canReview;
+    $('lor-fv').hidden = !r.fv_block_pending;
+  }
+  function openRelease(id) {
+    return api('/internal/noa/lor/' + encodeURIComponent(id)).then(function (res) {
+      if (res.ok) showRelease(res.body.request);
+    }).catch(function () {});
+  }
+  function lorAction(path, json, done) {
+    var r = lorState.current; if (!r) return;
+    api('/internal/noa/lor/' + encodeURIComponent(r._id) + path, { method: 'POST', json: json || {} }).then(function (res) {
+      if (res.ok) { say($('lor-msg'), done); openRelease(r._id); loadReleases(); }
+      else say($('lor-msg'), 'Not done: ' + (res.body.error || res.status), true);
+    }).catch(function () {});
+  }
+  $('lor-filter').addEventListener('change', loadReleases);
+  $('lor-refresh').addEventListener('click', loadReleases);
+  $('lor-approve').addEventListener('click', function () { lorAction('/approve', {}, 'Approved. The release was sent to the debtor.'); });
+  $('lor-reject').addEventListener('click', function () { lorAction('/reject', { reason: $('lor-reason').value }, 'Rejected.'); });
+  $('lor-sendto-go').addEventListener('click', function () {
+    lorAction('/send-to', { email: $('lor-sendto').value, number_source: $('lor-source').value }, 'Send-to address set.');
+  });
+  $('lor-fv').addEventListener('click', function () { lorAction('/fv-blocked', {}, 'Marked blocked in FactorView.'); });
+  $('lor-new-go').addEventListener('click', function () {
+    api('/internal/noa/lor', { method: 'POST', json: { fv_client_id: $('lor-new-client').value.trim(),
+                                                       fv_debtor_id: $('lor-new-debtor').value.trim() } }).then(function (res) {
+      if (res.ok) { say($('lor-new-msg'), 'Request opened.'); openRelease(res.body.request_id); loadReleases(); }
+      else say($('lor-new-msg'), 'Not opened: ' + (res.body.error || res.status), true);
+    }).catch(function () {});
+  });
+  $('lor-exit-go').addEventListener('click', function () {
+    api('/internal/noa/lor/full-exit', { method: 'POST', json: { fv_client_id: $('lor-new-client').value.trim() } }).then(function (res) {
+      if (res.ok) say($('lor-new-msg'), res.body.created.length + ' requests opened, ' + res.body.skipped.length + ' skipped (open AR or no address).');
+      else say($('lor-new-msg'), 'Not done: ' + (res.body.error || res.status), true);
+      loadReleases();
+    }).catch(function () {});
+  });
+
+  window.NOA_CENTER_TEST = { showCampaign: showCampaign, showRelease: showRelease };
+  loadQueue();
+})();
+</script>
+</body>
+</html>

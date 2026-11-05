@@ -354,6 +354,50 @@ test('Load Settings validation blocks a bad prefix or hours without posting', as
   assert.equal(posts.length, 0);
 });
 
+// ---- Optional prefix (TMSFB4): a blank prefix is numbers only ----
+test('clearing the prefix previews a bare number and saves a blank prefix', async () => {
+  const { window, posts } = makeWidget();
+  await loaded(window);
+  window.brokerEmail = 't@x.com';
+  window.applyDispatchSettings(JSON.parse(JSON.stringify(DS)));
+  const doc = window.document;
+  const pf = doc.getElementById('ls-prefix');
+  pf.value = '';
+  pf.dispatchEvent(new window.Event('input'));
+  doc.getElementById('ls-start').value = '250523';
+  doc.getElementById('ls-start').dispatchEvent(new window.Event('input'));
+  assert.equal(doc.getElementById('ls-next').textContent, '250523');
+  assert.match(doc.getElementById('ls-next-note').textContent, /Numbers only/);
+  await window.saveDispatchSettings();
+  assert.equal(doc.getElementById('ls-err').textContent, '');
+  const p = posts.find((x) => /\/tms-dispatch-settings$/.test(x.url));
+  assert.ok(p, 'posted');
+  assert.equal(p.body.load_prefix, '');
+  assert.equal(p.body.load_start, 250523);
+});
+
+test('a saved numbers-only setting renders a blank prefix and the server number', async () => {
+  const { window } = makeWidget();
+  await loaded(window);
+  window.applyDispatchSettings({ load_prefix: '', load_prefix_default: 'TES', numbers_only: true,
+    load_start: 250523, pod_alert_hours: 48, next_load_number: '250530', can_edit: true });
+  const doc = window.document;
+  assert.equal(doc.getElementById('ls-prefix').value, '');
+  assert.equal(doc.getElementById('ls-next').textContent, '250530');
+  // raising the start past the server number previews the start, still bare
+  doc.getElementById('ls-start').value = '300000';
+  doc.getElementById('ls-start').dispatchEvent(new window.Event('input'));
+  assert.equal(doc.getElementById('ls-next').textContent, '300000');
+});
+
+test('an account that never saved still shows its default prefix', () => {
+  const { window } = makeWidget();
+  window.applyDispatchSettings({ load_prefix: '', load_prefix_default: 'TES', load_start: null,
+    pod_alert_hours: 48, next_load_number: 'TES-1014', can_edit: true });
+  assert.equal(window.document.getElementById('ls-prefix').value, 'TES');
+  assert.equal(window.document.getElementById('ls-next').textContent, 'TES-1014');
+});
+
 test('Load Settings is read-only when can_edit is false', () => {
   const { window } = makeWidget();
   window.applyDispatchSettings(Object.assign({}, DS, { can_edit: false }));

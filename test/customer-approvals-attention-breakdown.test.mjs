@@ -127,6 +127,26 @@ test('a single event total is singular, not "1 references"', async () => {
   assert.doesNotMatch(text, /1 references/);
 });
 
+test('a financials upload has its own label, not the "update" fallback', async () => {
+  const w = await bootSettled();
+  w.brokerEmail = 'staff@operfi.com';
+  w.allClients = true;
+  w.fetch = fetchStub(function() {
+    return Promise.resolve({ ok: true, json: function() {
+      return Promise.resolve({
+        events: [{ id: 'ev1', subject_id: '1', account_id: 'a1', kind: 'financials_received',
+                   summary: 'Financials received: Delta Foods', detail: {}, at: '2026-11-04T12:00:00+00:00' }],
+        total: 1, counts: { '1': 1 }
+      });
+    } });
+  });
+  w.onRecordsLoaded([rec({ ID: '1', Customer_Company_Name: 'Delta Foods' })]);
+  await wait(30);
+  const text = w.customerEventsBreakdownText();
+  assert.match(text, /\b1 financials upload\b/);
+  assert.doesNotMatch(text, /update/);
+});
+
 // ── the customers-vs-events distinction ─────────────────────────────────────────
 
 test('the breakdown text spells out customers separately from the event counts by kind', async () => {

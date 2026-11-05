@@ -251,7 +251,6 @@ test('applyTemplate pre-fills full load including stops', () => {
 test('saveTemplate posts the full load shape including stops', async () => {
   const { window, posts } = makeWidget();
   window.brokerEmail = 'b@op.com';
-  window.prompt = () => 'Lane A';
   // f-customer_id is a SELECT -- populate customers so the option exists, then select it
   window.populateCustomers(CUSTOMERS.customers);
   window.document.getElementById('f-customer_id').value = 'cu1';
@@ -260,7 +259,10 @@ test('saveTemplate posts the full load shape including stops', async () => {
     .forEach(function(id){ var el = window.document.getElementById(id); if (el) el.value = id.replace('f-',''); });
   var wEl = window.document.getElementById('f-weight'); if (wEl) wEl.value = '4500';
   window.addStop && window.addStop();   // create a stop row if the helper exists
-  await window.saveTemplate();
+  const saving = window.saveTemplate();          // TMSFB3: in-page prompt
+  window.document.getElementById('pm-input').value = 'Lane A';
+  window.document.getElementById('pm-ok').click();
+  await saving;
   const post = posts.find(p => /\/tms-template$/.test(p.url));
   assert.ok(post, 'posted to /tms-template');
   assert.equal(post.body.template_name, 'Lane A');

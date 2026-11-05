@@ -111,9 +111,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
       Only Full Access users can change these settings.</div>
     <div class="ls-grid">
       <div class="ls-field">
-        <label for="ls-prefix">Load # prefix</label>
-        <input type="text" id="ls-prefix" maxlength="6" autocomplete="off" spellcheck="false">
-        <div class="ls-hint" id="ls-prefix-hint">1 to 6 letters or numbers.</div>
+        <label for="ls-prefix">Load # prefix (optional)</label>
+        <input type="text" id="ls-prefix" maxlength="6" autocomplete="off" spellcheck="false" placeholder="None">
+        <div class="ls-hint" id="ls-prefix-hint">1 to 6 letters or numbers. Leave blank for numbers only.</div>
       </div>
       <div class="ls-field">
         <label for="ls-start">Next number (optional)</label>
@@ -495,7 +495,7 @@ function applyDispatchSettings(d) {
   DS = d;
   card.style.display = '';
   var canEdit = d.can_edit !== false;
-  document.getElementById('ls-prefix').value = d.load_prefix || d.load_prefix_default || '';
+  document.getElementById('ls-prefix').value = _savedPrefix(d);
   document.getElementById('ls-start').value =
     (d.load_start == null || d.load_start === '') ? '' : String(d.load_start);
   document.getElementById('ls-pod-hours').value =
@@ -509,8 +509,15 @@ function applyDispatchSettings(d) {
   renderNextPreview();
 }
 
+// A saved numbers-only setting is a blank prefix; an account that never saved
+// shows its account-name default.
+function _savedPrefix(d) {
+  if (d.numbers_only) { return ''; }
+  return String(d.load_prefix || d.load_prefix_default || '').toUpperCase();
+}
+
 function _seqOf(num) {
-  var m = /-(\d+)$/.exec(String(num || ''));
+  var m = /(?:^|-)(\d+)$/.exec(String(num || ''));
   return m ? parseInt(m[1], 10) : 0;
 }
 
@@ -526,24 +533,25 @@ function renderNextPreview() {
   if (pfEl.value !== up) { pfEl.value = up; }
   var startRaw = String(document.getElementById('ls-start').value || '').trim();
   var start = /^\d+$/.test(startRaw) ? parseInt(startRaw, 10) : 0;
-  var savedPrefix = String(DS.load_prefix || DS.load_prefix_default || '').toUpperCase();
+  var savedPrefix = _savedPrefix(DS);
   var savedStart = (DS.load_start == null || DS.load_start === '') ? '' : String(DS.load_start);
   if (up === savedPrefix && startRaw === savedStart && DS.next_load_number) {
     el.textContent = DS.next_load_number;
     note.textContent = '';
     return;
   }
-  if (!up) { el.textContent = '-'; note.textContent = 'Enter a prefix.'; return; }
   var seq = up === savedPrefix ? Math.max(_seqOf(DS.next_load_number), start) : (start || 1001);
-  el.textContent = up + '-' + seq;
-  note.textContent = 'Confirmed when you save. A number already used under this prefix is never reused.';
+  el.textContent = up ? up + '-' + seq : String(seq);
+  note.textContent = up
+    ? 'Confirmed when you save. A number already used under this prefix is never reused.'
+    : 'Numbers only, no prefix. Confirmed when you save.';
 }
 
 function validateDispatchForm() {
   var prefix = String(document.getElementById('ls-prefix').value || '').trim().toUpperCase();
   var startRaw = String(document.getElementById('ls-start').value || '').trim();
   var hoursRaw = String(document.getElementById('ls-pod-hours').value || '').trim();
-  if (!/^[A-Z0-9]{1,6}$/.test(prefix)) { return { error: 'Prefix must be 1 to 6 letters or numbers.' }; }
+  if (prefix && !/^[A-Z0-9]{1,6}$/.test(prefix)) { return { error: 'Prefix must be 1 to 6 letters or numbers, or blank.' }; }
   var start = null;
   if (startRaw) {
     if (!/^\d+$/.test(startRaw) || +startRaw < 1 || +startRaw > 99999999) {

@@ -176,3 +176,45 @@ test('directory rows render escaped', async () => {
   assert.ok(row && /fv:9001/.test(row.textContent) && /3/.test(row.textContent));
   assert.strictEqual(doc.querySelector('#dir-body i'), null);
 });
+
+// ---- Phase 6: Releases tab -------------------------------------------------------------
+test('lorStatusLabel maps every status', () => {
+  assert.deepStrictEqual(
+    ['waiting_ar', 'requested', 'approved', 'sent', 'rejected', 'expired', 'failed'].map(H.lorStatusLabel),
+    ['Waiting on AR', 'To review', 'Approved, sending', 'Sent', 'Rejected', 'Expired', 'Failed to send']);
+});
+
+test('lorRowView flags unknown AR and client remit changes', () => {
+  const v = H.lorRowView({ status: 'requested', client: { name: 'TESTING Freight' }, debtor: { name: 'Acme Test' },
+                           ar_unknown: true, remit_changed: true, send_to: null,
+                           last_ar_check: { unknown: true } });
+  assert.strictEqual(v.ar, 'Balance unknown');
+  assert.strictEqual(v.arUnknown, true);
+  assert.deepStrictEqual(v.flags, ['AR unknown', 'Remit changed by client', 'No send-to address']);
+  assert.strictEqual(v.canReview, true);
+  assert.strictEqual(H.lorArText({ open_balance: 10000, pending_loads: 2 }), '$10,000.00 open, 2 load(s) in flight');
+  assert.strictEqual(H.sendToSourceLabel('staff:fmcsa'), 'Staff (fmcsa)');
+  assert.strictEqual(H.lorRowView({ status: 'sent', fv_block_pending: true }).flags.includes('Block in FV'), true);
+});
+
+test('releases tab renders rows escaped and the review card', async () => {
+  const req = { _id: 'abc', status: 'requested', client: { name: '<b>TESTING Freight</b>' },
+                debtor: { name: 'Acme Test Brokerage' }, send_to: 'noa@acme.example', send_to_source: 'fv_email_noa',
+                remit_to: { name: 'TESTING Freight', address_lines: ['1 Test Way'] },
+                last_ar_check: { unknown: false, open_balance: 0, pending_loads: 0 } };
+  const { dom } = boot(url => url.includes('/internal/noa/lor')
+    ? [200, { requests: [req], request: Object.assign({ fields: { debtor: { name: 'Acme Test Brokerage', mc: '333',
+                                                                            address_lines: ['9 Broker Rd'] } } }, req) }]
+    : [200, { records: [], items: [] }]);
+  await tick();
+  const w = dom.window, doc = w.document;
+  doc.querySelector('nav button[data-tab="releases"]').click();
+  await tick();
+  assert.match(doc.getElementById('lor-body').textContent, /Acme Test Brokerage.*To review.*\$0\.00 open/);
+  assert.strictEqual(doc.querySelector('#lor-body b'), null);
+  w.NOA_CENTER_TEST.showRelease(Object.assign({ fields: { debtor: { name: 'Acme Test Brokerage', mc: '333',
+                                                                    address_lines: ['9 Broker Rd'] } } }, req));
+  assert.match(doc.getElementById('lor-facts').textContent, /FactorView NOA email/);
+  assert.strictEqual(doc.getElementById('lor-approve').hidden, false);
+  assert.strictEqual(doc.getElementById('lor-fv').hidden, true);
+});

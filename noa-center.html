@@ -57,6 +57,7 @@
     <button data-tab="inbox">Needs a match</button>
     <button data-tab="campaigns">Campaigns</button>
     <button data-tab="directory">Directory</button>
+    <button data-tab="releases">Releases</button>
   </nav>
   <main>
     <section id="tab-queue">
@@ -158,6 +159,46 @@
       <table><thead><tr><th>Debtor</th><th>Best NOA / AP address</th><th>Confirmed NOAs</th><th>Last confirmed</th></tr></thead>
         <tbody id="dir-body"></tbody></table>
     </section>
+    <section id="tab-releases" hidden>
+      <div class="bar">
+        <select id="lor-filter">
+          <option value="requested">To review</option>
+          <option value="waiting_ar">Waiting on AR</option>
+          <option value="sent">Sent</option>
+          <option value="fv">Block in FV</option>
+          <option value="failed,rejected,expired">Closed / failed</option>
+        </select>
+        <button class="link" id="lor-refresh">Refresh</button>
+      </div>
+      <table><thead><tr><th>Client</th><th>Debtor</th><th>Status</th><th>AR</th><th>Flags</th><th></th></tr></thead>
+        <tbody id="lor-body"></tbody></table>
+      <div class="card" id="lor-card" hidden>
+        <strong id="lor-title"></strong>
+        <p class="muted">The system filled this letter from FactorView and our confirmed contacts. You approve or reject it; you do not edit it.</p>
+        <div id="lor-facts"></div>
+        <div id="lor-msg"></div>
+        <div id="lor-actions">
+          <button class="primary" id="lor-approve">Approve and send</button>
+          <div class="grid" style="margin-top:8px"><label>Reject reason<input id="lor-reason"></label></div>
+          <button class="link" id="lor-reject">Reject</button>
+          <div class="grid" style="margin-top:8px">
+            <label>Send-to address<input id="lor-sendto" type="email"></label>
+            <label>Address came from<select id="lor-source"><option value="">Pick a source</option></select></label>
+          </div>
+          <button class="link" id="lor-sendto-go">Set send-to</button>
+        </div>
+        <button class="primary" id="lor-fv" hidden>Blocked in FV</button>
+      </div>
+      <div class="card"><strong>Start a release for a client</strong>
+        <div class="grid">
+          <label>FV client id<input id="lor-new-client"></label>
+          <label>FV debtor id<input id="lor-new-debtor"></label>
+        </div>
+        <button class="link" id="lor-new-go">Open request</button>
+        <button class="link" id="lor-exit-go">Full exit (every debtor)</button>
+        <div id="lor-new-msg"></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -247,7 +288,8 @@
     b.addEventListener('click', function () {
       Array.prototype.forEach.call(document.querySelectorAll('nav button'), function (x) { x.classList.remove('on'); });
       b.classList.add('on');
-      ['queue', 'clients', 'inbox', 'campaigns', 'directory'].forEach(function (t) { $('tab-' + t).hidden = (t !== b.dataset.tab); });
+      ['queue', 'clients', 'inbox', 'campaigns', 'directory', 'releases'].forEach(function (t) { $('tab-' + t).hidden = (t !== b.dataset.tab); });
+      if (b.dataset.tab === 'releases') loadReleases();
       if (b.dataset.tab === 'inbox') loadInbox();
       if (b.dataset.tab === 'directory') loadDirectory();
       if (b.dataset.tab === 'queue') loadQueue();
@@ -562,7 +604,88 @@
   }
   $('dir-search').addEventListener('click', loadDirectory);
 
-  window.NOA_CENTER_TEST = { showCampaign: showCampaign };
+  // ---- releases (Letters of Release) ------------------------------------------------
+  var lorState = { current: null };
+  H.NUMBER_SOURCES.forEach(function (s) { var o = el('option', s.label); o.value = s.value; $('lor-source').appendChild(o); });
+  function loadReleases() {
+    var f = $('lor-filter').value;
+    var qs = f === 'fv' ? '?fv_block=pending' : '?status=' + encodeURIComponent(f);
+    return api('/internal/noa/lor' + qs).then(function (res) {
+      if (res.status === 403) return noAccess();
+      var body = $('lor-body'); clear(body);
+      (res.body.requests || []).forEach(function (r) {
+        var v = H.lorRowView(r);
+        var tr = rowOf([v.client, v.debtor, v.status, v.ar, v.flags.join(', ')]);
+        if (v.arUnknown) tr.children[3].className = 'err';
+        var td = document.createElement('td');
+        var b = el('button', 'Open', 'link');
+        b.addEventListener('click', function () { openRelease(r._id); });
+        td.appendChild(b); tr.appendChild(td);
+        body.appendChild(tr);
+      });
+    }).catch(function () {});
+  }
+  function fact(label, value, warn) {
+    var d = el('div', label + ': ' + (value || ''));
+    if (warn) d.className = 'check warning';
+    return d;
+  }
+  function showRelease(r) {
+    lorState.current = r;
+    $('lor-card').hidden = false;
+    say($('lor-msg'), '');
+    var v = H.lorRowView(r);
+    $('lor-title').textContent = v.client + '  \u00b7  ' + v.debtor + '  \u00b7  ' + v.status;
+    var box = $('lor-facts'); clear(box);
+    var d = (r.fields || {}).debtor || r.debtor || {};
+    box.appendChild(fact('Debtor', [d.name, d.mc ? 'MC ' + d.mc : ''].filter(Boolean).join(', ')));
+    box.appendChild(fact('Debtor address', (d.address_lines || []).join(', ')));
+    box.appendChild(fact('Send to', (r.send_to || 'none') + ' (' + H.sendToSourceLabel(r.send_to_source) + ')', !r.send_to));
+    var remit = r.remit_to || {};
+    box.appendChild(fact('Remit to', [remit.name].concat(remit.address_lines || []).join(', ') +
+                         (r.remit_changed ? ' (changed by client)' : ''), r.remit_changed));
+    box.appendChild(fact('AR', v.ar, v.arUnknown));
+    if (r.verify_reply) box.appendChild(fact('Debtor replied', 'check noa@ before acting', true));
+    $('lor-actions').hidden = !v.canReview && r.status !== 'waiting_ar';
+    $('lor-approve').hidden = !v.canReview;
+    $('lor-fv').hidden = !r.fv_block_pending;
+  }
+  function openRelease(id) {
+    return api('/internal/noa/lor/' + encodeURIComponent(id)).then(function (res) {
+      if (res.ok) showRelease(res.body.request);
+    }).catch(function () {});
+  }
+  function lorAction(path, json, done) {
+    var r = lorState.current; if (!r) return;
+    api('/internal/noa/lor/' + encodeURIComponent(r._id) + path, { method: 'POST', json: json || {} }).then(function (res) {
+      if (res.ok) { say($('lor-msg'), done); openRelease(r._id); loadReleases(); }
+      else say($('lor-msg'), 'Not done: ' + (res.body.error || res.status), true);
+    }).catch(function () {});
+  }
+  $('lor-filter').addEventListener('change', loadReleases);
+  $('lor-refresh').addEventListener('click', loadReleases);
+  $('lor-approve').addEventListener('click', function () { lorAction('/approve', {}, 'Approved. The release was sent to the debtor.'); });
+  $('lor-reject').addEventListener('click', function () { lorAction('/reject', { reason: $('lor-reason').value }, 'Rejected.'); });
+  $('lor-sendto-go').addEventListener('click', function () {
+    lorAction('/send-to', { email: $('lor-sendto').value, number_source: $('lor-source').value }, 'Send-to address set.');
+  });
+  $('lor-fv').addEventListener('click', function () { lorAction('/fv-blocked', {}, 'Marked blocked in FactorView.'); });
+  $('lor-new-go').addEventListener('click', function () {
+    api('/internal/noa/lor', { method: 'POST', json: { fv_client_id: $('lor-new-client').value.trim(),
+                                                       fv_debtor_id: $('lor-new-debtor').value.trim() } }).then(function (res) {
+      if (res.ok) { say($('lor-new-msg'), 'Request opened.'); openRelease(res.body.request_id); loadReleases(); }
+      else say($('lor-new-msg'), 'Not opened: ' + (res.body.error || res.status), true);
+    }).catch(function () {});
+  });
+  $('lor-exit-go').addEventListener('click', function () {
+    api('/internal/noa/lor/full-exit', { method: 'POST', json: { fv_client_id: $('lor-new-client').value.trim() } }).then(function (res) {
+      if (res.ok) say($('lor-new-msg'), res.body.created.length + ' requests opened, ' + res.body.skipped.length + ' skipped (open AR or no address).');
+      else say($('lor-new-msg'), 'Not done: ' + (res.body.error || res.status), true);
+      loadReleases();
+    }).catch(function () {});
+  });
+
+  window.NOA_CENTER_TEST = { showCampaign: showCampaign, showRelease: showRelease };
   loadQueue();
 })();
 </script>

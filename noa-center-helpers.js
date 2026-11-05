@@ -57,6 +57,39 @@
       (s.acknowledged || 0) + ' acknowledged, ' + (s.confirmed || 0) + ' confirmed, ' +
       (s.open_payables || 0) + ' open payables ($' + Number(s.open_amount_total || 0).toFixed(2) + ')';
   }
+  var LOR_STATUS = {
+    waiting_ar: 'Waiting on AR', requested: 'To review', approved: 'Approved, sending', sent: 'Sent',
+    rejected: 'Rejected', expired: 'Expired', failed: 'Failed to send'
+  };
+  var SEND_TO_SOURCES = { noa_record: 'Confirmed NOA contact', directory: 'NOA directory',
+                          fv_email_noa: 'FactorView NOA email', fv_email_billing: 'FactorView billing email' };
+  function lorStatusLabel(status) { return LOR_STATUS[status] || status; }
+  function money(n) { return '$' + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function sendToSourceLabel(src) {
+    if (!src) return 'No address';
+    if (String(src).indexOf('staff:') === 0) return 'Staff (' + String(src).slice(6) + ')';
+    return SEND_TO_SOURCES[src] || src;
+  }
+  function lorArText(check) {
+    if (!check) return 'Not checked';
+    if (check.unknown) return 'Balance unknown';
+    var t = money(check.open_balance) + ' open';
+    if (check.pending_loads) t += ', ' + check.pending_loads + ' load(s) in flight';
+    return t;
+  }
+  function lorRowView(row) {
+    row = row || {};
+    var check = row.last_ar_check || null;
+    var flags = [];
+    if (row.ar_unknown || (check && check.unknown)) flags.push('AR unknown');
+    if (row.remit_changed) flags.push('Remit changed by client');
+    if (!row.send_to) flags.push('No send-to address');
+    if (row.verify_reply) flags.push('Debtor replied');
+    if (row.fv_block_pending) flags.push('Block in FV');
+    return { client: (row.client || {}).name || '', debtor: (row.debtor || {}).name || 'General release',
+             status: lorStatusLabel(row.status), ar: lorArText(check), arUnknown: !!(check && check.unknown) || !!row.ar_unknown,
+             flags: flags, canReview: row.status === 'requested' };
+  }
   function ageText(days) {
     if (!days) return 'today';
     return days === 1 ? '1 day' : days + ' days';
@@ -64,5 +97,6 @@
   return { chipLabel: chipLabel, flagLabel: flagLabel, waitingOnText: waitingOnText,
            confirmAllowed: confirmAllowed, renderChecks: renderChecks, ageText: ageText,
            nameMatches: nameMatches, skipLabel: skipLabel, summaryText: summaryText,
-           NUMBER_SOURCES: NUMBER_SOURCES };
+           lorStatusLabel: lorStatusLabel, lorArText: lorArText, lorRowView: lorRowView,
+           sendToSourceLabel: sendToSourceLabel, NUMBER_SOURCES: NUMBER_SOURCES };
 });

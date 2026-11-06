@@ -421,8 +421,27 @@
       '</div>';
   }
 
+  // The header status is OperFi's internal CRM rating, not the client's
+  // access. Same rule as Company Profile: only OperFi staff see it. Staff is
+  // known only after /whoami resolves, so this fails toward hidden and a
+  // one-time recheck reveals it for staff.
+  function isStaffView() {
+    return !!(window.OPERFI_IMP && OPERFI_IMP.isStaff && OPERFI_IMP.isStaff());
+  }
+
   function renderHeader(d) {
     var h = d.header || {};
+    var ids = [];
+    if (h.usdot) ids.push('USDOT ' + escapeHtml(h.usdot));
+    if (h.mc) ids.push('MC ' + escapeHtml(h.mc));
+    var staff = isStaffView();
+    if (!staff && window.OPERFI_IMP && !renderHeader._staffRecheck) {
+      renderHeader._staffRecheck = true;
+      setTimeout(function () {
+        var el = document.getElementById('hdr-status');
+        if (el && isStaffView()) el.hidden = false;
+      }, 2000);
+    }
     return '' +
       '<div class="header-strip">' +
         '<div>' +
@@ -430,9 +449,11 @@
           '<div class="name">' + escapeHtml(d.accountName || '') + '</div>' +
         '</div>' +
         '<div class="meta">' +
-          (h.usdot ? 'USDOT ' + escapeHtml(h.usdot) + ' &nbsp;·&nbsp; ' : '') +
-          (h.mc ? 'MC ' + escapeHtml(h.mc) + ' &nbsp;·&nbsp; ' : '') +
-          '<span style="color:#22c55e">●</span> ' + escapeHtml(h.status || 'Active') +
+          ids.join(' &nbsp;·&nbsp; ') +
+          '<span id="hdr-status"' + (staff ? '' : ' hidden') + '>' +
+            (ids.length ? ' &nbsp;·&nbsp; ' : '') +
+            '<span style="color:#22c55e">●</span> ' + escapeHtml(h.status || 'Active') +
+          '</span>' +
         '</div>' +
       '</div>';
   }

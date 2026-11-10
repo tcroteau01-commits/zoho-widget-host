@@ -445,11 +445,31 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-se
         </div>
       </div>
 
+      <!-- LORFACTOR1: LOR Update on a carrier with NO factor on its Vendor record.
+           Creator's on-validate requires Factoring_Company (the factor releasing
+           the carrier) and there was nowhere to give it. syncLorFactorPicker()
+           owns this section's visibility; selectType's MATRIX never shows it. -->
+      <div id="lor-factor" class="form-section hidden">
+        <div class="section-head">
+          <div class="section-title">Releasing Factoring Company</div>
+          <div class="section-sub">We don't have a factoring company on file for this carrier. Pick the one named on the LOR.</div>
+        </div>
+        <div class="field-grid full">
+          <div class="field">
+            <label class="field-label">Factoring Company <span class="req">*</span></label>
+            <select id="lor-factor-select" class="field-select">
+              <option value="">Select a factoring company&hellip;</option>
+            </select>
+            <div class="field-help">Don't see it? Contact <a href="mailto:vendors@operfi.com" style="color:#b86e00; font-weight:600; text-decoration:none;">vendors@operfi.com</a>.</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Section: NOA Upload -->
       <div id="sec-upload" class="form-section">
         <div class="section-head">
           <div id="sec-upload-title" class="section-title">Upload NOA Document</div>
-          <div class="section-sub">Notice of Assignment from the factoring company</div>
+          <div id="sec-upload-sub" class="section-sub">Notice of Assignment from the factoring company</div>
         </div>
 
         <div class="field-grid full">
@@ -813,14 +833,15 @@ function loadStatus() {
 // backend off the Creator record, not off this element. /noa-submit checks
 // Factor_Status server-side (_factor_status_by_crm_id) and refuses there.
 // This only stops a broker picking one by accident.
-function _fillFactoringSelect(id, companies, onchange) {
+function _fillFactoringSelect(id, companies, onchange, allowed) {
   var sel = document.getElementById(id);
   if (!sel) return;
+  // An allowlist, not a denylist: the Creator picklist has four values
+  // today (Approved / Pending / Denied / In-Review) and a fifth added later
+  // must not become silently selectable.
+  allowed = allowed || ['Approved'];
   companies.forEach(function(fc){
-    // An allowlist, not a denylist: the Creator picklist has four values
-    // today (Approved / Pending / Denied / In-Review) and a fifth added later
-    // must not become silently selectable.
-    if (fc.factor_status !== 'Approved') { return; }
+    if (allowed.indexOf(fc.factor_status) < 0) { return; }
     var opt = document.createElement('option');
     opt.value = fc.id;
     opt.textContent = fc.name;
@@ -838,6 +859,11 @@ function loadFactoringCompanies() {
       loadedFactoringCompanies = companies;
       _fillFactoringSelect('noa-factoring-select', companies, function(v){ selectedFactoringId = v; });
       _fillFactoringSelect('fc-change-select', companies, function(v){ selectedNewFactoringId = v; });
+      // LORFACTOR1: the broker is naming the factor the carrier is LEAVING, not
+      // choosing one to pay, so our own review backlog (Pending / In-Review)
+      // must not block a release. Denied stays out: /noa-submit refuses it.
+      _fillFactoringSelect('lor-factor-select', companies, function(v){ lorReleaseFactorId = v || null; },
+        ['Approved', 'Pending', 'In-Review']);
     });
 }
 
@@ -1065,6 +1091,7 @@ var selectedPayTerm = null;   // carrier's current pay term, captured from the o
 var selectedFactoringCompanyId = null;   // carrier's current factor id, captured from the on-file panel (LOR Update has no dropdown for it)
 var loadedFactoringCompanies = [];   // {id,name} list from /factoring-companies -- also used to resolve a factor id by name, since Vendors.Factoring_Company is plain text, not a lookup
 var selectedCarrierName = '';  // selected carrier's name, for the confirmation screen
+var lorReleaseFactorId = null;  // LORFACTOR1: factor the broker picked for an LOR when none is on file
 
 function applyGating(p) {
   var gated = document.querySelector('.type-card.gated-card');
@@ -1078,6 +1105,14 @@ function applyGating(p) {
 }
 
 function showOnFile(carrier) {
+  // LORFACTOR1: reset first. These were only ever SET, so after viewing a
+  // factored carrier, an LOR on a carrier with no factor sent the PREVIOUS
+  // carrier's factor and pay term.
+  selectedPayTerm = null;
+  selectedFactoringCompanyId = null;
+  lorReleaseFactorId = null;
+  var lorSel = document.getElementById('lor-factor-select');
+  if (lorSel) lorSel.value = '';
   if (carrier && carrier.pay_term) selectedPayTerm = carrier.pay_term;
   if (carrier && carrier.factoring_company_id) {
     selectedFactoringCompanyId = carrier.factoring_company_id;
@@ -1089,6 +1124,7 @@ function showOnFile(carrier) {
     })[0];
     if (match) selectedFactoringCompanyId = match.id;
   }
+  syncLorFactorPicker();
   if (carrier && carrier.carrier_name) selectedCarrierName = carrier.carrier_name;
   var panel = document.getElementById('noa-onfile');
   var grid = panel ? panel.querySelector('.onfile-grid') : null;
@@ -1142,7 +1178,17 @@ function showOnFile(carrier) {
   panel.classList.remove('hidden');
 }
 
+// LORFACTOR1: ask for the releasing factor only on an LOR Update for a picked
+// carrier whose on-file factor did not resolve to an id.
+function syncLorFactorPicker() {
+  var sec = document.getElementById('lor-factor');
+  if (!sec) return;
+  var need = selectedType === 'LOR Update' && !!selectedVendorId && !selectedFactoringCompanyId;
+  sec.classList.toggle('hidden', !need);
+}
+
 function hideOnFile() {
+  syncLorFactorPicker();
   var panel = document.getElementById('noa-onfile');
   if (!panel) return;
   var grid = panel.querySelector('.onfile-grid');
@@ -1293,11 +1339,18 @@ function selectType(t) {
     var el = document.getElementById(id);
     if (el) el.classList.toggle('hidden', show.indexOf(id) < 0);
   });
+  syncLorFactorPicker();
   // on-file lives inside sec-carrier; reset it when no carrier is selected
   if (!selectedVendorId) hideOnFile();
   // upload section label: LOR uploads an LOR, others an NOA
   var ut = document.getElementById('sec-upload-title');
   if (ut) ut.textContent = (t === 'LOR Update') ? 'Upload LOR Document' : 'Upload NOA Document';
+  var us = document.getElementById('sec-upload-sub');
+  if (us) us.textContent = (t === 'LOR Update')
+    ? 'Letter of Release from the factoring company'
+    : 'Notice of Assignment from the factoring company';
+  var sb = document.getElementById('noa-submit-btn');
+  if (sb && !sb.disabled) sb.textContent = 'Submit ' + t;
   // this guidance is NOA-Update-specific ("originally selected Quick Pay or
   // their NOA was not correct") -- it showed for every type before
   var tn = document.getElementById('type-note');
@@ -1339,7 +1392,9 @@ function buildNoaPayload() {
     // Same on-validate also requires Factoring_Company (the factor being released
     // from) but LOR Update has no dropdown for it -- send the carrier's current
     // factor id, captured from the on-file panel.
-    if (selectedFactoringCompanyId) d.Factoring_Company = selectedFactoringCompanyId;
+    // LORFACTOR1: with no factor on file, the broker names it in #lor-factor-select.
+    var lorFactor = selectedFactoringCompanyId || lorReleaseFactorId;
+    if (lorFactor) d.Factoring_Company = lorFactor;
     d.Bank_Document_Upload = (lorBankChoice === 'no') ? 'No' : 'Yes';
     if (lorBankChoice === 'yes') {
       var bn = val('lor-bank-name'); if (bn) d.Bank_Name = bn;
@@ -1461,6 +1516,12 @@ function submitNoa() {
       return;
     }
   }
+  // LORFACTOR1: Creator's on-validate requires the releasing factor; catch it
+  // here with a sentence instead of a 3001 after the broker clicks Submit.
+  if (selectedType === 'LOR Update' && !selectedFactoringCompanyId && !lorReleaseFactorId) {
+    if (fb) fb.textContent = 'Select the factoring company releasing this carrier (the one named on the LOR).';
+    return;
+  }
   // DEMO: every check above has already run, so the demo still teaches the real
   // flow (pick a carrier, pick a factor, attach the document). From here the
   // demo account makes NO network call at all -- no Creator record, no upload,
@@ -1499,6 +1560,22 @@ function submitNoa() {
         // detail in different places (top-level message, per-record result error, etc.),
         // so gather what we can and include the raw response for diagnosis.
         var rr = rr0;
+        // LORFACTOR1: a 3001 on-validate refusal carries the form's own sentence
+        // in error[].alert_message. That is what the broker reads; the raw
+        // response goes to the console for us, not to the screen.
+        try { console.warn('[noa] Creator add refused', JSON.stringify(res)); } catch (e) {}
+        var alerts = [];
+        [rr && rr.error, res && res.error].forEach(function (errs) {
+          if (!Array.isArray(errs)) return;
+          errs.forEach(function (e) {
+            var am = e && e.alert_message;
+            (Array.isArray(am) ? am : (am ? [am] : [])).forEach(function (m) { if (m) alerts.push(String(m)); });
+          });
+        });
+        if (alerts.length) {
+          fail("We couldn't submit this: " + alerts.join(' '));
+          return;
+        }
         var parts = [];
         if (rr && rr.message) parts.push(rr.message);
         if (rr && rr.error) parts.push(typeof rr.error === 'string' ? rr.error : JSON.stringify(rr.error));

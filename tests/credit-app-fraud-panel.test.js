@@ -122,3 +122,39 @@ test('residential and mobile networks are never highlighted; a data center pair 
   assert.ok(!/class="cfp-repeat"[^>]*>T-Mobile/.test(html));
   assert.strictEqual((html.match(/class="cfp-repeat"[^>]*>Micron Hosting/g) || []).length, 2);
 });
+
+// SENDIP1: the client's IP at send time.
+const SENT = {
+  level: 'high',
+  reasons: [{ code: 'client_filled', strength: 'strong',
+    text: 'Applicant submitted from the same IP address the client sent the application from (98.1.1.1).' }],
+  parties: [
+    { slot: 'customer', label: 'Applicant', company: 'Redstone', email: 'ap@redstone.com',
+      email_domain: 'redstone.com', domain_age_days: 4000, opened_at: null, completed_at: null,
+      minutes_open_to_submit: null, ip: '98.1.1.1', ip_captured: true, network: '', connection_type: '',
+      browser: 'Chrome on Windows', user_agent: 'UA', phone: '', phone_carrier: '', phone_line_type: '', level: 'clean' }
+  ],
+  repeats: { ip: ['98.1.1.1'], network: [], user_agent: [], phone_carrier: [] },
+  senders: [{ email: 'b@acme.test', ip: '98.1.1.1', browser: 'Chrome on Windows', user_agent: 'UA',
+              at: '2026-11-16T14:00:00Z' }]
+};
+
+test('the client row shows who sent the app, from which IP, and when', () => {
+  const html = P.renderParties(SENT);
+  assert.ok(html.includes('Client (sent the app)'));
+  assert.ok(html.includes('b@acme.test'));
+  assert.ok(html.includes('Sent 2026-11-16 14:00 UTC'));
+  // the shared IP is marked on the client row and on the applicant row
+  assert.strictEqual((html.match(/class="cfp-repeat"[^>]*>98\.1\.1\.1/g) || []).length, 2);
+});
+
+test('a sent app nobody has answered yet still shows the client row', () => {
+  const html = P.renderParties({ level: 'unknown', reasons: [], parties: [], repeats: {},
+    senders: [{ email: 'b@acme.test', ip: '203.0.113.9', browser: 'Safari on iPhone', at: '2026-11-16T14:00:00Z' }] });
+  assert.ok(html.includes('203.0.113.9'));
+  assert.ok(!html.includes('cfp-repeat'));
+});
+
+test('no senders (a staff send or an app sent before SENDIP1) renders no client row', () => {
+  assert.ok(!P.renderParties(HIGH).includes('Client (sent the app)'));
+});

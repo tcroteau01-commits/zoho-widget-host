@@ -63,15 +63,30 @@
     var html = '';
     var rep = (fraud && fraud.repeats) || {};
     var parties = (fraud && fraud.parties) || [];
+    // SENDIP1: the client's own connection when it sent the app. Shown even
+    // before anyone answers, so staff can see it from the moment it goes out.
+    var senders = (fraud && fraud.senders) || [];
     var netCount = {};
     parties.forEach(function (p) {
       if (p.network && !residential(p)) netCount[p.network] = (netCount[p.network] || 0) + 1;
     });
-    if (parties.length) {
+    if (parties.length || senders.length) {
       html += '<div class="cfp-scroll"><table class="cfp-table"><thead><tr>' +
         '<th>Party</th><th>Email domain</th><th>Domain age</th><th>Opened</th><th>Submitted</th>' +
         '<th>Minutes</th><th>IP</th><th>Network</th><th>Browser</th><th>Phone carrier</th>' +
         '</tr></thead><tbody>';
+      senders.forEach(function (s) {
+        html += '<tr>' +
+          '<td><strong>Client (sent the app)</strong><div class="cfp-muted">' + esc(s.email) + '</div></td>' +
+          cell('', false) + cell('', false) + cell('', false) +
+          cell(s.at ? 'Sent ' + time(s.at) : '', false) +
+          cell('', false) +
+          cell(s.ip, has(rep.ip, s.ip)) +
+          cell('', false) +
+          cell(s.browser, false) +
+          cell('', false) +
+          '</tr>';
+      });
       parties.forEach(function (p) {
         var ip = p.ip_captured ? p.ip : 'not captured (before 10-09 fix)';
         var net = p.network ? p.network + (p.connection_type ? ', ' + p.connection_type : '') : '';

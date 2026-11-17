@@ -23,6 +23,20 @@
     return '<td><span' + cls + '>' + esc(value) + '</span></td>';
   }
 
+  // SENDIP2: a sender's network. Red when the client sent from outside the US
+  // or through a VPN/proxy/datacenter, the two reasons the verdict names.
+  var HIDING_WORDS = { vpn: 'VPN', proxy: 'proxy', tor: 'Tor', data_center: 'datacenter' };
+  function senderNetCell(s) {
+    var hidden = (s.hidden || []).map(function (h) { return HIDING_WORDS[h] || h; });
+    var parts = [s.isp, s.country].filter(function (x) { return !!x; });
+    var text = parts.join(', ') + (hidden.length ? ' (' + hidden.join(', ') + ')' : '');
+    if (!text) return '<td class="cfp-muted">-</td>';
+    var abroad = !!s.country && s.country !== 'US';
+    if (!abroad && !hidden.length) return '<td><span>' + esc(text) + '</span></td>';
+    var why = abroad ? 'Sent from outside the US' : 'Sent through a VPN or proxy';
+    return '<td><span class="cfp-repeat" title="' + why + '">' + esc(text) + '</span></td>';
+  }
+
   function time(iso) {
     if (!iso) return '';
     return String(iso).replace('T', ' ').slice(0, 16) + ' UTC';
@@ -82,7 +96,7 @@
           cell(s.at ? 'Sent ' + time(s.at) : '', false) +
           cell('', false) +
           cell(s.ip, has(rep.ip, s.ip)) +
-          cell('', false) +
+          senderNetCell(s) +
           cell(s.browser, false) +
           cell('', false) +
           '</tr>';

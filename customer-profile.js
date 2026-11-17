@@ -397,6 +397,7 @@ function renderHeader(p) {
                   ? ' &middot; ' + esc(p.submitted_by.email) : '') + ', '
               : '') +
             esc(p.broker) + '</div>' +
+          submittedFrom(p.submitted_from) +
         '</div>' +
         '<div class="cp-header-status">' +
           // 🚨 A settled decision must not read like an open one. Tom, after
@@ -1452,6 +1453,21 @@ function renderFinancials(p) {
   return '<div class="cp-financials">' + section('Financials', body) + '</div>';
 }
 
+// SENDIP3 (Tom, 2026-11-16): where the client submitted this credit check from.
+// Red when outside the US or through a VPN/proxy -- a red flag the team should
+// see on every check. Checks submitted before this shipped have no origin.
+var ORIGIN_HIDING = { vpn: 'VPN', proxy: 'proxy', tor: 'Tor', data_center: 'datacenter' };
+function submittedFrom(o) {
+  if (!o || !o.ip) return '';
+  var where = [o.isp, o.country].filter(function (x) { return !!x; }).join(', ');
+  var hidden = (o.hidden || []).map(function (h) { return ORIGIN_HIDING[h] || h; });
+  var text = 'Submitted from ' + o.ip + (where ? ' (' + where + ')' : '') +
+    (hidden.length ? ' through ' + hidden.join(', ') : '');
+  var warn = o.flag === 'abroad' ? 'Outside the US' : o.flag === 'hidden' ? 'VPN or proxy' : '';
+  return '<div class="cp-origin' + (warn ? ' cp-origin-flag' : '') + '">' +
+    (warn ? '<strong>' + esc(warn) + ':</strong> ' : '') + esc(text) + '</div>';
+}
+
 function render(payload) {
   var p = payload || {};
   // Order: header -> engine read -> Creditsafe picker (resolves the identity) ->
@@ -1536,6 +1552,8 @@ var CP_CSS = '' +
   '.cp-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:0.7px;color:rgba(255,255,255,0.55);font-weight:700;margin-bottom:4px;}' +
   '.cp-customer{font-size:22px;font-weight:700;letter-spacing:-0.3px;}' +
   '.cp-broker{font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px;}' +
+  '.cp-origin{font-size:12px;color:rgba(255,255,255,0.55);margin-top:3px;}' +
+  '.cp-origin-flag{display:inline-block;color:#fff;background:#c62828;border-radius:5px;padding:2px 8px;margin-top:6px;}' +
   '.cp-header-status{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}' +
   '.cp-status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.2px;text-transform:uppercase;background:rgba(255,255,255,0.14);color:#fff;}' +
   '.cp-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;}' +

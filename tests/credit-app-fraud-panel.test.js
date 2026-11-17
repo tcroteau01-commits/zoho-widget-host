@@ -158,3 +158,32 @@ test('a sent app nobody has answered yet still shows the client row', () => {
 test('no senders (a staff send or an app sent before SENDIP1) renders no client row', () => {
   assert.ok(!P.renderParties(HIGH).includes('Client (sent the app)'));
 });
+
+// SENDIP2: where the client sent from.
+function senderRow(extra) {
+  return P.renderParties({ level: 'review', reasons: [], parties: [], repeats: {},
+    senders: [Object.assign({ email: 'isabell@agile.test', ip: '72.255.34.72', browser: '',
+                              at: '2026-11-05T14:18:59Z', country: '', isp: '', hidden: [] }, extra)] });
+}
+
+test('a send from abroad shows the ISP and country in red', () => {
+  const html = senderRow({ country: 'PK', isp: 'Cybernet' });
+  assert.ok(/class="cfp-repeat" title="Sent from outside the US">Cybernet, PK</.test(html));
+});
+
+test('a US send through a VPN is red and says so', () => {
+  const html = senderRow({ country: 'US', isp: 'PacketHub', hidden: ['proxy', 'vpn'] });
+  assert.ok(/class="cfp-repeat" title="Sent through a VPN or proxy">PacketHub, US \(proxy, VPN\)</.test(html));
+});
+
+test('a plain US send is shown but not red', () => {
+  const html = senderRow({ country: 'US', isp: 'Comcast' });
+  assert.ok(html.includes('Comcast, US'));
+  assert.ok(!html.includes('cfp-repeat'));
+});
+
+test('a sender with no lookup yet shows a dash for network', () => {
+  const html = senderRow({});
+  assert.ok(html.includes('72.255.34.72'));
+  assert.ok(!html.includes('cfp-repeat'));
+});

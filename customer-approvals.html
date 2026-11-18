@@ -2306,11 +2306,43 @@ function renderProfile(rec, payload) {
   });
   // CUSTDOC1: staff add a file to the supporting documents. Noted on the
   // profile with who added it; no Needs Attention event, so nothing to clear.
+  // A drop stages the file the same as Choose File; Add document still sends it,
+  // so the description goes with it. Picking a file afterwards replaces the drop.
+  var droppedDoc = null;
+  var docZone = root.querySelector('.cp-doc-add');
+  if (docZone) {
+    var docInput = document.getElementById('cp-doc-file');
+    var docHint = document.getElementById('cp-doc-drop-hint');
+    var setDropped = function(f) {
+      droppedDoc = f;
+      if (docHint) docHint.textContent = f ? 'Ready to add: ' + f.name : 'or drop a file here';
+    };
+    ['dragenter', 'dragover'].forEach(function(t) {
+      docZone.addEventListener(t, function(e) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        docZone.classList.add('cp-drop-over');
+      });
+    });
+    docZone.addEventListener('dragleave', function(e) {
+      if (!e.relatedTarget || !docZone.contains(e.relatedTarget)) docZone.classList.remove('cp-drop-over');
+    });
+    docZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      docZone.classList.remove('cp-drop-over');
+      var files = (e.dataTransfer && e.dataTransfer.files) || [];
+      if (!files.length) return;
+      if (docInput) docInput.value = '';
+      setDropped(files[0]);
+      if (files.length > 1) showToast('One file at a time. Staged ' + files[0].name);
+    });
+    if (docInput) docInput.addEventListener('change', function() { setDropped(null); });
+  }
   root.querySelectorAll('[data-doc-add]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var input = document.getElementById('cp-doc-file');
       var desc = document.getElementById('cp-doc-desc');
-      var file = input && input.files && input.files[0];
+      var file = (input && input.files && input.files[0]) || droppedDoc;
       if (!file) { showToast('Choose a file first'); return; }
       var fd = new FormData();
       fd.append('file', file, file.name);

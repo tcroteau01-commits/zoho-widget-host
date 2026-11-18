@@ -152,3 +152,55 @@ test('without the viewer the link is left to open in a new tab', async () => {
   d.querySelector('.cp-documents a.cp-doc-view').dispatchEvent(ev);
   assert.ok(!ev.defaultPrevented);
 });
+
+// --- drag and drop (Tom, 2026-11-18: "Can we make the documents the ability to
+// drag and drop?") A drop stages the file exactly like Choose File; the send is
+// still the Add document click, so the description still goes with it.
+
+function dropEvent(w, type, files) {
+  const ev = new w.Event(type, { bubbles: true, cancelable: true });
+  ev.dataTransfer = { files: files || [], types: ['Files'], dropEffect: 'none' };
+  return ev;
+}
+
+test('the add row is a drop zone that lights up while a file is over it', async () => {
+  const { w, d } = await boot(PAYLOAD);
+  const zone = d.querySelector('.cp-doc-add');
+  assert.ok(zone.textContent.includes('drop'), 'tells the user they can drop');
+  const over = dropEvent(w, 'dragover');
+  zone.dispatchEvent(over);
+  assert.ok(over.defaultPrevented, 'dragover is accepted, or the browser opens the file');
+  assert.ok(zone.classList.contains('cp-drop-over'));
+  zone.dispatchEvent(dropEvent(w, 'drop', []));
+  assert.ok(!zone.classList.contains('cp-drop-over'));
+});
+
+test('a dropped file is what Add document sends', async () => {
+  const { w, d, calls } = await boot(PAYLOAD);
+  const zone = d.querySelector('.cp-doc-add');
+  const file = new w.File(['%PDF-1.4'], 'Dropped PO.pdf', { type: 'application/pdf' });
+  const drop = dropEvent(w, 'drop', [file]);
+  zone.dispatchEvent(drop);
+  assert.ok(drop.defaultPrevented);
+  assert.ok(zone.textContent.includes('Dropped PO.pdf'), 'shows what was dropped');
+  assert.equal(adds(calls).length, 0, 'a drop alone sends nothing');
+  d.getElementById('cp-doc-desc').value = 'PO';
+  d.querySelector('[data-doc-add]').click();
+  await wait(20);
+  const sent = adds(calls);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].opts.body.get('file').name, 'Dropped PO.pdf');
+  assert.equal(sent[0].opts.body.get('description'), 'PO');
+});
+
+test('choosing a file after a drop replaces the dropped one', async () => {
+  const { w, d, calls } = await boot(PAYLOAD);
+  const zone = d.querySelector('.cp-doc-add');
+  zone.dispatchEvent(dropEvent(w, 'drop',
+    [new w.File(['x'], 'Old.pdf', { type: 'application/pdf' })]));
+  pick(w, d, 'Picked.pdf');
+  d.getElementById('cp-doc-file').dispatchEvent(new w.Event('change'));
+  d.querySelector('[data-doc-add]').click();
+  await wait(20);
+  assert.equal(adds(calls)[0].opts.body.get('file').name, 'Picked.pdf');
+});

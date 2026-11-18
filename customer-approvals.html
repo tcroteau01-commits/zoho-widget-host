@@ -1169,6 +1169,9 @@ function fetchAll(loadId) {
     if (loadId !== currentLoadId) return;
     clearTimeout(loadSafetyTimer);
     allClients = !!(payload && payload.all_clients);
+    document.getElementById('search-input').placeholder = allClients
+      ? 'Search by client, company, email, or phone...'
+      : 'Search by company, email, or phone...';
     var data = payload.records || [];
     console.log('[CustomerApprovals] Got', data.length, 'records in', (Date.now() - pageStart) + 'ms');
     onRecordsLoaded(data);
@@ -1305,7 +1308,10 @@ function applyFilters() {
         r.Customer_Point_of_Contact,
         r.Billing_Point_of_Contact,
         r.Phone_Number,
-        r.Phone_Number1
+        r.Phone_Number1,
+        // Staff see-all view: match the owning client too, so finding one client's
+        // customers does not require the "Acting as" mirror.
+        allClients ? brokerName(r) : ''
       ].filter(Boolean).join(' ').toLowerCase();
       if (hay.indexOf(currentSearch) === -1) return false;
     }

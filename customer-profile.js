@@ -924,7 +924,8 @@ function renderDocuments(p) {
       'accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv,.txt">' +
       '<input type="text" class="dec-input" id="cp-doc-desc" maxlength="120" ' +
       'placeholder="What is it? (MSA, PO, W-9)">' +
-      '<button type="button" class="btn primary" data-doc-add="1">Add document</button></div>';
+      '<button type="button" class="btn primary" data-doc-add="1">Add document</button>' +
+      '<div class="cp-drop-hint muted" id="cp-doc-drop-hint">or drop a file here</div></div>';
   }
   return '<div class="cp-documents">' + section('Documents', body) + '</div>';
 }
@@ -1530,6 +1531,9 @@ var CP_CSS = '' +
   '.cp-cb-ok{color:#15803d;}' +
   '.cp-cb-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;}' +
   '.cp-cb-row .dec-input{flex:1;min-width:220px;}' +
+  '.cp-doc-add{border:1.5px dashed transparent;border-radius:8px;padding:6px;margin:6px -8px;}' +
+  '.cp-doc-add.cp-drop-over{border-color:#e8a33d;background:#fff8ec;}' +
+  '.cp-drop-hint{flex-basis:100%;font-size:12px;}' +
   '.cp-cb-docs li{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0;}' +
   '.cp-root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;color:#1d1d1f;}' +
   '.cp-root .panel-section{background:#fff;border:1px solid #e6e3da;border-radius:8px;padding:12px 14px;margin-bottom:8px;}' +

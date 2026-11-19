@@ -214,3 +214,20 @@ test('CREDFRAUD1: review, clean and unknown badges have their own colours', () =
   });
   assert.ok(html.includes('<script src="credit-app-fraud-panel.js"></script>'));
 });
+
+// --- staff search finds a client without the "Acting as" mirror -------------
+//
+// Tom, 2026-11-18: "Can we make the search bar allow our team internally to
+// search on the admin view a client in the search bar too? So we don't have to
+// select the VIEW AS mirror."
+
+test('the all-clients search also matches the owning client', () => {
+  const filt = html.match(/function applyFilters\(\) \{[\s\S]*?\n\}/)[0];
+  // the client name joins the haystack, but only in the see-all view where the
+  // Client column is shown; a broker never searches on their own name
+  assert.ok(/allClients \? brokerName\(r\) : ''/.test(filt));
+});
+
+test('the search placeholder says so in the all-clients view', () => {
+  assert.ok(/allClients\s*\?\s*'Search by client, company, email, or phone\.\.\.'/.test(html));
+});

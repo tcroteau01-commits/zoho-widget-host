@@ -1710,6 +1710,8 @@ function renderPanel() {
     '<div class="panel-body">' +
       // COBROKERGATE1 — why this approved customer still cannot carry a load.
       coBrokerAlertHtml(r) +
+      // CNOAPORTAL1: customer NOA section. '' while dark.
+      (window.OperFiCustomerNoa ? OperFiCustomerNoa.panelHtml(r) : '') +
       // CUSTEVENT1 — first thing a reviewer sees: the reason this customer got pulled
       // up, if any. Empty string for a non-staff viewer (attnSectionHtml above).
       attnSectionHtml +
@@ -1857,6 +1859,7 @@ function renderPanel() {
   if (cbUp) cbUp.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
   var openProfileBtn = document.getElementById('ca-open-profile');
   if (openProfileBtn) openProfileBtn.addEventListener('click', function() { openProfile(r); });
+  if (window.OperFiCustomerNoa) OperFiCustomerNoa.wirePanel(r, document.getElementById('panel'));
 
   wireDecisionSection(r);
   wireBoostSection(r);

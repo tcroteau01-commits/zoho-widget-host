@@ -118,14 +118,16 @@ _Done 11-19: 19/19 module tests. Click binding is one delegated document listene
 - Produces: `panelHtml(rec) -> string` (section `id="cnoa-panel"`: chip, `waiting_on` line, `last_sent_at` relative, Send NOA if `can_send`, contacts list placeholder, LOR link), `wirePanel(rec, rootEl)` (GETs `/customer-noa/contacts?email=&submission_id=` once per open, renders `{email,name,phone,role,source,primary}`; `source:"submission"` shows "Suggested from the credit submission"; Add contact form POSTs `/customer-noa/contacts`).
 - Errors: 400 `bad_email` → "Not a valid email address."; 400 `too_many_contacts` → "A customer can have up to 10 AP contacts."; 403 → hide the add form.
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
   - `dark: panelHtml '' and wirePanel makes no call for a broker`.
   - `contacts load once per drawer open` (one GET).
   - `add contact body is exactly {email, submission_id, contact:{email,name,phone,role}}` — deepEqual on parsed body, extra fields typed into the DOM ignored.
   - `primary cannot be set from the portal` — no control writes `primary`.
   - `bad_email and too_many_contacts show the mapped text`.
   - `LOR link points to https://lor-request.operfi.com and there is no release button` — no element with text matching /release/i that is a `<button>`.
-- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement + mounts. **Step 4:** `npm test` → PASS. **Step 5:** Commit `CNOAPORTAL1 Task 3: drawer NOA section and AP contacts`.
+- [x] **Step 2:** Run → FAIL. **Step 3:** Implement + mounts. **Step 4:** `npm test` → PASS. **Step 5:** Commit `CNOAPORTAL1 Task 3: drawer NOA section and AP contacts`.
+
+_Done 11-19: 29/29 module tests; full suite unchanged apart from +10 passing (18 pre-existing failures). Contacts cached per submission in `_contacts` for the Task 4 picker._
 
 ### Task 4: Send form (preview, send now, have OperFi send)
 

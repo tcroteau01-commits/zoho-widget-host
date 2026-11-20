@@ -272,3 +272,121 @@ test('rowHtml mounts the chip behind a guard', () => {
   const html = fs.readFileSync(__dirname + '/../customer-approvals.html', 'utf8').replace(/\r\n/g, '\n');
   assert.ok(html.includes("(window.OperFiCustomerNoa ? OperFiCustomerNoa.rowChipHtml(r) : '') +"));
 });
+
+// ── Task 3: drawer section and AP contacts ────────────────────────────────
+
+function drawerFetch(over) {
+  over = over || {};
+  return function (url, init) {
+    if (url.includes('/customer-noa/statuses')) {
+      return jsonRes(200, { chips: { '5': CHIP('Waiting on ap@acme.com',
+        { waiting_on: 'ap@acme.com', last_sent_at: '2026-11-18T15:00:00Z' }) } });
+    }
+    if (url.includes('/customer-noa/contacts') && !(init && init.method === 'POST')) {
+      return over.getContacts ? over.getContacts(url) : jsonRes(200, { contacts: [
+        { email: 'ap@acme.com', name: 'Pat AP', phone: '', role: 'AP', source: 'portal', primary: true },
+        { email: 'billing@acme.com', name: 'Bill', phone: '', role: '', source: 'submission', primary: false }] });
+    }
+    if (url.includes('/customer-noa/contacts')) {
+      return over.postContacts ? over.postContacts(url, init) : jsonRes(200, { ok: true, contacts: [] });
+    }
+    return jsonRes(200, { items: [] });
+  };
+}
+
+async function openDrawer(over, pageOpts) {
+  const p = loadPage(Object.assign({ staff: true, target: 'b@x.com', fetchImpl: drawerFetch(over) }, pageOpts || {}));
+  boot(p, [{ ID: '5' }]);
+  await wait(20);
+  const panel = p.window.document.createElement('div');
+  panel.id = 'panel';
+  panel.innerHTML = p.N.panelHtml({ ID: '5' });
+  p.window.document.body.appendChild(panel);
+  p.N.wirePanel({ ID: '5' }, panel);
+  await wait(20);
+  return { p, panel };
+}
+
+test('dark: panelHtml is empty and wirePanel makes no call for a broker', async () => {
+  const p = loadPage({ staff: false, target: '' });
+  boot(p, [{ ID: '5' }]);
+  await wait(20);
+  assert.strictEqual(p.N.panelHtml({ ID: '5' }), '');
+  const panel = p.window.document.createElement('div');
+  p.N.wirePanel({ ID: '5' }, panel);
+  await wait(20);
+  assert.strictEqual(p.noaCalls().length, 0);
+});
+
+test('drawer shows chip, who we wait on, and Send NOA', async () => {
+  const { panel } = await openDrawer();
+  const sec = panel.querySelector('#cnoa-panel');
+  assert.ok(sec);
+  assert.ok(sec.textContent.includes('Waiting on ap@acme.com'));
+  assert.ok(sec.querySelector('[data-cnoa-send="5"]'));
+  assert.ok(sec.textContent.includes('Preview: hidden from clients'));
+});
+
+test('contacts load once per drawer open and list both sources', async () => {
+  const { p, panel } = await openDrawer();
+  assert.strictEqual(p.calls.filter(u => u.includes('/customer-noa/contacts')).length, 1);
+  const list = panel.querySelector('#cnoa-contacts').textContent;
+  assert.ok(list.includes('ap@acme.com'));
+  assert.ok(list.includes('Primary'));
+  assert.ok(list.includes('Suggested from the credit submission'));
+});
+
+test('add contact body is exactly {email, submission_id, contact:{email,name,phone,role}}', async () => {
+  const { p, panel } = await openDrawer();
+  const f = name => panel.querySelector('[name="cnoa-c-' + name + '"]');
+  f('email').value = 'new@acme.com'; f('name').value = 'New'; f('phone').value = '555'; f('role').value = 'AP';
+  panel.querySelector('#cnoa-add-contact').click();
+  await wait(20);
+  const post = p.posts.find(x => x.url.includes('/customer-noa/contacts'));
+  assert.deepStrictEqual(post.body, { email: 'broker@test.com', submission_id: '5',
+    contact: { email: 'new@acme.com', name: 'New', phone: '555', role: 'AP' } });
+});
+
+test('nothing in the drawer can set primary', async () => {
+  const { panel } = await openDrawer();
+  assert.ok(!panel.querySelector('[name*="primary"]'));
+});
+
+test('bad_email and too_many_contacts show the mapped text', async () => {
+  for (const [code, text] of [['bad_email', 'Not a valid email address.'],
+                              ['too_many_contacts', 'A customer can have up to 10 AP contacts.']]) {
+    const { panel } = await openDrawer({ postContacts: () => jsonRes(400, { error: code }) });
+    panel.querySelector('[name="cnoa-c-email"]').value = 'x@acme.com';
+    panel.querySelector('#cnoa-add-contact').click();
+    await wait(20);
+    assert.ok(panel.querySelector('#cnoa-contact-msg').textContent.includes(text), code);
+  }
+});
+
+test('403 on add hides the add form', async () => {
+  const { panel } = await openDrawer({ postContacts: () => jsonRes(403, { error: 'forbidden' }) });
+  panel.querySelector('[name="cnoa-c-email"]').value = 'x@acme.com';
+  panel.querySelector('#cnoa-add-contact').click();
+  await wait(20);
+  assert.ok(panel.querySelector('#cnoa-add-form').hidden);
+});
+
+test('release is a link to lor-request, never a button', async () => {
+  const { panel } = await openDrawer();
+  const a = panel.querySelector('a[href="https://lor-request.operfi.com"]');
+  assert.ok(a);
+  const btns = Array.from(panel.querySelectorAll('button')).filter(b => /release/i.test(b.textContent));
+  assert.strictEqual(btns.length, 0);
+});
+
+test('contact names are escaped', async () => {
+  const { panel } = await openDrawer({ getContacts: () => jsonRes(200, { contacts: [
+    { email: 'a@b.com', name: '<img src=x onerror=1>', source: 'portal', primary: false }] }) });
+  assert.ok(!panel.querySelector('#cnoa-contacts img'));
+});
+
+test('renderPanel mounts the drawer section and wiring behind guards', () => {
+  const html = fs.readFileSync(__dirname + '/../customer-approvals.html', 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(html.includes("(window.OperFiCustomerNoa ? OperFiCustomerNoa.panelHtml(r) : '') +"));
+  assert.ok(html.includes("if (window.OperFiCustomerNoa) OperFiCustomerNoa.wirePanel(r, document.getElementById('panel'));"));
+});

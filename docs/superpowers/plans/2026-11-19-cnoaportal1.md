@@ -70,7 +70,7 @@ Add one line listing the statuses brokers see: Not sent, Sent from FactorView, W
 - Produces: `window.OperFiCustomerNoa = { visible(), isPreview(), onRecords(records, opts), chipFor(id), _state }` where `opts = { email, apiBase, rerender }`; `chipFor(id)` returns the chip object or `null`.
 - Test helper (in the test file): `loadPage({ staff, target, enabledOverride, fetchImpl })` builds a JSDOM, defines `window.OPERFI_IMP` stub, evaluates the module source (with `false` swapped to `true` only when `enabledOverride` is set), returns `{ window, calls }` where `calls` lists every fetched URL.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `dark: a broker session makes zero /customer-noa calls and renders nothing` — shipped source unmodified; `staff:false, target:''`; `onRecords(300 records)`; assert `calls.filter(u => u.includes('/customer-noa/')).length === 0`, `visible() === false`.
   - `dark: a broker with a hand-set impersonate target still sees nothing` — `staff:false, target:'x@y.com'`; after 40 ticks, zero calls.
   - `dark: staff NOT impersonating sees nothing` — `staff:true, target:''`; zero calls.
@@ -79,10 +79,12 @@ Add one line listing the statuses brokers see: Not sent, Sent from FactorView, W
   - `whoami late: preview turns on when isStaff flips` — staff false at load, true after 5 ticks; statuses called once.
   - `stale response is dropped` — two `onRecords` calls; first response resolves last; `chipFor` reflects the second.
   - `flag on: a broker gets statuses` — `enabledOverride`, `staff:false`; one call; `isPreview() === false`.
-- [ ] **Step 2:** `npm test -- tests/customer-noa-panel.test.js` → FAIL (module missing).
-- [ ] **Step 3:** Implement the module. Chunk ids, `Promise.all`, merge `payload.chips` into `_state.chips`, call `opts.rerender()` once after all chunks. Add the script tag and `if (window.OperFiCustomerNoa) OperFiCustomerNoa.onRecords(allRecords, { email: brokerEmail, apiBase: BROKER_API_BASE, rerender: renderList });` at the end of `onRecordsLoaded`.
-- [ ] **Step 4:** `npm test` → all PASS, including existing suites.
-- [ ] **Step 5:** Commit `CNOAPORTAL1 Task 1: dark module, gate, batched statuses`.
+- [x] **Step 2:** `npm test -- tests/customer-noa-panel.test.js` → FAIL (module missing).
+- [x] **Step 3:** Implement the module. Chunk ids, `Promise.all`, merge `payload.chips` into `_state.chips`, call `opts.rerender()` once after all chunks. Add the script tag and `if (window.OperFiCustomerNoa) OperFiCustomerNoa.onRecords(allRecords, { email: brokerEmail, apiBase: BROKER_API_BASE, rerender: renderList });` at the end of `onRecordsLoaded`.
+- [x] **Step 4:** `npm test` → all PASS, including existing suites.
+- [x] **Step 5:** Commit `CNOAPORTAL1 Task 1: dark module, gate, batched statuses`.
+
+_Done 11-19: 9/9 new tests pass. Full suite 2556/2574; the 18 failures are pre-existing on origin/main 8b99789 (same 18 on a clean checkout)._
 
 ### Task 2: Row chip and row Send NOA button
 

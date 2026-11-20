@@ -807,6 +807,7 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 <script src="https://app.operfi.com/operfi-docviewer.js?v=6"></script>
 <script src="customer-profile.js"></script>
 <script src="credit-app-fraud-panel.js"></script>
+<script src="customer-noa-panel.js"></script>
 <script>
 (function() {
 'use strict';
@@ -1191,6 +1192,8 @@ function onRecordsLoaded(records) {
   fetchCustomerEventsBulk();    // one call for the whole list, see CUSTEVENT1 below
   fetchCoBrokerStatusBulk();    // one call for the whole list, see COBROKERGATE1
   fetchInternalCreditSources(); // staff only, see CREDITINT1
+  // CNOAPORTAL1: customer NOA chips. Dark: the module makes no call unless enabled or staff-previewing.
+  if (window.OperFiCustomerNoa) OperFiCustomerNoa.onRecords(allRecords, { email: brokerEmail, apiBase: BROKER_API_BASE, rerender: renderList });
 }
 window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 

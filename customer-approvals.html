@@ -807,6 +807,7 @@ button.doc-item:focus-visible { outline: 2px solid #b86e00; outline-offset: 1px;
 <script src="https://app.operfi.com/operfi-docviewer.js?v=6"></script>
 <script src="customer-profile.js"></script>
 <script src="credit-app-fraud-panel.js"></script>
+<script src="customer-noa-panel.js"></script>
 <script>
 (function() {
 'use strict';
@@ -1191,6 +1192,8 @@ function onRecordsLoaded(records) {
   fetchCustomerEventsBulk();    // one call for the whole list, see CUSTEVENT1 below
   fetchCoBrokerStatusBulk();    // one call for the whole list, see COBROKERGATE1
   fetchInternalCreditSources(); // staff only, see CREDITINT1
+  // CNOAPORTAL1: customer NOA chips. Dark: the module makes no call unless enabled or staff-previewing.
+  if (window.OperFiCustomerNoa) OperFiCustomerNoa.onRecords(allRecords, { email: brokerEmail, apiBase: BROKER_API_BASE, rerender: renderList });
 }
 window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 
@@ -1271,6 +1274,8 @@ function buildChips() {
     breakdownLine.textContent = lineText;
     breakdownLine.style.display = lineText ? '' : 'none';
   }
+  // CNOAPORTAL1: the broker's NOA updates bell. Paints nothing while dark.
+  if (window.OperFiCustomerNoa) OperFiCustomerNoa.mountBell(chips, openPanelForId);
 }
 
 function countByStatus(records) {
@@ -1462,6 +1467,8 @@ function rowHtml(r, idx) {
         (coBrokerEntry(r)
           ? '<div class="billing-warn">⚠ ' + esc(coBrokerShortText(coBrokerEntry(r))) + '</div>' : '') +
         caAppRowProgressHtml(r) +
+        // CNOAPORTAL1: customer NOA chip + Send NOA. '' while dark.
+        (window.OperFiCustomerNoa ? OperFiCustomerNoa.rowChipHtml(r) : '') +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Contact</div>' +
@@ -1505,6 +1512,20 @@ function showError(title, msg) {
 }
 
 // ── Panel ─────────────────────────────────────────────────────────────────
+// CNOAPORTAL1: the NOA bell opens a customer by submission id. A filter or
+// search may hide that row, and openPanel only opens visible rows, so clear them.
+function openPanelForId(id) {
+  var idx = -1;
+  allRecords.forEach(function(r, i) { if (idx === -1 && String(r.ID) === String(id)) idx = i; });
+  if (idx === -1) return;
+  if (filteredRecords.indexOf(allRecords[idx]) === -1) {
+    currentStatus = 'all'; currentSearch = ''; attentionFilterActive = false;
+    var si = document.getElementById('search-input'); if (si) si.value = '';
+    buildChips(); applyFilters();
+  }
+  openPanel(idx);
+}
+
 function openPanel(allRecordsIdx) {
   var rec = allRecords[allRecordsIdx];
   var idx = filteredRecords.indexOf(rec);
@@ -1705,6 +1726,8 @@ function renderPanel() {
     '<div class="panel-body">' +
       // COBROKERGATE1 — why this approved customer still cannot carry a load.
       coBrokerAlertHtml(r) +
+      // CNOAPORTAL1: customer NOA section. '' while dark.
+      (window.OperFiCustomerNoa ? OperFiCustomerNoa.panelHtml(r) : '') +
       // CUSTEVENT1 — first thing a reviewer sees: the reason this customer got pulled
       // up, if any. Empty string for a non-staff viewer (attnSectionHtml above).
       attnSectionHtml +
@@ -1852,6 +1875,7 @@ function renderPanel() {
   if (cbUp) cbUp.addEventListener('click', function() { resumeOnCreditCheck(r.ID || ''); });
   var openProfileBtn = document.getElementById('ca-open-profile');
   if (openProfileBtn) openProfileBtn.addEventListener('click', function() { openProfile(r); });
+  if (window.OperFiCustomerNoa) OperFiCustomerNoa.wirePanel(r, document.getElementById('panel'));
 
   wireDecisionSection(r);
   wireBoostSection(r);

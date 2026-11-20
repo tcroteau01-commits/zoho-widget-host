@@ -588,3 +588,99 @@ test('a successful send closes the form and refreshes that chip', async () => {
   assert.strictEqual(p.N.chipFor('5').label, 'Waiting on ap@acme.com');
   assert.ok(d.getElementById('cnoa-toast').textContent.includes('NOA sent to ap@acme.com'));
 });
+
+// ── Task 5: NOA bell ──────────────────────────────────────────────────────
+
+const ITEMS = [
+  { submission_id: '5', debtor_name: 'Acme Foods', kind: 'confirmed', at: '2026-11-19T10:00:00Z', chip: CHIP('Confirmed', { status: 'confirmed' }) },
+  { submission_id: '6', debtor_name: 'Beta <b>Co</b>', kind: 'action_needed', at: '2026-11-19T11:00:00Z',
+    chip: CHIP('Action needed: Wrong address', { status: 'action_needed' }) }];
+
+function bellFetch(over) {
+  over = over || {};
+  return function (url, init) {
+    if (url.includes('/customer-noa/statuses')) return jsonRes(200, { chips: {} });
+    if (url.includes('/customer-noa/attention')) return jsonRes(200, { items: over.items || ITEMS });
+    if (url.includes('/customer-noa/seen')) return over.seen ? over.seen(init) : jsonRes(200, { ok: true, updated: 2 });
+    return jsonRes(200, {});
+  };
+}
+
+async function withBell(over, pageOpts) {
+  const p = loadPage(Object.assign({ staff: true, target: 'b@x.com', fetchImpl: bellFetch(over) }, pageOpts || {}));
+  const opened = [];
+  boot(p, [{ ID: '5' }, { ID: '6' }]);
+  await wait(20);
+  const chips = p.window.document.getElementById('chips');
+  p.N.mountBell(chips, id => opened.push(id));
+  return { p, chips, opened, d: p.window.document };
+}
+
+test('dark: no bell and no attention call for a broker', async () => {
+  const p = loadPage({ staff: false, target: '' });
+  boot(p, [{ ID: '5' }]);
+  await wait(20);
+  const chips = p.window.document.getElementById('chips');
+  p.N.mountBell(chips, () => {});
+  assert.strictEqual(chips.querySelector('#cnoa-bell'), null);
+  assert.strictEqual(p.noaCalls().length, 0);
+});
+
+test('attention is fetched once per load even when buildChips runs 5 times', async () => {
+  const { p, chips } = await withBell();
+  for (let i = 0; i < 5; i++) { chips.innerHTML = ''; p.N.mountBell(chips, () => {}); }
+  assert.strictEqual(p.calls.filter(u => u.includes('/customer-noa/attention')).length, 1);
+  assert.ok(chips.querySelector('#cnoa-bell'));
+});
+
+test('the bell is first in the chips row with the count', async () => {
+  const { chips } = await withBell();
+  const bell = chips.firstElementChild;
+  assert.strictEqual(bell.id, 'cnoa-bell');
+  assert.ok(bell.textContent.includes('NOA updates'));
+  assert.ok(bell.textContent.includes('2'));
+  assert.ok(bell.textContent.includes('Preview: hidden from clients'));
+});
+
+test('no bell when there are no items', async () => {
+  const { chips } = await withBell({ items: [] });
+  assert.strictEqual(chips.querySelector('#cnoa-bell'), null);
+});
+
+test('opening the bell lists items and sends exactly {email, submission_ids}', async () => {
+  const { p, chips, d } = await withBell();
+  chips.querySelector('#cnoa-bell').click();
+  await wait(20);
+  const menu = d.getElementById('cnoa-bell-menu');
+  assert.ok(menu.textContent.includes('NOA confirmed'));
+  assert.ok(menu.textContent.includes('Action needed: Wrong address'));
+  const post = p.posts.find(x => x.url.includes('/customer-noa/seen'));
+  assert.deepStrictEqual(post.body, { email: 'broker@test.com', submission_ids: ['5', '6'] });
+});
+
+test('count clears only after seen answers 200', async () => {
+  const bad = await withBell({ seen: () => jsonRes(500, {}) });
+  bad.chips.querySelector('#cnoa-bell').click();
+  await wait(20);
+  assert.ok(bad.chips.querySelector('#cnoa-bell .count').textContent.includes('2'));
+  const ok = await withBell();
+  ok.chips.querySelector('#cnoa-bell').click();
+  await wait(20);
+  assert.strictEqual(ok.chips.querySelector('#cnoa-bell .count'), null);
+});
+
+test('debtor_name is escaped and an item click opens that customer', async () => {
+  const { chips, d, opened } = await withBell();
+  chips.querySelector('#cnoa-bell').click();
+  await wait(20);
+  const menu = d.getElementById('cnoa-bell-menu');
+  assert.strictEqual(menu.querySelector('b'), null);
+  menu.querySelector('[data-cnoa-open="6"]').click();
+  assert.deepStrictEqual(opened, ['6']);
+});
+
+test('buildChips mounts the bell behind a guard', () => {
+  const html = fs.readFileSync(__dirname + '/../customer-approvals.html', 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(html.includes('if (window.OperFiCustomerNoa) OperFiCustomerNoa.mountBell(chips, openPanelForId);'));
+  assert.ok(/function openPanelForId\(id\)/.test(html));
+});

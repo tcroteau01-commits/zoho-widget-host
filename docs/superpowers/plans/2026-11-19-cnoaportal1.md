@@ -165,14 +165,16 @@ _Done 11-19: 42/42 module tests. A preview that returns blocks also switches the
 - Consumes: `onRecords` opts (email, apiBase).
 - Produces: `mountBell(chipsEl, openFn)`. `GET /customer-noa/attention?email=` once per list load (fetched inside `onRecords`, cached; `mountBell` only paints, since `buildChips` reruns on filter changes). Chip text `🔔 NOA updates <count>`. Click: dropdown of items; POST `/customer-noa/seen` `{email, submission_ids}` with the shown ids; on 200 the count clears.
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
   - `dark: no bell, no attention call for a broker`.
   - `attention fetched once per load even when buildChips runs 5 times`.
   - `no bell when items is empty`.
   - `seen body is exactly {email, submission_ids}`; `count clears only on 200`.
   - `kind confirmed vs action_needed show different item lines` ("NOA confirmed" / chip label).
   - `debtor_name escaped`.
-- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** `npm test` → PASS. **Step 5:** Commit `CNOAPORTAL1 Task 5: NOA bell`.
+- [x] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** `npm test` → PASS. **Step 5:** Commit `CNOAPORTAL1 Task 5: NOA bell`.
+
+_Done 11-19: 50/50 module tests. `openPanelForId` clears status/search/attention filters when the target row is filtered out, since openPanel only opens visible rows._
 
 ### Task 6: Portal asset allowlist (operfi-broker-api)
 

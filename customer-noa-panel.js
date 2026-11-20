@@ -75,6 +75,7 @@ const CNOA_PORTAL_ENABLED = false;
     (records || []).forEach(function (r) { if (r && r.ID) ids.push(String(r.ID)); });
     injectStyles();
     bindOnce();
+    fetchAttention(seq);
     if (!ids.length) return;
     fetchStatuses(ids, seq);
   }
@@ -483,6 +484,94 @@ const CNOA_PORTAL_ENABLED = false;
   }
   sendHandler = openSendForm;
 
+  // ── NOA bell ───────────────────────────────────────────────────────────
+  // /attention is fetched once per list load (in start). buildChips reruns on
+  // every filter click and rebuilds #chips, so mountBell only paints.
+  var bellState = { items: [], chipsEl: null, openFn: null };
+
+  function fetchAttention(seq) {
+    getJson('/customer-noa/attention?email=' + encodeURIComponent(state.email)).then(function (p) {
+      if (seq !== state.seq) return;
+      bellState.items = (p && Array.isArray(p.items)) ? p.items : [];
+      if (bellState.chipsEl) paintBell();
+    });
+  }
+
+  function itemLine(it) {
+    return it.kind === 'confirmed' ? 'NOA confirmed' : ((it.chip && it.chip.label) || 'Needs your attention');
+  }
+
+  function paintBell() {
+    var host = bellState.chipsEl;
+    if (!host) return;
+    var old = host.querySelector('#cnoa-bell');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (!visible() || !bellState.items.length) return;
+    var bell = document.createElement('span');
+    bell.id = 'cnoa-bell';
+    bell.className = 'chip cnoa-bell';
+    bell.tabIndex = 0;
+    bell.setAttribute('role', 'button');
+    bell.title = 'Customer NOA updates';
+    bell.innerHTML = '🔔 NOA updates <span class="count">' + bellState.items.length + '</span>' +
+      (isPreview() ? ' ' + PREVIEW_TAG : '');
+    bell.addEventListener('click', toggleBellMenu);
+    bell.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBellMenu(); }
+    });
+    host.insertBefore(bell, host.firstChild);
+  }
+
+  function closeBellMenu() {
+    var m = document.getElementById('cnoa-bell-menu');
+    if (m && m.parentNode) m.parentNode.removeChild(m);
+  }
+
+  function toggleBellMenu() {
+    if (document.getElementById('cnoa-bell-menu')) { closeBellMenu(); return; }
+    var items = bellState.items.slice();
+    if (!items.length) return;
+    var menu = document.createElement('div');
+    menu.id = 'cnoa-bell-menu';
+    menu.className = 'cnoa-bell-menu';
+    menu.innerHTML = items.map(function (it) {
+      var when = shortDate(it.at);
+      return '<button type="button" class="cnoa-bell-item" data-cnoa-open="' + esc(it.submission_id) + '">' +
+        '<strong>' + esc(it.debtor_name || 'Customer') + '</strong>' +
+        '<span class="cnoa-bell-line ' + (it.kind === 'confirmed' ? 'cnoa-tone-done' : 'cnoa-tone-action') + '">' +
+          esc(itemLine(it)) + '</span>' +
+        (when ? '<span class="cnoa-sub">' + esc(when) + '</span>' : '') +
+      '</button>';
+    }).join('');
+    menu.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-cnoa-open]');
+      if (!b) return;
+      closeBellMenu();
+      if (typeof bellState.openFn === 'function') bellState.openFn(b.getAttribute('data-cnoa-open'));
+    });
+    var bell = bellState.chipsEl && bellState.chipsEl.querySelector('#cnoa-bell');
+    (bell && bell.parentNode ? bell.parentNode : document.body).appendChild(menu);
+    // Mark seen. The count clears only once the server agrees.
+    postJson('/customer-noa/seen', {
+      email: state.email,
+      submission_ids: items.map(function (it) { return String(it.submission_id); })
+    }).then(function (r) {
+      if (r.status !== 200) return;
+      var shown = {};
+      items.forEach(function (it) { shown[String(it.submission_id)] = true; });
+      bellState.items = bellState.items.filter(function (it) { return !shown[String(it.submission_id)]; });
+      var cnt = bellState.chipsEl && bellState.chipsEl.querySelector('#cnoa-bell .count');
+      if (cnt && cnt.parentNode) cnt.parentNode.removeChild(cnt);
+    });
+  }
+
+  function mountBell(chipsEl, openFn) {
+    if (!visible() || !chipsEl) return;
+    bellState.chipsEl = chipsEl;
+    bellState.openFn = openFn || null;
+    paintBell();
+  }
+
   var STYLES =
     '.cnoa-modal{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:1000;}' +
     '.cnoa-modal-box{background:#fff;border-radius:10px;padding:16px;width:min(560px,94vw);max-height:90vh;overflow:auto;}' +
@@ -495,6 +584,11 @@ const CNOA_PORTAL_ENABLED = false;
     '.cnoa-check-ok{background:#e8f5e9;color:#1f6321;}' +
     '.cnoa-preview-frame{width:100%;height:260px;border:1px solid #ddd;border-radius:6px;margin-top:8px;}' +
     '.cnoa-modal-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:12px;}' +
+    '.chip.cnoa-bell{border-color:#b8d4f0;background:#eaf3fc;color:#0d4a8a;cursor:pointer;}' +
+    '.cnoa-bell-menu{position:absolute;z-index:900;background:#fff;border:1px solid #ddd;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.12);padding:4px;min-width:260px;margin-top:4px;}' +
+    '.cnoa-bell-item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:6px 8px;font-size:12px;cursor:pointer;}' +
+    '.cnoa-bell-item:hover{background:#f5f7fa;}' +
+    '.cnoa-bell-line{font-size:11px;font-weight:600;padding:1px 6px;border-radius:8px;}' +
     '.cnoa-toast{position:fixed;bottom:16px;right:16px;background:#1f2937;color:#fff;font-size:12px;border-radius:6px;padding:0;z-index:1001;}' +
     '.cnoa-toast:not(:empty){padding:8px 12px;}' +
     '.cnoa-panel{border:1px solid #e3e3e3;border-radius:8px;padding:10px 12px;margin-bottom:14px;}' +
@@ -527,7 +621,7 @@ const CNOA_PORTAL_ENABLED = false;
     visible: visible, isPreview: isPreview, onRecords: onRecords, chipFor: chipFor,
     rowChipHtml: rowChipHtml, chipToneClass: chipToneClass, onSendClick: onSendClick,
     panelHtml: panelHtml, wirePanel: wirePanel, _contacts: contactsBySub,
-    openSendForm: openSendForm, checkText: checkText,
+    openSendForm: openSendForm, checkText: checkText, mountBell: mountBell,
     esc: esc, _state: state, _config: config
   };
   if (typeof window !== 'undefined') { window.OperFiCustomerNoa = api; }

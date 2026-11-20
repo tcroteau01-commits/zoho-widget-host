@@ -94,7 +94,7 @@ _Done 11-19: 9/9 new tests pass. Full suite 2556/2574; the 18 failures are pre-e
 - Produces: `rowChipHtml(rec) -> string`, `chipToneClass(chip) -> 'cnoa-tone-done'|'cnoa-tone-wait'|'cnoa-tone-action'|'cnoa-tone-muted'`, `onSendClick(handler)` (Task 4 registers the real handler; default no-op).
 - Tone: `Confirmed` → done; status `action_needed` → action; `Released` and `Not sent` → muted; everything else, `Waiting on OperFi verification` included → wait.
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
   - `dark: rowChipHtml returns '' for a broker` (shipped source).
   - `label is verbatim` for each of the 7 labels in the hand-offs, including `Sent from FactorView` and `Action needed: Claim review`.
   - `verification is not styled done` — `chipToneClass({label:'Waiting on OperFi verification', status:'acknowledged'}) === 'cnoa-tone-wait'`.
@@ -103,10 +103,12 @@ _Done 11-19: 9/9 new tests pass. Full suite 2556/2574; the 18 failures are pre-e
   - `no chip for an id the API omitted`, `no chip after a 500`.
   - `label is escaped` — `<img onerror>` label renders as text.
   - `row click on Send NOA does not open the drawer` — JSDOM with the real page html: button has class `row-action`, no `data-action`.
-- [ ] **Step 2:** Run → FAIL.
-- [ ] **Step 3:** Implement; add the guarded mount `(window.OperFiCustomerNoa ? OperFiCustomerNoa.rowChipHtml(r) : '') +` in `rowHtml`; one delegated click listener on `#results` bound once.
-- [ ] **Step 4:** `npm test` → PASS.
-- [ ] **Step 5:** Commit `CNOAPORTAL1 Task 2: row chip and Send NOA button`.
+- [x] **Step 2:** Run → FAIL.
+- [x] **Step 3:** Implement; add the guarded mount `(window.OperFiCustomerNoa ? OperFiCustomerNoa.rowChipHtml(r) : '') +` in `rowHtml`; one delegated click listener on `#results` bound once.
+- [x] **Step 4:** `npm test` → PASS.
+- [x] **Step 5:** Commit `CNOAPORTAL1 Task 2: row chip and Send NOA button`.
+
+_Done 11-19: 19/19 module tests. Click binding is one delegated document listener (survives renderList rebuilding #results)._
 
 ### Task 3: Drawer section and AP contacts
 

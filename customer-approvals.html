@@ -1465,6 +1465,8 @@ function rowHtml(r, idx) {
         (coBrokerEntry(r)
           ? '<div class="billing-warn">⚠ ' + esc(coBrokerShortText(coBrokerEntry(r))) + '</div>' : '') +
         caAppRowProgressHtml(r) +
+        // CNOAPORTAL1: customer NOA chip + Send NOA. '' while dark.
+        (window.OperFiCustomerNoa ? OperFiCustomerNoa.rowChipHtml(r) : '') +
       '</div>' +
       '<div>' +
         '<div class="cell-label">Contact</div>' +

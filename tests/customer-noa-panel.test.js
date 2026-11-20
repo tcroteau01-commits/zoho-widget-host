@@ -170,3 +170,105 @@ test('customer-approvals loads the module and hands it the records', () => {
   assert.ok(/<script src="customer-noa-panel\.js"><\/script>/.test(html));
   assert.ok(/if \(window\.OperFiCustomerNoa\) OperFiCustomerNoa\.onRecords\(allRecords,/.test(html));
 });
+
+// ── Task 2: row chip and row Send NOA ─────────────────────────────────────
+
+function chipFetch(chips, status) {
+  return function (url) {
+    if (url.includes('/customer-noa/statuses')) {
+      return status ? jsonRes(status, {}) : jsonRes(200, { chips });
+    }
+    return jsonRes(200, { items: [] });
+  };
+}
+const CHIP = (label, extra) => Object.assign({ status: 'sent', label, waiting_on: '',
+  last_sent_at: null, can_send: true, attention: false }, extra || {});
+
+async function previewWith(chips, status) {
+  const p = loadPage({ staff: true, target: 'b@x.com', fetchImpl: chipFetch(chips, status) });
+  boot(p, Object.keys(chips).length ? Object.keys(chips).map(id => ({ ID: id })) : [{ ID: '1' }]);
+  await wait(20);
+  return p;
+}
+
+test('dark: rowChipHtml returns empty for a broker', async () => {
+  const p = loadPage({ staff: false, target: '' });
+  boot(p, [{ ID: '1' }]);
+  await wait(20);
+  assert.strictEqual(p.N.rowChipHtml({ ID: '1' }), '');
+});
+
+test('chip label is shown verbatim for every label the API sends', async () => {
+  const labels = ['Not sent', 'Sent from FactorView', 'Waiting on ap@acme.com',
+    'Waiting on OperFi verification', 'Confirmed', 'Action needed: Claim review', 'Released'];
+  const chips = {};
+  labels.forEach((l, i) => { chips[String(i + 1)] = CHIP(l); });
+  const p = await previewWith(chips);
+  labels.forEach((l, i) => {
+    const html = p.N.rowChipHtml({ ID: String(i + 1) });
+    assert.ok(html.includes('>' + l + '<'), 'missing label ' + l);
+  });
+});
+
+test('Waiting on OperFi verification is never styled as done', async () => {
+  const p = await previewWith({});
+  assert.strictEqual(p.N.chipToneClass({ status: 'acknowledged', label: 'Waiting on OperFi verification' }), 'cnoa-tone-wait');
+  assert.strictEqual(p.N.chipToneClass({ status: 'confirmed', label: 'Confirmed' }), 'cnoa-tone-done');
+  assert.strictEqual(p.N.chipToneClass({ status: 'action_needed', label: 'Action needed: x' }), 'cnoa-tone-action');
+  assert.strictEqual(p.N.chipToneClass({ status: 'not_sent', label: 'Not sent' }), 'cnoa-tone-muted');
+  assert.strictEqual(p.N.chipToneClass({ status: 'released', label: 'Released' }), 'cnoa-tone-muted');
+});
+
+test('Send NOA only when can_send is exactly true', async () => {
+  const p = await previewWith({ '1': CHIP('Not sent', { can_send: true }),
+    '2': CHIP('Confirmed', { can_send: false }), '3': CHIP('Released', { can_send: undefined }),
+    '4': CHIP('Sent', { can_send: 'true' }) });
+  assert.ok(p.N.rowChipHtml({ ID: '1' }).includes('data-cnoa-send="1"'));
+  ['2', '3', '4'].forEach(id => assert.ok(!p.N.rowChipHtml({ ID: id }).includes('data-cnoa-send'), id));
+});
+
+test('the row button cannot open the drawer or hit the page action binder', async () => {
+  const p = await previewWith({ '1': CHIP('Not sent') });
+  const html = p.N.rowChipHtml({ ID: '1' });
+  assert.ok(/<button[^>]*class="row-action[^"]*"[^>]*data-cnoa-send="1"/.test(html));
+  assert.ok(!/data-action=/.test(html));
+});
+
+test('preview tag shows in staff preview, not when enabled for real', async () => {
+  const p = await previewWith({ '1': CHIP('Not sent') });
+  const html = p.N.rowChipHtml({ ID: '1' });
+  assert.strictEqual(html.split('Preview: hidden from clients').length - 1, 1);
+  const q = loadPage({ staff: false, enabledOverride: true, fetchImpl: chipFetch({ '1': CHIP('Not sent') }) });
+  boot(q, [{ ID: '1' }]);
+  await wait(20);
+  assert.ok(q.N.rowChipHtml({ ID: '1' }).includes('Not sent'));
+  assert.ok(!q.N.rowChipHtml({ ID: '1' }).includes('Preview: hidden from clients'));
+});
+
+test('no chip for an omitted id or after a failed statuses call', async () => {
+  const p = await previewWith({ '1': CHIP('Not sent') });
+  assert.strictEqual(p.N.rowChipHtml({ ID: '999' }), '');
+  const q = await previewWith({ '1': CHIP('Not sent') }, 500);
+  assert.strictEqual(q.N.rowChipHtml({ ID: '1' }), '');
+});
+
+test('chip label is escaped', async () => {
+  const p = await previewWith({ '1': CHIP('<img src=x onerror=alert(1)>') });
+  const html = p.N.rowChipHtml({ ID: '1' });
+  assert.ok(!html.includes('<img'));
+  assert.ok(html.includes('&lt;img'));
+});
+
+test('clicking the row Send NOA calls the registered send handler with the id', async () => {
+  const p = await previewWith({ '7': CHIP('Not sent') });
+  const got = [];
+  p.N.onSendClick(id => got.push(id));
+  p.window.document.getElementById('results').innerHTML = p.N.rowChipHtml({ ID: '7' });
+  p.window.document.querySelector('[data-cnoa-send]').click();
+  assert.deepStrictEqual(got, ['7']);
+});
+
+test('rowHtml mounts the chip behind a guard', () => {
+  const html = fs.readFileSync(__dirname + '/../customer-approvals.html', 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(html.includes("(window.OperFiCustomerNoa ? OperFiCustomerNoa.rowChipHtml(r) : '') +"));
+});

@@ -468,6 +468,13 @@ test('the form has Send now and Have OperFi send it as two buttons, no checkbox'
   assert.strictEqual(m.querySelectorAll('input[type="checkbox"]').length, 0);
 });
 
+test('[hidden] beats the module display rules (rendered-page regression)', async () => {
+  const { d } = await openForm();
+  const css = d.getElementById('cnoa-styles').textContent;
+  assert.ok(css.includes('.cnoa-modal [hidden],.cnoa-panel [hidden],.cnoa-bell-menu [hidden]{display:none !important;}'));
+  assert.strictEqual(d.getElementById('cnoa-s-new').hidden, true, 'existing contact selected: new-contact fields hidden');
+});
+
 test('preview body is exactly {email, submission_id, contact:{email,name}, note}', async () => {
   const { p, d } = await openForm();
   d.querySelector('[name="cnoa-s-note"]').value = 'Hi';
@@ -545,6 +552,30 @@ test('blocked_contact shows reasons and offers no override', async () => {
   assert.ok(m.textContent.includes('Use a different address.'));
   const visibleBtns = Array.from(m.querySelectorAll('button')).filter(b => !b.hidden).map(b => b.id);
   assert.deepStrictEqual(visibleBtns.sort(), ['cnoa-cancel', 'cnoa-change-address'].sort());
+});
+
+test('changing the recipient retires the old preview (rendered-page finding)', async () => {
+  const { d } = await openForm();
+  d.getElementById('cnoa-preview').click();
+  await wait(20);
+  assert.strictEqual(d.getElementById('cnoa-preview-frame').hidden, false);
+  useNewContact(d, 'other@acme.com');
+  assert.strictEqual(d.getElementById('cnoa-preview-frame').hidden, true);
+  assert.strictEqual(d.getElementById('cnoa-preview-frame').getAttribute('srcdoc'), null);
+});
+
+test('a block also hides the preview and the Have-OperFi note', async () => {
+  const { d } = await openForm({ send: () => jsonRes(409, { error: 'blocked_contact',
+    checks: { blocks: ['free_mail'], warnings: [], positives: [] } }) });
+  d.getElementById('cnoa-preview').click();
+  await wait(20);
+  d.getElementById('cnoa-send-self').click();
+  await wait(20);
+  assert.strictEqual(d.getElementById('cnoa-preview-frame').hidden, true);
+  assert.strictEqual(d.getElementById('cnoa-operfi-note').hidden, true);
+  d.getElementById('cnoa-change-address').click();
+  assert.strictEqual(d.getElementById('cnoa-operfi-note').hidden, false);
+  assert.strictEqual(d.getElementById('cnoa-send-self').hidden, false);
 });
 
 test('double click on Send now sends once', async () => {

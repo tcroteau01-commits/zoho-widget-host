@@ -368,7 +368,7 @@ const CNOA_PORTAL_ENABLED = false;
           '<button type="button" class="btn" id="cnoa-send-operfi">Have OperFi send it for me</button>' +
           '<button type="button" class="btn primary" id="cnoa-send-self">Send now</button>' +
         '</div>' +
-        '<div class="cnoa-sub">Have OperFi send it: OperFi sends it for you. Nothing is emailed until we do.</div>' +
+        '<div class="cnoa-sub" id="cnoa-operfi-note">Have OperFi send it for me: OperFi sends it on your behalf. Nothing is emailed until we do.</div>' +
       '</div>';
     document.body.appendChild(m);
 
@@ -391,7 +391,10 @@ const CNOA_PORTAL_ENABLED = false;
       sel.innerHTML = opts.join('');
       newBox.hidden = sel.value !== '__new';
     }
-    sel.addEventListener('change', function () { newBox.hidden = sel.value !== '__new'; });
+    // A preview is for one recipient; any change of recipient retires it.
+    function clearPreview() { frame.hidden = true; frame.removeAttribute('srcdoc'); checksEl.innerHTML = ''; }
+    sel.addEventListener('change', function () { newBox.hidden = sel.value !== '__new'; clearPreview(); });
+    q('[name="cnoa-s-email"]').addEventListener('input', clearPreview);
 
     if (contactsBySub[id]) fillContacts(contactsBySub[id]);
     else {
@@ -423,6 +426,8 @@ const CNOA_PORTAL_ENABLED = false;
       checksEl.innerHTML = checksHtml(checks);
       msg.textContent = 'Use a different address.';
       actionBtns.forEach(function (b) { b.hidden = true; });
+      q('#cnoa-operfi-note').hidden = true;
+      frame.hidden = true;
       q('#cnoa-change-address').hidden = false;
     }
 
@@ -433,6 +438,8 @@ const CNOA_PORTAL_ENABLED = false;
       checksEl.innerHTML = '';
       msg.textContent = '';
       actionBtns.forEach(function (b) { b.hidden = false; });
+      q('#cnoa-operfi-note').hidden = false;
+      clearPreview();
       q('#cnoa-change-address').hidden = true;
       var e = q('[name="cnoa-s-email"]'); if (e) e.focus();
     });
@@ -551,6 +558,21 @@ const CNOA_PORTAL_ENABLED = false;
     });
     var bell = bellState.chipsEl && bellState.chipsEl.querySelector('#cnoa-bell');
     (bell && bell.parentNode ? bell.parentNode : document.body).appendChild(menu);
+    // Anchor under the bell (same offsetParent as the menu), not over it, so
+    // the bell stays clickable to close. Any click outside also closes it.
+    if (bell) {
+      menu.style.left = bell.offsetLeft + 'px';
+      menu.style.top = (bell.offsetTop + bell.offsetHeight + 4) + 'px';
+    }
+    setTimeout(function () {
+      document.addEventListener('click', function outside(e) {
+        var m = document.getElementById('cnoa-bell-menu');
+        if (!m) { document.removeEventListener('click', outside); return; }
+        if (m.contains(e.target) || (e.target.closest && e.target.closest('#cnoa-bell'))) return;
+        document.removeEventListener('click', outside);
+        closeBellMenu();
+      });
+    }, 0);
     // Mark seen. The count clears only once the server agrees.
     postJson('/customer-noa/seen', {
       email: state.email,
@@ -572,7 +594,11 @@ const CNOA_PORTAL_ENABLED = false;
     paintBell();
   }
 
+  // 🚨 [hidden] must win over this file's own display rules (.cnoa-add is flex,
+  // .btn is inline-flex in the page). Without it a "hidden" Send button stays
+  // on screen after a blocked address. Seen in the rendered page, not in jsdom.
   var STYLES =
+    '.cnoa-modal [hidden],.cnoa-panel [hidden],.cnoa-bell-menu [hidden]{display:none !important;}' +
     '.cnoa-modal{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:1000;}' +
     '.cnoa-modal-box{background:#fff;border-radius:10px;padding:16px;width:min(560px,94vw);max-height:90vh;overflow:auto;}' +
     '.cnoa-field{display:block;font-size:12px;margin-top:8px;}' +

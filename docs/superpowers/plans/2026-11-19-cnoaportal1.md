@@ -133,6 +133,8 @@ _Done 11-19: 29/29 module tests; full suite unchanged apart from +10 passing (18
 
 **Pre-step (before any code): live template check.** Read-only Mongo query against Atlas `core_access` permission templates (handle per `reference_local_mongo_read_write_is_localhost` memory): list every template assigned to an active broker account that includes `page.customer_approvals`, and whether it carries `action.customer.send_noa`. Write the result (template name, account count, has/lacks) into this plan under the task. Report gaps to Tom. Do not patch templates. Owner gets it automatically, per the hand-off.
 
+**Template check result (11-19, Atlas core_access, read-only):** every template that holds `page.customer_approvals` LACKS `action.customer.send_noa`: global `Owner / Full Access` and `Credit`, plus account copies `Credit (copy)` (0 active users), `Freight Agent Access` (3), `Accounting (copy)` (1). Account owners (384 active, `is_account_owner`) get it automatically per the hand-off. **Gap: ~157 active non-owner users** (133 on Owner / Full Access without a direct grant, 19 on Credit, 3 Freight Agent, 1 Accounting copy, 1 other) would get 403 on preview/send/add-contact. Cause: `seed_starter_templates` reuses existing templates and never rewrites them, so the cap added to STARTER_TEMPLATES never reached the stored ones. NOT patched (rule). Must be resolved before the flip; reported to Tom.
+
 **Files:** Modify `customer-noa-panel.js`, tests.
 
 **Interfaces:**
@@ -141,7 +143,7 @@ _Done 11-19: 29/29 module tests; full suite unchanged apart from +10 passing (18
 - `CHECK_TEXT` map, copied verbatim from the 11-03 hand-off table: `free_mail`, `lookalike_domain`, `client_domain`, `client_user`, `credit_contact`, `bad_email`, `domain_mismatch` (warning), `role_address` (positive). Unknown code → "This address can't be used for an NOA."
 - Response handling: 200 → close, toast "NOA sent to <email>" / "Request sent. OperFi will send it.", refresh that id's chip via `GET /customer-noa/status`; 409 `no_master` → "We don't have a signed NOA on file for your company yet. OperFi will reach out."; 409 `blocked_contact` → list block reasons + "Use a different address."; 409 `bad_state` → "This customer has already acknowledged or confirmed the NOA."; 503 → "Sending is unavailable right now. Try again in a few minutes."; 403 → "You don't have permission to send NOAs. Ask your account owner."
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
   - `preview body is exactly {email, submission_id, contact:{email,name}, note}`.
   - `send body is exactly {email, submission_id, contact:{email,name,phone,role}, note, mode}` for both modes.
   - `no forbidden key ever leaves the module` — wrap fetch, across every POST in the suite assert none of `status, confirmed_by, kind, force, verified_domain, client, debtor` at any depth.
@@ -151,7 +153,9 @@ _Done 11-19: 29/29 module tests; full suite unchanged apart from +10 passing (18
   - `preview html goes into a sandboxed iframe srcdoc, never innerHTML` — iframe has `sandbox=""`.
   - `each error status shows its mapped text`.
   - `dark: openSendForm is a no-op for a broker`.
-- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** `npm test` → PASS. **Step 5:** Commit `CNOAPORTAL1 Task 4: send form`.
+- [x] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** `npm test` → PASS. **Step 5:** Commit `CNOAPORTAL1 Task 4: send form`.
+
+_Done 11-19: 42/42 module tests. A preview that returns blocks also switches the form to the blocked state, so a blocked address never reaches Send. Template gap above still open (pre-flip)._
 
 ### Task 5: NOA bell
 

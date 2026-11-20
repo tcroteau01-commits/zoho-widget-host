@@ -182,11 +182,13 @@ _Done 11-19: 50/50 module tests. `openPanelForId` clears status/search/attention
 
 **Files:** operfi-broker-api `broker_portal.py:130` `ALLOWED_ASSETS`; the existing allowlist test (find with `git grep -n ALLOWED_ASSETS tests/`).
 
-- [ ] **Step 1:** Worktree off operfi-broker-api `origin/main` (fetch first), branch `cnoaportal1-asset`.
-- [ ] **Step 2:** Add a failing assertion that `"customer-noa-panel.js" in ALLOWED_ASSETS`; run that test file → FAIL.
-- [ ] **Step 3:** Add the entry with a comment: "CNOAPORTAL1. Makes its own /customer-noa/* calls; dark behind CNOA_PORTAL_ENABLED in the file."
-- [ ] **Step 4:** Run the test file → PASS; run the full suite.
-- [ ] **Step 5:** Commit, push, open PR. Merge rules in Task 7.
+- [x] **Step 1:** Worktree off operfi-broker-api `origin/main` (fetch first), branch `cnoaportal1-asset`.
+- [x] **Step 2:** Add a failing assertion that `"customer-noa-panel.js" in ALLOWED_ASSETS`; run that test file → FAIL.
+- [x] **Step 3:** Add the entry with a comment: "CNOAPORTAL1. Makes its own /customer-noa/* calls; dark behind CNOA_PORTAL_ENABLED in the file."
+- [x] **Step 4:** Run the test file → PASS; run the full suite.
+- [x] **Step 5:** Commit, push, open PR. Merge rules in Task 7.
+
+_Done 11-19: operfi-broker-api PR #1119 (branch `cnoaportal1-asset`, worktree `C:\Claude Code\wt-cnoaportal1-asset`, commit dfee645d). Not merged; merge is Task 7 step 6. Full API suite 21,930 passed; 17 failures pre-existing (15 fail on clean origin/main 32fe6168, 2 order-dependent, pass in isolation on both). test_photo_scan* skipped locally: no cv2._
 
 ### Task 7: Browser verification, PRs, merge
 

@@ -847,6 +847,51 @@ var currentSort = 'newest';
 var openIndex = -1;
 var currentLoadId = 0;
 
+// CUSTLINK1 (Tom, 2026-11-20): every customer gets its own URL, so the
+// #broker_credit Slack post opens the customer it is about instead of the list.
+// The shell turns "#Page:Customer_Approvals?customer=<id>" into ?customer=<id>
+// on this frame (broker_portal_site/router.js iframeUrl). Read ONCE: the list
+// reloads after every decision, and re-opening the profile on each reload would
+// trap the analyst on it.
+var deepLinkCustomer = (function() {
+  try { return new URLSearchParams(window.location.search).get('customer') || ''; }
+  catch (e) { return ''; }
+})();
+
+function openDeepLinkedCustomer() {
+  var id = deepLinkCustomer;
+  deepLinkCustomer = '';
+  if (!id) return;
+  var rec = null;
+  allRecords.forEach(function(r) { if (!rec && String(r.ID) === String(id)) rec = r; });
+  if (!rec) {
+    // Not in this viewer's list (another client's customer, or acting as a client).
+    console.warn('[CustomerApprovals] linked customer ' + id + ' is not in this list');
+    setCustomerUrl('');
+    return;
+  }
+  // The full profile is staff-only (see CUSTPROF1 in renderPanel); a broker
+  // gets the same customer's drawer.
+  if (allClients) openProfile(rec); else openPanelForId(id);
+}
+
+// Keeps the shell's address bar on the open customer so it can be copied or
+// reloaded. replaceState fires no hashchange, so the shell does not reload this
+// frame. Cross-origin (the retired Creator embed) the top window is off limits:
+// skip quietly.
+function setCustomerUrl(id) {
+  try {
+    var top = window.top;
+    var hash = '#Page:Customer_Approvals' + (id ? '?customer=' + encodeURIComponent(id) : '');
+    if (top.location.hash.indexOf('#Page:Customer_Approvals') !== 0) return;
+    if (top.location.hash === hash) return;
+    top.history.replaceState(top.history.state, '', top.location.pathname + top.location.search + hash);
+  } catch (e) {}
+}
+window.openDeepLinkedCustomer = openDeepLinkedCustomer;  // exposed for tests (CUSTLINK1)
+window.openProfile = function(r) { return openProfile(r); };            // exposed for tests (CUSTLINK1)
+window.closeProfile = function() { return closeProfile(); };            // exposed for tests (CUSTLINK1)
+
 // CUSTEVENT1 — the attention bell's state. Staff only (see fetchCustomerEventsBulk's
 // allClients gate); stays at its quiet defaults for every broker viewer.
 var customerEventsTotal = 0;          // distinct customers with unread events
@@ -1194,6 +1239,7 @@ function onRecordsLoaded(records) {
   fetchInternalCreditSources(); // staff only, see CREDITINT1
   // CNOAPORTAL1: customer NOA chips. Dark: the module makes no call unless enabled or staff-previewing.
   if (window.OperFiCustomerNoa) OperFiCustomerNoa.onRecords(allRecords, { email: brokerEmail, apiBase: BROKER_API_BASE, rerender: renderList });
+  openDeepLinkedCustomer();     // CUSTLINK1: the Slack link's customer, first load only
 }
 window.onRecordsLoaded = onRecordsLoaded;  // exposed for tests (SORT2)
 
@@ -1898,6 +1944,7 @@ function renderPanel() {
 // there is exactly one place that ever POSTs /credit-decision.
 function openProfile(rec) {
   closePanel();
+  setCustomerUrl(rec && rec.ID != null ? String(rec.ID) : '');  // CUSTLINK1
   document.querySelector('.widget').style.display = 'none';
   var root = document.getElementById('ca-profile');
   root.style.display = '';
@@ -1924,6 +1971,7 @@ function openProfile(rec) {
 }
 
 function closeProfile() {
+  setCustomerUrl('');  // CUSTLINK1: back on the list, so the URL is the list's
   document.getElementById('ca-profile').style.display = 'none';
   document.querySelector('.widget').style.display = '';
 }

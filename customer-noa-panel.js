@@ -1,6 +1,6 @@
 // customer-noa-panel.js
 // CNOAPORTAL1: the broker's customer NOA on Customer Approvals (status chip,
-// Send NOA, AP contacts, NOA bell). Contract: NOA Center hand-offs 2026-11-03
+// Send NOA to the one AP address on file, NOA bell). Contract: NOA Center hand-offs 2026-11-03
 // and 2026-11-19. Loaded by customer-approvals.html; on the portal it must be
 // in broker_portal.ALLOWED_ASSETS or it 404s silently (the page then behaves
 // exactly as it did before this file existed).
@@ -124,13 +124,22 @@ const CNOA_PORTAL_ENABLED = false;
 
   var PREVIEW_TAG = '<span class="cnoa-preview-tag">Preview: hidden from clients</span>';
 
+  // The one AP address the client may send to, picked by the API (approved
+  // submission's billing email or an OperFi-confirmed AP address). Tom 11-22.
+  function sendTo(chip) {
+    var t = chip && chip.send_to;
+    return (t && typeof t === 'object' && typeof t.email === 'string' && t.email) ? t : null;
+  }
+  // Send NOA needs both: the API says sendable AND names the recipient.
+  function canSend(chip) { return !!(chip && chip.can_send === true && sendTo(chip)); }
+
   function rowChipHtml(rec) {
     var chip = rec && chipFor(rec.ID);
     if (!chip) return '';
     var id = String(rec.ID);
     // class row-action: the page's row-click guard skips it (no drawer open).
     // NO data-action: the page's own action binder must not see it.
-    var send = chip.can_send === true
+    var send = canSend(chip)
       ? '<button type="button" class="row-action cnoa-send-btn" data-cnoa-send="' + esc(id) + '">Send NOA</button>'
       : '';
     return '<div class="cnoa-row">' +
@@ -168,15 +177,6 @@ const CNOA_PORTAL_ENABLED = false;
     } catch (e) { return Promise.resolve({ status: 0, body: {} }); }
   }
 
-  function getWithStatus(path) {
-    try {
-      return fetch(state.apiBase + path).then(function (res) {
-        return res.json().catch(function () { return {}; })
-          .then(function (b) { return { status: res.status, body: b || {} }; });
-      }).catch(function () { return { status: 0, body: {} }; });
-    } catch (e) { return Promise.resolve({ status: 0, body: {} }); }
-  }
-
   function shortDate(iso) {
     var d = iso ? new Date(iso) : null;
     if (!d || isNaN(d.getTime())) return '';
@@ -184,115 +184,53 @@ const CNOA_PORTAL_ENABLED = false;
   }
 
   // ── Drawer section ─────────────────────────────────────────────────────
-  var LOR_URL = 'https://lor-request.operfi.com';
+  // No Letter of Release link here: LOR requests are staff-only (Tom 11-22).
+  // No contact list or Add contact: the client sends only to the one AP address
+  // the API names in chip.send_to (Tom 11-22). They cannot pick or type one.
+  var NO_AP_TEXT = 'No approved AP contact on file for this customer. Contact brokersupport@operfi.com.';
 
   function panelHtml(rec) {
     var chip = rec && chipFor(rec.ID);
     if (!chip) return '';
     var id = String(rec.ID);
     var sent = shortDate(chip.last_sent_at);
+    var to = sendTo(chip);
     return '<div class="cnoa-panel" id="cnoa-panel">' +
       '<div class="cnoa-panel-head">Customer NOA ' + (isPreview() ? PREVIEW_TAG : '') + '</div>' +
       '<div class="cnoa-row"><span class="cnoa-chip ' + chipToneClass(chip) + '"><span class="cnoa-label">' +
         esc(chip.label) + '</span></span>' +
-        (chip.can_send === true
+        (canSend(chip)
           ? '<button type="button" class="btn cnoa-send-btn" data-cnoa-send="' + esc(id) + '">Send NOA</button>'
           : '') +
       '</div>' +
       (sent ? '<div class="cnoa-sub">Last sent ' + esc(sent) + '</div>' : '') +
-      '<div class="cnoa-subhead">Accounts payable contacts</div>' +
-      '<div id="cnoa-contacts" class="cnoa-contacts"><div class="cnoa-sub">Loading contacts...</div></div>' +
-      '<div id="cnoa-add-form" class="cnoa-add">' +
-        '<input name="cnoa-c-email" type="email" placeholder="AP email">' +
-        '<input name="cnoa-c-name" type="text" placeholder="Name">' +
-        '<input name="cnoa-c-phone" type="tel" placeholder="Phone">' +
-        '<input name="cnoa-c-role" type="text" placeholder="Role (e.g. AP)">' +
-        '<button type="button" class="btn" id="cnoa-add-contact">Add contact</button>' +
-      '</div>' +
-      '<div id="cnoa-contact-msg" class="cnoa-msg" role="status"></div>' +
-      '<div class="cnoa-sub"><a href="' + LOR_URL + '" target="_blank" rel="noopener">Request a Letter of Release</a></div>' +
+      (to ? '<div class="cnoa-sub">NOA goes to <strong>' + esc(to.email) + '</strong></div>'
+          : (chip.status === 'not_sent' ? '<div class="cnoa-sub">' + esc(NO_AP_TEXT) + '</div>' : '')) +
     '</div>';
   }
 
-  var contactsBySub = {};   // submission_id -> last contacts list (Task 4 picker reads it)
+  // Kept so customer-approvals.html's mount call stays valid. Nothing to wire.
+  function wirePanel() {}
 
-  function contactsHtml(list) {
-    if (!list || !list.length) return '<div class="cnoa-sub">No AP contacts yet.</div>';
-    return list.map(function (c) {
-      var tags = [];
-      if (c.primary) tags.push('Primary');
-      if (c.source === 'submission') tags.push('Suggested from the credit submission');
-      return '<div class="cnoa-contact"><strong>' + esc(c.email) + '</strong>' +
-        (c.name ? ' ' + esc(c.name) : '') + (c.role ? ' (' + esc(c.role) + ')' : '') +
-        (c.phone ? ' ' + esc(c.phone) : '') +
-        (tags.length ? ' <span class="cnoa-tag">' + esc(tags.join(', ')) + '</span>' : '') + '</div>';
-    }).join('');
-  }
-
-  var CONTACT_ERRORS = {
-    bad_email: 'Not a valid email address.',
-    too_many_contacts: 'A customer can have up to 10 AP contacts.'
-  };
-
-  function wirePanel(rec, root) {
-    if (!visible() || !rec || !root) return;
-    var sec = root.querySelector('#cnoa-panel');
-    if (!sec) return;
-    var id = String(rec.ID);
-    var listEl = sec.querySelector('#cnoa-contacts');
-    var msg = sec.querySelector('#cnoa-contact-msg');
-    getWithStatus('/customer-noa/contacts?email=' + encodeURIComponent(state.email) +
-                  '&submission_id=' + encodeURIComponent(id)).then(function (r) {
-      if (r.status === 200) {
-        contactsBySub[id] = r.body.contacts || [];
-        listEl.innerHTML = contactsHtml(contactsBySub[id]);
-      } else {
-        listEl.innerHTML = '<div class="cnoa-sub">Contacts could not be loaded.</div>';
-      }
-    });
-    var addBtn = sec.querySelector('#cnoa-add-contact');
-    addBtn.addEventListener('click', function () {
-      var v = function (n) { var el = sec.querySelector('[name="cnoa-c-' + n + '"]'); return el ? el.value.trim() : ''; };
-      if (!v('email')) { msg.textContent = 'Enter an email address.'; return; }
-      addBtn.disabled = true;
-      msg.textContent = '';
-      postJson('/customer-noa/contacts', {
-        email: state.email, submission_id: id,
-        contact: { email: v('email'), name: v('name'), phone: v('phone'), role: v('role') }
-      }).then(function (r) {
-        addBtn.disabled = false;
-        if (r.status === 200) {
-          contactsBySub[id] = r.body.contacts || contactsBySub[id] || [];
-          listEl.innerHTML = contactsHtml(contactsBySub[id]);
-          ['email', 'name', 'phone', 'role'].forEach(function (n) { sec.querySelector('[name="cnoa-c-' + n + '"]').value = ''; });
-          msg.textContent = 'Contact saved.';
-        } else if (r.status === 403) {
-          sec.querySelector('#cnoa-add-form').hidden = true;
-          msg.textContent = "You don't have permission to change NOA contacts. Ask your account owner.";
-        } else {
-          msg.textContent = CONTACT_ERRORS[r.body.error] || 'The contact could not be saved. Try again.';
-        }
-      });
-    });
-  }
-
-  // ── Send form ──────────────────────────────────────────────────────────
-  // Copied from the 11-03 hand-off table. There is no override for a block.
+  // ── Send window ────────────────────────────────────────────────────────
+  // One recipient, locked: chip.send_to. The email preview loads on open and
+  // Send stays disabled until it does. No note, no other address, no override.
   var CHECK_TEXT = {
     free_mail: "Free email address (Gmail, Yahoo...). Use the customer's company address.",
     lookalike_domain: "Looks like the customer's domain but is not.",
     client_domain: "That is your own company's address.",
     client_user: "That is your own company's address.",
     credit_contact: 'That is the credit contact, not accounts payable.',
-    bad_email: 'Not a valid email address.',
-    domain_mismatch: "Does not match the customer's verified domain. Allowed, but OperFi will verify by phone.",
-    role_address: 'AP role address. Good.'
+    bad_email: 'Not a valid email address.'
   };
   function checkText(code) { return CHECK_TEXT[code] || "This address can't be used for an NOA."; }
 
+  var BLOCKED_TEXT = "This customer's AP contact can't be used for an NOA. Contact brokersupport@operfi.com.";
   var SEND_ERRORS = {
     no_master: "We don't have a signed NOA on file for your company yet. OperFi will reach out.",
-    bad_state: 'This customer has already acknowledged or confirmed the NOA.'
+    bad_state: 'This customer has already acknowledged or confirmed the NOA.',
+    recipient_not_on_file: BLOCKED_TEXT,
+    blocked_contact: BLOCKED_TEXT
   };
   function errorText(r) {
     if (r.status === 403) return "You don't have permission to send NOAs. Ask your account owner.";
@@ -300,13 +238,10 @@ const CNOA_PORTAL_ENABLED = false;
     return SEND_ERRORS[r.body && r.body.error] || 'Something went wrong. Try again.';
   }
 
-  function checksHtml(checks) {
-    if (!checks) return '';
-    var out = '';
-    (checks.blocks || []).forEach(function (c) { out += '<div class="cnoa-check cnoa-check-block">' + esc(checkText(c)) + '</div>'; });
-    (checks.warnings || []).forEach(function (c) { out += '<div class="cnoa-check cnoa-check-warn">' + esc(checkText(c)) + '</div>'; });
-    (checks.positives || []).forEach(function (c) { out += '<div class="cnoa-check cnoa-check-ok">' + esc(checkText(c)) + '</div>'; });
-    return out;
+  function blocksHtml(checks) {
+    return ((checks && checks.blocks) || []).map(function (c) {
+      return '<div class="cnoa-check cnoa-check-block">' + esc(checkText(c)) + '</div>';
+    }).join('');
   }
 
   function closeSendForm() {
@@ -338,9 +273,16 @@ const CNOA_PORTAL_ENABLED = false;
     });
   }
 
+  function isBlocked(r) {
+    return r.status === 409 && !!r.body && SEND_ERRORS[r.body.error] === BLOCKED_TEXT;
+  }
+
   function openSendForm(id) {
     if (!visible() || typeof document === 'undefined') return;
     id = String(id);
+    var chip = chipFor(id);
+    if (!canSend(chip)) return;
+    var to = sendTo(chip);
     closeSendForm();
     var m = document.createElement('div');
     m.id = 'cnoa-send-modal';
@@ -350,144 +292,75 @@ const CNOA_PORTAL_ENABLED = false;
     m.innerHTML =
       '<div class="cnoa-modal-box">' +
         '<div class="cnoa-panel-head">Send customer NOA ' + (isPreview() ? PREVIEW_TAG : '') + '</div>' +
-        '<label class="cnoa-field"><span>Send to</span><select name="cnoa-s-contact"></select></label>' +
-        '<div id="cnoa-s-new" class="cnoa-add">' +
-          '<input name="cnoa-s-email" type="email" placeholder="AP email">' +
-          '<input name="cnoa-s-name" type="text" placeholder="Name">' +
-          '<input name="cnoa-s-phone" type="tel" placeholder="Phone">' +
-          '<input name="cnoa-s-role" type="text" placeholder="Role (e.g. AP)">' +
-        '</div>' +
-        '<label class="cnoa-field"><span>Note (optional)</span><textarea name="cnoa-s-note" rows="2"></textarea></label>' +
+        '<label class="cnoa-field"><span>To</span>' +
+          '<input name="cnoa-s-to" type="email" value="' + esc(to.email) + '" readonly disabled></label>' +
+        '<div class="cnoa-field" id="cnoa-s-subject-row" hidden><span>Subject</span><div id="cnoa-s-subject"></div></div>' +
         '<div id="cnoa-checks"></div>' +
-        '<div id="cnoa-send-msg" class="cnoa-msg" role="status"></div>' +
-        '<iframe id="cnoa-preview-frame" class="cnoa-preview-frame" sandbox="" title="NOA email preview" hidden></iframe>' +
+        '<div id="cnoa-send-msg" class="cnoa-msg" role="status">Loading the email...</div>' +
+        '<iframe id="cnoa-preview-frame" class="cnoa-preview-frame" sandbox="" title="NOA email" hidden></iframe>' +
         '<div class="cnoa-modal-actions">' +
           '<button type="button" class="btn" id="cnoa-cancel">Cancel</button>' +
-          '<button type="button" class="btn" id="cnoa-change-address" hidden>Use a different address</button>' +
-          '<button type="button" class="btn" id="cnoa-preview">Preview email</button>' +
-          '<button type="button" class="btn" id="cnoa-send-operfi">Have OperFi send it for me</button>' +
-          '<button type="button" class="btn primary" id="cnoa-send-self">Send now</button>' +
+          '<button type="button" class="btn primary" id="cnoa-send-self" disabled>Send NOA</button>' +
         '</div>' +
-        '<div class="cnoa-sub" id="cnoa-operfi-note">Have OperFi send it for me: OperFi sends it on your behalf. Nothing is emailed until we do.</div>' +
       '</div>';
     document.body.appendChild(m);
 
     var q = function (sel) { return m.querySelector(sel); };
-    var sel = q('[name="cnoa-s-contact"]');
-    var newBox = q('#cnoa-s-new');
     var msg = q('#cnoa-send-msg');
-    var checksEl = q('#cnoa-checks');
+    var sendBtn = q('#cnoa-send-self');
     var frame = q('#cnoa-preview-frame');
-    var actionBtns = ['#cnoa-preview', '#cnoa-send-operfi', '#cnoa-send-self'].map(q);
     var busy = false;
-
-    function fillContacts(list) {
-      list = list || [];
-      var opts = list.map(function (c, i) {
-        return '<option value="' + i + '"' + (c.primary ? ' selected' : '') + '>' +
-          esc(c.email + (c.name ? ' (' + c.name + ')' : '')) + '</option>';
-      });
-      opts.push('<option value="__new"' + (list.length ? '' : ' selected') + '>New contact...</option>');
-      sel.innerHTML = opts.join('');
-      newBox.hidden = sel.value !== '__new';
-    }
-    // A preview is for one recipient; any change of recipient retires it.
-    function clearPreview() { frame.hidden = true; frame.removeAttribute('srcdoc'); checksEl.innerHTML = ''; }
-    sel.addEventListener('change', function () { newBox.hidden = sel.value !== '__new'; clearPreview(); });
-    q('[name="cnoa-s-email"]').addEventListener('input', clearPreview);
-
-    if (contactsBySub[id]) fillContacts(contactsBySub[id]);
-    else {
-      fillContacts([]);
-      getWithStatus('/customer-noa/contacts?email=' + encodeURIComponent(state.email) +
-                    '&submission_id=' + encodeURIComponent(id)).then(function (r) {
-        if (r.status === 200 && document.getElementById('cnoa-send-modal') === m) {
-          contactsBySub[id] = r.body.contacts || [];
-          fillContacts(contactsBySub[id]);
-        }
-      });
-    }
-
-    function contact() {
-      if (sel.value !== '__new') {
-        var c = (contactsBySub[id] || [])[parseInt(sel.value, 10)] || {};
-        return { email: c.email || '', name: c.name || '', phone: c.phone || '', role: c.role || '' };
-      }
-      var v = function (n) { return q('[name="cnoa-s-' + n + '"]').value.trim(); };
-      return { email: v('email'), name: v('name'), phone: v('phone'), role: v('role') };
-    }
-    function note() { return q('[name="cnoa-s-note"]').value.trim(); }
-
-    function setBusy(on) {
-      busy = on;
-      actionBtns.forEach(function (b) { b.disabled = on; });
-    }
-    function blocked(checks) {
-      checksEl.innerHTML = checksHtml(checks);
-      msg.textContent = 'Use a different address.';
-      actionBtns.forEach(function (b) { b.hidden = true; });
-      q('#cnoa-operfi-note').hidden = true;
+    var contact = { email: to.email, name: to.name || '' };
+    function stillOpen() { return document.getElementById('cnoa-send-modal') === m; }
+    function blocked(r) {
+      q('#cnoa-checks').innerHTML = blocksHtml(r.body && r.body.checks);
+      msg.textContent = BLOCKED_TEXT;
+      sendBtn.hidden = true;
       frame.hidden = true;
-      q('#cnoa-change-address').hidden = false;
     }
 
     q('#cnoa-cancel').addEventListener('click', closeSendForm);
-    q('#cnoa-change-address').addEventListener('click', function () {
-      sel.value = '__new';
-      newBox.hidden = false;
-      checksEl.innerHTML = '';
-      msg.textContent = '';
-      actionBtns.forEach(function (b) { b.hidden = false; });
-      q('#cnoa-operfi-note').hidden = false;
-      clearPreview();
-      q('#cnoa-change-address').hidden = true;
-      var e = q('[name="cnoa-s-email"]'); if (e) e.focus();
+
+    postJson('/customer-noa/preview', {
+      email: state.email, submission_id: id, contact: contact
+    }).then(function (r) {
+      if (!stillOpen()) return;
+      var blocks = r.body && r.body.checks && r.body.checks.blocks;
+      if (r.status === 200 && !(blocks && blocks.length)) {
+        q('#cnoa-s-subject').textContent = String(r.body.subject || '');
+        q('#cnoa-s-subject-row').hidden = !r.body.subject;
+        frame.setAttribute('srcdoc', String(r.body.html || ''));   // sandboxed, never innerHTML
+        frame.hidden = false;
+        msg.textContent = '';
+        sendBtn.disabled = false;
+      } else if (r.status === 200 || isBlocked(r)) {
+        blocked(r);
+      } else {
+        msg.textContent = errorText(r);
+      }
     });
 
-    q('#cnoa-preview').addEventListener('click', function () {
-      if (busy) return;
-      var c = contact();
-      if (!c.email) { msg.textContent = 'Choose or enter an AP email address.'; return; }
-      setBusy(true);
-      msg.textContent = '';
-      postJson('/customer-noa/preview', {
-        email: state.email, submission_id: id, contact: { email: c.email, name: c.name }, note: note()
-      }).then(function (r) {
-        setBusy(false);
-        if (r.status === 200) {
-          checksEl.innerHTML = checksHtml(r.body.checks);
-          frame.setAttribute('srcdoc', String(r.body.html || ''));   // sandboxed, never innerHTML
-          frame.hidden = false;
-          if (r.body.checks && (r.body.checks.blocks || []).length) blocked(r.body.checks);
-        } else {
-          msg.textContent = errorText(r);
-        }
-      });
-    });
-
-    function send(mode) {
-      if (busy) return;
-      var c = contact();
-      if (!c.email) { msg.textContent = 'Choose or enter an AP email address.'; return; }
-      setBusy(true);
+    sendBtn.addEventListener('click', function () {
+      if (busy || sendBtn.disabled) return;
+      busy = true;
+      sendBtn.disabled = true;
       msg.textContent = '';
       postJson('/customer-noa/send', {
-        email: state.email, submission_id: id, contact: c, note: note(), mode: mode
+        email: state.email, submission_id: id, contact: contact, mode: 'self'
       }).then(function (r) {
-        setBusy(false);
+        busy = false;
         if (r.status === 200) {
           closeSendForm();
-          toast(mode === 'operfi' ? 'Request sent. OperFi will send it.' : 'NOA sent to ' + c.email);
+          toast('NOA sent to ' + contact.email);
           refreshChip(id);
-        } else if (r.status === 409 && r.body.error === 'blocked_contact') {
-          blocked(r.body.checks);
+        } else if (isBlocked(r)) {
+          blocked(r);
         } else {
+          sendBtn.disabled = false;
           msg.textContent = errorText(r);
         }
       });
-    }
-    q('#cnoa-send-self').addEventListener('click', function () { send('self'); });
-    q('#cnoa-send-operfi').addEventListener('click', function () { send('operfi'); });
+    });
   }
   sendHandler = openSendForm;
 
@@ -594,7 +467,7 @@ const CNOA_PORTAL_ENABLED = false;
     paintBell();
   }
 
-  // 🚨 [hidden] must win over this file's own display rules (.cnoa-add is flex,
+  // 🚨 [hidden] must win over this file's own display rules (.cnoa-field is block,
   // .btn is inline-flex in the page). Without it a "hidden" Send button stays
   // on screen after a blocked address. Seen in the rendered page, not in jsdom.
   var STYLES =
@@ -603,11 +476,10 @@ const CNOA_PORTAL_ENABLED = false;
     '.cnoa-modal-box{background:#fff;border-radius:10px;padding:16px;width:min(560px,94vw);max-height:90vh;overflow:auto;}' +
     '.cnoa-field{display:block;font-size:12px;margin-top:8px;}' +
     '.cnoa-field span{display:block;font-weight:600;margin-bottom:3px;}' +
-    '.cnoa-field select,.cnoa-field textarea{width:100%;font-size:12px;padding:4px 6px;box-sizing:border-box;}' +
+    '.cnoa-field input{width:100%;font-size:12px;padding:5px 7px;box-sizing:border-box;}' +
+    '.cnoa-field input[disabled]{background:#f1f1f1;color:#555;border:1px solid #ddd;cursor:not-allowed;}' +
     '.cnoa-check{font-size:12px;margin-top:4px;padding:3px 6px;border-radius:4px;}' +
     '.cnoa-check-block{background:#fdecea;color:#c62828;}' +
-    '.cnoa-check-warn{background:#fff8e1;color:#8a5a00;}' +
-    '.cnoa-check-ok{background:#e8f5e9;color:#1f6321;}' +
     '.cnoa-preview-frame{width:100%;height:260px;border:1px solid #ddd;border-radius:6px;margin-top:8px;}' +
     '.cnoa-modal-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:12px;}' +
     '.chip.cnoa-bell{border-color:#b8d4f0;background:#eaf3fc;color:#0d4a8a;cursor:pointer;}' +
@@ -619,12 +491,7 @@ const CNOA_PORTAL_ENABLED = false;
     '.cnoa-toast:not(:empty){padding:8px 12px;}' +
     '.cnoa-panel{border:1px solid #e3e3e3;border-radius:8px;padding:10px 12px;margin-bottom:14px;}' +
     '.cnoa-panel-head{font-weight:700;font-size:13px;margin-bottom:4px;}' +
-    '.cnoa-subhead{font-weight:600;font-size:12px;margin-top:10px;}' +
     '.cnoa-sub{font-size:12px;color:#777;margin-top:4px;}' +
-    '.cnoa-contact{font-size:12px;margin-top:4px;}' +
-    '.cnoa-tag{font-size:10px;color:#555;background:#f1f1f1;border-radius:4px;padding:1px 4px;}' +
-    '.cnoa-add{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}' +
-    '.cnoa-add input{font-size:12px;padding:4px 6px;flex:1 1 120px;}' +
     '.cnoa-msg{font-size:12px;color:#8a5a00;margin-top:4px;}' +
     '.cnoa-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;}' +
     '.cnoa-chip{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;border:1px solid;}' +
@@ -646,7 +513,7 @@ const CNOA_PORTAL_ENABLED = false;
   var api = {
     visible: visible, isPreview: isPreview, onRecords: onRecords, chipFor: chipFor,
     rowChipHtml: rowChipHtml, chipToneClass: chipToneClass, onSendClick: onSendClick,
-    panelHtml: panelHtml, wirePanel: wirePanel, _contacts: contactsBySub,
+    panelHtml: panelHtml, wirePanel: wirePanel, canSend: canSend,
     openSendForm: openSendForm, checkText: checkText, mountBell: mountBell,
     esc: esc, _state: state, _config: config
   };

@@ -28,7 +28,7 @@ function defaultFetch(url) {
     const chips = {};
     ids.forEach(id => { chips[id] = { status: 'not_sent', label: 'Not sent', waiting_on: '',
                                       last_sent_at: null, can_send: true, attention: false }; });
-    return jsonRes(200, { chips });
+    return jsonRes(200, { chips, client_send: true });
   }
   if (url.includes('/customer-noa/attention')) return jsonRes(200, { items: [] });
   return jsonRes(404, {});
@@ -176,7 +176,7 @@ test('customer-approvals loads the module and hands it the records', () => {
 function chipFetch(chips, status) {
   return function (url) {
     if (url.includes('/customer-noa/statuses')) {
-      return status ? jsonRes(status, {}) : jsonRes(200, { chips });
+      return status ? jsonRes(status, {}) : jsonRes(200, { chips, client_send: true });
     }
     return jsonRes(200, { items: [] });
   };
@@ -218,6 +218,36 @@ test('Waiting on OperFi verification is never styled as done', async () => {
   assert.strictEqual(p.N.chipToneClass({ status: 'action_needed', label: 'Action needed: x' }), 'cnoa-tone-action');
   assert.strictEqual(p.N.chipToneClass({ status: 'not_sent', label: 'Not sent' }), 'cnoa-tone-muted');
   assert.strictEqual(p.N.chipToneClass({ status: 'released', label: 'Released' }), 'cnoa-tone-muted');
+});
+
+test('client_send false or missing on statuses hides every Send NOA (NOA Center #1158)', async () => {
+  const chips = { '1': CHIP('Not sent') };
+  for (const body of [{ chips, client_send: false }, { chips }]) {
+    const p = loadPage({ staff: true, target: 'b@x.com', fetchImpl: url =>
+      url.includes('/customer-noa/statuses') ? jsonRes(200, body) : jsonRes(200, { items: [] }) });
+    boot(p, [{ ID: '1' }]);
+    await wait(20);
+    assert.ok(p.N.rowChipHtml({ ID: '1' }).includes('Not sent'), JSON.stringify(body));
+    assert.ok(!p.N.rowChipHtml({ ID: '1' }).includes('data-cnoa-send'), JSON.stringify(body));
+    assert.ok(!p.N.panelHtml({ ID: '1' }).includes('data-cnoa-send'), JSON.stringify(body));
+    p.N.openSendForm('1');
+    await wait(10);
+    assert.strictEqual(p.window.document.getElementById('cnoa-send-modal'), null);
+  }
+});
+
+test('client_send must be true on every statuses chunk', async () => {
+  let n = 0;
+  const p = loadPage({ staff: true, target: 'b@x.com', fetchImpl: url => {
+    if (!url.includes('/customer-noa/statuses')) return jsonRes(200, { items: [] });
+    const ids = new URL(url).searchParams.get('submission_ids').split(',');
+    const chips = {};
+    ids.forEach(id => { chips[id] = CHIP('Not sent'); });
+    return jsonRes(200, { chips, client_send: n++ === 0 });
+  } });
+  boot(p, records(250));
+  await wait(30);
+  assert.ok(!p.N.rowChipHtml({ ID: '1001' }).includes('data-cnoa-send'));
 });
 
 test('Send NOA needs can_send exactly true AND a send_to address (Tom 11-22)', async () => {
@@ -288,7 +318,7 @@ function drawerFetch(chip) {
   return function (url) {
     if (url.includes('/customer-noa/statuses')) {
       return jsonRes(200, { chips: { '5': chip || CHIP('Waiting on ap@acme.com',
-        { waiting_on: 'ap@acme.com', last_sent_at: '2026-11-18T15:00:00Z' }) } });
+        { waiting_on: 'ap@acme.com', last_sent_at: '2026-11-18T15:00:00Z' }) }, client_send: true });
     }
     return jsonRes(200, { items: [] });
   };
@@ -375,7 +405,7 @@ function forbiddenKeys(obj, path) {
 function sendFetch(over) {
   over = over || {};
   return function (url, init) {
-    if (url.includes('/customer-noa/statuses')) return jsonRes(200, { chips: { '5': over.chip || CHIP('Not sent', { status: 'not_sent' }) } });
+    if (url.includes('/customer-noa/statuses')) return jsonRes(200, { chips: { '5': over.chip || CHIP('Not sent', { status: 'not_sent' }) }, client_send: true });
     if (url.includes('/customer-noa/status?')) return jsonRes(200, { submission_id: '5', chip: CHIP('Waiting on ap@acme.com') });
     if (url.includes('/customer-noa/preview')) return over.preview ? over.preview(init) : jsonRes(200,
       { subject: 'Notice of Assignment', html: '<p>Hello <b>AP</b></p>', attach_name: 'noa.pdf',
@@ -539,6 +569,13 @@ test('double click on Send NOA sends once', async () => {
   await wait(10);
   assert.strictEqual(p.posts.filter(x => x.url.includes('/customer-noa/send')).length, 1);
   resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+});
+
+test('Acting as (impersonation_read_only) says view-only, not a permission problem (Tom 11-22)', async () => {
+  const body = { code: 'impersonation_read_only', error: 'Impersonation is read-only.' };
+  const { m } = await openForm({ preview: () => jsonRes(403, body) });
+  assert.ok(m.textContent.includes('Acting as is view-only. Sign in as the client to send.'));
+  assert.ok(!m.textContent.includes("You don't have permission"));
 });
 
 test('each error status shows its mapped text and Send can be retried', async () => {

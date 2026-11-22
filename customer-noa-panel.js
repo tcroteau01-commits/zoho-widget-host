@@ -20,7 +20,8 @@ const CNOA_PORTAL_ENABLED = false;
   var state = {
     email: '', apiBase: '', rerender: null,
     chips: {},          // submission_id -> chip
-    seq: 0,             // guards against a stale load overtaking a newer one
+    clientSend: false,  // statuses.client_send: this account may send (NOA Center #1158)
+    seq: 0,            // guards against a stale load overtaking a newer one
     recheckTimer: null
   };
 
@@ -60,12 +61,15 @@ const CNOA_PORTAL_ENABLED = false;
     })).then(function (payloads) {
       if (seq !== state.seq) return;            // a newer load overtook this one
       var chips = {};
+      var clientSend = payloads.length > 0;
       payloads.forEach(function (p) {
+        if (!p || p.client_send !== true) clientSend = false;   // every chunk must say yes
         var c = p && p.chips;
         if (!c || typeof c !== 'object') return;
         Object.keys(c).forEach(function (k) { chips[k] = c[k]; });
       });
       state.chips = chips;
+      state.clientSend = clientSend;
       if (typeof state.rerender === 'function') state.rerender();
     });
   }
@@ -87,6 +91,7 @@ const CNOA_PORTAL_ENABLED = false;
     state.apiBase = opts.apiBase || '';
     state.rerender = opts.rerender || null;
     state.chips = {};
+    state.clientSend = false;
     var seq = ++state.seq;
     clearTimeout(state.recheckTimer);
     if (!state.email) return;
@@ -130,8 +135,11 @@ const CNOA_PORTAL_ENABLED = false;
     var t = chip && chip.send_to;
     return (t && typeof t === 'object' && typeof t.email === 'string' && t.email) ? t : null;
   }
-  // Send NOA needs both: the API says sendable AND names the recipient.
-  function canSend(chip) { return !!(chip && chip.can_send === true && sendTo(chip)); }
+  // Send NOA needs all three: the account may send at all (client_send), the API
+  // says this customer is sendable, AND it names the recipient.
+  function canSend(chip) {
+    return !!(state.clientSend === true && chip && chip.can_send === true && sendTo(chip));
+  }
 
   function rowChipHtml(rec) {
     var chip = rec && chipFor(rec.ID);
@@ -233,6 +241,10 @@ const CNOA_PORTAL_ENABLED = false;
     blocked_contact: BLOCKED_TEXT
   };
   function errorText(r) {
+    // Acting as is read-only server-side: every POST under impersonation is refused.
+    if (r.status === 403 && r.body && r.body.code === 'impersonation_read_only') {
+      return 'Acting as is view-only. Sign in as the client to send.';
+    }
     if (r.status === 403) return "You don't have permission to send NOAs. Ask your account owner.";
     if (r.status === 503 || r.status === 0) return 'Sending is unavailable right now. Try again in a few minutes.';
     return SEND_ERRORS[r.body && r.body.error] || 'Something went wrong. Try again.';

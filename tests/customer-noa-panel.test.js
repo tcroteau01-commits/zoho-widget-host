@@ -571,6 +571,13 @@ test('double click on Send NOA sends once', async () => {
   resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
 });
 
+test('Acting as (impersonation_read_only) says view-only, not a permission problem (Tom 11-22)', async () => {
+  const body = { code: 'impersonation_read_only', error: 'Impersonation is read-only.' };
+  const { m } = await openForm({ preview: () => jsonRes(403, body) });
+  assert.ok(m.textContent.includes('Acting as is view-only. Sign in as the client to send.'));
+  assert.ok(!m.textContent.includes("You don't have permission"));
+});
+
 test('each error status shows its mapped text and Send can be retried', async () => {
   const cases = [
     [409, 'no_master', "We don't have a signed NOA on file for your company yet. OperFi will reach out."],

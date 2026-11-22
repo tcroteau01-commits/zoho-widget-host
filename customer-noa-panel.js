@@ -241,6 +241,10 @@ const CNOA_PORTAL_ENABLED = false;
     blocked_contact: BLOCKED_TEXT
   };
   function errorText(r) {
+    // Acting as is read-only server-side: every POST under impersonation is refused.
+    if (r.status === 403 && r.body && r.body.code === 'impersonation_read_only') {
+      return 'Acting as is view-only. Sign in as the client to send.';
+    }
     if (r.status === 403) return "You don't have permission to send NOAs. Ask your account owner.";
     if (r.status === 503 || r.status === 0) return 'Sending is unavailable right now. Try again in a few minutes.';
     return SEND_ERRORS[r.body && r.body.error] || 'Something went wrong. Try again.';

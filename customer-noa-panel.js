@@ -184,7 +184,7 @@ const CNOA_PORTAL_ENABLED = false;
   }
 
   // ── Drawer section ─────────────────────────────────────────────────────
-  var LOR_URL = 'https://lor-request.operfi.com';
+  // No Letter of Release link here: LOR requests are staff-only (Tom 11-22).
 
   function panelHtml(rec) {
     var chip = rec && chipFor(rec.ID);
@@ -210,7 +210,6 @@ const CNOA_PORTAL_ENABLED = false;
         '<button type="button" class="btn" id="cnoa-add-contact">Add contact</button>' +
       '</div>' +
       '<div id="cnoa-contact-msg" class="cnoa-msg" role="status"></div>' +
-      '<div class="cnoa-sub"><a href="' + LOR_URL + '" target="_blank" rel="noopener">Request a Letter of Release</a></div>' +
     '</div>';
   }
 

@@ -371,12 +371,10 @@ test('403 on add hides the add form', async () => {
   assert.ok(panel.querySelector('#cnoa-add-form').hidden);
 });
 
-test('release is a link to lor-request, never a button', async () => {
+test('no release link or button: clients are not pointed at LOR requests (Tom 11-22)', async () => {
   const { panel } = await openDrawer();
-  const a = panel.querySelector('a[href="https://lor-request.operfi.com"]');
-  assert.ok(a);
-  const btns = Array.from(panel.querySelectorAll('button')).filter(b => /release/i.test(b.textContent));
-  assert.strictEqual(btns.length, 0);
+  assert.strictEqual(panel.querySelector('a[href*="lor-request"]'), null);
+  assert.ok(!/release/i.test(panel.textContent.replace(/NOA: ?Released|Released/g, '')));
 });
 
 test('contact names are escaped', async () => {

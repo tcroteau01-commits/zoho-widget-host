@@ -182,7 +182,8 @@ function chipFetch(chips, status) {
   };
 }
 const CHIP = (label, extra) => Object.assign({ status: 'sent', label, waiting_on: '',
-  last_sent_at: null, can_send: true, attention: false }, extra || {});
+  last_sent_at: null, can_send: true, attention: false,
+  send_to: { email: 'ap@acme.com', name: 'Pat AP' } }, extra || {});
 
 async function previewWith(chips, status) {
   const p = loadPage({ staff: true, target: 'b@x.com', fetchImpl: chipFetch(chips, status) });
@@ -217,6 +218,12 @@ test('Waiting on OperFi verification is never styled as done', async () => {
   assert.strictEqual(p.N.chipToneClass({ status: 'action_needed', label: 'Action needed: x' }), 'cnoa-tone-action');
   assert.strictEqual(p.N.chipToneClass({ status: 'not_sent', label: 'Not sent' }), 'cnoa-tone-muted');
   assert.strictEqual(p.N.chipToneClass({ status: 'released', label: 'Released' }), 'cnoa-tone-muted');
+});
+
+test('Send NOA needs can_send exactly true AND a send_to address (Tom 11-22)', async () => {
+  const p = await previewWith({ '1': CHIP('Not sent', { send_to: null }),
+    '2': CHIP('Not sent', { send_to: { email: '' } }), '3': CHIP('Not sent', { send_to: 'ap@acme.com' }) });
+  ['1', '2', '3'].forEach(id => assert.ok(!p.N.rowChipHtml({ ID: id }).includes('data-cnoa-send'), id));
 });
 
 test('Send NOA only when can_send is exactly true', async () => {
@@ -273,29 +280,22 @@ test('rowHtml mounts the chip behind a guard', () => {
   assert.ok(html.includes("(window.OperFiCustomerNoa ? OperFiCustomerNoa.rowChipHtml(r) : '') +"));
 });
 
-// ── Task 3: drawer section and AP contacts ────────────────────────────────
+// ── Task 3: drawer section (Tom 11-22: no contact list, no Add contact) ───
 
-function drawerFetch(over) {
-  over = over || {};
-  return function (url, init) {
+const TO = { email: 'ap@acme.com', name: 'Pat AP' };
+
+function drawerFetch(chip) {
+  return function (url) {
     if (url.includes('/customer-noa/statuses')) {
-      return jsonRes(200, { chips: { '5': CHIP('Waiting on ap@acme.com',
+      return jsonRes(200, { chips: { '5': chip || CHIP('Waiting on ap@acme.com',
         { waiting_on: 'ap@acme.com', last_sent_at: '2026-11-18T15:00:00Z' }) } });
-    }
-    if (url.includes('/customer-noa/contacts') && !(init && init.method === 'POST')) {
-      return over.getContacts ? over.getContacts(url) : jsonRes(200, { contacts: [
-        { email: 'ap@acme.com', name: 'Pat AP', phone: '', role: 'AP', source: 'portal', primary: true },
-        { email: 'billing@acme.com', name: 'Bill', phone: '', role: '', source: 'submission', primary: false }] });
-    }
-    if (url.includes('/customer-noa/contacts')) {
-      return over.postContacts ? over.postContacts(url, init) : jsonRes(200, { ok: true, contacts: [] });
     }
     return jsonRes(200, { items: [] });
   };
 }
 
-async function openDrawer(over, pageOpts) {
-  const p = loadPage(Object.assign({ staff: true, target: 'b@x.com', fetchImpl: drawerFetch(over) }, pageOpts || {}));
+async function openDrawer(chip, pageOpts) {
+  const p = loadPage(Object.assign({ staff: true, target: 'b@x.com', fetchImpl: drawerFetch(chip) }, pageOpts || {}));
   boot(p, [{ ID: '5' }]);
   await wait(20);
   const panel = p.window.document.createElement('div');
@@ -318,57 +318,27 @@ test('dark: panelHtml is empty and wirePanel makes no call for a broker', async 
   assert.strictEqual(p.noaCalls().length, 0);
 });
 
-test('drawer shows chip, who we wait on, and Send NOA', async () => {
+test('drawer shows chip, who we wait on, Send NOA and the one AP address', async () => {
   const { panel } = await openDrawer();
   const sec = panel.querySelector('#cnoa-panel');
   assert.ok(sec);
   assert.ok(sec.textContent.includes('Waiting on ap@acme.com'));
   assert.ok(sec.querySelector('[data-cnoa-send="5"]'));
+  assert.ok(sec.textContent.includes('NOA goes to ap@acme.com'));
   assert.ok(sec.textContent.includes('Preview: hidden from clients'));
 });
 
-test('contacts load once per drawer open and list both sources', async () => {
+test('drawer has no way to add, type or pick an address (Tom 11-22)', async () => {
   const { p, panel } = await openDrawer();
-  assert.strictEqual(p.calls.filter(u => u.includes('/customer-noa/contacts')).length, 1);
-  const list = panel.querySelector('#cnoa-contacts').textContent;
-  assert.ok(list.includes('ap@acme.com'));
-  assert.ok(list.includes('Primary'));
-  assert.ok(list.includes('Suggested from the credit submission'));
+  assert.strictEqual(panel.querySelectorAll('input, select, textarea').length, 0);
+  assert.ok(!/add contact/i.test(panel.textContent));
+  assert.strictEqual(p.calls.filter(u => u.includes('/customer-noa/contacts')).length, 0);
 });
 
-test('add contact body is exactly {email, submission_id, contact:{email,name,phone,role}}', async () => {
-  const { p, panel } = await openDrawer();
-  const f = name => panel.querySelector('[name="cnoa-c-' + name + '"]');
-  f('email').value = 'new@acme.com'; f('name').value = 'New'; f('phone').value = '555'; f('role').value = 'AP';
-  panel.querySelector('#cnoa-add-contact').click();
-  await wait(20);
-  const post = p.posts.find(x => x.url.includes('/customer-noa/contacts'));
-  assert.deepStrictEqual(post.body, { email: 'broker@test.com', submission_id: '5',
-    contact: { email: 'new@acme.com', name: 'New', phone: '555', role: 'AP' } });
-});
-
-test('nothing in the drawer can set primary', async () => {
-  const { panel } = await openDrawer();
-  assert.ok(!panel.querySelector('[name*="primary"]'));
-});
-
-test('bad_email and too_many_contacts show the mapped text', async () => {
-  for (const [code, text] of [['bad_email', 'Not a valid email address.'],
-                              ['too_many_contacts', 'A customer can have up to 10 AP contacts.']]) {
-    const { panel } = await openDrawer({ postContacts: () => jsonRes(400, { error: code }) });
-    panel.querySelector('[name="cnoa-c-email"]').value = 'x@acme.com';
-    panel.querySelector('#cnoa-add-contact').click();
-    await wait(20);
-    assert.ok(panel.querySelector('#cnoa-contact-msg').textContent.includes(text), code);
-  }
-});
-
-test('403 on add hides the add form', async () => {
-  const { panel } = await openDrawer({ postContacts: () => jsonRes(403, { error: 'forbidden' }) });
-  panel.querySelector('[name="cnoa-c-email"]').value = 'x@acme.com';
-  panel.querySelector('#cnoa-add-contact').click();
-  await wait(20);
-  assert.ok(panel.querySelector('#cnoa-add-form').hidden);
+test('no send_to: no Send NOA, and not_sent says no approved AP contact', async () => {
+  const { panel } = await openDrawer(CHIP('Not sent', { status: 'not_sent', send_to: null }));
+  assert.strictEqual(panel.querySelector('[data-cnoa-send]'), null);
+  assert.ok(panel.textContent.includes('No approved AP contact on file for this customer.'));
 });
 
 test('no release link or button: clients are not pointed at LOR requests (Tom 11-22)', async () => {
@@ -377,10 +347,9 @@ test('no release link or button: clients are not pointed at LOR requests (Tom 11
   assert.ok(!/release/i.test(panel.textContent.replace(/NOA: ?Released|Released/g, '')));
 });
 
-test('contact names are escaped', async () => {
-  const { panel } = await openDrawer({ getContacts: () => jsonRes(200, { contacts: [
-    { email: 'a@b.com', name: '<img src=x onerror=1>', source: 'portal', primary: false }] }) });
-  assert.ok(!panel.querySelector('#cnoa-contacts img'));
+test('send_to email is escaped in the drawer', async () => {
+  const { panel } = await openDrawer(CHIP('Not sent', { send_to: { email: '<img src=x onerror=1>@a.com' } }));
+  assert.strictEqual(panel.querySelector('img'), null);
 });
 
 test('renderPanel mounts the drawer section and wiring behind guards', () => {
@@ -389,9 +358,9 @@ test('renderPanel mounts the drawer section and wiring behind guards', () => {
   assert.ok(html.includes("if (window.OperFiCustomerNoa) OperFiCustomerNoa.wirePanel(r, document.getElementById('panel'));"));
 });
 
-// ── Task 4: send form ─────────────────────────────────────────────────────
+// ── Task 4: send window (Tom 11-22: locked recipient, preview, Send) ──────
 
-const FORBIDDEN = ['status', 'confirmed_by', 'kind', 'force', 'verified_domain', 'client', 'debtor'];
+const FORBIDDEN = ['status', 'confirmed_by', 'kind', 'force', 'verified_domain', 'client', 'debtor', 'note', 'cc', 'bcc'];
 function forbiddenKeys(obj, path) {
   const hits = [];
   if (obj && typeof obj === 'object') {
@@ -406,12 +375,10 @@ function forbiddenKeys(obj, path) {
 function sendFetch(over) {
   over = over || {};
   return function (url, init) {
-    if (url.includes('/customer-noa/statuses')) return jsonRes(200, { chips: { '5': CHIP('Not sent', { status: 'not_sent' }) } });
+    if (url.includes('/customer-noa/statuses')) return jsonRes(200, { chips: { '5': over.chip || CHIP('Not sent', { status: 'not_sent' }) } });
     if (url.includes('/customer-noa/status?')) return jsonRes(200, { submission_id: '5', chip: CHIP('Waiting on ap@acme.com') });
-    if (url.includes('/customer-noa/contacts')) return jsonRes(200, { contacts: [
-      { email: 'ap@acme.com', name: 'Pat AP', phone: '555-1', role: 'AP', source: 'portal', primary: true }] });
     if (url.includes('/customer-noa/preview')) return over.preview ? over.preview(init) : jsonRes(200,
-      { subject: 'NOA', html: '<p>Hello <b>AP</b></p>', attach_name: 'noa.pdf',
+      { subject: 'Notice of Assignment', html: '<p>Hello <b>AP</b></p>', attach_name: 'noa.pdf',
         checks: { blocks: [], warnings: ['domain_mismatch'], positives: ['role_address'] } });
     if (url.includes('/customer-noa/send')) return over.send ? over.send(init) : jsonRes(200, { ok: true, noa_id: 'n1', checks: {} });
     return jsonRes(200, { items: [] });
@@ -428,16 +395,6 @@ async function openForm(over, pageOpts) {
   return { p, d, m: d.getElementById('cnoa-send-modal') };
 }
 
-function useNewContact(d, email) {
-  const sel = d.querySelector('[name="cnoa-s-contact"]');
-  sel.value = '__new';
-  sel.dispatchEvent(new d.defaultView.Event('change'));
-  d.querySelector('[name="cnoa-s-email"]').value = email;
-  d.querySelector('[name="cnoa-s-name"]').value = 'New AP';
-  d.querySelector('[name="cnoa-s-phone"]').value = '555-9';
-  d.querySelector('[name="cnoa-s-role"]').value = 'AP';
-}
-
 test('dark: openSendForm is a no-op for a broker', async () => {
   const p = loadPage({ staff: false, target: '' });
   boot(p, [{ ID: '5' }]);
@@ -448,7 +405,7 @@ test('dark: openSendForm is a no-op for a broker', async () => {
   assert.strictEqual(p.noaCalls().length, 0);
 });
 
-test('the row Send NOA button opens the form', async () => {
+test('the row Send NOA button opens the window', async () => {
   const p = loadPage({ staff: true, target: 'b@x.com', fetchImpl: sendFetch() });
   boot(p, [{ ID: '5' }]);
   await wait(20);
@@ -458,136 +415,133 @@ test('the row Send NOA button opens the form', async () => {
   assert.ok(p.window.document.getElementById('cnoa-send-modal'));
 });
 
-test('the form has Send now and Have OperFi send it as two buttons, no checkbox', async () => {
+test('no send_to: the window does not open and nothing is called', async () => {
+  const { p, m } = await openForm({ chip: CHIP('Not sent', { send_to: null }) });
+  assert.strictEqual(m, null);
+  assert.strictEqual(p.posts.length, 0);
+});
+
+test('the To address is the API send_to, grayed out and not editable', async () => {
   const { m } = await openForm();
-  assert.ok(m.querySelector('#cnoa-send-self').textContent.includes('Send now'));
-  assert.ok(m.querySelector('#cnoa-send-operfi').textContent.includes('Have OperFi send it for me'));
-  assert.ok(m.textContent.includes('Nothing is emailed until we do.'));
-  assert.strictEqual(m.querySelectorAll('input[type="checkbox"]').length, 0);
+  const to = m.querySelector('[name="cnoa-s-to"]');
+  assert.strictEqual(to.value, 'ap@acme.com');
+  assert.strictEqual(to.disabled, true);
+  assert.strictEqual(to.readOnly, true);
+  const editable = Array.from(m.querySelectorAll('input, select, textarea')).filter(e => !e.disabled);
+  assert.strictEqual(editable.length, 0);
+  const css = m.ownerDocument.getElementById('cnoa-styles').textContent;
+  assert.ok(css.includes('.cnoa-field input[disabled]{background:#f1f1f1;'));
+});
+
+test('the window has exactly Cancel and Send NOA, no Have-OperFi, no other address', async () => {
+  const { m } = await openForm();
+  const ids = Array.from(m.querySelectorAll('button')).map(b => b.id).sort();
+  assert.deepStrictEqual(ids, ['cnoa-cancel', 'cnoa-send-self']);
+  assert.ok(!/have operfi send/i.test(m.textContent));
 });
 
 test('[hidden] beats the module display rules (rendered-page regression)', async () => {
   const { d } = await openForm();
   const css = d.getElementById('cnoa-styles').textContent;
   assert.ok(css.includes('.cnoa-modal [hidden],.cnoa-panel [hidden],.cnoa-bell-menu [hidden]{display:none !important;}'));
-  assert.strictEqual(d.getElementById('cnoa-s-new').hidden, true, 'existing contact selected: new-contact fields hidden');
 });
 
-test('preview body is exactly {email, submission_id, contact:{email,name}, note}', async () => {
+test('the email loads on open: one preview with exactly {email, submission_id, contact:{email,name}}', async () => {
   const { p, d } = await openForm();
-  d.querySelector('[name="cnoa-s-note"]').value = 'Hi';
-  d.getElementById('cnoa-preview').click();
-  await wait(20);
-  const post = p.posts.find(x => x.url.includes('/preview'));
-  assert.deepStrictEqual(post.body, { email: 'broker@test.com', submission_id: '5',
-    contact: { email: 'ap@acme.com', name: 'Pat AP' }, note: 'Hi' });
+  const previews = p.posts.filter(x => x.url.includes('/preview'));
+  assert.strictEqual(previews.length, 1);
+  assert.deepStrictEqual(previews[0].body, { email: 'broker@test.com', submission_id: '5', contact: TO });
+  assert.strictEqual(d.getElementById('cnoa-s-subject').textContent, 'Notice of Assignment');
+  assert.strictEqual(d.getElementById('cnoa-send-self').disabled, false);
+});
+
+test('Send NOA stays disabled until the email has loaded', async () => {
+  let resolve;
+  const { p, d } = await openForm({ preview: () => new Promise(r => { resolve = r; }) });
+  const btn = d.getElementById('cnoa-send-self');
+  assert.strictEqual(btn.disabled, true);
+  btn.click();
+  await wait(10);
+  assert.strictEqual(p.posts.filter(x => x.url.includes('/customer-noa/send')).length, 0);
+  resolve({ ok: true, status: 200, json: () => Promise.resolve({ subject: 'S', html: '<p>x</p>', checks: { blocks: [] } }) });
+  await wait(10);
+  assert.strictEqual(btn.disabled, false);
 });
 
 test('preview html renders in a sandboxed iframe via srcdoc, never innerHTML', async () => {
   const { d } = await openForm();
-  d.getElementById('cnoa-preview').click();
-  await wait(20);
   const f = d.getElementById('cnoa-preview-frame');
   assert.strictEqual(f.getAttribute('sandbox'), '');
   assert.ok(f.getAttribute('srcdoc').includes('<b>AP</b>'));
-  // The email's markup must not exist as DOM in the page (srcdoc text is fine:
-  // HTML serialisation leaves '<' unescaped inside attribute values).
+  assert.strictEqual(f.hidden, false);
   assert.strictEqual(d.getElementById('cnoa-send-modal').querySelector('b'), null);
 });
 
-test('send body is exactly the allow list, for both modes', async () => {
-  for (const [btn, mode] of [['cnoa-send-self', 'self'], ['cnoa-send-operfi', 'operfi']]) {
-    const { p, d } = await openForm();
-    useNewContact(d, 'new@acme.com');
-    d.querySelector('[name="cnoa-s-note"]').value = 'Note';
-    d.getElementById(btn).click();
-    await wait(20);
-    const post = p.posts.find(x => x.url.includes('/customer-noa/send'));
-    assert.deepStrictEqual(post.body, { email: 'broker@test.com', submission_id: '5',
-      contact: { email: 'new@acme.com', name: 'New AP', phone: '555-9', role: 'AP' }, note: 'Note', mode });
-  }
-});
-
-test('no forbidden key ever leaves the module', async () => {
-  const all = [];
-  for (const btn of ['cnoa-preview', 'cnoa-send-self', 'cnoa-send-operfi']) {
-    const { p, d } = await openForm();
-    d.getElementById(btn).click();
-    await wait(20);
-    all.push(...p.posts);
-  }
-  const { p, panel } = await openDrawer();
-  panel.querySelector('[name="cnoa-c-email"]').value = 'x@acme.com';
-  panel.querySelector('#cnoa-add-contact').click();
+test('send body is exactly {email, submission_id, contact: send_to, mode: self}', async () => {
+  const { p, d } = await openForm();
+  d.getElementById('cnoa-send-self').click();
   await wait(20);
-  all.push(...p.posts);
-  assert.ok(all.length >= 4);
-  all.forEach(x => assert.deepStrictEqual(forbiddenKeys(x.body), [], x.url));
+  const post = p.posts.find(x => x.url.includes('/customer-noa/send'));
+  assert.deepStrictEqual(post.body, { email: 'broker@test.com', submission_id: '5', contact: TO, mode: 'self' });
 });
 
-test('each check code shows its plain-language text; unknown code has a fallback', async () => {
+test('no forbidden key ever leaves the module (note and cc included)', async () => {
+  const { p, d } = await openForm();
+  d.getElementById('cnoa-send-self').click();
+  await wait(20);
+  assert.ok(p.posts.length >= 2);
+  p.posts.forEach(x => assert.deepStrictEqual(forbiddenKeys(x.body), [], x.url));
+});
+
+test('each block code shows its plain-language text; unknown code has a fallback', async () => {
   const TEXT = {
     free_mail: "Free email address (Gmail, Yahoo...). Use the customer's company address.",
     lookalike_domain: "Looks like the customer's domain but is not.",
     client_domain: "That is your own company's address.",
     client_user: "That is your own company's address.",
     credit_contact: 'That is the credit contact, not accounts payable.',
-    bad_email: 'Not a valid email address.',
-    domain_mismatch: "Does not match the customer's verified domain. Allowed, but OperFi will verify by phone.",
-    role_address: 'AP role address. Good.'
+    bad_email: 'Not a valid email address.'
   };
   const { p } = await openForm();
   Object.keys(TEXT).forEach(k => assert.strictEqual(p.N.checkText(k), TEXT[k], k));
   assert.strictEqual(p.N.checkText('zzz'), "This address can't be used for an NOA.");
 });
 
-test('blocked_contact shows reasons and offers no override', async () => {
-  const { d, m } = await openForm({ send: () => jsonRes(409, { error: 'blocked_contact',
+const BLOCKED = "This customer's AP contact can't be used for an NOA. Contact brokersupport@operfi.com.";
+
+test('a blocked address in the preview: reasons, no Send, no override', async () => {
+  const { d, m } = await openForm({ preview: () => jsonRes(200, { subject: 'S', html: '<p>x</p>',
     checks: { blocks: ['free_mail'], warnings: [], positives: [] } }) });
-  d.getElementById('cnoa-send-self').click();
-  await wait(20);
   assert.ok(m.textContent.includes('Free email address'));
-  assert.ok(m.textContent.includes('Use a different address.'));
-  const visibleBtns = Array.from(m.querySelectorAll('button')).filter(b => !b.hidden).map(b => b.id);
-  assert.deepStrictEqual(visibleBtns.sort(), ['cnoa-cancel', 'cnoa-change-address'].sort());
-});
-
-test('changing the recipient retires the old preview (rendered-page finding)', async () => {
-  const { d } = await openForm();
-  d.getElementById('cnoa-preview').click();
-  await wait(20);
-  assert.strictEqual(d.getElementById('cnoa-preview-frame').hidden, false);
-  useNewContact(d, 'other@acme.com');
+  assert.ok(m.textContent.includes(BLOCKED));
+  assert.strictEqual(d.getElementById('cnoa-send-self').hidden, true);
   assert.strictEqual(d.getElementById('cnoa-preview-frame').hidden, true);
-  assert.strictEqual(d.getElementById('cnoa-preview-frame').getAttribute('srcdoc'), null);
+  const shown = Array.from(m.querySelectorAll('button')).filter(b => !b.hidden).map(b => b.id);
+  assert.deepStrictEqual(shown, ['cnoa-cancel']);
 });
 
-test('a block also hides the preview and the Have-OperFi note', async () => {
-  const { d } = await openForm({ send: () => jsonRes(409, { error: 'blocked_contact',
-    checks: { blocks: ['free_mail'], warnings: [], positives: [] } }) });
-  d.getElementById('cnoa-preview').click();
-  await wait(20);
-  d.getElementById('cnoa-send-self').click();
-  await wait(20);
-  assert.strictEqual(d.getElementById('cnoa-preview-frame').hidden, true);
-  assert.strictEqual(d.getElementById('cnoa-operfi-note').hidden, true);
-  d.getElementById('cnoa-change-address').click();
-  assert.strictEqual(d.getElementById('cnoa-operfi-note').hidden, false);
-  assert.strictEqual(d.getElementById('cnoa-send-self').hidden, false);
+test('recipient_not_on_file and blocked_contact on send: blocked text, Send gone', async () => {
+  for (const code of ['recipient_not_on_file', 'blocked_contact']) {
+    const { d, m } = await openForm({ send: () => jsonRes(409, { error: code,
+      checks: { blocks: [], warnings: [], positives: [] } }) });
+    d.getElementById('cnoa-send-self').click();
+    await wait(20);
+    assert.ok(m.textContent.includes(BLOCKED), code);
+    assert.strictEqual(d.getElementById('cnoa-send-self').hidden, true, code);
+  }
 });
 
-test('double click on Send now sends once', async () => {
+test('double click on Send NOA sends once', async () => {
   let resolve;
   const { p, d } = await openForm({ send: () => new Promise(r => { resolve = r; }) });
   d.getElementById('cnoa-send-self').click();
   d.getElementById('cnoa-send-self').click();
-  d.getElementById('cnoa-send-operfi').click();
   await wait(10);
   assert.strictEqual(p.posts.filter(x => x.url.includes('/customer-noa/send')).length, 1);
   resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
 });
 
-test('each error status shows its mapped text', async () => {
+test('each error status shows its mapped text and Send can be retried', async () => {
   const cases = [
     [409, 'no_master', "We don't have a signed NOA on file for your company yet. OperFi will reach out."],
     [409, 'bad_state', 'This customer has already acknowledged or confirmed the NOA.'],
@@ -598,17 +552,17 @@ test('each error status shows its mapped text', async () => {
     d.getElementById('cnoa-send-self').click();
     await wait(20);
     assert.ok(m.textContent.includes(text), code);
+    assert.strictEqual(d.getElementById('cnoa-send-self').disabled, false, code);
   }
 });
 
-test('preview no_master shows the same text', async () => {
+test('preview no_master shows its text and Send stays disabled', async () => {
   const { d, m } = await openForm({ preview: () => jsonRes(409, { error: 'no_master' }) });
-  d.getElementById('cnoa-preview').click();
-  await wait(20);
   assert.ok(m.textContent.includes("We don't have a signed NOA on file for your company yet."));
+  assert.strictEqual(d.getElementById('cnoa-send-self').disabled, true);
 });
 
-test('a successful send closes the form and refreshes that chip', async () => {
+test('a successful send closes the window and refreshes that chip', async () => {
   const { p, d } = await openForm();
   d.getElementById('cnoa-send-self').click();
   await wait(30);

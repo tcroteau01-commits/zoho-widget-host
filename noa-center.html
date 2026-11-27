@@ -638,6 +638,7 @@
     $('lor-title').textContent = v.client + '  \u00b7  ' + v.debtor + '  \u00b7  ' + v.status;
     var box = $('lor-facts'); clear(box);
     var d = (r.fields || {}).debtor || r.debtor || {};
+    box.appendChild(fact('Requested from', H.requestedFromLabel(r.requested_by)));
     box.appendChild(fact('Debtor', [d.name, d.mc ? 'MC ' + d.mc : ''].filter(Boolean).join(', ')));
     box.appendChild(fact('Debtor address', (d.address_lines || []).join(', ')));
     box.appendChild(fact('Send to', (r.send_to || 'none') + ' (' + H.sendToSourceLabel(r.send_to_source) + ')', !r.send_to));

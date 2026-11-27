@@ -184,6 +184,16 @@ test('lorStatusLabel maps every status', () => {
     ['Waiting on AR', 'To review', 'Approved, sending', 'Sent', 'Rejected', 'Expired', 'Failed to send']);
 });
 
+test('requestedFromLabel names the Carrier Hub, the release page and staff paths', () => {
+  assert.strictEqual(H.requestedFromLabel({ source: 'client', channel: 'hub', user: 'admin@testing.example' }),
+                     'Carrier Hub (admin@testing.example)');
+  assert.strictEqual(H.requestedFromLabel({ source: 'client', channel: 'release_page' }), 'Release request page');
+  assert.strictEqual(H.requestedFromLabel({ source: 'client' }), 'Client');
+  assert.strictEqual(H.requestedFromLabel({ source: 'staff', user: 'ops@testing.example' }), 'Staff (ops@testing.example)');
+  assert.strictEqual(H.requestedFromLabel({ source: 'zoho_form' }), 'Old Zoho LOR form');
+  assert.strictEqual(H.requestedFromLabel(null), 'Unknown');
+});
+
 test('lorRowView flags unknown AR and client remit changes', () => {
   const v = H.lorRowView({ status: 'requested', client: { name: 'TESTING Freight' }, debtor: { name: 'Acme Test' },
                            ar_unknown: true, remit_changed: true, send_to: null,

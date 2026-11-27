@@ -70,6 +70,14 @@
     if (String(src).indexOf('staff:') === 0) return 'Staff (' + String(src).slice(6) + ')';
     return SEND_TO_SOURCES[src] || src;
   }
+  // Where a release request came from (requested_by.source / .channel in the NOA Center).
+  var REQUEST_CHANNELS = { hub: 'Carrier Hub', release_page: 'Release request page' };
+  var REQUEST_SOURCES = { staff: 'Staff', zoho_form: 'Old Zoho LOR form', client: 'Client' };
+  function requestedFromLabel(by) {
+    by = by || {};
+    var where = (by.source === 'client' && REQUEST_CHANNELS[by.channel]) || REQUEST_SOURCES[by.source] || by.source || 'Unknown';
+    return by.user ? where + ' (' + by.user + ')' : where;
+  }
   function lorArText(check) {
     if (!check) return 'Not checked';
     if (check.unknown) return 'Balance unknown';
@@ -98,5 +106,5 @@
            confirmAllowed: confirmAllowed, renderChecks: renderChecks, ageText: ageText,
            nameMatches: nameMatches, skipLabel: skipLabel, summaryText: summaryText,
            lorStatusLabel: lorStatusLabel, lorArText: lorArText, lorRowView: lorRowView,
-           sendToSourceLabel: sendToSourceLabel, NUMBER_SOURCES: NUMBER_SOURCES };
+           sendToSourceLabel: sendToSourceLabel, requestedFromLabel: requestedFromLabel, NUMBER_SOURCES: NUMBER_SOURCES };
 });
